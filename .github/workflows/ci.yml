@@ -1,0 +1,88 @@
+name: Continuous integration
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+            toolchain: nightly
+            components: rustfmt
+
+      - name: Run fmt
+        run: cargo +nightly fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+            toolchain: stable
+            targets: wasm32-unknown-unknown
+            components: rust-src, clippy
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get install protobuf-compiler
+
+      - name: Run clippy
+        run: |
+          cargo clippy --locked --all-features --all-targets --manifest-path Cargo.toml -- -D warnings
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    # TODO: figure it out why it fails or remove it.
+    # - name: Set up cargo cache
+      # uses: actions/cache@v4
+      # continue-on-error: false
+      # with:
+        # path: |
+          # ~/.cargo/bin/
+          # ~/.cargo/registry/index/
+          # ~/.cargo/registry/cache/
+          # ~/.cargo/git/db/
+          # target/
+        # key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        # restore-keys: ${{ runner.os }}-cargo-
+
+    - name: Install dependencies
+      run: sudo apt-get install protobuf-compiler
+
+    # Buy some more disk space as we encountered the error `No space left on device`.
+    - name: Free Disk Space (Ubuntu)
+      uses: jlumbroso/free-disk-space@main
+      with:
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: false
+        docker-images: true
+        swap-storage: false
+
+    - name: Run tests
+      run: cargo test --verbose --workspace
