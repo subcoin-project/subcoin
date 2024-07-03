@@ -1,6 +1,7 @@
 # Subcoin: Bitcoin Full Node in Substrate
 
 [![Continuous integration](https://github.com/subcoin-project/subcoin/actions/workflows/ci.yml/badge.svg)](https://github.com/subcoin-project/subcoin/actions/workflows/ci.yml)
+[![Rustdoc](https://github.com/subcoin-project/subcoin/actions/workflows/rustdoc.yml/badge.svg)](https://github.com/subcoin-project/subcoin/actions/workflows/rustdoc.yml)
 
 > [!WARNING]
 >

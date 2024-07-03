@@ -1,9 +1,10 @@
-name: rustdoc
+name: Rustdoc
 
 on:
+  workflow_dispatch:
   push:
-   branches:
-   - main
+    branches:
+    - main
 
 concurrency:
   group: rustdoc-${{ github.workflow }}-${{ github.ref }}
