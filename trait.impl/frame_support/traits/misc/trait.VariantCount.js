@@ -1,0 +1,3 @@
+(function() {var implementors = {
+"subcoin_runtime":[["impl VariantCount for <a class=\"enum\" href=\"subcoin_runtime/enum.RuntimeFreezeReason.html\" title=\"enum subcoin_runtime::RuntimeFreezeReason\">RuntimeFreezeReason</a>"],["impl VariantCount for <a class=\"enum\" href=\"subcoin_runtime/enum.RuntimeHoldReason.html\" title=\"enum subcoin_runtime::RuntimeHoldReason\">RuntimeHoldReason</a>"]]
+};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

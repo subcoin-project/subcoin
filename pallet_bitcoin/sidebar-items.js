@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["coin_storage_key"],"mod":["pallet"],"struct":["Coin","Txid"],"type":["Vout"]};

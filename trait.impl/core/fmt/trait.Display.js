@@ -1,0 +1,4 @@
+(function() {var implementors = {
+"sc_consensus_nakamoto":[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/fmt/trait.Display.html\" title=\"trait core::fmt::Display\">Display</a> for <a class=\"enum\" href=\"sc_consensus_nakamoto/enum.Error.html\" title=\"enum sc_consensus_nakamoto::Error\">Error</a>"]],
+"subcoin_primitives":[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/fmt/trait.Display.html\" title=\"trait core::fmt::Display\">Display</a> for <a class=\"struct\" href=\"subcoin_primitives/struct.IndexedBlock.html\" title=\"struct subcoin_primitives::IndexedBlock\">IndexedBlock</a>"]]
+};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

@@ -1,0 +1,4 @@
+(function() {var implementors = {
+"pallet_bitcoin":[["impl&lt;'de, T&gt; <a class=\"trait\" href=\"https://docs.rs/serde/1.0.203/serde/de/trait.Deserialize.html\" title=\"trait serde::de::Deserialize\">Deserialize</a>&lt;'de&gt; for <a class=\"struct\" href=\"pallet_bitcoin/pallet/struct.GenesisConfig.html\" title=\"struct pallet_bitcoin::pallet::GenesisConfig\">GenesisConfig</a>&lt;T&gt;"]],
+"subcoin_runtime":[["impl&lt;'de&gt; <a class=\"trait\" href=\"https://docs.rs/serde/1.0.203/serde/de/trait.Deserialize.html\" title=\"trait serde::de::Deserialize\">Deserialize</a>&lt;'de&gt; for <a class=\"struct\" href=\"subcoin_runtime/struct.RuntimeGenesisConfig.html\" title=\"struct subcoin_runtime::RuntimeGenesisConfig\">RuntimeGenesisConfig</a>"]]
+};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

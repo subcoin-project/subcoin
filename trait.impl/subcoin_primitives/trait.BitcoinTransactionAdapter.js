@@ -1,0 +1,3 @@
+(function() {var implementors = {
+"subcoin_service":[["impl&lt;Block: BlockT&gt; <a class=\"trait\" href=\"subcoin_primitives/trait.BitcoinTransactionAdapter.html\" title=\"trait subcoin_primitives::BitcoinTransactionAdapter\">BitcoinTransactionAdapter</a>&lt;Block&gt; for <a class=\"struct\" href=\"subcoin_service/struct.TransactionAdapter.html\" title=\"struct subcoin_service::TransactionAdapter\">TransactionAdapter</a>"]]
+};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
