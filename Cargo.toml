@@ -13,11 +13,14 @@ members = [
     "crates/pallet-executive",
     "crates/sc-consensus-nakamoto",
     "crates/subcoin-informant",
+    "crates/subcoin-node",
     "crates/subcoin-primitives",
     "crates/subcoin-runtime",
     "crates/subcoin-runtime-primitives",
     "crates/subcoin-service",
 ]
+
+default-members = ["crates/subcoin-node"]
 
 [workspace.dependencies]
 ansi_term = "0.12.1"
@@ -96,6 +99,7 @@ pallet-bitcoin = { path = "crates/pallet-bitcoin", default-features = false }
 pallet-executive = { path = "crates/pallet-executive", default-features = false }
 sc-consensus-nakamoto = { path = "crates/sc-consensus-nakamoto" }
 subcoin-informant = { path = "crates/subcoin-informant" }
+subcoin-node = { path = "crates/subcoin-node" }
 subcoin-primitives = { path = "crates/subcoin-primitives" }
 subcoin-runtime = { path = "crates/subcoin-runtime" }
 subcoin-runtime-primitives = { path = "crates/subcoin-runtime-primitives", default-features = false }
