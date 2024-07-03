@@ -13,5 +13,7 @@ codec = { workspace = true }
 sc-client-api = { workspace = true }
 sp-blockchain = { workspace = true }
 sp-runtime = { workspace = true }
-subcoin-runtime-primitives = { workspace = true }
+# We need to explicitly enable the default-features, otherwise `default-features = false`
+# will be inherited from the workspace config, compiling this crate soly may fail.
+subcoin-runtime-primitives = { workspace = true, default-features = true }
 tracing = { workspace = true }
