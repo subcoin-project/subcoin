@@ -2,7 +2,7 @@
 //!
 //! This pallet is designed to be minimalist, containing only one storage item for maintaining the state
 //! of the UTXO (Unspent Transaction Output) set by processing the inputs and outputs of each Bitcoin
-//! transaction wrapped in [`Pallet::Call::transact`]. There is no verification logic within the
+//! transaction wrapped in [`Call::transact`]. There is no verification logic within the
 //! pallet, all validation work should be performed outside the runtime. This approach simplifies
 //! off-runtime execution, allowing for easier syncing performance optimization.
 
