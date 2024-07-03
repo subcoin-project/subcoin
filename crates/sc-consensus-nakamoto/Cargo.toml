@@ -1,0 +1,27 @@
+[package]
+name = "sc-consensus-nakamoto"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+bitcoin = { workspace = true }
+codec = { workspace = true }
+futures = { workspace = true }
+hex-literal = { workspace = true }
+sc-client-api = { workspace = true }
+sc-consensus = { workspace = true }
+sc-utils = { workspace = true }
+sp-api = { workspace = true }
+sp-blockchain = { workspace = true }
+sp-consensus = { workspace = true }
+sp-core = { workspace = true }
+sp-io = { workspace = true }
+sp-runtime = { workspace = true }
+sp-state-machine = { workspace = true }
+subcoin-primitives = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
