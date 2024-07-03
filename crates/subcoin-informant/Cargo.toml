@@ -1,0 +1,18 @@
+[package]
+name = "subcoin-informant"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+ansi_term = { workspace = true }
+bitcoin = { workspace = true }
+futures = { workspace = true }
+futures-timer = { workspace = true }
+sc-client-api = { workspace = true }
+sp-blockchain = { workspace = true }
+sp-runtime = { workspace = true }
+subcoin-primitives = { workspace = true }
+tracing = { workspace = true }
