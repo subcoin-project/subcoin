@@ -6,6 +6,9 @@ on:
     branches:
     - main
 
+permissions:
+  contents: write
+
 concurrency:
   group: rustdoc-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -22,6 +25,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+            toolchain: nightly
+            targets: wasm32-unknown-unknown
+            components: rust-src
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
@@ -40,7 +49,7 @@ jobs:
 
       # Build the rust crate docs
       - name: Build Documentation
-        run: cargo -Zgitoxide -Zgit doc --all --no-deps --lib
+        run: cargo +nightly -Zgitoxide -Zgit doc --all --no-deps --lib
         env:
           RUSTDOCFLAGS: "-Z unstable-options --enable-index-page"
 
