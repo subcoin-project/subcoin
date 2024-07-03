@@ -1,0 +1,36 @@
+[package]
+name = "pallet-bitcoin"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+bitcoin = { workspace = true, default-features = false }
+codec = { workspace = true, default-features = false }
+frame-system = { workspace = true, default-features = false }
+frame-support = { workspace = true, default-features = false }
+log = { workspace = true, default-features = false }
+scale-info = { workspace = true, default-features = false, features = ["derive"] }
+sp-core = { workspace = true, default-features = false }
+sp-io = { workspace = true, default-features = false }
+sp-runtime = { workspace = true, default-features = false }
+sp-std = { workspace = true, default-features = false }
+subcoin-runtime-primitives = { workspace = true, default-features = false }
+
+[features]
+default = ["std"]
+std = [
+	"bitcoin/std",
+    "codec/std",
+    "frame-support/std",
+    "frame-system/std",
+    "log/std",
+    "scale-info/std",
+    "sp-core/std",
+    "sp-io/std",
+    "sp-runtime/std",
+    "sp-std/std",
+    "subcoin-runtime-primitives/std",
+]
