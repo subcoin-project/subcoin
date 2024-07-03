@@ -11,6 +11,7 @@ resolver = "2"
 members = [
     "crates/pallet-bitcoin",
     "crates/pallet-executive",
+    "crates/subcoin-primitives",
     "crates/subcoin-runtime",
     "crates/subcoin-runtime-primitives",
 ]
@@ -90,6 +91,7 @@ substrate-test-runtime = { git = "https://github.com/liuchengxu/polkadot-sdk", b
 
 pallet-bitcoin = { path = "crates/pallet-bitcoin", default-features = false }
 pallet-executive = { path = "crates/pallet-executive", default-features = false }
+subcoin-primitives = { path = "crates/subcoin-primitives" }
 subcoin-runtime = { path = "crates/subcoin-runtime" }
 subcoin-runtime-primitives = { path = "crates/subcoin-runtime-primitives", default-features = false }
 

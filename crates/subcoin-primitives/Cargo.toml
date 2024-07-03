@@ -1,0 +1,17 @@
+[package]
+name = "subcoin-primitives"
+description = "Primitives for Subcoin Client"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+bitcoin = { workspace = true }
+codec = { workspace = true }
+sc-client-api = { workspace = true }
+sp-blockchain = { workspace = true }
+sp-runtime = { workspace = true }
+subcoin-runtime-primitives = { workspace = true }
+tracing = { workspace = true }
