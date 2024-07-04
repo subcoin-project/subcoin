@@ -1,6 +1,6 @@
 use crate::cli::params::CommonParams;
 use bitcoin_explorer::BitcoinDB;
-use sc_cli::{NodeKeyParams, SharedParams};
+use sc_cli::{ImportParams, NodeKeyParams, SharedParams};
 use sc_client_api::HeaderBackend;
 use sc_consensus_nakamoto::{
     BitcoinBlockImport, BitcoinBlockImporter, BlockVerification, ImportConfig,
@@ -30,8 +30,12 @@ pub struct ImportBlocks {
     pub to: Option<usize>,
 
     /// Whether to execute the transactions in the block.
-    #[clap(long)]
+    #[clap(long, default_value_t = true)]
     pub execute_block: bool,
+
+    #[allow(missing_docs)]
+    #[clap(flatten)]
+    pub import_params: ImportParams,
 
     #[allow(missing_docs)]
     #[clap(flatten)]
@@ -41,6 +45,7 @@ pub struct ImportBlocks {
 /// Custom version of [`sc_cli::ImportBlocksCmd`].
 pub struct ImportBlocksCmd {
     shared_params: SharedParams,
+    import_params: ImportParams,
     to: Option<usize>,
     execute_block: bool,
 }
@@ -49,8 +54,10 @@ impl ImportBlocksCmd {
     /// Constructs a new instance of [`ImportBlocksCmd`].
     pub fn new(cmd: &ImportBlocks) -> Self {
         let shared_params = cmd.common_params.as_shared_params();
+        let import_params = cmd.import_params.clone();
         Self {
             shared_params,
+            import_params,
             to: cmd.to,
             execute_block: cmd.execute_block,
         }
@@ -106,17 +113,16 @@ impl ImportBlocksCmd {
                 if total_imported > 0 {
                     let info = client.info();
 
+                    let best_number = info.best_number;
+                    let substrate_block_hash = info.best_hash;
+
                     let bitcoin_block_hash =
                         BackendExt::<OpaqueBlock>::bitcoin_block_hash_for(&client, info.best_hash)
                             .unwrap_or_else(|| {
                                 panic!(
-                                    "bitcoin block hash for substrate#{},{} is missing",
-                                    info.best_number, info.best_hash
+                                    "Bitcoin block hash for substrate#{best_number},{substrate_block_hash} is missing",
                                 )
                             });
-
-                    let best_number = info.best_number;
-                    let substrate_block_hash = info.best_hash;
 
                     let speed = speed::<OpaqueBlock>(best_number, last_number, last_update);
 
@@ -192,6 +198,10 @@ fn speed<B: BlockT>(
 impl sc_cli::CliConfiguration for ImportBlocksCmd {
     fn shared_params(&self) -> &SharedParams {
         &self.shared_params
+    }
+
+    fn import_params(&self) -> Option<&ImportParams> {
+        Some(&self.import_params)
     }
 
     fn node_key_params(&self) -> Option<&NodeKeyParams> {
