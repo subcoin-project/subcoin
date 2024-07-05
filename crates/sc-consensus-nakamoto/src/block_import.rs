@@ -267,10 +267,11 @@ where
 
 /// Result of the operation of importing a Bitcoin block.
 ///
-/// Same semantic with [`sc_consensus::ImportResult`] for including more information
-/// in the Imported variant.
+/// Same semantic with [`sc_consensus::ImportResult`] with additional information
+/// in the [`ImportStatus::Imported`] variant.
 #[derive(Debug, Clone)]
 pub enum ImportStatus {
+    /// Block was imported successfully.
     Imported {
         block_number: u32,
         block_hash: BlockHash,
@@ -287,6 +288,7 @@ pub enum ImportStatus {
 }
 
 impl ImportStatus {
+    /// Returns `true` if the import status is [`Self::UnknownParent`].
     pub fn is_unknown_parent(&self) -> bool {
         matches!(self, Self::UnknownParent)
     }

@@ -17,21 +17,26 @@ use subcoin_service::FullClient;
 /// Import Bitcoin blocks from bitcoind database.
 #[derive(clap::Parser, Debug, Clone)]
 pub struct ImportBlocks {
-    /// Path of the bitcoind database.
+    /// Path to the bitcoind database.
     ///
-    /// Value of the `-data-dir` argument in the bitcoind program.
+    /// This corresponds to the value of the `-data-dir` argument in the bitcoind program.
     #[clap(index = 1, value_parser)]
     pub data_dir: PathBuf,
 
-    /// Specify the block number of last block to import.
+    /// Number of blocks to import.
     ///
-    /// The default value is the highest block in the database.
-    #[clap(long)]
-    pub to: Option<usize>,
+    /// The process will stop after importing the specified number of blocks.
+    pub block_count: Option<usize>,
 
-    /// Whether to execute the transactions in the block.
+    /// Block number of last block to import.
+    ///
+    /// The default value is to the highest block in the database.
+    #[clap(long)]
+    pub end_block: Option<usize>,
+
+    /// Whether to execute the transactions within the blocks.
     #[clap(long, default_value_t = true)]
-    pub execute_block: bool,
+    pub execute_transactions: bool,
 
     #[allow(missing_docs)]
     #[clap(flatten)]
@@ -46,6 +51,7 @@ pub struct ImportBlocks {
 pub struct ImportBlocksCmd {
     shared_params: SharedParams,
     import_params: ImportParams,
+    block_count: Option<usize>,
     to: Option<usize>,
     execute_block: bool,
 }
@@ -58,8 +64,9 @@ impl ImportBlocksCmd {
         Self {
             shared_params,
             import_params,
-            to: cmd.to,
-            execute_block: cmd.execute_block,
+            block_count: cmd.block_count,
+            to: cmd.end_block,
+            execute_block: cmd.execute_transactions,
         }
     }
 
@@ -142,6 +149,12 @@ impl ImportBlocksCmd {
             }
 
             total_imported += 1;
+
+            if let Some(block_count) = self.block_count {
+                if total_imported == block_count {
+                    break;
+                }
+            }
         }
 
         tracing::info!("Imported {total_imported} blocks successfully");

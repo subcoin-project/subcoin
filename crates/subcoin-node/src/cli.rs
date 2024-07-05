@@ -60,6 +60,19 @@ pub fn run() -> sc_cli::Result<()> {
                     network: bitcoin::Network::Bitcoin,
                     config: &config,
                 })?;
+                task_manager.spawn_handle().spawn("finalizer", None, {
+                    let client = client.clone();
+                    let spawn_handle = task_manager.spawn_handle();
+                    let confirmation_depth = 6u32;
+                    // TODO: proper value
+                    let is_major_syncing = std::sync::Arc::new(true.into());
+                    subcoin_service::finalize_confirmed_blocks(
+                        client,
+                        spawn_handle,
+                        confirmation_depth,
+                        is_major_syncing,
+                    )
+                });
                 Ok((import_blocks_cmd.run(client, data_dir), task_manager))
             })
         }
