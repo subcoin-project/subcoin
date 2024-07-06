@@ -208,7 +208,7 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
         .transpose()?;
 
     // TODO: maintain the native executor on our own since it's deprecated upstream
-    let executor = sc_service::new_native_or_wasm_executor(&config);
+    let executor = sc_service::new_native_or_wasm_executor(config);
 
     let backend = sc_service::new_db_backend(config.db_config())?;
 
@@ -222,7 +222,7 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
 
     let (client, backend, _keystore_container, task_manager) =
         sc_service::new_full_parts_with_genesis_builder::<Block, RuntimeApi, _, _>(
-            &config,
+            config,
             telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
             executor.clone(),
             backend,
@@ -260,7 +260,7 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
     let database_path = config.database.path().map(Path::to_path_buf);
     let maybe_hwbench = (!no_hardware_benchmarks)
         .then_some(database_path.as_ref().map(|db_path| {
-            let _ = std::fs::create_dir_all(&db_path);
+            let _ = std::fs::create_dir_all(db_path);
             sc_sysinfo::gather_hwbench(Some(db_path))
         }))
         .flatten();
