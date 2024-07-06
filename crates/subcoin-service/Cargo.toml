@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 async-trait = { workspace = true }
 bitcoin = { workspace = true }
+frame-benchmarking-cli = { workspace = true }
 frame-system = { workspace = true }
 futures = { workspace = true }
 jsonrpsee = { workspace = true }
@@ -21,6 +22,8 @@ sc-network = { workspace = true }
 sc-rpc = { workspace = true }
 # `test-helpers` for the exposed Client type.
 sc-service = { workspace = true, features = ["test-helpers"], default-features = false }
+sc-storage-monitor = { workspace = true }
+sc-sysinfo = { workspace = true }
 sc-telemetry = { workspace = true }
 sc-transaction-pool = { workspace = true }
 sc-utils = { workspace = true }

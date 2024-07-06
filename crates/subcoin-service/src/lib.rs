@@ -1,3 +1,5 @@
+//! Subcoin service implementation. Specialized wrapper over substrate service.
+
 #![allow(deprecated)]
 
 pub mod chain_spec;
@@ -5,6 +7,7 @@ mod genesis_block_builder;
 mod transaction_adapter;
 
 use bitcoin::hashes::Hash;
+use frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE;
 use futures::StreamExt;
 use genesis_block_builder::GenesisBlockBuilder;
 use sc_client_api::{AuxStore, BlockchainEvents, Finalizer, HeaderBackend};
@@ -21,6 +24,7 @@ use sp_core::Encode;
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, CheckedSub};
 use std::ops::Deref;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use subcoin_runtime::interface::OpaqueBlock as Block;
@@ -135,7 +139,7 @@ async fn build_system_rpc_future<Block, Client>(
     }
 }
 
-/// Bitcoin node components.
+/// Subcoin node components.
 pub struct NodeComponents {
     /// Client.
     pub client: Arc<FullClient>,
@@ -149,10 +153,12 @@ pub struct NodeComponents {
     pub system_rpc_tx: TracingUnboundedSender<sc_rpc::system::Request<Block>>,
 }
 
-/// Substrate configuration plus some subcoin specific configs.
+/// Subcoin node configuration.
 pub struct SubcoinConfiguration<'a> {
     pub network: bitcoin::Network,
     pub config: &'a Configuration,
+    pub no_hardware_benchmarks: bool,
+    pub storage_monitor: sc_storage_monitor::StorageMonitorParams,
 }
 
 impl<'a> Deref for SubcoinConfiguration<'a> {
@@ -183,6 +189,13 @@ fn initialize_genesis_block_hash_mapping<Block: BlockT, Client: HeaderBackend<Bl
 
 /// Creates a new subcoin node.
 pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceError> {
+    let SubcoinConfiguration {
+        network: bitcoin_network,
+        config,
+        no_hardware_benchmarks,
+        storage_monitor,
+    } = config;
+
     let telemetry = config
         .telemetry_endpoints
         .clone()
@@ -199,8 +212,6 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
 
     let backend = sc_service::new_db_backend(config.db_config())?;
 
-    let bitcoin_network = config.network;
-
     let genesis_block_builder = GenesisBlockBuilder::<_, _, _, TransactionAdapter>::new(
         bitcoin_network,
         config.chain_spec.as_storage_builder(),
@@ -211,7 +222,7 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
 
     let (client, backend, _keystore_container, task_manager) =
         sc_service::new_full_parts_with_genesis_builder::<Block, RuntimeApi, _, _>(
-            config.deref(),
+            &config,
             telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
             executor.clone(),
             backend,
@@ -223,6 +234,13 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
     initialize_genesis_block_hash_mapping(&client, bitcoin_network);
 
     let client = Arc::new(client);
+
+    let mut telemetry = telemetry.map(|(worker, telemetry)| {
+        task_manager
+            .spawn_handle()
+            .spawn("telemetry", None, worker.run());
+        telemetry
+    });
 
     let has_bootnodes = false;
 
@@ -238,6 +256,44 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
             has_bootnodes,
         ),
     );
+
+    let database_path = config.database.path().map(Path::to_path_buf);
+    let maybe_hwbench = (!no_hardware_benchmarks)
+        .then_some(database_path.as_ref().map(|db_path| {
+            let _ = std::fs::create_dir_all(&db_path);
+            sc_sysinfo::gather_hwbench(Some(db_path))
+        }))
+        .flatten();
+
+    if let Some(hwbench) = maybe_hwbench {
+        sc_sysinfo::print_hwbench(&hwbench);
+        match SUBSTRATE_REFERENCE_HARDWARE.check_hardware(&hwbench) {
+            Err(err) if config.role.is_authority() => {
+                tracing::warn!(
+					"⚠️  The hardware does not meet the minimal requirements {err} for role 'Authority'.",
+				);
+            }
+            _ => {}
+        }
+
+        if let Some(ref mut telemetry) = telemetry {
+            let telemetry_handle = telemetry.handle();
+            task_manager.spawn_handle().spawn(
+                "telemetry_hwbench",
+                None,
+                sc_sysinfo::initialize_hwbench_telemetry(telemetry_handle, hwbench),
+            );
+        }
+    }
+
+    if let Some(database_path) = database_path {
+        sc_storage_monitor::StorageMonitorService::try_spawn(
+            storage_monitor,
+            database_path,
+            &task_manager.spawn_essential_handle(),
+        )
+        .map_err(|e| ServiceError::Application(e.into()))?;
+    }
 
     Ok(NodeComponents {
         client,

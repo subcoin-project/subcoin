@@ -68,6 +68,8 @@ sc-network-sync = { git = "https://github.com/liuchengxu/polkadot-sdk", branch =
 sc-rpc = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin" }
 # Disable the default `rocksdb` feature
 sc-service = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
+sc-storage-monitor = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin" }
+sc-sysinfo = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin" }
 sc-telemetry = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin" }
 sc-transaction-pool = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin" }
 sc-transaction-pool-api = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin" }
