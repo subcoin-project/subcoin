@@ -223,6 +223,60 @@
 <a href="#223" id="223">223</a>
 <a href="#224" id="224">224</a>
 <a href="#225" id="225">225</a>
+<a href="#226" id="226">226</a>
+<a href="#227" id="227">227</a>
+<a href="#228" id="228">228</a>
+<a href="#229" id="229">229</a>
+<a href="#230" id="230">230</a>
+<a href="#231" id="231">231</a>
+<a href="#232" id="232">232</a>
+<a href="#233" id="233">233</a>
+<a href="#234" id="234">234</a>
+<a href="#235" id="235">235</a>
+<a href="#236" id="236">236</a>
+<a href="#237" id="237">237</a>
+<a href="#238" id="238">238</a>
+<a href="#239" id="239">239</a>
+<a href="#240" id="240">240</a>
+<a href="#241" id="241">241</a>
+<a href="#242" id="242">242</a>
+<a href="#243" id="243">243</a>
+<a href="#244" id="244">244</a>
+<a href="#245" id="245">245</a>
+<a href="#246" id="246">246</a>
+<a href="#247" id="247">247</a>
+<a href="#248" id="248">248</a>
+<a href="#249" id="249">249</a>
+<a href="#250" id="250">250</a>
+<a href="#251" id="251">251</a>
+<a href="#252" id="252">252</a>
+<a href="#253" id="253">253</a>
+<a href="#254" id="254">254</a>
+<a href="#255" id="255">255</a>
+<a href="#256" id="256">256</a>
+<a href="#257" id="257">257</a>
+<a href="#258" id="258">258</a>
+<a href="#259" id="259">259</a>
+<a href="#260" id="260">260</a>
+<a href="#261" id="261">261</a>
+<a href="#262" id="262">262</a>
+<a href="#263" id="263">263</a>
+<a href="#264" id="264">264</a>
+<a href="#265" id="265">265</a>
+<a href="#266" id="266">266</a>
+<a href="#267" id="267">267</a>
+<a href="#268" id="268">268</a>
+<a href="#269" id="269">269</a>
+<a href="#270" id="270">270</a>
+<a href="#271" id="271">271</a>
+<a href="#272" id="272">272</a>
+<a href="#273" id="273">273</a>
+<a href="#274" id="274">274</a>
+<a href="#275" id="275">275</a>
+<a href="#276" id="276">276</a>
+<a href="#277" id="277">277</a>
+<a href="#278" id="278">278</a>
+<a href="#279" id="279">279</a>
 </pre></div><pre class="rust"><code><span class="comment">// This file is part of Substrate.
 
 // Copyright (C) Parity Technologies (UK) Ltd.
@@ -249,19 +303,21 @@
 </span><span class="attr">#[cfg(feature = <span class="string">"std"</span>)]
 </span><span class="macro">include!</span>(<span class="macro">concat!</span>(<span class="macro">env!</span>(<span class="string">"OUT_DIR"</span>), <span class="string">"/wasm_binary.rs"</span>));
 
-<span class="kw">use </span>frame::prelude::<span class="kw-2">*</span>;
-<span class="kw">use </span>frame::runtime::apis::{
-    <span class="self">self</span>, impl_runtime_apis, ApplyExtrinsicResult, CheckInherentsResult, ExtrinsicInclusionMode,
-    OpaqueMetadata,
-};
-<span class="attr">#[cfg(feature = <span class="string">"std"</span>)]
-</span><span class="kw">use </span>frame::runtime::prelude::NativeVersion;
-<span class="kw">use </span>frame::runtime::prelude::{
-    construct_runtime, create_runtime_str, derive_impl, parameter_types, runtime_version,
-    RuntimeVersion,
-};
 <span class="kw">use </span>frame_support::genesis_builder_helper::{build_state, get_preset};
+<span class="kw">use </span>frame_support::{construct_runtime, derive_impl, parameter_types};
+<span class="kw">use </span>frame_system::pallet_prelude::<span class="kw-2">*</span>;
 <span class="kw">use </span>pallet_executive::Executive;
+<span class="kw">use </span>sp_api::impl_runtime_apis;
+<span class="kw">use </span>sp_core::{ConstU32, OpaqueMetadata};
+<span class="kw">use </span>sp_inherents::{CheckInherentsResult, InherentData};
+<span class="kw">use </span>sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
+<span class="kw">use </span>sp_runtime::{ApplyExtrinsicResult, ExtrinsicInclusionMode};
+<span class="kw">use </span>sp_std::boxed::Box;
+<span class="kw">use </span>sp_std::vec;
+<span class="kw">use </span>sp_std::vec::Vec;
+<span class="attr">#[cfg(feature = <span class="string">"std"</span>)]
+</span><span class="kw">use </span>sp_version::NativeVersion;
+<span class="kw">use </span>sp_version::{create_runtime_str, runtime_version, RuntimeVersion};
 
 <span class="attr">#[runtime_version]
 </span><span class="kw">pub const </span>VERSION: RuntimeVersion = RuntimeVersion {
@@ -313,8 +369,8 @@
     <span class="kw">type </span>WeightInfo = ();
 }
 
-<span class="kw">type </span>Signature = frame::runtime::types_common::Signature;
-<span class="kw">type </span>Block = frame::runtime::types_common::BlockOf&lt;Runtime, SignedExtra&gt;;
+<span class="kw">type </span>Signature = <span class="kw">crate</span>::types_common::Signature;
+<span class="kw">type </span>Block = <span class="kw">crate</span>::types_common::BlockOf&lt;Runtime, SignedExtra&gt;;
 <span class="comment">// TODO: Proper address
 </span><span class="kw">pub type </span>Address = sp_runtime::MultiAddress&lt;interface::AccountId, ()&gt;;
 <span class="kw">pub type </span>Header = HeaderFor&lt;Runtime&gt;;
@@ -325,7 +381,7 @@
     Executive&lt;Runtime, Block, frame_system::ChainContext&lt;Runtime&gt;, Runtime, AllPalletsWithSystem&gt;;
 
 <span class="macro">impl_runtime_apis!</span> {
-    <span class="kw">impl </span>apis::Core&lt;Block&gt; <span class="kw">for </span>Runtime {
+    <span class="kw">impl </span>sp_api::Core&lt;Block&gt; <span class="kw">for </span>Runtime {
         <span class="kw">fn </span>version() -&gt; RuntimeVersion {
             VERSION
         }
@@ -339,7 +395,7 @@
         }
     }
 
-    <span class="kw">impl </span>apis::Metadata&lt;Block&gt; <span class="kw">for </span>Runtime {
+    <span class="kw">impl </span>sp_api::Metadata&lt;Block&gt; <span class="kw">for </span>Runtime {
         <span class="kw">fn </span>metadata() -&gt; OpaqueMetadata {
             OpaqueMetadata::new(Runtime::metadata().into())
         }
@@ -354,7 +410,7 @@
     }
 
     <span class="comment">// Cannot be removed as required by frame-benchmarking-cli.
-    </span><span class="kw">impl </span>apis::BlockBuilder&lt;Block&gt; <span class="kw">for </span>Runtime {
+    </span><span class="kw">impl </span>sp_block_builder::BlockBuilder&lt;Block&gt; <span class="kw">for </span>Runtime {
         <span class="kw">fn </span>apply_extrinsic(extrinsic: ExtrinsicFor&lt;Runtime&gt;) -&gt; ApplyExtrinsicResult {
             RuntimeExecutive::apply_extrinsic(extrinsic)
         }
@@ -375,7 +431,7 @@
         }
     }
 
-    <span class="kw">impl </span>apis::TaggedTransactionQueue&lt;Block&gt; <span class="kw">for </span>Runtime {
+    <span class="kw">impl </span>sp_transaction_pool::runtime_api::TaggedTransactionQueue&lt;Block&gt; <span class="kw">for </span>Runtime {
         <span class="kw">fn </span>validate_transaction(
             source: TransactionSource,
             tx: ExtrinsicFor&lt;Runtime&gt;,
@@ -388,20 +444,20 @@
     <span class="comment">// Cannot be removed as required by `sc_service::spawn_tasks()`.
     //
     // TODO: remove if we introduce our own version of spawn_tasks.
-    </span><span class="kw">impl </span>apis::SessionKeys&lt;Block&gt; <span class="kw">for </span>Runtime {
+    </span><span class="kw">impl </span>sp_session::SessionKeys&lt;Block&gt; <span class="kw">for </span>Runtime {
         <span class="kw">fn </span>generate_session_keys(_seed: <span class="prelude-ty">Option</span>&lt;Vec&lt;u8&gt;&gt;) -&gt; Vec&lt;u8&gt; {
             Default::default()
         }
 
         <span class="kw">fn </span>decode_session_keys(
             _encoded: Vec&lt;u8&gt;,
-        ) -&gt; <span class="prelude-ty">Option</span>&lt;Vec&lt;(Vec&lt;u8&gt;, apis::KeyTypeId)&gt;&gt; {
+        ) -&gt; <span class="prelude-ty">Option</span>&lt;Vec&lt;(Vec&lt;u8&gt;, sp_session::KeyTypeId)&gt;&gt; {
             Default::default()
         }
     }
 
     <span class="comment">// Cannot be removed as required by SystemApiServer in rpc.
-    </span><span class="kw">impl </span>apis::AccountNonceApi&lt;Block, interface::AccountId, interface::Nonce&gt; <span class="kw">for </span>Runtime {
+    </span><span class="kw">impl </span>frame_system_rpc_runtime_api::AccountNonceApi&lt;Block, interface::AccountId, interface::Nonce&gt; <span class="kw">for </span>Runtime {
         <span class="kw">fn </span>account_nonce(account: interface::AccountId) -&gt; interface::Nonce {
             System::account_nonce(account)
         }
@@ -432,6 +488,59 @@
     }
 }
 
+<span class="doccomment">/// A set of opinionated types aliases commonly used in runtimes.
+///
+/// This is one set of opinionated types. They are compatible with one another, but are not
+/// guaranteed to work if you start tweaking a portion.
+///
+/// Some note-worthy opinions in this prelude:
+///
+/// - `u32` block number.
+/// - [`sp_runtime::MultiAddress`] and [`sp_runtime::MultiSignature`] are used as the account id
+///   and signature types. This implies that this prelude can possibly used with an
+///   "account-index" system (eg `pallet-indices`). And, in any case, it should be paired with
+///   `AccountIdLookup` in [`frame_system::Config::Lookup`].
+</span><span class="kw">mod </span>types_common {
+    <span class="kw">use </span>frame_system::Config <span class="kw">as </span>SysConfig;
+    <span class="kw">use </span>sp_runtime::{generic, traits, OpaqueExtrinsic};
+
+    <span class="doccomment">/// A signature type compatible capably of handling multiple crypto-schemes.
+    </span><span class="kw">pub type </span>Signature = sp_runtime::MultiSignature;
+
+    <span class="doccomment">/// The corresponding account-id type of [`Signature`].
+    </span><span class="kw">pub type </span>AccountId =
+        &lt;&lt;Signature <span class="kw">as </span>traits::Verify&gt;::Signer <span class="kw">as </span>traits::IdentifyAccount&gt;::AccountId;
+
+    <span class="doccomment">/// The block-number type, which should be fed into [`frame_system::Config`].
+    </span><span class="kw">pub type </span>BlockNumber = u32;
+
+    <span class="doccomment">/// TODO: Ideally we want the hashing type to be equal to SysConfig::Hashing?
+    </span><span class="kw">type </span>HeaderInner = generic::Header&lt;BlockNumber, traits::BlakeTwo256&gt;;
+
+    <span class="comment">// NOTE: `AccountIndex` is provided for future compatibility, if you want to introduce
+    // something like `pallet-indices`.
+    </span><span class="kw">type </span>ExtrinsicInner&lt;T, Extra, AccountIndex = ()&gt; = generic::UncheckedExtrinsic&lt;
+        sp_runtime::MultiAddress&lt;AccountId, AccountIndex&gt;,
+        &lt;T <span class="kw">as </span>SysConfig&gt;::RuntimeCall,
+        Signature,
+        Extra,
+    &gt;;
+
+    <span class="doccomment">/// The block type, which should be fed into [`frame_system::Config`].
+    ///
+    /// Should be parameterized with `T: frame_system::Config` and a tuple of `SignedExtension`.
+    /// When in doubt, use [`SystemSignedExtensionsOf`].
+    </span><span class="comment">// Note that this cannot be dependent on `T` for block-number because it would lead to a
+    // circular dependency (self-referential generics).
+    </span><span class="kw">pub type </span>BlockOf&lt;T, Extra = ()&gt; = generic::Block&lt;HeaderInner, ExtrinsicInner&lt;T, Extra&gt;&gt;;
+
+    <span class="doccomment">/// The opaque block type. This is the same [`BlockOf`], but it has
+    /// [`sp_runtime::OpaqueExtrinsic`] as its final extrinsic type.
+    ///
+    /// This should be provided to the client side as the extrinsic type.
+    </span><span class="kw">pub type </span>OpaqueBlock = generic::Block&lt;HeaderInner, OpaqueExtrinsic&gt;;
+}
+
 <span class="doccomment">/// Some re-exports that the node side code needs to know. Some are useful in this context as well.
 ///
 /// Other types should preferably be private.
@@ -439,10 +548,9 @@
 // https://github.com/paritytech/substrate/issues/10579#issuecomment-1600537558
 </span><span class="kw">pub mod </span>interface {
     <span class="kw">use </span><span class="kw">super</span>::Runtime;
-    <span class="kw">use </span>frame::deps::frame_system;
 
     <span class="kw">pub type </span>Block = <span class="kw">super</span>::Block;
-    <span class="kw">pub use </span>frame::runtime::types_common::OpaqueBlock;
+    <span class="kw">pub use </span><span class="kw">crate</span>::types_common::OpaqueBlock;
     <span class="kw">pub type </span>AccountId = &lt;Runtime <span class="kw">as </span>frame_system::Config&gt;::AccountId;
     <span class="kw">pub type </span>Nonce = &lt;Runtime <span class="kw">as </span>frame_system::Config&gt;::Nonce;
     <span class="kw">pub type </span>Hash = &lt;Runtime <span class="kw">as </span>frame_system::Config&gt;::Hash;

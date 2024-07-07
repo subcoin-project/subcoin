@@ -1,0 +1,3 @@
+(function() {var implementors = {
+"subcoin_node":[["impl <a class=\"trait\" href=\"subcoin_primitives/trait.CoinStorageKey.html\" title=\"trait subcoin_primitives::CoinStorageKey\">CoinStorageKey</a> for <a class=\"struct\" href=\"subcoin_node/struct.CoinStorageKey.html\" title=\"struct subcoin_node::CoinStorageKey\">CoinStorageKey</a>"]]
+};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

@@ -3,6 +3,7 @@ var srcIndex = new Map(JSON.parse('[\
 ["pallet_executive",["",[],["lib.rs"]]],\
 ["sc_consensus_nakamoto",["",[],["block_executor.rs","block_import.rs","lib.rs","verification.rs"]]],\
 ["subcoin_informant",["",[],["display.rs","lib.rs"]]],\
+["subcoin_node",["",[["cli",[],["params.rs"]],["commands",[],["import_blocks.rs"]]],["cli.rs","commands.rs","lib.rs","substrate_cli.rs"]]],\
 ["subcoin_primitives",["",[],["lib.rs"]]],\
 ["subcoin_runtime",["",[],["lib.rs"]]],\
 ["subcoin_runtime_primitives",["",[],["lib.rs"]]],\
