@@ -8,7 +8,7 @@ license.workspace = true
 
 [[bin]]
 name = "subcoin"
-path = "src/main.rs"
+path = "src/bin/subcoin.rs"
 
 [dependencies]
 async-trait = { workspace = true }
