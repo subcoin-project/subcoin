@@ -2,10 +2,7 @@ mod cli;
 mod commands;
 mod substrate_cli;
 
-fn main() -> sc_cli::Result<()> {
-    cli::run()?;
-    Ok(())
-}
+pub use self::cli::run;
 
 pub struct CoinStorageKey;
 

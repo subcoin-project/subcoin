@@ -8,7 +8,7 @@ license.workspace = true
 
 [[bin]]
 name = "subcoin"
-path = "src/main.rs"
+path = "src/bin/subcoin.rs"
 
 [dependencies]
 async-trait = { workspace = true }
@@ -16,7 +16,6 @@ bitcoin = { workspace = true }
 bitcoin-explorer = { workspace = true, default-features = false }
 clap = { workspace = true, features = ["derive"] }
 codec = { workspace = true }
-frame = { workspace = true }
 frame-benchmarking-cli = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }

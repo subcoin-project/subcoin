@@ -53,8 +53,8 @@ tracing = "0.1"
 frame-benchmarking-cli = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
 frame-support = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
 frame-system = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
+frame-system-rpc-runtime-api = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
 frame-try-runtime = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
-frame = { package = "polkadot-sdk-frame", git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
 pallet-balances = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
 pallet-transaction-payment = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
 # Disable the default `rocksdb` feature
@@ -76,6 +76,7 @@ sc-transaction-pool-api = { git = "https://github.com/liuchengxu/polkadot-sdk", 
 sc-utils = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin" }
 sp-api = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
 sp-blockchain = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
+sp-block-builder = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
 sp-consensus = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
 sp-core = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
 sp-database = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
@@ -86,10 +87,12 @@ sp-inherents = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "s
 sp-io = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
 sp-rpc = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin" }
 sp-runtime = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
+sp-session = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
 sp-state-machine = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin" }
 sp-std = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
 sp-storage = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
 sp-tracing = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
+sp-transaction-pool = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
 sp-trie = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
 sp-version = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin", default-features = false }
 substrate-build-script-utils = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin" }

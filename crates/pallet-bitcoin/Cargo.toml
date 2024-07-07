@@ -34,3 +34,7 @@ std = [
     "sp-std/std",
     "subcoin-runtime-primitives/std",
 ]
+try-runtime = [
+    "frame-system/try-runtime",
+    "sp-runtime/try-runtime",
+]

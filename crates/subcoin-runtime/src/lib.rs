@@ -24,19 +24,21 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
-use frame::prelude::*;
-use frame::runtime::apis::{
-    self, impl_runtime_apis, ApplyExtrinsicResult, CheckInherentsResult, ExtrinsicInclusionMode,
-    OpaqueMetadata,
-};
-#[cfg(feature = "std")]
-use frame::runtime::prelude::NativeVersion;
-use frame::runtime::prelude::{
-    construct_runtime, create_runtime_str, derive_impl, parameter_types, runtime_version,
-    RuntimeVersion,
-};
 use frame_support::genesis_builder_helper::{build_state, get_preset};
+use frame_support::{construct_runtime, derive_impl, parameter_types};
+use frame_system::pallet_prelude::*;
 use pallet_executive::Executive;
+use sp_api::impl_runtime_apis;
+use sp_core::{ConstU32, OpaqueMetadata};
+use sp_inherents::{CheckInherentsResult, InherentData};
+use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
+use sp_runtime::{ApplyExtrinsicResult, ExtrinsicInclusionMode};
+use sp_std::boxed::Box;
+use sp_std::vec;
+use sp_std::vec::Vec;
+#[cfg(feature = "std")]
+use sp_version::NativeVersion;
+use sp_version::{create_runtime_str, runtime_version, RuntimeVersion};
 
 #[runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
@@ -88,8 +90,8 @@ impl pallet_bitcoin::Config for Runtime {
     type WeightInfo = ();
 }
 
-type Signature = frame::runtime::types_common::Signature;
-type Block = frame::runtime::types_common::BlockOf<Runtime, SignedExtra>;
+type Signature = crate::types_common::Signature;
+type Block = crate::types_common::BlockOf<Runtime, SignedExtra>;
 // TODO: Proper address
 pub type Address = sp_runtime::MultiAddress<interface::AccountId, ()>;
 pub type Header = HeaderFor<Runtime>;
@@ -100,7 +102,7 @@ type RuntimeExecutive =
     Executive<Runtime, Block, frame_system::ChainContext<Runtime>, Runtime, AllPalletsWithSystem>;
 
 impl_runtime_apis! {
-    impl apis::Core<Block> for Runtime {
+    impl sp_api::Core<Block> for Runtime {
         fn version() -> RuntimeVersion {
             VERSION
         }
@@ -114,7 +116,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl apis::Metadata<Block> for Runtime {
+    impl sp_api::Metadata<Block> for Runtime {
         fn metadata() -> OpaqueMetadata {
             OpaqueMetadata::new(Runtime::metadata().into())
         }
@@ -129,7 +131,7 @@ impl_runtime_apis! {
     }
 
     // Cannot be removed as required by frame-benchmarking-cli.
-    impl apis::BlockBuilder<Block> for Runtime {
+    impl sp_block_builder::BlockBuilder<Block> for Runtime {
         fn apply_extrinsic(extrinsic: ExtrinsicFor<Runtime>) -> ApplyExtrinsicResult {
             RuntimeExecutive::apply_extrinsic(extrinsic)
         }
@@ -150,7 +152,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl apis::TaggedTransactionQueue<Block> for Runtime {
+    impl sp_transaction_pool::runtime_api::TaggedTransactionQueue<Block> for Runtime {
         fn validate_transaction(
             source: TransactionSource,
             tx: ExtrinsicFor<Runtime>,
@@ -163,20 +165,20 @@ impl_runtime_apis! {
     // Cannot be removed as required by `sc_service::spawn_tasks()`.
     //
     // TODO: remove if we introduce our own version of spawn_tasks.
-    impl apis::SessionKeys<Block> for Runtime {
+    impl sp_session::SessionKeys<Block> for Runtime {
         fn generate_session_keys(_seed: Option<Vec<u8>>) -> Vec<u8> {
             Default::default()
         }
 
         fn decode_session_keys(
             _encoded: Vec<u8>,
-        ) -> Option<Vec<(Vec<u8>, apis::KeyTypeId)>> {
+        ) -> Option<Vec<(Vec<u8>, sp_session::KeyTypeId)>> {
             Default::default()
         }
     }
 
     // Cannot be removed as required by SystemApiServer in rpc.
-    impl apis::AccountNonceApi<Block, interface::AccountId, interface::Nonce> for Runtime {
+    impl frame_system_rpc_runtime_api::AccountNonceApi<Block, interface::AccountId, interface::Nonce> for Runtime {
         fn account_nonce(account: interface::AccountId) -> interface::Nonce {
             System::account_nonce(account)
         }
@@ -207,6 +209,59 @@ impl_runtime_apis! {
     }
 }
 
+/// A set of opinionated types aliases commonly used in runtimes.
+///
+/// This is one set of opinionated types. They are compatible with one another, but are not
+/// guaranteed to work if you start tweaking a portion.
+///
+/// Some note-worthy opinions in this prelude:
+///
+/// - `u32` block number.
+/// - [`sp_runtime::MultiAddress`] and [`sp_runtime::MultiSignature`] are used as the account id
+///   and signature types. This implies that this prelude can possibly used with an
+///   "account-index" system (eg `pallet-indices`). And, in any case, it should be paired with
+///   `AccountIdLookup` in [`frame_system::Config::Lookup`].
+mod types_common {
+    use frame_system::Config as SysConfig;
+    use sp_runtime::{generic, traits, OpaqueExtrinsic};
+
+    /// A signature type compatible capably of handling multiple crypto-schemes.
+    pub type Signature = sp_runtime::MultiSignature;
+
+    /// The corresponding account-id type of [`Signature`].
+    pub type AccountId =
+        <<Signature as traits::Verify>::Signer as traits::IdentifyAccount>::AccountId;
+
+    /// The block-number type, which should be fed into [`frame_system::Config`].
+    pub type BlockNumber = u32;
+
+    /// TODO: Ideally we want the hashing type to be equal to SysConfig::Hashing?
+    type HeaderInner = generic::Header<BlockNumber, traits::BlakeTwo256>;
+
+    // NOTE: `AccountIndex` is provided for future compatibility, if you want to introduce
+    // something like `pallet-indices`.
+    type ExtrinsicInner<T, Extra, AccountIndex = ()> = generic::UncheckedExtrinsic<
+        sp_runtime::MultiAddress<AccountId, AccountIndex>,
+        <T as SysConfig>::RuntimeCall,
+        Signature,
+        Extra,
+    >;
+
+    /// The block type, which should be fed into [`frame_system::Config`].
+    ///
+    /// Should be parameterized with `T: frame_system::Config` and a tuple of `SignedExtension`.
+    /// When in doubt, use [`SystemSignedExtensionsOf`].
+    // Note that this cannot be dependent on `T` for block-number because it would lead to a
+    // circular dependency (self-referential generics).
+    pub type BlockOf<T, Extra = ()> = generic::Block<HeaderInner, ExtrinsicInner<T, Extra>>;
+
+    /// The opaque block type. This is the same [`BlockOf`], but it has
+    /// [`sp_runtime::OpaqueExtrinsic`] as its final extrinsic type.
+    ///
+    /// This should be provided to the client side as the extrinsic type.
+    pub type OpaqueBlock = generic::Block<HeaderInner, OpaqueExtrinsic>;
+}
+
 /// Some re-exports that the node side code needs to know. Some are useful in this context as well.
 ///
 /// Other types should preferably be private.
@@ -214,10 +269,9 @@ impl_runtime_apis! {
 // https://github.com/paritytech/substrate/issues/10579#issuecomment-1600537558
 pub mod interface {
     use super::Runtime;
-    use frame::deps::frame_system;
 
     pub type Block = super::Block;
-    pub use frame::runtime::types_common::OpaqueBlock;
+    pub use crate::types_common::OpaqueBlock;
     pub type AccountId = <Runtime as frame_system::Config>::AccountId;
     pub type Nonce = <Runtime as frame_system::Config>::Nonce;
     pub type Hash = <Runtime as frame_system::Config>::Hash;
