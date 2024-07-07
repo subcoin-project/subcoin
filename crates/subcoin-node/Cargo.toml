@@ -16,7 +16,6 @@ bitcoin = { workspace = true }
 bitcoin-explorer = { workspace = true, default-features = false }
 clap = { workspace = true, features = ["derive"] }
 codec = { workspace = true }
-frame = { workspace = true }
 frame-benchmarking-cli = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
