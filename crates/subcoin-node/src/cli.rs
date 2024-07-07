@@ -40,11 +40,29 @@ pub enum Command {
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
+
+    /// Disable automatic hardware benchmarks.
+    ///
+    /// By default these benchmarks are automatically ran at startup and measure
+    /// the CPU speed, the memory bandwidth and the disk speed.
+    ///
+    /// The results are then printed out in the logs, and also sent as part of
+    /// telemetry, if telemetry is enabled.
+    #[arg(long)]
+    pub no_hardware_benchmarks: bool,
+
+    #[allow(missing_docs)]
+    #[clap(flatten)]
+    pub storage_monitor: sc_storage_monitor::StorageMonitorParams,
 }
 
 /// Parse and run command line arguments
 pub fn run() -> sc_cli::Result<()> {
-    let Cli { command } = Cli::parse();
+    let Cli {
+        command,
+        no_hardware_benchmarks,
+        storage_monitor,
+    } = Cli::parse();
 
     match command {
         Command::ImportBlocks(cmd) => {
@@ -59,6 +77,8 @@ pub fn run() -> sc_cli::Result<()> {
                 } = subcoin_service::new_node(subcoin_service::SubcoinConfiguration {
                     network: bitcoin::Network::Bitcoin,
                     config: &config,
+                    no_hardware_benchmarks,
+                    storage_monitor,
                 })?;
                 task_manager.spawn_handle().spawn("finalizer", None, {
                     let client = client.clone();

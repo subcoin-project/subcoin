@@ -2715,6 +2715,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fs4"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29f9df8a11882c4e3335eb2d18a0137c505d9ca927470b0cac9c6f0ae07d28f7"
+dependencies = [
+ "rustix 0.38.34",
+ "windows-sys 0.48.0",
+]
+
+[[package]]
 name = "funty"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7340,6 +7350,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "sc-storage-monitor"
+version = "0.16.0"
+source = "git+https://github.com/liuchengxu/polkadot-sdk?branch=subcoin#c4a04f05a2d1c5e463385e74014d36a867d73adf"
+dependencies = [
+ "clap",
+ "fs4",
+ "log",
+ "sp-core",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "sc-sysinfo"
 version = "27.0.0"
 source = "git+https://github.com/liuchengxu/polkadot-sdk?branch=subcoin#c4a04f05a2d1c5e463385e74014d36a867d73adf"
@@ -8203,7 +8226,7 @@ dependencies = [
 [[package]]
 name = "sp-crypto-ec-utils"
 version = "0.10.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#b6f18232449b003d716a0d630f3da3a9dce669ab"
+source = "git+https://github.com/paritytech/polkadot-sdk#221eddc90cd1efc4fc3c822ce5ccf289272fb41d"
 dependencies = [
  "ark-bls12-377",
  "ark-bls12-377-ext",
@@ -8265,7 +8288,7 @@ dependencies = [
 [[package]]
 name = "sp-debug-derive"
 version = "14.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#b6f18232449b003d716a0d630f3da3a9dce669ab"
+source = "git+https://github.com/paritytech/polkadot-sdk#221eddc90cd1efc4fc3c822ce5ccf289272fb41d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8285,7 +8308,7 @@ dependencies = [
 [[package]]
 name = "sp-externalities"
 version = "0.25.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#b6f18232449b003d716a0d630f3da3a9dce669ab"
+source = "git+https://github.com/paritytech/polkadot-sdk#221eddc90cd1efc4fc3c822ce5ccf289272fb41d"
 dependencies = [
  "environmental",
  "parity-scale-codec",
@@ -8472,7 +8495,7 @@ dependencies = [
 [[package]]
 name = "sp-runtime-interface"
 version = "24.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#b6f18232449b003d716a0d630f3da3a9dce669ab"
+source = "git+https://github.com/paritytech/polkadot-sdk#221eddc90cd1efc4fc3c822ce5ccf289272fb41d"
 dependencies = [
  "bytes",
  "impl-trait-for-tuples",
@@ -8504,7 +8527,7 @@ dependencies = [
 [[package]]
 name = "sp-runtime-interface-proc-macro"
 version = "17.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#b6f18232449b003d716a0d630f3da3a9dce669ab"
+source = "git+https://github.com/paritytech/polkadot-sdk#221eddc90cd1efc4fc3c822ce5ccf289272fb41d"
 dependencies = [
  "Inflector",
  "expander",
@@ -8593,7 +8616,7 @@ source = "git+https://github.com/liuchengxu/polkadot-sdk?branch=subcoin#c4a04f05
 [[package]]
 name = "sp-std"
 version = "14.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#b6f18232449b003d716a0d630f3da3a9dce669ab"
+source = "git+https://github.com/paritytech/polkadot-sdk#221eddc90cd1efc4fc3c822ce5ccf289272fb41d"
 
 [[package]]
 name = "sp-storage"
@@ -8610,7 +8633,7 @@ dependencies = [
 [[package]]
 name = "sp-storage"
 version = "19.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#b6f18232449b003d716a0d630f3da3a9dce669ab"
+source = "git+https://github.com/paritytech/polkadot-sdk#221eddc90cd1efc4fc3c822ce5ccf289272fb41d"
 dependencies = [
  "impl-serde",
  "parity-scale-codec",
@@ -8645,7 +8668,7 @@ dependencies = [
 [[package]]
 name = "sp-tracing"
 version = "16.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#b6f18232449b003d716a0d630f3da3a9dce669ab"
+source = "git+https://github.com/paritytech/polkadot-sdk#221eddc90cd1efc4fc3c822ce5ccf289272fb41d"
 dependencies = [
  "parity-scale-codec",
  "tracing",
@@ -8742,7 +8765,7 @@ dependencies = [
 [[package]]
 name = "sp-wasm-interface"
 version = "20.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#b6f18232449b003d716a0d630f3da3a9dce669ab"
+source = "git+https://github.com/paritytech/polkadot-sdk#221eddc90cd1efc4fc3c822ce5ccf289272fb41d"
 dependencies = [
  "impl-trait-for-tuples",
  "log",
@@ -8956,6 +8979,7 @@ dependencies = [
  "sc-network-sync",
  "sc-rpc",
  "sc-service",
+ "sc-storage-monitor",
  "sc-telemetry",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
@@ -9023,6 +9047,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bitcoin 0.32.2",
+ "frame-benchmarking-cli",
  "frame-system",
  "futures",
  "jsonrpsee",
@@ -9034,6 +9059,8 @@ dependencies = [
  "sc-network",
  "sc-rpc",
  "sc-service",
+ "sc-storage-monitor",
+ "sc-sysinfo",
  "sc-telemetry",
  "sc-transaction-pool",
  "sc-utils",
