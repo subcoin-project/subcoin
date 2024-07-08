@@ -671,8 +671,7 @@ where
             .disk_runtime_block_executor
             .execute_block(parent_hash, block)?;
 
-        // FIXME
-        // assert_eq!(in_memory_state_root, state_root);
+        assert_eq!(in_memory_state_root, state_root);
 
         let in_memory_runtime_total = in_memory_runtime_exec_info.total();
         let in_memory_off_runtime_total = in_memory_off_runtime_exec_info.total();

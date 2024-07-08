@@ -274,7 +274,7 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
                 executor.clone(),
                 bitcoin_network,
                 task_manager.spawn_handle(),
-                &config,
+                config,
             )?)
         } else {
             None
