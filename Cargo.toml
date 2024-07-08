@@ -100,7 +100,6 @@ sp-version = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "sub
 substrate-build-script-utils = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin" }
 substrate-frame-rpc-system = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin" }
 substrate-wasm-builder = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin" }
-substrate-test-runtime = { git = "https://github.com/liuchengxu/polkadot-sdk", branch = "subcoin" }
 
 pallet-bitcoin = { path = "crates/pallet-bitcoin", default-features = false }
 pallet-executive = { path = "crates/pallet-executive", default-features = false }

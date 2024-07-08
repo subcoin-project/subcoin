@@ -17,4 +17,4 @@ sp-trie = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-substrate-test-runtime = { workspace = true }
+subcoin-runtime = { workspace = true }

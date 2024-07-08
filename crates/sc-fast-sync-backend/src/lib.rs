@@ -888,14 +888,16 @@ pub fn check_genesis_storage(storage: &Storage) -> sp_blockchain::Result<()> {
 mod tests {
     use super::*;
     use sp_blockchain::Backend;
+    use sp_core::H256;
     use sp_runtime::traits::Header as HeaderT;
     use sp_runtime::{ConsensusEngineId, Justifications};
-    use substrate_test_runtime::{Block, Header, H256};
+    use subcoin_runtime::interface::OpaqueBlock as Block;
+    use subcoin_runtime::Header;
 
     pub const ID1: ConsensusEngineId = *b"TST1";
     pub const ID2: ConsensusEngineId = *b"TST2";
 
-    fn header(number: u64) -> Header {
+    fn header(number: u32) -> Header {
         let parent_hash = match number {
             0 => Default::default(),
             _ => header(number - 1).hash(),
