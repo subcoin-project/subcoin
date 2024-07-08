@@ -19,6 +19,7 @@ members = [
     "crates/subcoin-runtime",
     "crates/subcoin-runtime-primitives",
     "crates/subcoin-service",
+    "crates/subcoin-test-service",
 ]
 
 default-members = ["crates/subcoin-node"]
@@ -111,6 +112,7 @@ subcoin-primitives = { path = "crates/subcoin-primitives" }
 subcoin-runtime = { path = "crates/subcoin-runtime" }
 subcoin-runtime-primitives = { path = "crates/subcoin-runtime-primitives", default-features = false }
 subcoin-service = { path = "crates/subcoin-service" }
+subcoin-test-service = { path = "crates/subcoin-test-service" }
 
 [profile.release]
 debug = true
