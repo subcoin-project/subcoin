@@ -71,7 +71,12 @@ impl ImportBlocksCmd {
     }
 
     /// Run the import-blocks command
-    pub async fn run(&self, client: Arc<FullClient>, data_dir: PathBuf) -> sc_cli::Result<()> {
+    pub async fn run(
+        &self,
+        client: Arc<FullClient>,
+        block_executor: Box<dyn sc_consensus_nakamoto::BlockExecutor<OpaqueBlock>>,
+        data_dir: PathBuf,
+    ) -> sc_cli::Result<()> {
         let from = (client.info().best_number + 1) as usize;
 
         let bitcoind_backend = BitcoinBackend::new(&data_dir);
@@ -104,6 +109,7 @@ impl ImportBlocksCmd {
                     execute_block: self.execute_block,
                 },
                 Arc::new(crate::CoinStorageKey),
+                block_executor,
             );
 
         for index in from..=to {

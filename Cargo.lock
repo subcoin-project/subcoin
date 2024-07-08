@@ -9186,6 +9186,7 @@ dependencies = [
  "sc-consensus",
  "sc-consensus-nakamoto",
  "sc-executor",
+ "sc-fast-sync-backend",
  "sc-network",
  "sc-rpc",
  "sc-service",
@@ -9201,10 +9202,28 @@ dependencies = [
  "sp-runtime",
  "sp-state-machine",
  "sp-storage 19.0.0 (git+https://github.com/liuchengxu/polkadot-sdk?branch=subcoin)",
+ "sp-tracing 16.0.0 (git+https://github.com/liuchengxu/polkadot-sdk?branch=subcoin)",
  "sp-trie",
  "subcoin-primitives",
  "subcoin-runtime",
+ "subcoin-test-service",
+ "tempfile",
+ "tokio",
  "tracing",
+]
+
+[[package]]
+name = "subcoin-test-service"
+version = "0.1.0"
+dependencies = [
+ "bitcoin 0.32.2",
+ "sc-consensus-nakamoto",
+ "sc-service",
+ "serde_json",
+ "sp-keyring",
+ "subcoin-runtime",
+ "subcoin-service",
+ "tokio",
 ]
 
 [[package]]

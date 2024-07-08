@@ -106,5 +106,7 @@ pub fn new_test_node(tokio_handle: tokio::runtime::Handle) -> Result<NodeCompone
         network: bitcoin::Network::Bitcoin,
         block_execution_strategy: BlockExecutionStrategy::RuntimeExecution(ExecutionBackend::Disk),
         config: &config,
+        no_hardware_benchmarks: true,
+        storage_monitor: Default::default(),
     })
 }
