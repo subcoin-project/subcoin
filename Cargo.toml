@@ -12,6 +12,7 @@ members = [
     "crates/pallet-bitcoin",
     "crates/pallet-executive",
     "crates/sc-consensus-nakamoto",
+    "crates/sc-fast-sync-backend",
     "crates/subcoin-informant",
     "crates/subcoin-node",
     "crates/subcoin-primitives",
@@ -103,6 +104,7 @@ substrate-test-runtime = { git = "https://github.com/liuchengxu/polkadot-sdk", b
 pallet-bitcoin = { path = "crates/pallet-bitcoin", default-features = false }
 pallet-executive = { path = "crates/pallet-executive", default-features = false }
 sc-consensus-nakamoto = { path = "crates/sc-consensus-nakamoto" }
+sc-fast-sync-backend = { path = "crates/sc-fast-sync-backend" }
 subcoin-informant = { path = "crates/subcoin-informant" }
 subcoin-node = { path = "crates/subcoin-node" }
 subcoin-primitives = { path = "crates/subcoin-primitives" }
