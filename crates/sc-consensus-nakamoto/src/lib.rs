@@ -2,6 +2,10 @@ mod block_executor;
 mod block_import;
 mod verification;
 
+pub use block_executor::{
+    BenchmarkAllExecutor, BenchmarkRuntimeBlockExecutor, BlockExecutionStrategy, BlockExecutor,
+    ClientContext, ExecutionBackend, OffRuntimeBlockExecutor, RuntimeBlockExecutor,
+};
 pub use block_import::{BitcoinBlockImport, BitcoinBlockImporter, ImportConfig, ImportStatus};
 pub use verification::BlockVerification;
 
