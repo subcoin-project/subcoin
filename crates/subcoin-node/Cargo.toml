@@ -44,7 +44,9 @@ sp-core = { workspace = true }
 sp-io = { workspace = true }
 sp-runtime = { workspace = true }
 subcoin-informant = { workspace = true }
+subcoin-network = { workspace = true }
 subcoin-primitives = { workspace = true }
+subcoin-rpc = { workspace = true }
 subcoin-runtime = { workspace = true }
 subcoin-service = { workspace = true }
 substrate-frame-rpc-system = { workspace = true }

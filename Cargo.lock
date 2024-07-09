@@ -769,6 +769,7 @@ dependencies = [
  "hex-conservative 0.2.1",
  "hex_lit",
  "secp256k1 0.29.0",
+ "serde",
 ]
 
 [[package]]
@@ -807,6 +808,9 @@ name = "bitcoin-internals"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30bdbe14aa07b06e6cfeffc529a1f099e5fbe249524f8125358604df99a4bed2"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "bitcoin-io"
@@ -835,6 +839,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5285c8bcaa25876d07f37e3d30c303f2609179716e11d688f51e8f1fe70063e2"
 dependencies = [
  "bitcoin-internals 0.3.0",
+ "serde",
 ]
 
 [[package]]
@@ -855,6 +860,7 @@ checksum = "bb18c03d0db0247e147a21a6faafd5a7eb851c743db062de72018b6b7e8e4d16"
 dependencies = [
  "bitcoin-io 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex-conservative 0.2.1",
+ "serde",
 ]
 
 [[package]]
@@ -7586,6 +7592,7 @@ checksum = "0e0cc0f1cf93f4969faf3ea1c7d8a9faed25918d96affa959720823dfe86d4f3"
 dependencies = [
  "bitcoin_hashes 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "secp256k1-sys 0.10.0",
+ "serde",
 ]
 
 [[package]]
@@ -8859,6 +8866,7 @@ dependencies = [
  "sc-client-api",
  "sp-blockchain",
  "sp-runtime",
+ "subcoin-network",
  "subcoin-primitives",
  "tracing",
 ]
@@ -8932,7 +8940,9 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "subcoin-informant",
+ "subcoin-network",
  "subcoin-primitives",
+ "subcoin-rpc",
  "subcoin-runtime",
  "subcoin-service",
  "substrate-build-script-utils",
@@ -8951,6 +8961,24 @@ dependencies = [
  "sp-runtime",
  "subcoin-runtime-primitives",
  "tracing",
+]
+
+[[package]]
+name = "subcoin-rpc"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bitcoin 0.32.2",
+ "jsonrpsee",
+ "sc-client-api",
+ "serde",
+ "serde_json",
+ "sp-blockchain",
+ "sp-rpc",
+ "sp-runtime",
+ "subcoin-network",
+ "subcoin-primitives",
+ "thiserror",
 ]
 
 [[package]]

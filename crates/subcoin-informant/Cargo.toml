@@ -14,5 +14,6 @@ futures-timer = { workspace = true }
 sc-client-api = { workspace = true }
 sp-blockchain = { workspace = true }
 sp-runtime = { workspace = true }
+subcoin-network = { workspace = true }
 subcoin-primitives = { workspace = true }
 tracing = { workspace = true }

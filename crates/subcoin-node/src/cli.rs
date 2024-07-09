@@ -1,15 +1,24 @@
 pub mod params;
 
 use crate::commands::import_blocks::{ImportBlocks, ImportBlocksCmd};
+use crate::commands::run::{Run, RunCmd};
 use crate::substrate_cli::SubstrateCli;
 use clap::Parser;
 use frame_benchmarking_cli::{BenchmarkCmd, SUBSTRATE_REFERENCE_HARDWARE};
 use sc_cli::SubstrateCli as SubstrateCliT;
 use sc_client_api::UsageProvider;
+use sc_consensus_nakamoto::{BitcoinBlockImporter, ImportConfig};
 use sc_service::PartialComponents;
+use std::sync::Arc;
+
+// 6 blocks is the standard confirmation period in the Bitcoin community.
+const CONFIRMATION_DEPTH: u32 = 6u32;
 
 #[derive(Debug, clap::Subcommand)]
 pub enum Command {
+    /// Run subcoin node.
+    Run(Run),
+
     /// Import blocks.
     ImportBlocks(ImportBlocks),
 
@@ -65,6 +74,116 @@ pub fn run() -> sc_cli::Result<()> {
     } = Cli::parse();
 
     match command {
+        Command::Run(run) => {
+            let block_execution_strategy = run.common_params.block_execution_strategy();
+            let no_finalizer = run.no_finalizer;
+            let run_cmd = RunCmd::new(&run);
+            let runner = SubstrateCli.create_runner(&run_cmd)?;
+            runner.run_node_until_exit(|config| async move {
+                let network = run.common_params.bitcoin_network();
+
+                let subcoin_service::NodeComponents {
+                    client,
+                    mut task_manager,
+                    block_executor,
+                    system_rpc_tx,
+                    ..
+                } = subcoin_service::new_node(subcoin_service::SubcoinConfiguration {
+                    network,
+                    config: &config,
+                    block_execution_strategy,
+                    no_hardware_benchmarks,
+                    storage_monitor,
+                })?;
+
+                let chain_info = client.usage_info().chain;
+
+                tracing::info!("📦 Highest known block at #{}", chain_info.best_number);
+
+                let spawn_handle = task_manager.spawn_handle();
+
+                let bitcoin_block_import =
+                    BitcoinBlockImporter::<_, _, _, _, subcoin_service::TransactionAdapter>::new(
+                        client.clone(),
+                        client.clone(),
+                        ImportConfig {
+                            network,
+                            block_verification: run.block_verification,
+                            execute_block: true,
+                        },
+                        Arc::new(crate::CoinStorageKey),
+                        block_executor,
+                    );
+
+                let import_queue = sc_consensus_nakamoto::bitcoin_import_queue(
+                    &task_manager.spawn_essential_handle(),
+                    bitcoin_block_import,
+                );
+
+                let (bitcoin_network, network_handle) = subcoin_network::Network::new(
+                    client.clone(),
+                    run.subcoin_network_params(network),
+                    import_queue,
+                    spawn_handle.clone(),
+                );
+
+                // TODO: handle Substrate networking and Bitcoin networking properly.
+                task_manager.spawn_essential_handle().spawn_blocking(
+                    "subcoin-networking",
+                    None,
+                    async move {
+                        if let Err(err) = bitcoin_network.run().await {
+                            tracing::error!(?err, "Subcoin network worker exited");
+                        }
+                    },
+                );
+
+                // TODO: Bitcoin-compatible RPC
+                // Start JSON-RPC server.
+                let gen_rpc_module = |deny_unsafe: sc_rpc::DenyUnsafe| {
+                    let system_info = sc_rpc::system::SystemInfo {
+                        chain_name: config.chain_spec.name().into(),
+                        impl_name: config.impl_name.clone(),
+                        impl_version: config.impl_version.clone(),
+                        properties: config.chain_spec.properties(),
+                        chain_type: config.chain_spec.chain_type(),
+                    };
+                    let system_rpc_tx = system_rpc_tx.clone();
+
+                    crate::rpc::gen_rpc_module(
+                        system_info,
+                        client.clone(),
+                        task_manager.spawn_handle(),
+                        system_rpc_tx,
+                        deny_unsafe,
+                        network_handle.clone(),
+                    )
+                };
+
+                let rpc = sc_service::start_rpc_servers(&config, gen_rpc_module, None)?;
+                task_manager.keep_alive((config.base_path, rpc));
+
+                if !no_finalizer {
+                    spawn_handle.spawn("finalizer", None, {
+                        subcoin_service::finalize_confirmed_blocks(
+                            client.clone(),
+                            spawn_handle.clone(),
+                            CONFIRMATION_DEPTH,
+                            network_handle.is_major_syncing(),
+                        )
+                    });
+                }
+
+                // Spawn subcoin informant task.
+                spawn_handle.spawn(
+                    "subcoin-informant",
+                    None,
+                    subcoin_informant::build(client.clone(), network_handle, Default::default()),
+                );
+
+                Ok(task_manager)
+            })
+        }
         Command::ImportBlocks(cmd) => {
             let block_execution_strategy = cmd.common_params.block_execution_strategy();
             let import_blocks_cmd = ImportBlocksCmd::new(&cmd);
@@ -86,13 +205,12 @@ pub fn run() -> sc_cli::Result<()> {
                 task_manager.spawn_handle().spawn("finalizer", None, {
                     let client = client.clone();
                     let spawn_handle = task_manager.spawn_handle();
-                    let confirmation_depth = 6u32;
-                    // TODO: proper value
-                    let is_major_syncing = std::sync::Arc::new(true.into());
+                    // Assume the chain is major syncing.
+                    let is_major_syncing = Arc::new(true.into());
                     subcoin_service::finalize_confirmed_blocks(
                         client,
                         spawn_handle,
-                        confirmation_depth,
+                        CONFIRMATION_DEPTH,
                         is_major_syncing,
                     )
                 });
