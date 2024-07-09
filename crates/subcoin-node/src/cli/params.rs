@@ -1,4 +1,5 @@
 use clap::Parser;
+use sc_consensus_nakamoto::{BlockExecutionStrategy, ExecutionBackend};
 use std::path::PathBuf;
 
 /// Chain.
@@ -51,6 +52,22 @@ pub struct NetworkParams {
     pub max_outbound_peers: usize,
 }
 
+#[derive(Debug, Clone, clap::ValueEnum)]
+pub enum BlockExecution {
+    /// Execute the block using runtime api `execute_block` on disk backend.
+    RuntimeDisk,
+    /// Execute the block using runtime api `execute_block` on in memory backend.
+    RuntimeInMemory,
+    /// Use custom `apply_extrinsics` on disk backend.
+    OffRuntimeDisk,
+    /// Use custom `apply_extrinsics` on in memory backend.
+    OffRuntimeInMemory,
+    /// Combo of `RuntimeDisk` and `RuntimeInMemory`.
+    BenchRuntime,
+    /// Benchmark all supported strategies.
+    BenchAll,
+}
+
 #[derive(Debug, Clone, Parser)]
 pub struct CommonParams {
     /// Specify the chain network.
@@ -60,6 +77,10 @@ pub struct CommonParams {
     /// Specify the chain network.
     #[arg(long, value_name = "NETWORK", default_value = "mainnet")]
     pub network: Network,
+
+    /// Specify the block execution strategy.
+    #[clap(long, value_enum, default_value_t = BlockExecution::RuntimeDisk)]
+    pub block_execution: BlockExecution,
 
     /// Specify custom base path.
     #[arg(long, short = 'd', value_name = "PATH")]
@@ -109,6 +130,25 @@ impl CommonParams {
             (Chain::Bitcoin, Network::Mainnet) => bitcoin::Network::Bitcoin,
             (Chain::Bitcoin, Network::Testnet) => bitcoin::Network::Testnet,
             (Chain::Bitcoin, Network::Signet) => bitcoin::Network::Signet,
+        }
+    }
+
+    pub fn block_execution_strategy(&self) -> BlockExecutionStrategy {
+        match &self.block_execution {
+            BlockExecution::RuntimeDisk => {
+                BlockExecutionStrategy::RuntimeExecution(ExecutionBackend::Disk)
+            }
+            BlockExecution::RuntimeInMemory => {
+                BlockExecutionStrategy::RuntimeExecution(ExecutionBackend::InMemory)
+            }
+            BlockExecution::OffRuntimeDisk => {
+                BlockExecutionStrategy::OffRuntimeExecution(ExecutionBackend::Disk)
+            }
+            BlockExecution::OffRuntimeInMemory => {
+                BlockExecutionStrategy::OffRuntimeExecution(ExecutionBackend::InMemory)
+            }
+            BlockExecution::BenchRuntime => BlockExecutionStrategy::BenchmarkRuntimeExecution,
+            BlockExecution::BenchAll => BlockExecutionStrategy::BenchmarkAll,
         }
     }
 }

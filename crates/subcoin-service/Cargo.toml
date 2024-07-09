@@ -18,6 +18,7 @@ sc-client-api = { workspace = true }
 sc-consensus = { workspace = true }
 sc-consensus-nakamoto = { workspace = true }
 sc-executor = { workspace = true }
+sc-fast-sync-backend = { workspace = true }
 sc-network = { workspace = true }
 sc-rpc = { workspace = true }
 # `test-helpers` for the exposed Client type.
@@ -38,3 +39,9 @@ sp-trie = { workspace = true }
 subcoin-primitives = { workspace = true }
 subcoin-runtime = { workspace = true }
 tracing = { workspace = true }
+
+[dev-dependencies]
+sp-tracing = { workspace = true }
+subcoin-test-service = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true }

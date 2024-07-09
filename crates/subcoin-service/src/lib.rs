@@ -2,17 +2,20 @@
 
 #![allow(deprecated)]
 
+mod block_executor;
 pub mod chain_spec;
 mod genesis_block_builder;
 mod transaction_adapter;
 
 use bitcoin::hashes::Hash;
+use block_executor::{new_block_executor, new_in_memory_client};
 use frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE;
 use futures::StreamExt;
 use genesis_block_builder::GenesisBlockBuilder;
 use sc_client_api::{AuxStore, BlockchainEvents, Finalizer, HeaderBackend};
 use sc_consensus::import_queue::BasicQueue;
 use sc_consensus::{BlockImportParams, Verifier};
+use sc_consensus_nakamoto::{BlockExecutionStrategy, BlockExecutor};
 use sc_executor::NativeElseWasmExecutor;
 use sc_network::PeerId;
 use sc_service::error::Error as ServiceError;
@@ -40,6 +43,19 @@ pub type FullClient =
     sc_service::TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<BitcoinExecutorDispatch>>;
 type FullBackend = sc_service::TFullBackend<Block>;
 type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
+
+/// In memory client type.
+pub type InMemoryClient = sc_service::client::Client<
+    InMemoryBackend,
+    sc_service::LocalCallExecutor<
+        Block,
+        sc_fast_sync_backend::Backend<Block>,
+        NativeElseWasmExecutor<BitcoinExecutorDispatch>,
+    >,
+    Block,
+    RuntimeApi,
+>;
+pub type InMemoryBackend = sc_fast_sync_backend::Backend<Block>;
 
 pub struct BitcoinExecutorDispatch;
 
@@ -139,6 +155,14 @@ async fn build_system_rpc_future<Block, Client>(
     }
 }
 
+pub struct CoinStorageKey;
+
+impl subcoin_primitives::CoinStorageKey for CoinStorageKey {
+    fn storage_key(&self, txid: bitcoin::Txid, vout: u32) -> Vec<u8> {
+        pallet_bitcoin::coin_storage_key::<subcoin_runtime::Runtime>(txid, vout)
+    }
+}
+
 /// Subcoin node components.
 pub struct NodeComponents {
     /// Client.
@@ -149,6 +173,8 @@ pub struct NodeComponents {
     pub executor: NativeElseWasmExecutor<BitcoinExecutorDispatch>,
     /// Task manager.
     pub task_manager: TaskManager,
+    /// Block processor used in the block import pipeline.
+    pub block_executor: Box<dyn BlockExecutor<Block>>,
     /// TODO: useless, remove later?
     pub system_rpc_tx: TracingUnboundedSender<sc_rpc::system::Request<Block>>,
 }
@@ -157,6 +183,7 @@ pub struct NodeComponents {
 pub struct SubcoinConfiguration<'a> {
     pub network: bitcoin::Network,
     pub config: &'a Configuration,
+    pub block_execution_strategy: BlockExecutionStrategy,
     pub no_hardware_benchmarks: bool,
     pub storage_monitor: sc_storage_monitor::StorageMonitorParams,
 }
@@ -192,6 +219,7 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
     let SubcoinConfiguration {
         network: bitcoin_network,
         config,
+        block_execution_strategy,
         no_hardware_benchmarks,
         storage_monitor,
     } = config;
@@ -234,6 +262,24 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
     initialize_genesis_block_hash_mapping(&client, bitcoin_network);
 
     let client = Arc::new(client);
+
+    let should_create_in_memory_client = block_execution_strategy.in_memory_backend_used();
+    let block_executor = new_block_executor(
+        client.clone(),
+        block_execution_strategy,
+        if should_create_in_memory_client {
+            Some(new_in_memory_client(
+                client.clone(),
+                backend.clone(),
+                executor.clone(),
+                bitcoin_network,
+                task_manager.spawn_handle(),
+                config,
+            )?)
+        } else {
+            None
+        },
+    );
 
     let mut telemetry = telemetry.map(|(worker, telemetry)| {
         task_manager
@@ -300,6 +346,7 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
         backend,
         executor,
         task_manager,
+        block_executor,
         system_rpc_tx,
     })
 }

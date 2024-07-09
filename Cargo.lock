@@ -6880,6 +6880,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "sc-fast-sync-backend"
+version = "0.1.0"
+dependencies = [
+ "parking_lot 0.12.3",
+ "sc-client-api",
+ "sp-blockchain",
+ "sp-core",
+ "sp-runtime",
+ "sp-state-machine",
+ "sp-trie",
+ "subcoin-runtime",
+ "tracing",
+]
+
+[[package]]
 name = "sc-informant"
 version = "0.33.0"
 source = "git+https://github.com/liuchengxu/polkadot-sdk?branch=subcoin#c4a04f05a2d1c5e463385e74014d36a867d73adf"
@@ -8132,7 +8147,7 @@ dependencies = [
 [[package]]
 name = "sp-crypto-ec-utils"
 version = "0.10.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#221eddc90cd1efc4fc3c822ce5ccf289272fb41d"
+source = "git+https://github.com/paritytech/polkadot-sdk#e1460b5ee5f4490b428035aa4a72c1c99a262459"
 dependencies = [
  "ark-bls12-377",
  "ark-bls12-377-ext",
@@ -8194,7 +8209,7 @@ dependencies = [
 [[package]]
 name = "sp-debug-derive"
 version = "14.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#221eddc90cd1efc4fc3c822ce5ccf289272fb41d"
+source = "git+https://github.com/paritytech/polkadot-sdk#e1460b5ee5f4490b428035aa4a72c1c99a262459"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8214,7 +8229,7 @@ dependencies = [
 [[package]]
 name = "sp-externalities"
 version = "0.25.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#221eddc90cd1efc4fc3c822ce5ccf289272fb41d"
+source = "git+https://github.com/paritytech/polkadot-sdk#e1460b5ee5f4490b428035aa4a72c1c99a262459"
 dependencies = [
  "environmental",
  "parity-scale-codec",
@@ -8401,7 +8416,7 @@ dependencies = [
 [[package]]
 name = "sp-runtime-interface"
 version = "24.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#221eddc90cd1efc4fc3c822ce5ccf289272fb41d"
+source = "git+https://github.com/paritytech/polkadot-sdk#e1460b5ee5f4490b428035aa4a72c1c99a262459"
 dependencies = [
  "bytes",
  "impl-trait-for-tuples",
@@ -8433,7 +8448,7 @@ dependencies = [
 [[package]]
 name = "sp-runtime-interface-proc-macro"
 version = "17.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#221eddc90cd1efc4fc3c822ce5ccf289272fb41d"
+source = "git+https://github.com/paritytech/polkadot-sdk#e1460b5ee5f4490b428035aa4a72c1c99a262459"
 dependencies = [
  "Inflector",
  "expander",
@@ -8522,7 +8537,7 @@ source = "git+https://github.com/liuchengxu/polkadot-sdk?branch=subcoin#c4a04f05
 [[package]]
 name = "sp-std"
 version = "14.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#221eddc90cd1efc4fc3c822ce5ccf289272fb41d"
+source = "git+https://github.com/paritytech/polkadot-sdk#e1460b5ee5f4490b428035aa4a72c1c99a262459"
 
 [[package]]
 name = "sp-storage"
@@ -8539,7 +8554,7 @@ dependencies = [
 [[package]]
 name = "sp-storage"
 version = "19.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#221eddc90cd1efc4fc3c822ce5ccf289272fb41d"
+source = "git+https://github.com/paritytech/polkadot-sdk#e1460b5ee5f4490b428035aa4a72c1c99a262459"
 dependencies = [
  "impl-serde",
  "parity-scale-codec",
@@ -8562,7 +8577,7 @@ dependencies = [
 [[package]]
 name = "sp-tracing"
 version = "16.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#221eddc90cd1efc4fc3c822ce5ccf289272fb41d"
+source = "git+https://github.com/paritytech/polkadot-sdk#e1460b5ee5f4490b428035aa4a72c1c99a262459"
 dependencies = [
  "parity-scale-codec",
  "tracing",
@@ -8659,7 +8674,7 @@ dependencies = [
 [[package]]
 name = "sp-wasm-interface"
 version = "20.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#221eddc90cd1efc4fc3c822ce5ccf289272fb41d"
+source = "git+https://github.com/paritytech/polkadot-sdk#e1460b5ee5f4490b428035aa4a72c1c99a262459"
 dependencies = [
  "impl-trait-for-tuples",
  "log",
@@ -8957,6 +8972,7 @@ dependencies = [
  "sc-consensus",
  "sc-consensus-nakamoto",
  "sc-executor",
+ "sc-fast-sync-backend",
  "sc-network",
  "sc-rpc",
  "sc-service",
@@ -8972,10 +8988,28 @@ dependencies = [
  "sp-runtime",
  "sp-state-machine",
  "sp-storage 19.0.0 (git+https://github.com/liuchengxu/polkadot-sdk?branch=subcoin)",
+ "sp-tracing 16.0.0 (git+https://github.com/liuchengxu/polkadot-sdk?branch=subcoin)",
  "sp-trie",
  "subcoin-primitives",
  "subcoin-runtime",
+ "subcoin-test-service",
+ "tempfile",
+ "tokio",
  "tracing",
+]
+
+[[package]]
+name = "subcoin-test-service"
+version = "0.1.0"
+dependencies = [
+ "bitcoin 0.32.2",
+ "sc-consensus-nakamoto",
+ "sc-service",
+ "serde_json",
+ "sp-keyring",
+ "subcoin-runtime",
+ "subcoin-service",
+ "tokio",
 ]
 
 [[package]]

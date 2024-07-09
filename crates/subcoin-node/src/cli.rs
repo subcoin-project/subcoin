@@ -66,6 +66,7 @@ pub fn run() -> sc_cli::Result<()> {
 
     match command {
         Command::ImportBlocks(cmd) => {
+            let block_execution_strategy = cmd.common_params.block_execution_strategy();
             let import_blocks_cmd = ImportBlocksCmd::new(&cmd);
             let runner = SubstrateCli.create_runner(&import_blocks_cmd)?;
             let data_dir = cmd.data_dir;
@@ -73,10 +74,12 @@ pub fn run() -> sc_cli::Result<()> {
                 let subcoin_service::NodeComponents {
                     client,
                     task_manager,
+                    block_executor,
                     ..
                 } = subcoin_service::new_node(subcoin_service::SubcoinConfiguration {
                     network: bitcoin::Network::Bitcoin,
                     config: &config,
+                    block_execution_strategy,
                     no_hardware_benchmarks,
                     storage_monitor,
                 })?;
@@ -93,7 +96,10 @@ pub fn run() -> sc_cli::Result<()> {
                         is_major_syncing,
                     )
                 });
-                Ok((import_blocks_cmd.run(client, data_dir), task_manager))
+                Ok((
+                    import_blocks_cmd.run(client, block_executor, data_dir),
+                    task_manager,
+                ))
             })
         }
         Command::CheckBlock(cmd) => {

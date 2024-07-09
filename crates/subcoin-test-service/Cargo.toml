@@ -1,0 +1,17 @@
+[package]
+name = "subcoin-test-service"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+bitcoin = { workspace = true }
+serde_json = { workspace = true }
+sc-consensus-nakamoto = { workspace = true }
+sc-service = { workspace = true }
+sp-keyring = { workspace = true }
+subcoin-runtime = { workspace = true }
+subcoin-service = { workspace = true }
+tokio = { workspace = true }
