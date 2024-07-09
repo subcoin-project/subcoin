@@ -23,6 +23,7 @@ use bitcoin::BlockHash;
 use sp_runtime::traits::{Block as BlockT, CheckedDiv, NumberFor, Saturating, Zero};
 use std::fmt::{self, Display};
 use std::time::Instant;
+use subcoin_network::{NetworkStatus, SyncStatus};
 
 struct DisplayBlockHash(BlockHash);
 
@@ -80,17 +81,16 @@ impl<B: BlockT> InformantDisplay<B> {
     }
 
     /// Displays the informant by calling `info!`.
-    pub fn display(&mut self, info: ClientInfoExt<B>) {
+    pub fn display(&mut self, info: ClientInfoExt<B>, net_status: NetworkStatus) {
         let best_number = info.chain.best_number;
         let best_hash = info.chain.best_hash;
         let best_bitcoin_hash = DisplayBlockHash(info.best_bitcoin_hash);
         let finalized_number = info.chain.finalized_number;
         let finalized_bitcoin_hash = DisplayBlockHash(info.finalized_bitcoin_hash);
-        let _speed = speed::<B>(best_number, self.last_number, self.last_update);
-        // TODO: proper value
-        let num_connected_peers = 0;
-        let total_bytes_inbound = 0;
-        let total_bytes_outbound = 0;
+        let speed = speed::<B>(best_number, self.last_number, self.last_update);
+        let num_connected_peers = net_status.num_connected_peers;
+        let total_bytes_inbound = net_status.total_bytes_inbound;
+        let total_bytes_outbound = net_status.total_bytes_outbound;
 
         let now = Instant::now();
         let elapsed = (now - self.last_update).as_secs();
@@ -107,7 +107,6 @@ impl<B: BlockT> InformantDisplay<B> {
             (diff_bytes_inbound, diff_bytes_outbound)
         };
 
-        /* TODO Proper status
         let (level, status, target) = match net_status.sync_status {
             SyncStatus::Idle => ("💤", "Idle".into(), "".into()),
             SyncStatus::Downloading { target, .. } => (
@@ -121,9 +120,6 @@ impl<B: BlockT> InformantDisplay<B> {
                 format!(", target=#{target}"),
             ),
         };
-        */
-
-        let (level, status, target) = ("💤", "Idle", "");
 
         let finalized_hash = info.chain.finalized_hash;
 

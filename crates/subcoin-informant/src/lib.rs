@@ -17,6 +17,7 @@ use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use subcoin_network::NetworkHandle;
 use subcoin_primitives::BackendExt;
 use tracing::{debug, info, trace};
 
@@ -97,7 +98,7 @@ impl OutputFormat {
 }
 
 /// Builds the informant and returns a `Future` that drives the informant.
-pub async fn build<B: BlockT, C>(client: Arc<C>, format: OutputFormat)
+pub async fn build<B: BlockT, C>(client: Arc<C>, network: NetworkHandle, format: OutputFormat)
 where
     C: UsageProvider<B> + HeaderMetadata<B> + BlockchainEvents<B> + HeaderBackend<B> + AuxStore,
     <C as HeaderMetadata<B>>::Error: Display,
@@ -106,36 +107,38 @@ where
 
     let net_client = client.clone();
 
-    let display_notifications = interval(Duration::from_millis(5000)).for_each({
-        move |_| {
-            let info = net_client.usage_info();
-            if let Some(ref usage) = info.usage {
-                trace!(target: "usage", "Usage statistics: {}", usage);
-            } else {
-                trace!(
-                    target: "usage",
-                    "Usage statistics not displayed as backend does not provide it",
-                )
+    let display_notifications = interval(Duration::from_millis(5000))
+        .filter_map(|_| async { network.status().await })
+        .for_each({
+            move |net_status| {
+                let info = net_client.usage_info();
+                if let Some(ref usage) = info.usage {
+                    trace!(target: "usage", "Usage statistics: {}", usage);
+                } else {
+                    trace!(
+                        target: "usage",
+                        "Usage statistics not displayed as backend does not provide it",
+                    )
+                }
+
+                let best_bitcoin_hash = net_client
+                    .bitcoin_block_hash_for(info.chain.best_hash)
+                    .expect("Best bitcoin hash must exist; qed");
+
+                let finalized_bitcoin_hash = net_client
+                    .bitcoin_block_hash_for(info.chain.finalized_hash)
+                    .expect("Finalized bitcoin hash must exist; qed");
+
+                let client_info_ext = ClientInfoExt {
+                    info,
+                    best_bitcoin_hash,
+                    finalized_bitcoin_hash,
+                };
+
+                display.display(client_info_ext, net_status);
+                future::ready(())
             }
-
-            let best_bitcoin_hash = net_client
-                .bitcoin_block_hash_for(info.chain.best_hash)
-                .expect("Best bitcoin hash must exist; qed");
-
-            let finalized_bitcoin_hash = net_client
-                .bitcoin_block_hash_for(info.chain.finalized_hash)
-                .expect("Finalized bitcoin hash must exist; qed");
-
-            let client_info_ext = ClientInfoExt {
-                info,
-                best_bitcoin_hash,
-                finalized_bitcoin_hash,
-            };
-
-            display.display(client_info_ext);
-            future::ready(())
-        }
-    });
+        });
 
     // TODO: proper status
     let is_major_syncing = Arc::new(true.into());
