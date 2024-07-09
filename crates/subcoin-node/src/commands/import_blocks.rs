@@ -26,6 +26,7 @@ pub struct ImportBlocks {
     /// Number of blocks to import.
     ///
     /// The process will stop after importing the specified number of blocks.
+    #[clap(long)]
     pub block_count: Option<usize>,
 
     /// Block number of last block to import.
