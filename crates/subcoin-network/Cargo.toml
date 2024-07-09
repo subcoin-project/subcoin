@@ -1,0 +1,37 @@
+[package]
+name = "subcoin-network"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+bitcoin = { workspace = true }
+chrono = { workspace = true }
+fastrand = { workspace = true }
+futures = { workspace = true }
+indexmap = { workspace = true }
+ip_network = { workspace = true }
+once_cell = { workspace = true }
+parking_lot = { workspace = true }
+sc-client-api = { workspace = true }
+sc-consensus = { workspace = true }
+sc-consensus-nakamoto = { workspace = true }
+sc-service = { workspace = true }
+sc-utils = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+sp-blockchain = { workspace = true }
+sp-consensus = { workspace = true }
+sp-core = { workspace = true }
+sp-runtime = { workspace = true }
+subcoin-primitives = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+sp-tracing = { workspace = true }
+subcoin-service = { workspace = true }
+subcoin-test-service = { workspace = true } 

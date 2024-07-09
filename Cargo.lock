@@ -8864,6 +8864,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "subcoin-network"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bitcoin 0.32.2",
+ "chrono",
+ "fastrand",
+ "futures",
+ "indexmap 2.2.6",
+ "ip_network",
+ "once_cell",
+ "parking_lot 0.12.3",
+ "sc-client-api",
+ "sc-consensus",
+ "sc-consensus-nakamoto",
+ "sc-service",
+ "sc-utils",
+ "serde",
+ "sp-blockchain",
+ "sp-consensus",
+ "sp-core",
+ "sp-runtime",
+ "sp-tracing 16.0.0 (git+https://github.com/liuchengxu/polkadot-sdk?branch=subcoin)",
+ "subcoin-primitives",
+ "subcoin-service",
+ "subcoin-test-service",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "subcoin-node"
 version = "0.1.0"
 dependencies = [
