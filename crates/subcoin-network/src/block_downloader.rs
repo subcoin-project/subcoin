@@ -82,6 +82,8 @@ pub(crate) struct BlockDownloadManager {
 
 impl BlockDownloadManager {
     /// Maximum number of pending blocks in the import queue.
+    ///
+    /// TODO: flexible number of queued blocks constraint.
     const MAX_QUEUED_BLOCKS: u32 = 8192;
 
     /// The downloader is considered as stalled if no progress in 60 seconds.
@@ -128,10 +130,6 @@ impl BlockDownloadManager {
         let import_queue_is_overloaded =
             self.best_queued_number - best_number > Self::MAX_QUEUED_BLOCKS;
 
-        // TODO: limit the pending blocks in the queue.
-        //
-        // The log shows that there are 30000 blocks in the queue, I guess this is the culprit of
-        // the insane memory usage during the syncing.
         if import_queue_is_overloaded {
             tracing::debug!(
                 best_number,

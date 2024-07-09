@@ -40,6 +40,8 @@ enum BlockDownloadRange {
         /// **Note**: The blocks currently being downloaded are tracked by the sync
         /// manager, not included directly in this structure..
         waiting: VecDeque<HashSet<BlockHash>>,
+        /// Is the blocks download paused?
+        paused: bool,
     },
 }
 
@@ -162,13 +164,40 @@ where
         }
 
         if self.download_manager.import_queue_is_overloaded {
-            if self
+            let import_queue_still_busy = self
                 .download_manager
-                .update_and_check_queue_status(self.client.best_number())
-            {
+                .update_and_check_queue_status(self.client.best_number());
+            if import_queue_still_busy {
                 return SyncAction::None;
             } else {
-                return self.prepare_headers_request_action();
+                // Resume blocks or headers request.
+                match &mut self.download_state {
+                    DownloadState::DownloadingBlocks(BlockDownloadRange::Batches {
+                        downloaded_batch,
+                        waiting,
+                        paused,
+                    }) if *paused => {
+                        *paused = false;
+
+                        if let Some(next_batch) = waiting.pop_front() {
+                            tracing::debug!(
+                                best_number = self.client.best_number(),
+                                best_queued_number = self.download_manager.best_queued_number,
+                                "📦 Resumed downloading {} blocks in batches ({}/{})",
+                                next_batch.len(),
+                                *downloaded_batch + 1,
+                                *downloaded_batch + 1 + waiting.len()
+                            );
+                            self.download_manager.requested_blocks = next_batch.clone();
+                            return self.blocks_request_action(next_batch);
+                        } else {
+                            return self.prepare_headers_request_action();
+                        }
+                    }
+                    _ => {
+                        return self.prepare_headers_request_action();
+                    }
+                }
             }
         }
 
@@ -399,6 +428,7 @@ where
             self.download_state = DownloadState::DownloadingBlocks(BlockDownloadRange::Batches {
                 downloaded_batch: 0,
                 waiting: batches,
+                paused: false,
             });
 
             get_data_msg
@@ -455,29 +485,30 @@ where
                 BlockDownloadRange::Batches {
                     downloaded_batch,
                     waiting,
+                    paused,
                 } => {
                     if self.download_manager.requested_blocks.is_empty() {
                         *downloaded_batch += 1;
 
+                        if self
+                            .download_manager
+                            .update_and_check_queue_status(self.client.best_number())
+                        {
+                            *paused = true;
+                            return SyncAction::None;
+                        }
+
                         if let Some(next_batch) = waiting.pop_front() {
-                            let get_data_msg = prepare_ordered_block_data_request(
-                                next_batch.clone(),
-                                &self.downloaded_headers,
-                            );
-                            self.download_manager.requested_blocks = next_batch;
                             tracing::debug!(
                                 best_number = self.client.best_number(),
                                 best_queued_number = self.download_manager.best_queued_number,
                                 "📦 Downloading {} blocks in batches ({}/{})",
-                                get_data_msg.len(),
+                                next_batch.len(),
                                 *downloaded_batch + 1,
                                 *downloaded_batch + 1 + waiting.len()
                             );
-
-                            return SyncAction::Request(SyncRequest::Data(
-                                get_data_msg,
-                                self.peer_id,
-                            ));
+                            self.download_manager.requested_blocks = next_batch.clone();
+                            return self.blocks_request_action(next_batch);
                         }
 
                         tracing::debug!("Downloaded checkpoint block #{block_number},{block_hash}");
@@ -503,6 +534,12 @@ where
 
             SyncAction::None
         }
+    }
+
+    fn blocks_request_action(&self, blocks_to_download: HashSet<BlockHash>) -> SyncAction {
+        let get_data_msg =
+            prepare_ordered_block_data_request(blocks_to_download, &self.downloaded_headers);
+        SyncAction::Request(SyncRequest::Data(get_data_msg, self.peer_id))
     }
 
     // All blocks for the downloaded headers have been downloaded, start to request
