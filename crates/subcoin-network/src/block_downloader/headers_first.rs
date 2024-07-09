@@ -188,7 +188,9 @@ where
                                 *downloaded_batch + 1,
                                 *downloaded_batch + 1 + waiting.len()
                             );
-                            self.download_manager.requested_blocks = next_batch.clone();
+                            self.download_manager
+                                .requested_blocks
+                                .clone_from(&next_batch);
                             return self.blocks_request_action(next_batch);
                         } else {
                             return self.prepare_headers_request_action();
@@ -507,7 +509,9 @@ where
                                 *downloaded_batch + 1,
                                 *downloaded_batch + 1 + waiting.len()
                             );
-                            self.download_manager.requested_blocks = next_batch.clone();
+                            self.download_manager
+                                .requested_blocks
+                                .clone_from(&next_batch);
                             return self.blocks_request_action(next_batch);
                         }
 

@@ -81,11 +81,6 @@ pub(crate) struct BlockDownloadManager {
 }
 
 impl BlockDownloadManager {
-    /// Maximum number of pending blocks in the import queue.
-    ///
-    /// TODO: flexible number of queued blocks constraint.
-    const MAX_QUEUED_BLOCKS: u32 = 8192;
-
     /// The downloader is considered as stalled if no progress in 60 seconds.
     const STALL_TIMEOUT: u64 = 60;
 
@@ -127,8 +122,15 @@ impl BlockDownloadManager {
 
     /// Checks if the import queue is overloaded and updates the internal state.
     fn update_and_check_queue_status(&mut self, best_number: u32) -> bool {
-        let import_queue_is_overloaded =
-            self.best_queued_number - best_number > Self::MAX_QUEUED_BLOCKS;
+        // Maximum number of pending blocks in the import queue.
+        let max_queued_blocks = match best_number {
+            0..=100_000 => 8192,
+            100_001..=200_000 => 4096,
+            200_001..=300_000 => 1024,
+            _ => 512,
+        };
+
+        let import_queue_is_overloaded = self.best_queued_number - best_number > max_queued_blocks;
 
         if import_queue_is_overloaded {
             tracing::debug!(
