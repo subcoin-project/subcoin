@@ -437,6 +437,8 @@ pub async fn finalize_confirmed_blocks<Block, Client, Backend>(
     Client: HeaderBackend<Block> + Finalizer<Block, Backend> + BlockchainEvents<Block> + 'static,
     Backend: sc_client_api::backend::Backend<Block> + 'static,
 {
+    const MAJOR_SYNC_FINALIZATION_STEP: u32 = 10;
+
     let mut block_import_stream = client.import_notification_stream();
 
     while let Some(notification) = block_import_stream.next().await {
@@ -455,6 +457,14 @@ pub async fn finalize_confirmed_blocks<Block, Client, Backend>(
 
         if confirmed_block_number <= finalized_number {
             continue;
+        }
+
+        if is_major_syncing.load(Ordering::SeqCst) {
+            // During major sync, finalize every 10th block to avoid race conditions:
+            // >Safety violation: attempted to revert finalized block...
+            if confirmed_block_number < finalized_number + MAJOR_SYNC_FINALIZATION_STEP.into() {
+                continue;
+            }
         }
 
         let block_to_finalize = client
