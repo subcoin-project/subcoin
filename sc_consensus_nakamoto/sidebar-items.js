@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["BlockVerification","Error","ImportStatus"],"struct":["BitcoinBlockImporter","ImportConfig"],"trait":["BitcoinBlockImport"]};
+window.SIDEBAR_ITEMS = {"enum":["BlockExecutionStrategy","BlockVerification","ClientContext","Error","ExecutionBackend","ImportStatus"],"struct":["BenchmarkAllExecutor","BenchmarkRuntimeBlockExecutor","BitcoinBlockImporter","ImportConfig","OffRuntimeBlockExecutor","RuntimeBlockExecutor"],"trait":["BitcoinBlockImport","BlockExecutor"]};

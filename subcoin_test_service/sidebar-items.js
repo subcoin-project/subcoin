@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["block_data","new_test_node","test_configuration"]};

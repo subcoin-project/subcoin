@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/sc-consensus-nakamoto/src/block_import.rs`."><title>block_import.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-dd39b87e5fcfba68.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="sc_consensus_nakamoto" data-themes="" data-resource-suffix="" data-rustdoc-version="1.81.0-nightly (ed7e35f34 2024-07-06)" data-channel="nightly" data-search-js="search-d234aafac6c221dd.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-20a3ad099b048cf2.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/sc-consensus-nakamoto/src/block_import.rs`."><title>block_import.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-dd39b87e5fcfba68.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="sc_consensus_nakamoto" data-themes="" data-resource-suffix="" data-rustdoc-version="1.81.0-nightly (35b658fb1 2024-07-08)" data-channel="nightly" data-search-js="search-d234aafac6c221dd.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-20a3ad099b048cf2.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -385,7 +385,40 @@
 <a href="#385" id="385">385</a>
 <a href="#386" id="386">386</a>
 <a href="#387" id="387">387</a>
-</pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::block_executor::ExecutionInfo;
+<a href="#388" id="388">388</a>
+<a href="#389" id="389">389</a>
+<a href="#390" id="390">390</a>
+<a href="#391" id="391">391</a>
+<a href="#392" id="392">392</a>
+<a href="#393" id="393">393</a>
+<a href="#394" id="394">394</a>
+<a href="#395" id="395">395</a>
+<a href="#396" id="396">396</a>
+<a href="#397" id="397">397</a>
+<a href="#398" id="398">398</a>
+<a href="#399" id="399">399</a>
+<a href="#400" id="400">400</a>
+<a href="#401" id="401">401</a>
+<a href="#402" id="402">402</a>
+<a href="#403" id="403">403</a>
+<a href="#404" id="404">404</a>
+<a href="#405" id="405">405</a>
+<a href="#406" id="406">406</a>
+<a href="#407" id="407">407</a>
+<a href="#408" id="408">408</a>
+<a href="#409" id="409">409</a>
+<a href="#410" id="410">410</a>
+<a href="#411" id="411">411</a>
+<a href="#412" id="412">412</a>
+<a href="#413" id="413">413</a>
+<a href="#414" id="414">414</a>
+<a href="#415" id="415">415</a>
+<a href="#416" id="416">416</a>
+<a href="#417" id="417">417</a>
+<a href="#418" id="418">418</a>
+<a href="#419" id="419">419</a>
+<a href="#420" id="420">420</a>
+</pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::block_executor::{BlockExecutor, ExecuteBlockResult};
 <span class="kw">use </span><span class="kw">crate</span>::verification::{BlockVerification, BlockVerifier};
 <span class="kw">use </span>bitcoin::hashes::Hash;
 <span class="kw">use </span>bitcoin::{Block <span class="kw">as </span>BitcoinBlock, BlockHash, Network};
@@ -395,7 +428,7 @@
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, ImportedAux, StateAction,
     StorageChanges,
 };
-<span class="kw">use </span>sp_api::{ApiExt, CallApiAt, CallContext, Core, ProvideRuntimeApi};
+<span class="kw">use </span>sp_api::{CallApiAt, Core, ProvideRuntimeApi};
 <span class="kw">use </span>sp_blockchain::HashAndNumber;
 <span class="kw">use </span>sp_consensus::{BlockOrigin, BlockStatus};
 <span class="kw">use </span>sp_runtime::traits::{
@@ -408,6 +441,33 @@
 <span class="kw">use </span>subcoin_primitives::{
     substrate_header_digest, BackendExt, BitcoinTransactionAdapter, CoinStorageKey,
 };
+
+<span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>clone_storage_changes&lt;Block: BlockT&gt;(
+    c: <span class="kw-2">&amp;</span>sp_state_machine::StorageChanges&lt;HashingFor&lt;Block&gt;&gt;,
+) -&gt; sp_state_machine::StorageChanges&lt;HashingFor&lt;Block&gt;&gt; {
+    sp_state_machine::StorageChanges {
+        main_storage_changes: c.main_storage_changes.clone(),
+        child_storage_changes: c.child_storage_changes.clone(),
+        offchain_storage_changes: c.offchain_storage_changes.clone(),
+        transaction: c.transaction.clone(),
+        transaction_storage_root: c.transaction_storage_root,
+        transaction_index_changes: c.transaction_index_changes.clone(),
+    }
+}
+
+<span class="kw">fn </span>clone_block_import_params&lt;Block: BlockT&gt;(
+    params: <span class="kw-2">&amp;</span>BlockImportParams&lt;Block&gt;,
+    state_action: StateAction&lt;Block&gt;,
+) -&gt; BlockImportParams&lt;Block&gt; {
+    <span class="kw">let </span><span class="kw-2">mut </span>import_params = BlockImportParams::new(params.origin, params.header.clone());
+    import_params.post_digests.clone_from(<span class="kw-2">&amp;</span>params.post_digests);
+    import_params.state_action = state_action;
+    import_params.auxiliary.clone_from(<span class="kw-2">&amp;</span>params.auxiliary);
+    import_params.fork_choice = params.fork_choice;
+    import_params.import_existing = params.import_existing;
+    import_params.post_hash.clone_from(<span class="kw-2">&amp;</span>params.post_hash);
+    import_params
+}
 
 <span class="attr">#[derive(Debug, Clone)]
 </span><span class="kw">pub struct </span>ImportConfig {
@@ -465,6 +525,7 @@
     stats: Stats,
     config: ImportConfig,
     verifier: BlockVerifier&lt;Block, Client, BE&gt;,
+    block_executor: Box&lt;<span class="kw">dyn </span>BlockExecutor&lt;Block&gt;&gt;,
     _phantom: PhantomData&lt;TransactionAdapter&gt;,
 }
 
@@ -491,6 +552,7 @@
         block_import: BI,
         config: ImportConfig,
         coin_storage_key: Arc&lt;<span class="kw">dyn </span>CoinStorageKey&gt;,
+        block_executor: Box&lt;<span class="kw">dyn </span>BlockExecutor&lt;Block&gt;&gt;,
     ) -&gt; <span class="self">Self </span>{
         <span class="kw">let </span>verifier = BlockVerifier::new(
             client.clone(),
@@ -504,8 +566,13 @@
             stats: Stats::default(),
             config,
             verifier,
+            block_executor,
             _phantom: Default::default(),
         }
+    }
+
+    <span class="kw">pub fn </span>set_block_executor(<span class="kw-2">&amp;mut </span><span class="self">self</span>, new_executor: Box&lt;<span class="kw">dyn </span>BlockExecutor&lt;Block&gt;&gt;) {
+        <span class="self">self</span>.block_executor = new_executor;
     }
 
     <span class="attr">#[inline]
@@ -544,31 +611,11 @@
         Block::Hash,
         sp_state_machine::StorageChanges&lt;HashingFor&lt;Block&gt;&gt;,
     )&gt; {
-        <span class="kw">let </span><span class="kw-2">mut </span>runtime_api = <span class="self">self</span>.client.runtime_api();
-        runtime_api.set_call_context(CallContext::Onchain);
-
-        <span class="kw">let </span><span class="kw-2">mut </span>exec_info = ExecutionInfo::default();
-
-        <span class="kw">let </span>now = std::time::Instant::now();
-        runtime_api.execute_block_without_state_root_check(parent_hash, block)<span class="question-mark">?</span>;
-        exec_info.execute_block = now.elapsed().as_nanos();
-
-        <span class="kw">let </span>now = std::time::Instant::now();
-        <span class="kw">let </span>state = <span class="self">self</span>.client.state_at(parent_hash)<span class="question-mark">?</span>;
-        exec_info.fetch_state = now.elapsed().as_nanos();
-
-        <span class="kw">let </span>now = std::time::Instant::now();
-        <span class="kw">let </span>storage_changes = runtime_api
-            .into_storage_changes(<span class="kw-2">&amp;</span>state, parent_hash)
-            .map_err(sp_blockchain::Error::StorageChanges)<span class="question-mark">?</span>;
-        exec_info.into_storage_changes = now.elapsed().as_nanos();
-
-        <span class="macro">tracing::trace!</span>(
-            <span class="string">"Block execution info: {exec_info:?}, total: {}ms"</span>,
-            exec_info.total()
-        );
-
-        <span class="kw">let </span>state_root = storage_changes.transaction_storage_root;
+        <span class="kw">let </span>ExecuteBlockResult {
+            state_root,
+            storage_changes,
+            exec_info: <span class="kw">_</span>,
+        } = <span class="self">self</span>.block_executor.execute_block(parent_hash, block)<span class="question-mark">?</span>;
 
         <span class="prelude-val">Ok</span>((state_root, storage_changes))
     }
@@ -577,7 +624,7 @@
         <span class="kw-2">&amp;mut </span><span class="self">self</span>,
         block: BitcoinBlock,
         substrate_parent_block: HashAndNumber&lt;Block&gt;,
-    ) -&gt; sp_blockchain::Result&lt;BlockImportParams&lt;Block&gt;&gt; {
+    ) -&gt; sp_blockchain::Result&lt;(BlockImportParams&lt;Block&gt;, <span class="prelude-ty">Option</span>&lt;BlockImportParams&lt;Block&gt;&gt;)&gt; {
         <span class="kw">let </span>HashAndNumber {
             number: parent_block_number,
             hash: parent_hash,
@@ -609,7 +656,7 @@
         );
 
         <span class="comment">// subcoin bootstrap node must execute every block.
-        </span><span class="kw">let </span>state_action = <span class="kw">if </span><span class="self">self</span>.config.execute_block {
+        </span><span class="kw">let </span>(state_action, maybe_changes) = <span class="kw">if </span><span class="self">self</span>.config.execute_block {
             <span class="kw">let </span>now = std::time::Instant::now();
 
             <span class="kw">let </span>tx_count = extrinsics.len();
@@ -629,9 +676,20 @@
             <span class="comment">// Now it's a normal Substrate header after setting the state root.
             </span>header.set_state_root(state_root);
 
-            StateAction::ApplyChanges(StorageChanges::&lt;Block&gt;::Changes(storage_changes))
+            <span class="kw">let </span>changes_for_block_executor = <span class="kw">if </span><span class="self">self</span>.block_executor.is_in_memory_backend_used() {
+                <span class="prelude-val">Some</span>(StorageChanges::Changes(clone_storage_changes::&lt;Block&gt;(
+                    <span class="kw-2">&amp;</span>storage_changes,
+                )))
+            } <span class="kw">else </span>{
+                <span class="prelude-val">None
+            </span>};
+
+            (
+                StateAction::ApplyChanges(StorageChanges::&lt;Block&gt;::Changes(storage_changes)),
+                changes_for_block_executor,
+            )
         } <span class="kw">else </span>{
-            StateAction::Skip
+            (StateAction::Skip, <span class="prelude-val">None</span>)
         };
 
         <span class="kw">let </span>substrate_block_hash = header.hash();
@@ -648,7 +706,11 @@
             <span class="prelude-val">Some</span>(substrate_block_hash.encode()),
         )];
 
-        <span class="prelude-val">Ok</span>(block_import_params)
+        <span class="kw">let </span>import_params_for_block_executor = maybe_changes.map(|changes| {
+            clone_block_import_params(<span class="kw-2">&amp;</span>block_import_params, StateAction::ApplyChanges(changes))
+        });
+
+        <span class="prelude-val">Ok</span>((block_import_params, import_params_for_block_executor))
     }
 }
 
@@ -751,9 +813,13 @@
             .verify_block(block_number, <span class="kw-2">&amp;</span>block)
             .map_err(|err| import_err(err.to_string()))<span class="question-mark">?</span>;
 
-        <span class="kw">let </span>block_import_params = <span class="self">self
+        <span class="kw">let </span>(block_import_params, maybe_import_params_for_block_executor) = <span class="self">self
             </span>.prepare_substrate_block_import(block, substrate_parent_block)
             .map_err(|err| import_err(err.to_string()))<span class="question-mark">?</span>;
+
+        <span class="kw">if let </span><span class="prelude-val">Some</span>(import_params) = maybe_import_params_for_block_executor {
+            <span class="self">self</span>.block_executor.import_block(import_params).<span class="kw">await</span><span class="question-mark">?</span>;
+        }
 
         <span class="self">self</span>.inner
             .import_block(block_import_params)

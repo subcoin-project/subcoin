@@ -1,0 +1,1 @@
+searchState.loadedDescShard("subcoin_test_service", 0, "")
