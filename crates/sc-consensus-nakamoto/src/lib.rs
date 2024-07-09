@@ -1,5 +1,6 @@
 mod block_executor;
 mod block_import;
+mod import_queue;
 mod verification;
 
 pub use block_executor::{
@@ -7,6 +8,9 @@ pub use block_executor::{
     ClientContext, ExecutionBackend, OffRuntimeBlockExecutor, RuntimeBlockExecutor,
 };
 pub use block_import::{BitcoinBlockImport, BitcoinBlockImporter, ImportConfig, ImportStatus};
+pub use import_queue::{
+    bitcoin_import_queue, BlockImportQueue, ImportBlocks, ImportManyBlocksResult,
+};
 pub use verification::BlockVerification;
 
 #[derive(Debug, thiserror::Error)]
