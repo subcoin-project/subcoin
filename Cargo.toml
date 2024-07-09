@@ -17,6 +17,7 @@ members = [
     "crates/subcoin-network",
     "crates/subcoin-node",
     "crates/subcoin-primitives",
+    "crates/subcoin-rpc",
     "crates/subcoin-runtime",
     "crates/subcoin-runtime-primitives",
     "crates/subcoin-service",
@@ -110,6 +111,7 @@ subcoin-informant = { path = "crates/subcoin-informant" }
 subcoin-network = { path = "crates/subcoin-network" }
 subcoin-node = { path = "crates/subcoin-node" }
 subcoin-primitives = { path = "crates/subcoin-primitives" }
+subcoin-rpc = { path = "crates/subcoin-rpc" }
 subcoin-runtime = { path = "crates/subcoin-runtime" }
 subcoin-runtime-primitives = { path = "crates/subcoin-runtime-primitives", default-features = false }
 subcoin-service = { path = "crates/subcoin-service" }
