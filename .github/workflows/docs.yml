@@ -4,10 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-    - main
-    - mdbook
-    pull_request:
-      branches: [ "main" ]
+      - main
 
 permissions:
   contents: write
@@ -22,7 +19,7 @@ env:
   RUSTUP_MAX_RETRIES: 10
 
 jobs:
-  rustdoc:
+  docs:
     runs-on: ubuntu-22.04
 
     steps:
@@ -50,7 +47,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      # Build the rust crate docs
       - name: Build Rustdoc
         run: cargo +nightly -Zgitoxide -Zgit doc --all --no-deps --lib
         env:
