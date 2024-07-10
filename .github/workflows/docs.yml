@@ -1,10 +1,10 @@
-name: Rustdoc
+name: Docs
 
 on:
   workflow_dispatch:
   push:
     branches:
-    - main
+      - main
 
 permissions:
   contents: write
@@ -19,7 +19,7 @@ env:
   RUSTUP_MAX_RETRIES: 10
 
 jobs:
-  rustdoc:
+  docs:
     runs-on: ubuntu-22.04
 
     steps:
@@ -47,11 +47,16 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      # Build the rust crate docs
-      - name: Build Documentation
+      - name: Build Rustdoc
         run: cargo +nightly -Zgitoxide -Zgit doc --all --no-deps --lib
         env:
           RUSTDOCFLAGS: "-Z unstable-options --enable-index-page"
+
+      - name: Build User Guide
+        run: |
+          cargo install --vers "^0.4" mdbook
+          mdbook build docs && mdbook test docs
+          mv docs/book target/doc
 
       - name: Deploy Docs
         uses: JamesIves/github-pages-deploy-action@v4
