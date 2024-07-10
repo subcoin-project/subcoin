@@ -217,6 +217,9 @@
 <a href="#217" id="217">217</a>
 <a href="#218" id="218">218</a>
 <a href="#219" id="219">219</a>
+<a href="#220" id="220">220</a>
+<a href="#221" id="221">221</a>
+<a href="#222" id="222">222</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # Subcoin Informant
 //!
 //! This crate is a fork of `sc-informant` for displaying the Subcoin network sync progress.
@@ -236,6 +239,7 @@
 <span class="kw">use </span>std::sync::atomic::{AtomicBool, Ordering};
 <span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>std::time::Duration;
+<span class="kw">use </span>subcoin_network::NetworkHandle;
 <span class="kw">use </span>subcoin_primitives::BackendExt;
 <span class="kw">use </span>tracing::{debug, info, trace};
 
@@ -316,7 +320,7 @@
 }
 
 <span class="doccomment">/// Builds the informant and returns a `Future` that drives the informant.
-</span><span class="kw">pub async fn </span>build&lt;B: BlockT, C&gt;(client: Arc&lt;C&gt;, format: OutputFormat)
+</span><span class="kw">pub async fn </span>build&lt;B: BlockT, C&gt;(client: Arc&lt;C&gt;, network: NetworkHandle, format: OutputFormat)
 <span class="kw">where
     </span>C: UsageProvider&lt;B&gt; + HeaderMetadata&lt;B&gt; + BlockchainEvents&lt;B&gt; + HeaderBackend&lt;B&gt; + AuxStore,
     &lt;C <span class="kw">as </span>HeaderMetadata&lt;B&gt;&gt;::Error: Display,
@@ -325,36 +329,38 @@
 
     <span class="kw">let </span>net_client = client.clone();
 
-    <span class="kw">let </span>display_notifications = interval(Duration::from_millis(<span class="number">5000</span>)).for_each({
-        <span class="kw">move </span>|<span class="kw">_</span>| {
-            <span class="kw">let </span>info = net_client.usage_info();
-            <span class="kw">if let </span><span class="prelude-val">Some</span>(<span class="kw-2">ref </span>usage) = info.usage {
-                <span class="macro">trace!</span>(target: <span class="string">"usage"</span>, <span class="string">"Usage statistics: {}"</span>, usage);
-            } <span class="kw">else </span>{
-                <span class="macro">trace!</span>(
-                    target: <span class="string">"usage"</span>,
-                    <span class="string">"Usage statistics not displayed as backend does not provide it"</span>,
-                )
+    <span class="kw">let </span>display_notifications = interval(Duration::from_millis(<span class="number">5000</span>))
+        .filter_map(|<span class="kw">_</span>| <span class="kw">async </span>{ network.status().<span class="kw">await </span>})
+        .for_each({
+            <span class="kw">move </span>|net_status| {
+                <span class="kw">let </span>info = net_client.usage_info();
+                <span class="kw">if let </span><span class="prelude-val">Some</span>(<span class="kw-2">ref </span>usage) = info.usage {
+                    <span class="macro">trace!</span>(target: <span class="string">"usage"</span>, <span class="string">"Usage statistics: {}"</span>, usage);
+                } <span class="kw">else </span>{
+                    <span class="macro">trace!</span>(
+                        target: <span class="string">"usage"</span>,
+                        <span class="string">"Usage statistics not displayed as backend does not provide it"</span>,
+                    )
+                }
+
+                <span class="kw">let </span>best_bitcoin_hash = net_client
+                    .bitcoin_block_hash_for(info.chain.best_hash)
+                    .expect(<span class="string">"Best bitcoin hash must exist; qed"</span>);
+
+                <span class="kw">let </span>finalized_bitcoin_hash = net_client
+                    .bitcoin_block_hash_for(info.chain.finalized_hash)
+                    .expect(<span class="string">"Finalized bitcoin hash must exist; qed"</span>);
+
+                <span class="kw">let </span>client_info_ext = ClientInfoExt {
+                    info,
+                    best_bitcoin_hash,
+                    finalized_bitcoin_hash,
+                };
+
+                display.display(client_info_ext, net_status);
+                future::ready(())
             }
-
-            <span class="kw">let </span>best_bitcoin_hash = net_client
-                .bitcoin_block_hash_for(info.chain.best_hash)
-                .expect(<span class="string">"Best bitcoin hash must exist; qed"</span>);
-
-            <span class="kw">let </span>finalized_bitcoin_hash = net_client
-                .bitcoin_block_hash_for(info.chain.finalized_hash)
-                .expect(<span class="string">"Finalized bitcoin hash must exist; qed"</span>);
-
-            <span class="kw">let </span>client_info_ext = ClientInfoExt {
-                info,
-                best_bitcoin_hash,
-                finalized_bitcoin_hash,
-            };
-
-            display.display(client_info_ext);
-            future::ready(())
-        }
-    });
+        });
 
     <span class="comment">// TODO: proper status
     </span><span class="kw">let </span>is_major_syncing = Arc::new(<span class="bool-val">true</span>.into());

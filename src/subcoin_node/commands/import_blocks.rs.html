@@ -283,6 +283,7 @@
 <a href="#283" id="283">283</a>
 <a href="#284" id="284">284</a>
 <a href="#285" id="285">285</a>
+<a href="#286" id="286">286</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::params::CommonParams;
 <span class="kw">use </span>bitcoin_explorer::BitcoinDB;
 <span class="kw">use </span>sc_cli::{ImportParams, NodeKeyParams, SharedParams};
@@ -311,6 +312,7 @@
     <span class="doccomment">/// Number of blocks to import.
     ///
     /// The process will stop after importing the specified number of blocks.
+    </span><span class="attr">#[clap(long)]
     </span><span class="kw">pub </span>block_count: <span class="prelude-ty">Option</span>&lt;usize&gt;,
 
     <span class="doccomment">/// Block number of last block to import.

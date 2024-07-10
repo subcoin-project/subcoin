@@ -24,8 +24,13 @@
 <a href="#24" id="24">24</a>
 <a href="#25" id="25">25</a>
 <a href="#26" id="26">26</a>
+<a href="#27" id="27">27</a>
+<a href="#28" id="28">28</a>
+<a href="#29" id="29">29</a>
+<a href="#30" id="30">30</a>
 </pre></div><pre class="rust"><code><span class="kw">mod </span>block_executor;
 <span class="kw">mod </span>block_import;
+<span class="kw">mod </span>import_queue;
 <span class="kw">mod </span>verification;
 
 <span class="kw">pub use </span>block_executor::{
@@ -33,6 +38,9 @@
     ClientContext, ExecutionBackend, OffRuntimeBlockExecutor, RuntimeBlockExecutor,
 };
 <span class="kw">pub use </span>block_import::{BitcoinBlockImport, BitcoinBlockImporter, ImportConfig, ImportStatus};
+<span class="kw">pub use </span>import_queue::{
+    bitcoin_import_queue, BlockImportQueue, ImportBlocks, ImportManyBlocksResult,
+};
 <span class="kw">pub use </span>verification::BlockVerification;
 
 <span class="attr">#[derive(Debug, thiserror::Error)]
