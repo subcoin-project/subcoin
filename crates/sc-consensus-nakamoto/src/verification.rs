@@ -6,7 +6,6 @@ use sc_client_api::{AuxStore, Backend, StorageProvider};
 use sp_blockchain::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use subcoin_primitives::runtime::bitcoin_block_subsidy;
@@ -14,6 +13,7 @@ use subcoin_primitives::{BackendExt, CoinStorageKey};
 
 /// Represents the level of block verification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
 pub enum BlockVerification {
     /// No verification performed.
     None,
@@ -21,22 +21,6 @@ pub enum BlockVerification {
     Full,
     /// Verify the block header only, without the transaction veification.
     HeaderOnly,
-}
-
-impl FromStr for BlockVerification {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "none" => Ok(Self::None),
-            "full" => Ok(Self::Full),
-            "header-only" => Ok(Self::HeaderOnly),
-            _ => Err(format!(
-                "Invalid block verification value: {s}, \
-                possible values: [\"none\", \"full\", \"header-only\"]"
-            )),
-        }
-    }
 }
 
 /// Block verification error.

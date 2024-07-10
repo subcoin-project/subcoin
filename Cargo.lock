@@ -6802,6 +6802,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bitcoin 0.32.2",
+ "clap",
  "futures",
  "hex-literal",
  "parity-scale-codec",
@@ -8878,6 +8879,7 @@ dependencies = [
  "async-trait",
  "bitcoin 0.32.2",
  "chrono",
+ "clap",
  "fastrand",
  "futures",
  "indexmap 2.2.6",

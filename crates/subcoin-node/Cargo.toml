@@ -24,7 +24,7 @@ pallet-bitcoin = { workspace = true }
 sc-cli = { workspace = true }
 sc-client-api = { workspace = true }
 sc-consensus = { workspace = true }
-sc-consensus-nakamoto = { workspace = true }
+sc-consensus-nakamoto = { workspace = true, features = ["cli"] }
 sc-executor = { workspace = true }
 sc-informant = { workspace = true }
 sc-network = { workspace = true }
@@ -44,7 +44,7 @@ sp-core = { workspace = true }
 sp-io = { workspace = true }
 sp-runtime = { workspace = true }
 subcoin-informant = { workspace = true }
-subcoin-network = { workspace = true }
+subcoin-network = { workspace = true, features = ["cli"] }
 subcoin-primitives = { workspace = true }
 subcoin-rpc = { workspace = true }
 subcoin-runtime = { workspace = true }

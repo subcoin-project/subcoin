@@ -50,7 +50,6 @@ use serde::{Deserialize, Serialize};
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::net::{AddrParseError, SocketAddr, ToSocketAddrs};
-use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -149,27 +148,13 @@ fn seednodes(network: BitcoinNetwork) -> Vec<&'static str> {
 
 /// Represents the strategy for block syncing.
 #[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
 pub enum SyncStrategy {
     /// Download the headers first, followed by the block bodies.
     #[default]
     HeadersFirst,
     /// Download the full blocks (both headers and bodies) in sequence.
     BlocksFirst,
-}
-
-impl FromStr for SyncStrategy {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "blocks-first" => Ok(Self::BlocksFirst),
-            "headers-first" => Ok(Self::HeadersFirst),
-            _ => Err(format!(
-                "Invalid sync strategy value: {s}, \
-                possible values: [\"blocks-first\", \"headers-first\"]"
-            )),
-        }
-    }
 }
 
 // Ignore the peer if it is not full with witness enabled as we only want to
