@@ -109,7 +109,7 @@ impl ImportBlocksCmd {
                     block_verification: BlockVerification::None,
                     execute_block: self.execute_block,
                 },
-                Arc::new(crate::CoinStorageKey),
+                Arc::new(subcoin_service::CoinStorageKey),
                 block_executor,
             );
 
