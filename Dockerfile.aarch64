@@ -1,0 +1,71 @@
+# This is a base image to build Subcoin node
+FROM ubuntu:22.04 AS builder
+
+# By default, we use the stable Rust. However, we encountered some network issues
+# during the docker build processing in CI. Now we compile the binary using nightly
+# so that the network issue in CI can be mitigated via the unstable flag `-Zgitoxide -Zgit`.
+ARG RUSTC_VERSION=nightly-2024-06-29
+
+ARG PROFILE=production
+ARG SUBSTRATE_CLI_GIT_COMMIT_HASH
+ARG TARGET=aarch64-unknown-linux-gnu
+
+# Incremental compilation here isn't helpful
+ENV CARGO_INCREMENTAL=0
+
+ENV RUSTFLAGS="-C linker=aarch64-linux-gnu-gcc"
+ENV PKG_CONFIG_ALLOW_CROSS=true
+
+WORKDIR /src
+
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        ca-certificates \
+        clang \
+        cmake \
+        curl \
+        git \
+        llvm \
+        protobuf-compiler \
+        make && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUSTC_VERSION
+
+# Dependencies necessary for cross-compilation.
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        g++-aarch64-linux-gnu \
+        gcc-aarch64-linux-gnu \
+        libc6-dev-arm64-cross && \
+    /root/.cargo/bin/rustup target add $TARGET && \
+    /root/.cargo/bin/rustup target add wasm32-unknown-unknown --toolchain $RUSTC_VERSION-$TARGET && \
+    /root/.cargo/bin/rustup component add rust-src --toolchain $RUSTC_VERSION-$TARGET
+
+# Copy the source code
+COPY . .
+
+# Compile the binary and move it to /subcoin.
+RUN /root/.cargo/bin/cargo +$RUSTC_VERSION -Zgitoxide -Zgit build \
+    --locked \
+    --bin subcoin \
+    --profile=$PROFILE \
+    --target $TARGET && \
+    mv target/*/*/subcoin /subcoin && \
+    rm -rf target
+
+# This is the 2nd stage: a very small image where we copy the binary.
+FROM arm64v8/ubuntu:22.04
+
+LABEL org.opencontainers.image.source="https://github.com/subcoin-project/subcoin"
+LABEL org.opencontainers.image.description="Multistage Docker image for Subcoin Node"
+
+# Copy the node binary.
+COPY --from=builder /subcoin /subcoin
+
+RUN mkdir /node-data && chown nobody:nogroup /node-data
+
+VOLUME ["/node-data"]
+
+USER nobody:nogroup
+
+EXPOSE 30333 9933 9944 9615
+
+ENTRYPOINT ["/subcoin"]
