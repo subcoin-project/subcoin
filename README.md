@@ -22,8 +22,8 @@ planning stages.
 ## Pros
 
 - 🔄 **Fast Sync**. Employs Substrate's advanced state sync strategy, enabling Bitcoin fast sync
-by downloading all headers and the state at a specific block.
-- 🔗 **Substrate Integration**: Utilizes Substrate framework provide production-level blockchain infrastructures.
+by downloading all headers and the state at a specific block, in decentralized manner.
+- 🔗 **Substrate Integration**: Utilizes Substrate framework to provide production-level blockchain infrastructures.
 
 ## Disclaimer
 

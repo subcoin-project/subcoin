@@ -49,6 +49,7 @@ fn clone_block_import_params<Block: BlockT>(
     import_params
 }
 
+/// Block import configuration.
 #[derive(Debug, Clone)]
 pub struct ImportConfig {
     /// Bitcoin network type.
@@ -151,6 +152,7 @@ where
         }
     }
 
+    /// Sets new block executor.
     pub fn set_block_executor(&mut self, new_executor: Box<dyn BlockExecutor<Block>>) {
         self.block_executor = new_executor;
     }

@@ -111,7 +111,7 @@ pub fn run() -> sc_cli::Result<()> {
                             block_verification: run.block_verification,
                             execute_block: true,
                         },
-                        Arc::new(crate::CoinStorageKey),
+                        Arc::new(subcoin_service::CoinStorageKey),
                         block_executor,
                     );
 

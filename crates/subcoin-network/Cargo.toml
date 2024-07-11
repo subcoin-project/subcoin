@@ -10,6 +10,7 @@ license.workspace = true
 async-trait = { workspace = true }
 bitcoin = { workspace = true }
 chrono = { workspace = true }
+clap = { workspace = true, optional = true }
 fastrand = { workspace = true }
 futures = { workspace = true }
 indexmap = { workspace = true }
@@ -35,3 +36,7 @@ tracing = { workspace = true }
 sp-tracing = { workspace = true }
 subcoin-service = { workspace = true }
 subcoin-test-service = { workspace = true } 
+
+[features]
+default = []
+cli = ["clap"]

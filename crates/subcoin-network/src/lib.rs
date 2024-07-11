@@ -50,7 +50,6 @@ use serde::{Deserialize, Serialize};
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::net::{AddrParseError, SocketAddr, ToSocketAddrs};
-use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -149,27 +148,13 @@ fn seednodes(network: BitcoinNetwork) -> Vec<&'static str> {
 
 /// Represents the strategy for block syncing.
 #[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
 pub enum SyncStrategy {
     /// Download the headers first, followed by the block bodies.
     #[default]
     HeadersFirst,
     /// Download the full blocks (both headers and bodies) in sequence.
     BlocksFirst,
-}
-
-impl FromStr for SyncStrategy {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "blocks-first" => Ok(Self::BlocksFirst),
-            "headers-first" => Ok(Self::HeadersFirst),
-            _ => Err(format!(
-                "Invalid sync strategy value: {s}, \
-                possible values: [\"blocks-first\", \"headers-first\"]"
-            )),
-        }
-    }
 }
 
 // Ignore the peer if it is not full with witness enabled as we only want to
@@ -288,7 +273,7 @@ pub struct Params {
     /// Bitcoin network type.
     pub network: BitcoinNetwork,
     /// Specify the local listen address.
-    pub listen_on: String,
+    pub listen_on: PeerId,
     /// List of seednodes.
     pub bootnodes: Vec<String>,
     /// Whether to connect to the bootnode only.
@@ -365,6 +350,8 @@ where
     }
 
     /// Starts the network.
+    ///
+    /// This must be run in a background task.
     pub async fn run(self) -> Result<(), Error> {
         let Self {
             client,
@@ -376,14 +363,18 @@ where
             _phantom,
         } = self;
 
-        let listener = match TcpListener::bind(&params.listen_on).await {
+        let mut listen_on = params.listen_on;
+        let listener = match TcpListener::bind(&listen_on).await {
             Ok(listener) => listener,
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
                 tracing::warn!(
                     "{} is occupied, trying any available port.",
                     params.listen_on
                 );
-                TcpListener::bind("0.0.0.0:0").await?
+
+                listen_on.set_port(0);
+
+                TcpListener::bind(listen_on).await?
             }
             Err(err) => return Err(err.into()),
         };
@@ -436,8 +427,6 @@ where
         }
 
         network_worker.run(worker_msg_receiver, bandwidth).await;
-
-        tracing::error!("Subcoin network worker exited");
 
         Ok(())
     }
