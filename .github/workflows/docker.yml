@@ -6,7 +6,7 @@ on:
   push:
     branches:
       - main
-      - docker
+      - docker-aarch64
       - 'release/**'
     tags:
       - '**'
@@ -20,16 +20,16 @@ jobs:
     strategy:
       matrix:
         platform:
-          - arch: linux/amd64
-            profile: production
-            suffix: ubuntu-x86_64-${{ github.ref_name }}
-            image-suffix: ''
-            dockerfile-suffix: ''
-          # - arch: linux/arm64
+          # - arch: linux/amd64
             # profile: production
-            # suffix: ubuntu-aarch64-${{ github.ref_name }}
-            # image-suffix: '-aarch64'
-            # dockerfile-suffix: '.aarch64'
+            # suffix: ubuntu-x86_64-${{ github.ref_name }}
+            # image-suffix: ''
+            # dockerfile-suffix: ''
+          - arch: linux/arm64
+            profile: production
+            suffix: ubuntu-aarch64-${{ github.ref_name }}
+            image-suffix: '-aarch64'
+            dockerfile-suffix: '.aarch64'
 
     steps:
       - name: Set up QEMU
