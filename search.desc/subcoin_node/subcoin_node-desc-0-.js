@@ -1,1 +1,1 @@
-searchState.loadedDescShard("subcoin_node", 0, "Returns the argument unchanged.\nGet a mutable reference to the inner from the outer.\nGet a reference to the inner from the outer.\nCalls <code>U::from(self)</code>.\nParse and run command line arguments")
+searchState.loadedDescShard("subcoin_node", 0, "Parse and run command line arguments")

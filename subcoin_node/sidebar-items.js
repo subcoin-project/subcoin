@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["run"],"struct":["CoinStorageKey"]};
+window.SIDEBAR_ITEMS = {"fn":["run"]};
