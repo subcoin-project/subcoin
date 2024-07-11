@@ -24,6 +24,7 @@ jobs:
             suffix: ubuntu-x86_64-${{ github.ref_name }}
             image-suffix: ''
             dockerfile-suffix: ''
+          # TODO: https://github.com/subcoin-project/subcoin/issues/13
           # - arch: linux/arm64
             # profile: production
             # suffix: ubuntu-aarch64-${{ github.ref_name }}
