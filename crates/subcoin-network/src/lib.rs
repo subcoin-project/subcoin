@@ -273,7 +273,7 @@ pub struct Params {
     /// Bitcoin network type.
     pub network: BitcoinNetwork,
     /// Specify the local listen address.
-    pub listen_on: String,
+    pub listen_on: PeerId,
     /// List of seednodes.
     pub bootnodes: Vec<String>,
     /// Whether to connect to the bootnode only.
@@ -350,6 +350,8 @@ where
     }
 
     /// Starts the network.
+    ///
+    /// This must be run in a background task.
     pub async fn run(self) -> Result<(), Error> {
         let Self {
             client,
@@ -361,14 +363,18 @@ where
             _phantom,
         } = self;
 
-        let listener = match TcpListener::bind(&params.listen_on).await {
+        let mut listen_on = params.listen_on;
+        let listener = match TcpListener::bind(&listen_on).await {
             Ok(listener) => listener,
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
                 tracing::warn!(
                     "{} is occupied, trying any available port.",
                     params.listen_on
                 );
-                TcpListener::bind("0.0.0.0:0").await?
+
+                listen_on.set_port(0);
+
+                TcpListener::bind(listen_on).await?
             }
             Err(err) => return Err(err.into()),
         };
@@ -421,8 +427,6 @@ where
         }
 
         network_worker.run(worker_msg_receiver, bandwidth).await;
-
-        tracing::error!("Subcoin network worker exited");
 
         Ok(())
     }

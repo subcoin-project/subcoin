@@ -33,7 +33,7 @@ impl Run {
     pub fn subcoin_network_params(&self, network: bitcoin::Network) -> subcoin_network::Params {
         subcoin_network::Params {
             network,
-            listen_on: self.network_params.listen.clone(),
+            listen_on: self.network_params.listen,
             bootnodes: self.network_params.bootnode.clone(),
             bootnode_only: self.network_params.bootnode_only,
             ipv4_only: self.network_params.ipv4_only,

@@ -1,6 +1,7 @@
 use clap::Parser;
 use sc_consensus_nakamoto::{BlockExecutionStrategy, ExecutionBackend};
 use std::path::PathBuf;
+use subcoin_network::PeerId;
 
 /// Chain.
 ///
@@ -37,7 +38,7 @@ pub struct NetworkParams {
 
     /// Specify the local address and listen on it.
     #[clap(long, default_value = "127.0.0.1:8333")]
-    pub listen: String,
+    pub listen: PeerId,
 
     /// Whether to connect to the nodes using IPv6 address.
     #[clap(long)]
