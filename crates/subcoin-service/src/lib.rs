@@ -437,7 +437,7 @@ pub async fn finalize_confirmed_blocks<Block, Client, Backend>(
     Client: HeaderBackend<Block> + Finalizer<Block, Backend> + BlockchainEvents<Block> + 'static,
     Backend: sc_client_api::backend::Backend<Block> + 'static,
 {
-    const MAJOR_SYNC_FINALIZATION_STEP: u32 = 10;
+    const MAJOR_SYNC_FINALIZATION_STEP: u32 = 100;
 
     let mut block_import_stream = client.import_notification_stream();
 
