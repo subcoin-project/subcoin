@@ -118,12 +118,10 @@ subcoin-service = { path = "crates/subcoin-service" }
 subcoin-test-service = { path = "crates/subcoin-test-service" }
 
 [profile.release]
-debug = true
 panic = "abort"
 
 [profile.production]
 inherits = "release"
-debug = false
 # Sacrifice compile speed for execution speed by using optimization flags:
 lto = "fat"       # https://doc.rust-lang.org/rustc/linker-plugin-lto.html
 codegen-units = 1 # https://doc.rust-lang.org/rustc/codegen-options/index.html#codegen-units
