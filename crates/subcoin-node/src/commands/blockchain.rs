@@ -1,4 +1,5 @@
 use crate::cli::params::CommonParams;
+use crate::utils::Yield;
 use pallet_bitcoin::Coin;
 use sc_cli::{ImportParams, NodeKeyParams, SharedParams};
 use sc_client_api::{HeaderBackend, StorageProvider};
@@ -61,7 +62,7 @@ impl BlockchainCmd {
 
     pub async fn run(self, client: Arc<FullClient>) -> sc_cli::Result<()> {
         match self {
-            Self::GetTxOutSetInfo { height, .. } => gettxoutsetinfo(&client, height),
+            Self::GetTxOutSetInfo { height, .. } => gettxoutsetinfo(&client, height).await,
         }
     }
 }
@@ -80,7 +81,7 @@ impl sc_cli::CliConfiguration for BlockchainCmd {
     }
 }
 
-fn gettxoutsetinfo(client: &Arc<FullClient>, height: Option<u32>) -> sc_cli::Result<()> {
+async fn gettxoutsetinfo(client: &Arc<FullClient>, height: Option<u32>) -> sc_cli::Result<()> {
     const FINAL_PREFIX_LEN: usize = 32;
 
     let storage_prefix = subcoin_service::CoinStorageKey.storage_prefix();
@@ -109,11 +110,15 @@ fn gettxoutsetinfo(client: &Arc<FullClient>, height: Option<u32>) -> sc_cli::Res
         if txid == genesis_txid {
             continue;
         }
-        let coin =
-            Coin::decode(&mut value.as_slice()).expect("Coin must be decoded successfully; qed");
+        let coin = Coin::decode(&mut value.as_slice())
+            .expect("Coin read from DB must be decoded successfully; qed");
         txouts += 1;
         total_amount += coin.amount;
+        // https://github.com/bitcoin/bitcoin/blob/33af14e31b9fa436029a2bb8c2b11de8feb32f86/src/kernel/coinstats.cpp#L40
         bogosize += 50 + coin.script_pubkey.len();
+
+        // Yield here allows to make the process interruptible by ctrl_c.
+        Yield::new().await;
     }
 
     let bitcoin_block_hash = client
