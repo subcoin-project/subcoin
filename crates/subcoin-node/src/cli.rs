@@ -2,6 +2,7 @@ pub mod params;
 
 use crate::commands::import_blocks::{ImportBlocks, ImportBlocksCmd};
 use crate::commands::run::{Run, RunCmd};
+use crate::commands::tools::Tools;
 use crate::substrate_cli::SubstrateCli;
 use clap::Parser;
 use frame_benchmarking_cli::{BenchmarkCmd, SUBSTRATE_REFERENCE_HARDWARE};
@@ -21,6 +22,10 @@ pub enum Command {
 
     /// Import blocks.
     ImportBlocks(ImportBlocks),
+
+    /// Utility tools.
+    #[command(subcommand)]
+    Tools(Tools),
 
     /// Validate blocks.
     CheckBlock(Box<sc_cli::CheckBlockCmd>),
@@ -220,6 +225,7 @@ pub fn run() -> sc_cli::Result<()> {
                 ))
             })
         }
+        Command::Tools(tools) => tools.run(),
         Command::CheckBlock(cmd) => {
             let runner = SubstrateCli.create_runner(&*cmd)?;
             runner.async_run(|config| {
