@@ -29,12 +29,15 @@ The Subcoin node executable `subcoin` should be present at `target/production/su
 ### Run `bitcoind`
 
 Firstly, we need to install the `bitcoind` binary which can be downloaded directly from [https://bitcoincore.org/en/download](https://bitcoincore.org/en/download/).
-And then we need to spin up a `bitcoind` node with `txindex` enabled. For instance, we use `/tmp/btc-data` as the data dir:
+And then we need to spin up a `bitcoind` node with `txindex` and `coinstatsindex` enabled. `txindex` is required to import the blocks in subcoin, `coinstatsindex` is required
+to query the UTXO set of specific block later.
+
+For instance, we use `/tmp/btc-data` as the data dir:
 
 <!-- TODO: specify the exact version of bitcoind we are using here. -->
 
 ```bash
-mkdir -p /tmp/btc-data && ./src/bitcoind -datadir=/tmp/btc-data -txindex
+mkdir -p /tmp/btc-data && ./src/bitcoind -datadir=/tmp/btc-data -txindex -coinstatsindex
 ```
 
 Keep the `bitcoind` process running for a while and ensure it has synced a number of blocks.
@@ -82,4 +85,14 @@ Note that the `bitcoind` process must be stopped before running `subcoin import-
 Error: Application(OpError { kind: None, message: "LevelDB error: IO error: lock /tmp/btc-data/blocks/index/LOCK: Resource temporarily unavailable" })
 ```
 
-TODO: verify the state of UTXO
+### Verify the state of UTXO set
+
+Once the bitcoin blocks are imported to subcoin node successfully, we can check the correctness of the UTXO set.
+
+```bash
+./src/bitcoin-cli -datadir=/tmp/btc-data gettxoutsetinfo none 10000 true
+```
+
+```bash
+./target/release/subcoin blockchain gettxoutsetinfo --height 10000 -d /tmp/subcoin-data
+```
