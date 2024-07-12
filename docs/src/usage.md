@@ -29,7 +29,7 @@ mkdir -p /tmp/btc-data && ./src/bitcoind -datadir=/tmp/btc-data -txindex -coinst
 
 Keep the `bitcoind` process running for a while and ensure it has synced a number of blocks.
 
-```
+```text
 ...
 8-29T01:17:02Z' progress=0.001342 cache=33.0MiB(304329txo)
 2024-07-11T17:23:10Z UpdateTip: new best=00000000000008c273c4c215892eacbafec33c199cfd3d9b539cdb6aafc39f54 height=142979 version=0x00000001 log2_work=66.385350 tx=1392173 date='2011-08-29T01:23:19Z' progress=0.001342 cache=33.0MiB(304442txo)
