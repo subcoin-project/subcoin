@@ -1,28 +1,15 @@
-# Getting Started
+# Using Subcoin
 
-## Installation
+<!-- clap-markdown-toc -->
 
-### Compile from source
+*   [Import bitcoin blocks from `bitcoind` database](#import-bitcoin-blocks-from-`bitcoind`-database)
+    *   [Run `bitcoind`](#run-`bitcoind`)
+    *   [Run `subcoin import-blocks`](#run-`subcoin-import-blocks`)
+    *   [Verify the state of UTXO set](#verify-the-state-of-utxo-set)
 
-#### Install prerequisites
+<!-- /clap-markdown-toc -->
 
-Since subcoin is a Substrate-based chain, you must install the necessary development tools to compile the binary from source.
-Please refer to https://docs.substrate.io/install/ for the full guide of installing the prerequisites.
-
-#### Compile subcoin node binary
-
-Once the required packages and Rust installed, we can proceed to compile the binary.
-
-```bash
-cargo build --profile production --bin subcoin
-```
-
-The Subcoin node executable `subcoin` should be present at `target/production/subcoin`.
-
-### Docker
-
-```
-```
+This page only describes a subnet of features supported in subcoin with details, check out `subcoin --help` for the full usage.
 
 ## Import bitcoin blocks from `bitcoind` database
 
@@ -61,7 +48,7 @@ target/release/subcoin import-blocks /tmp/btc-data
 
 You'll see the output like this:
 
-```
+```log
 2024-07-12 01:28:51 🔨 Initializing Genesis block/state (state: 0x1c68…f3f8, header-hash: 0xbdc8…a76b)
 2024-07-12 01:28:53 🏁 CPU score: 1.15 GiBs
 2024-07-12 01:28:53 🏁 Memory score: 13.87 GiBs
@@ -79,19 +66,26 @@ You'll see the output like this:
 ...
 ```
 
-Note that the `bitcoind` process must be stopped before running `subcoin import-blocks` otherwise you will run into the error as following.
+<div class="warning">
 
-```
+NOTE: _The bitcoind process must be stopped when running the import-blocks command otherwise you will run into the following error_:
+
+```text
 Error: Application(OpError { kind: None, message: "LevelDB error: IO error: lock /tmp/btc-data/blocks/index/LOCK: Resource temporarily unavailable" })
 ```
 
+</div>
+
 ### Verify the state of UTXO set
 
-Once the bitcoin blocks are imported to subcoin node successfully, we can check the correctness of the UTXO set.
+`bitcoind` offers an interface to inspect the state of UTXO set, we can use it to check the the correctness of subcoin's the UTXO set after the blocks
+imported to the subcoin node successfully. For instance, export the UTXO set information at height 10000:
 
 ```bash
 ./src/bitcoin-cli -datadir=/tmp/btc-data gettxoutsetinfo none 10000 true
 ```
+
+Check out the state of UTXO set in subcoin at the same height:
 
 ```bash
 ./target/release/subcoin blockchain gettxoutsetinfo --height 10000 -d /tmp/subcoin-data
