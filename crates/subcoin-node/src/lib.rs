@@ -3,6 +3,7 @@ mod commands;
 mod rpc;
 mod substrate_cli;
 mod transaction_pool;
+mod utils;
 
 pub use self::cli::run;
 

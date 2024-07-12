@@ -25,6 +25,12 @@ planning stages.
 by downloading all headers and the state at a specific block, in decentralized manner.
 - 🔗 **Substrate Integration**: Utilizes Substrate framework to provide production-level blockchain infrastructures.
 
+## Run Tests
+
+```bash
+cargo test --workspace --all
+```
+
 ## Disclaimer
 
 **Do not use Subcoin in production.** It is a heavy work in progress, not feature-complete and the code

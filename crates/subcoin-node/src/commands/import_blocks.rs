@@ -1,4 +1,5 @@
 use crate::cli::params::CommonParams;
+use crate::utils::Yield;
 use bitcoin_explorer::BitcoinDB;
 use sc_cli::{ImportParams, NodeKeyParams, SharedParams};
 use sc_client_api::HeaderBackend;
@@ -80,7 +81,7 @@ impl ImportBlocksCmd {
     ) -> sc_cli::Result<()> {
         let from = (client.info().best_number + 1) as usize;
 
-        let bitcoind_backend = BitcoinBackend::new(&data_dir);
+        let bitcoind_backend = BitcoinBackend::new(&data_dir)?;
         let max = bitcoind_backend.block_count();
         let to = self.to.unwrap_or(max).min(max);
 
@@ -114,7 +115,7 @@ impl ImportBlocksCmd {
             );
 
         for index in from..=to {
-            let block = bitcoind_backend.block_at(index);
+            let block = bitcoind_backend.block_at(index)?;
             bitcoin_block_import
                 .import_block(block)
                 .await
@@ -234,53 +235,27 @@ struct BitcoinBackend {
 }
 
 impl BitcoinBackend {
-    fn new(path: impl AsRef<Path>) -> Self {
-        let db = BitcoinDB::new(path.as_ref(), true).expect("Failed to open Bitcoin DB");
-        Self { db }
+    fn new(path: impl AsRef<Path>) -> sc_cli::Result<Self> {
+        let db = BitcoinDB::new(path.as_ref(), true)
+            .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
+        Ok(Self { db })
     }
 
-    fn block_at(&self, height: usize) -> bitcoin::Block {
+    fn block_at(&self, height: usize) -> sc_cli::Result<bitcoin::Block> {
         use bitcoin::consensus::Decodable;
 
-        let raw_block = self.db.get_raw_block(height).expect("Failed to get block");
+        let raw_block = self.db.get_raw_block(height).map_err(|err| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to get bitcoin block at #{height}: {err}"),
+            )
+        })?;
 
-        bitcoin::Block::consensus_decode(&mut raw_block.as_slice())
-            .expect("Bad block in the database")
+        Ok(bitcoin::Block::consensus_decode(&mut raw_block.as_slice())
+            .expect("Bad block in the database"))
     }
 
     fn block_count(&self) -> usize {
         self.db.get_block_count()
-    }
-}
-
-/// A future that will always `yield` on the first call of `poll` but schedules the
-/// current task for re-execution.
-///
-/// This is done by getting the waker and calling `wake_by_ref` followed by returning
-/// `Pending`. The next time the `poll` is called, it will return `Ready`.
-struct Yield(bool);
-
-impl Yield {
-    fn new() -> Self {
-        Self(false)
-    }
-}
-
-impl futures::Future for Yield {
-    type Output = ();
-
-    fn poll(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut futures::task::Context<'_>,
-    ) -> futures::task::Poll<()> {
-        use futures::task::Poll;
-
-        if !self.0 {
-            self.0 = true;
-            cx.waker().wake_by_ref();
-            Poll::Pending
-        } else {
-            Poll::Ready(())
-        }
     }
 }
