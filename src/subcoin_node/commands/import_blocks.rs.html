@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-node/src/commands/import_blocks.rs`."><title>import_blocks.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../../static.files/rustdoc-dd39b87e5fcfba68.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="subcoin_node" data-themes="" data-resource-suffix="" data-rustdoc-version="1.81.0-nightly (0c81f94b9 2024-07-10)" data-channel="nightly" data-search-js="search-d234aafac6c221dd.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-20a3ad099b048cf2.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-node/src/commands/import_blocks.rs`."><title>import_blocks.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../../static.files/rustdoc-dd39b87e5fcfba68.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="subcoin_node" data-themes="" data-resource-suffix="" data-rustdoc-version="1.81.0-nightly (5315cbe15 2024-07-11)" data-channel="nightly" data-search-js="search-d234aafac6c221dd.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-20a3ad099b048cf2.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -259,32 +259,8 @@
 <a href="#259" id="259">259</a>
 <a href="#260" id="260">260</a>
 <a href="#261" id="261">261</a>
-<a href="#262" id="262">262</a>
-<a href="#263" id="263">263</a>
-<a href="#264" id="264">264</a>
-<a href="#265" id="265">265</a>
-<a href="#266" id="266">266</a>
-<a href="#267" id="267">267</a>
-<a href="#268" id="268">268</a>
-<a href="#269" id="269">269</a>
-<a href="#270" id="270">270</a>
-<a href="#271" id="271">271</a>
-<a href="#272" id="272">272</a>
-<a href="#273" id="273">273</a>
-<a href="#274" id="274">274</a>
-<a href="#275" id="275">275</a>
-<a href="#276" id="276">276</a>
-<a href="#277" id="277">277</a>
-<a href="#278" id="278">278</a>
-<a href="#279" id="279">279</a>
-<a href="#280" id="280">280</a>
-<a href="#281" id="281">281</a>
-<a href="#282" id="282">282</a>
-<a href="#283" id="283">283</a>
-<a href="#284" id="284">284</a>
-<a href="#285" id="285">285</a>
-<a href="#286" id="286">286</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::params::CommonParams;
+<span class="kw">use </span><span class="kw">crate</span>::utils::Yield;
 <span class="kw">use </span>bitcoin_explorer::BitcoinDB;
 <span class="kw">use </span>sc_cli::{ImportParams, NodeKeyParams, SharedParams};
 <span class="kw">use </span>sc_client_api::HeaderBackend;
@@ -366,7 +342,7 @@
     ) -&gt; sc_cli::Result&lt;()&gt; {
         <span class="kw">let </span>from = (client.info().best_number + <span class="number">1</span>) <span class="kw">as </span>usize;
 
-        <span class="kw">let </span>bitcoind_backend = BitcoinBackend::new(<span class="kw-2">&amp;</span>data_dir);
+        <span class="kw">let </span>bitcoind_backend = BitcoinBackend::new(<span class="kw-2">&amp;</span>data_dir)<span class="question-mark">?</span>;
         <span class="kw">let </span>max = bitcoind_backend.block_count();
         <span class="kw">let </span>to = <span class="self">self</span>.to.unwrap_or(max).min(max);
 
@@ -400,7 +376,7 @@
             );
 
         <span class="kw">for </span>index <span class="kw">in </span>from..=to {
-            <span class="kw">let </span>block = bitcoind_backend.block_at(index);
+            <span class="kw">let </span>block = bitcoind_backend.block_at(index)<span class="question-mark">?</span>;
             bitcoin_block_import
                 .import_block(block)
                 .<span class="kw">await
@@ -520,54 +496,28 @@
 }
 
 <span class="kw">impl </span>BitcoinBackend {
-    <span class="kw">fn </span>new(path: <span class="kw">impl </span>AsRef&lt;Path&gt;) -&gt; <span class="self">Self </span>{
-        <span class="kw">let </span>db = BitcoinDB::new(path.as_ref(), <span class="bool-val">true</span>).expect(<span class="string">"Failed to open Bitcoin DB"</span>);
-        <span class="self">Self </span>{ db }
+    <span class="kw">fn </span>new(path: <span class="kw">impl </span>AsRef&lt;Path&gt;) -&gt; sc_cli::Result&lt;<span class="self">Self</span>&gt; {
+        <span class="kw">let </span>db = BitcoinDB::new(path.as_ref(), <span class="bool-val">true</span>)
+            .map_err(|err| sc_cli::Error::Application(Box::new(err)))<span class="question-mark">?</span>;
+        <span class="prelude-val">Ok</span>(<span class="self">Self </span>{ db })
     }
 
-    <span class="kw">fn </span>block_at(<span class="kw-2">&amp;</span><span class="self">self</span>, height: usize) -&gt; bitcoin::Block {
+    <span class="kw">fn </span>block_at(<span class="kw-2">&amp;</span><span class="self">self</span>, height: usize) -&gt; sc_cli::Result&lt;bitcoin::Block&gt; {
         <span class="kw">use </span>bitcoin::consensus::Decodable;
 
-        <span class="kw">let </span>raw_block = <span class="self">self</span>.db.get_raw_block(height).expect(<span class="string">"Failed to get block"</span>);
+        <span class="kw">let </span>raw_block = <span class="self">self</span>.db.get_raw_block(height).map_err(|err| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                <span class="macro">format!</span>(<span class="string">"Failed to get bitcoin block at #{height}: {err}"</span>),
+            )
+        })<span class="question-mark">?</span>;
 
-        bitcoin::Block::consensus_decode(<span class="kw-2">&amp;mut </span>raw_block.as_slice())
-            .expect(<span class="string">"Bad block in the database"</span>)
+        <span class="prelude-val">Ok</span>(bitcoin::Block::consensus_decode(<span class="kw-2">&amp;mut </span>raw_block.as_slice())
+            .expect(<span class="string">"Bad block in the database"</span>))
     }
 
     <span class="kw">fn </span>block_count(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize {
         <span class="self">self</span>.db.get_block_count()
-    }
-}
-
-<span class="doccomment">/// A future that will always `yield` on the first call of `poll` but schedules the
-/// current task for re-execution.
-///
-/// This is done by getting the waker and calling `wake_by_ref` followed by returning
-/// `Pending`. The next time the `poll` is called, it will return `Ready`.
-</span><span class="kw">struct </span>Yield(bool);
-
-<span class="kw">impl </span>Yield {
-    <span class="kw">fn </span>new() -&gt; <span class="self">Self </span>{
-        <span class="self">Self</span>(<span class="bool-val">false</span>)
-    }
-}
-
-<span class="kw">impl </span>futures::Future <span class="kw">for </span>Yield {
-    <span class="kw">type </span>Output = ();
-
-    <span class="kw">fn </span>poll(
-        <span class="kw-2">mut </span><span class="self">self</span>: std::pin::Pin&lt;<span class="kw-2">&amp;mut </span><span class="self">Self</span>&gt;,
-        cx: <span class="kw-2">&amp;mut </span>futures::task::Context&lt;<span class="lifetime">'_</span>&gt;,
-    ) -&gt; futures::task::Poll&lt;()&gt; {
-        <span class="kw">use </span>futures::task::Poll;
-
-        <span class="kw">if </span>!<span class="self">self</span>.<span class="number">0 </span>{
-            <span class="self">self</span>.<span class="number">0 </span>= <span class="bool-val">true</span>;
-            cx.waker().wake_by_ref();
-            Poll::Pending
-        } <span class="kw">else </span>{
-            Poll::Ready(())
-        }
     }
 }
 </code></pre></div></section></main></body></html>

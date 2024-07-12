@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-node/src/cli.rs`."><title>cli.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-dd39b87e5fcfba68.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_node" data-themes="" data-resource-suffix="" data-rustdoc-version="1.81.0-nightly (0c81f94b9 2024-07-10)" data-channel="nightly" data-search-js="search-d234aafac6c221dd.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-20a3ad099b048cf2.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-node/src/cli.rs`."><title>cli.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-dd39b87e5fcfba68.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_node" data-themes="" data-resource-suffix="" data-rustdoc-version="1.81.0-nightly (5315cbe15 2024-07-11)" data-channel="nightly" data-search-js="search-d234aafac6c221dd.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-20a3ad099b048cf2.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -334,10 +334,42 @@
 <a href="#334" id="334">334</a>
 <a href="#335" id="335">335</a>
 <a href="#336" id="336">336</a>
+<a href="#337" id="337">337</a>
+<a href="#338" id="338">338</a>
+<a href="#339" id="339">339</a>
+<a href="#340" id="340">340</a>
+<a href="#341" id="341">341</a>
+<a href="#342" id="342">342</a>
+<a href="#343" id="343">343</a>
+<a href="#344" id="344">344</a>
+<a href="#345" id="345">345</a>
+<a href="#346" id="346">346</a>
+<a href="#347" id="347">347</a>
+<a href="#348" id="348">348</a>
+<a href="#349" id="349">349</a>
+<a href="#350" id="350">350</a>
+<a href="#351" id="351">351</a>
+<a href="#352" id="352">352</a>
+<a href="#353" id="353">353</a>
+<a href="#354" id="354">354</a>
+<a href="#355" id="355">355</a>
+<a href="#356" id="356">356</a>
+<a href="#357" id="357">357</a>
+<a href="#358" id="358">358</a>
+<a href="#359" id="359">359</a>
+<a href="#360" id="360">360</a>
+<a href="#361" id="361">361</a>
+<a href="#362" id="362">362</a>
+<a href="#363" id="363">363</a>
+<a href="#364" id="364">364</a>
+<a href="#365" id="365">365</a>
+<a href="#366" id="366">366</a>
 </pre></div><pre class="rust"><code><span class="kw">pub mod </span>params;
 
+<span class="kw">use </span><span class="kw">crate</span>::commands::blockchain::{Blockchain, BlockchainCmd};
 <span class="kw">use </span><span class="kw">crate</span>::commands::import_blocks::{ImportBlocks, ImportBlocksCmd};
 <span class="kw">use </span><span class="kw">crate</span>::commands::run::{Run, RunCmd};
+<span class="kw">use </span><span class="kw">crate</span>::commands::tools::Tools;
 <span class="kw">use </span><span class="kw">crate</span>::substrate_cli::SubstrateCli;
 <span class="kw">use </span>clap::Parser;
 <span class="kw">use </span>frame_benchmarking_cli::{BenchmarkCmd, SUBSTRATE_REFERENCE_HARDWARE};
@@ -357,6 +389,14 @@
 
     <span class="doccomment">/// Import blocks.
     </span>ImportBlocks(ImportBlocks),
+
+    <span class="doccomment">/// Utility tools.
+    </span><span class="attr">#[command(subcommand)]
+    </span>Tools(Tools),
+
+    <span class="doccomment">/// Blockchain.
+    </span><span class="attr">#[command(subcommand)]
+    </span>Blockchain(Blockchain),
 
     <span class="doccomment">/// Validate blocks.
     </span>CheckBlock(Box&lt;sc_cli::CheckBlockCmd&gt;),
@@ -554,6 +594,26 @@
                     import_blocks_cmd.run(client, block_executor, data_dir),
                     task_manager,
                 ))
+            })
+        }
+        Command::Tools(tools) =&gt; tools.run(),
+        Command::Blockchain(blockchain) =&gt; {
+            <span class="kw">let </span>block_execution_strategy = blockchain.block_execution_strategy();
+            <span class="kw">let </span>cmd = BlockchainCmd::new(blockchain);
+            <span class="kw">let </span>runner = SubstrateCli.create_runner(<span class="kw-2">&amp;</span>cmd)<span class="question-mark">?</span>;
+            runner.async_run(|config| {
+                <span class="kw">let </span>subcoin_service::NodeComponents {
+                    client,
+                    task_manager,
+                    ..
+                } = subcoin_service::new_node(subcoin_service::SubcoinConfiguration {
+                    network: bitcoin::Network::Bitcoin,
+                    config: <span class="kw-2">&amp;</span>config,
+                    block_execution_strategy,
+                    no_hardware_benchmarks: <span class="bool-val">true</span>,
+                    storage_monitor,
+                })<span class="question-mark">?</span>;
+                <span class="prelude-val">Ok</span>((cmd.run(client), task_manager))
             })
         }
         Command::CheckBlock(cmd) =&gt; {
