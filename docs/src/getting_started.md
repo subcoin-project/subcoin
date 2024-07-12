@@ -31,6 +31,8 @@ The Subcoin node executable `subcoin` should be present at `target/production/su
 Firstly, we need to install the `bitcoind` binary which can be downloaded directly from [https://bitcoincore.org/en/download](https://bitcoincore.org/en/download/).
 And then we need to spin up a `bitcoind` node with `txindex` enabled. For instance, we use `/tmp/btc-data` as the data dir:
 
+<!-- TODO: specify the exact version of bitcoind we are using here. -->
+
 ```bash
 mkdir -p /tmp/btc-data && ./src/bitcoind -datadir=/tmp/btc-data -txindex
 ```

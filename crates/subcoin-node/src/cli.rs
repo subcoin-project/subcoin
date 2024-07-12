@@ -1,5 +1,6 @@
 pub mod params;
 
+use crate::commands::blockchain::{Blockchain, BlockchainCmd};
 use crate::commands::import_blocks::{ImportBlocks, ImportBlocksCmd};
 use crate::commands::run::{Run, RunCmd};
 use crate::commands::tools::Tools;
@@ -26,6 +27,10 @@ pub enum Command {
     /// Utility tools.
     #[command(subcommand)]
     Tools(Tools),
+
+    /// Blockchain.
+    #[command(subcommand)]
+    Blockchain(Blockchain),
 
     /// Validate blocks.
     CheckBlock(Box<sc_cli::CheckBlockCmd>),
@@ -226,6 +231,25 @@ pub fn run() -> sc_cli::Result<()> {
             })
         }
         Command::Tools(tools) => tools.run(),
+        Command::Blockchain(blockchain) => {
+            let block_execution_strategy = blockchain.block_execution_strategy();
+            let cmd = BlockchainCmd::new(blockchain);
+            let runner = SubstrateCli.create_runner(&cmd)?;
+            runner.async_run(|config| {
+                let subcoin_service::NodeComponents {
+                    client,
+                    task_manager,
+                    ..
+                } = subcoin_service::new_node(subcoin_service::SubcoinConfiguration {
+                    network: bitcoin::Network::Bitcoin,
+                    config: &config,
+                    block_execution_strategy,
+                    no_hardware_benchmarks: true,
+                    storage_monitor,
+                })?;
+                Ok((cmd.run(client), task_manager))
+            })
+        }
         Command::CheckBlock(cmd) => {
             let runner = SubstrateCli.create_runner(&*cmd)?;
             runner.async_run(|config| {

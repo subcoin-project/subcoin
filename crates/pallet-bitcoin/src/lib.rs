@@ -46,6 +46,11 @@ impl Txid {
 
         Self(H256::from(d))
     }
+
+    pub fn into_bitcoin_txid(self) -> bitcoin::Txid {
+        bitcoin::consensus::Decodable::consensus_decode(&mut self.encode().as_slice())
+            .expect("txid must be encoded correctly; qed")
+    }
 }
 
 impl core::fmt::Debug for Txid {
@@ -61,11 +66,11 @@ impl core::fmt::Debug for Txid {
 #[derive(Debug, TypeInfo, Encode, Decode)]
 pub struct Coin {
     /// Whether the coin is from a coinbase transaction.
-    is_coinbase: bool,
+    pub is_coinbase: bool,
     /// Transfer value in satoshis.
-    amount: u64,
+    pub amount: u64,
     /// Spending condition of the output.
-    script_pubkey: Vec<u8>,
+    pub script_pubkey: Vec<u8>,
 }
 
 impl MaxEncodedLen for Coin {
@@ -190,6 +195,12 @@ pub fn coin_storage_key<T: Config>(bitcoin_txid: bitcoin::Txid, index: Vout) -> 
 
     let txid = Txid::from_bitcoin_txid(bitcoin_txid);
     Coins::<T>::storage_double_map_final_key(txid, index)
+}
+
+pub fn coin_storage_prefix<T: Config>() -> [u8; 32] {
+    use frame_support::StoragePrefixedMap;
+
+    Coins::<T>::final_prefix()
 }
 
 impl<T: Config> Pallet<T> {
