@@ -62,7 +62,6 @@ jobs:
           tags: |
             type=ref,event=tag
             type=ref,event=branch
-            type=sha
           flavor: |
             latest=false
             suffix=${{ matrix.platform.image-suffix }}
