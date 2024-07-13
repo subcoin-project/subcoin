@@ -9,9 +9,6 @@ on:
       - 'release/**'
     tags:
       - '**'
-  pull_request:
-    branches:
-      - main
 
 jobs:
   container-linux:
