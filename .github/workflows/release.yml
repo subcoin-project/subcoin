@@ -1,38 +1,15 @@
+# Create a prerelease, build and upload executables to the prerelease when pushing a tag.
 name: Build Executables
 
 on:
   push:
     tags:
-      - '*'
+      - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
-
-  release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Get version
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      - name: Create Release
-        id: create_release
-        uses: softprops/action-gh-release@v2
-        # Create release when pushing a tag.
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          name: Release ${{ github.ref }}
-          tag_name: ${{ github.ref }}
-          # TODO: proper release content, now it's manually updated.
-          body: Release ${{ steps.get_version.outputs.VERSION }}
-          draft: true
-          prerelease: true
-
   publish:
     name: Build ${{ matrix.build.target }} on ${{ matrix.build.os }}
     runs-on: ${{ matrix.build.os }}
@@ -115,12 +92,21 @@ jobs:
       run: |
         ${{ matrix.build.command }} build --profile production --bin subcoin --locked --target ${{ matrix.build.target }}
 
+    - name: Get version without v prefix (Ubuntu/macOS)
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+      if: ${{ matrix.build.os != 'windows-latest' }}
+
+    - name: Get version without v prefix (Windows)
+      run: |
+        $version = "${{ github.ref_name }}".substring(1)
+        echo "VERSION=$version" >> $env:GITHUB_ENV
+      if: ${{ matrix.build.os == 'windows-latest' }}
+
     - name: Upload binaries to release
-      uses: svenstaro/upload-release-action@v1-release
-      if: startsWith(github.ref, 'refs/tags/')
+      uses: svenstaro/upload-release-action@v2
       with:
         repo_token: ${{ secrets.GITHUB_TOKEN }}
         file: target/${{ matrix.build.target }}/production/${{ matrix.build.artifact_name }}
-        asset_name: subcoin-${{ github.ref }}-${{ matrix.build.os_prefix }}-${{ matrix.build.target }}
         tag: ${{ github.ref }}
-        overwrite: true
+        asset_name: ${{ matrix.build.artifact_name }}-${{ env.VERSION }}-${{ matrix.build.target }}
+        prerelease: true
