@@ -42,9 +42,8 @@ jobs:
             targets: wasm32-unknown-unknown
             components: rust-src, clippy
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get install protobuf-compiler
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
 
       - name: Run clippy
         run: |
@@ -70,8 +69,8 @@ jobs:
         # key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         # restore-keys: ${{ runner.os }}-cargo-
 
-    - name: Install dependencies
-      run: sudo apt-get install protobuf-compiler
+    - name: Install Protoc
+      uses: arduino/setup-protoc@v3
 
     # Buy some more disk space as we encountered the error `No space left on device`.
     - name: Free Disk Space (Ubuntu)
