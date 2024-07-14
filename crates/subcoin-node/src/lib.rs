@@ -1,3 +1,7 @@
+//! Subcoin Node Library.
+//!
+//! The main feature of this library is to start and run the node as a CLI application.
+
 mod cli;
 mod commands;
 mod rpc;

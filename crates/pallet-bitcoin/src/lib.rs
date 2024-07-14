@@ -1,10 +1,11 @@
 //! # Bitcoin Pallet
 //!
-//! This pallet is designed to be minimalist, containing only one storage item for maintaining the state
-//! of the UTXO (Unspent Transaction Output) set by processing the inputs and outputs of each Bitcoin
-//! transaction wrapped in [`Call::transact`]. There is no verification logic within the
-//! pallet, all validation work should be performed outside the runtime. This approach simplifies
-//! off-runtime execution, allowing for easier syncing performance optimization.
+//! This pallet is designed to be minimalist, containing only one storage item for maintaining
+//! the state of the UTXO (Unspent Transaction Output) set by processing the inputs and outputs
+//! of each Bitcoin transaction wrapped in [`Call::transact`]. There is no verification logic
+//! within the pallet, all validation work should be performed outside the runtime. This approach
+//! simplifies off-runtime execution, allowing for easier syncing performance optimization off
+//! chain.
 
 // Ensure we're `no_std` when compiling for Wasm.
 #![cfg_attr(not(feature = "std"), no_std)]

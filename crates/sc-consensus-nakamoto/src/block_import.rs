@@ -1,3 +1,23 @@
+//! This module provides the implementation for importing Bitcoin blocks into Subcoin.
+//!
+//! Each Bitcoin block is converted into a Substrate block and imported into the database.
+//! The Bitcoin header is included in the Substrate header as a `DigestItem`, each Bitcoin
+//! transaction is wrapped into an unsigned extrinsic defined in pallet-bitcoin.
+//!
+//! Key components:
+//!
+//! - [`BitcoinBlockImporter`]
+//!     The main struct responsible for importing Bitcoin blocks and managing the import process.
+//!
+//! - [`BitcoinBlockImport`]
+//!     An async trait for importing Bitcoin blocks, which is implemented by [`BitcoinBlockImporter`].
+//!
+//! - [`ImportConfig`]
+//!     Configuration for block import, including network type, verification level, and execution options.
+//!
+//! - [`ImportStatus`]
+//!     An enum representing the result of an import operation, with variants for different import outcomes.
+
 use crate::block_executor::{BlockExecutor, ExecuteBlockResult};
 use crate::verification::{BlockVerification, BlockVerifier};
 use bitcoin::hashes::Hash;

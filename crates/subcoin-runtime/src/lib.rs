@@ -15,8 +15,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Subcoin runtime is a minimalistic Substrate runtime, it does not implement all the typical
-//! runtime APIs the other runtimes would do.
+//! Subcoin runtime is a minimalistic Substrate runtime consisting of frame-system and
+//! pallet-bitcoin. It does not implement all the typical runtime APIs the normal runtimes
+//! would do as many of them does not make sense in Subcoin.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -255,7 +256,7 @@ mod types_common {
     // circular dependency (self-referential generics).
     pub type BlockOf<T, Extra = ()> = generic::Block<HeaderInner, ExtrinsicInner<T, Extra>>;
 
-    /// The opaque block type. This is the same [`BlockOf`], but it has
+    /// The opaque block type. This is the same `BlockOf`, but it has
     /// [`sp_runtime::OpaqueExtrinsic`] as its final extrinsic type.
     ///
     /// This should be provided to the client side as the extrinsic type.
