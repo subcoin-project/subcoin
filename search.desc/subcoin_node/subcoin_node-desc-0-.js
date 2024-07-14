@@ -1,1 +1,1 @@
-searchState.loadedDescShard("subcoin_node", 0, "Parse and run command line arguments")
+searchState.loadedDescShard("subcoin_node", 0, "Subcoin Node Library.\nParse and run command line arguments")
