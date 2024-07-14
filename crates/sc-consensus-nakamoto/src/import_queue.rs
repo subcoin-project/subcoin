@@ -128,7 +128,7 @@ async fn block_import_process(
 
 type BlockImportStatus = sc_consensus::BlockImportStatus<u32>;
 
-/// Result of [`import_many_blocks`].
+/// Result of `import_many_blocks`.
 #[derive(Debug)]
 pub struct ImportManyBlocksResult {
     /// The number of blocks imported successfully.

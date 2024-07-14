@@ -40,7 +40,7 @@ where
     Block: BlockT + 'static,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + 'static,
 {
-    /// Constructs a new instance of [`Blockchain`].
+    /// Constructs a new instance of [`Subcoin`].
     pub fn new(client: Arc<Client>, network_handle: NetworkHandle) -> Self {
         Self {
             client,
