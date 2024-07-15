@@ -9014,6 +9014,7 @@ name = "subcoin-runtime-primitives"
 version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
+ "scale-info",
  "sp-api",
  "sp-runtime",
  "sp-std 14.0.0 (git+https://github.com/liuchengxu/polkadot-sdk?branch=subcoin)",

@@ -1,4 +1,3 @@
-use crate::verification::Coin;
 use async_trait::async_trait;
 use bitcoin::OutPoint;
 use sc_client_api::{AuxStore, Backend, BlockBackend, HeaderBackend, StorageProvider};
@@ -8,7 +7,7 @@ use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT};
 use sp_state_machine::{StorageKey, StorageValue};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subcoin_primitives::runtime::Subcoin;
+use subcoin_primitives::runtime::{Coin, Subcoin};
 use subcoin_primitives::{BitcoinTransactionAdapter, CoinStorageKey};
 
 /// A simply way to track the overall execution info for optimization purpose.
