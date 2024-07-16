@@ -157,8 +157,9 @@ where
         }
 
         // Check duplicate transactions
-        let mut seen_transactions = HashSet::new();
-        let mut txids = HashMap::new();
+        let tx_count = block.txdata.len();
+        let mut seen_transactions = HashSet::with_capacity(tx_count);
+        let mut txids = HashMap::with_capacity(tx_count);
         for (index, tx) in block.txdata.iter().enumerate() {
             let txid = tx.compute_txid();
             if !seen_transactions.insert(txid) {
@@ -167,6 +168,7 @@ where
             }
 
             check_transaction_sanity(tx)?;
+
             txids.insert(index, txid);
         }
 
@@ -223,7 +225,7 @@ where
             for input in &tx.input {
                 let OutPoint { txid, vout } = input.previous_output;
 
-                let amount = match self.fetch_coin_at(parent_hash, txid, vout) {
+                let amount = match self.fetch_utxo_in_state(parent_hash, txid, vout) {
                     Some(coin) => coin.amount,
                     None => {
                         let get_txid = |tx_index: usize| {
@@ -254,12 +256,11 @@ where
                 total_input_value += amount;
             }
 
-            if total_input_value < total_output_value {
-                return Err(Error::InsufficientFunds);
-            }
-
+            // Total input value must be no less than total output value.
             // Tx fee is the difference between inputs and outputs.
-            let tx_fee = total_input_value - total_output_value;
+            let tx_fee = total_input_value
+                .checked_sub(total_output_value)
+                .ok_or(Error::InsufficientFunds)?;
 
             Ok(tx_fee)
         };
@@ -291,7 +292,7 @@ where
         Ok(())
     }
 
-    fn fetch_coin_at(&self, block_hash: Block::Hash, txid: Txid, index: u32) -> Option<Coin> {
+    fn fetch_utxo_in_state(&self, block_hash: Block::Hash, txid: Txid, index: u32) -> Option<Coin> {
         use codec::Decode;
 
         // Read state from the backend
