@@ -69,11 +69,11 @@ pub enum Error {
     BadScriptSigLength { got: usize, min: usize, max: usize },
     #[error("Transaction input refers to previous output that is null")]
     BadTxInput,
-    #[error("UTXO spent in #{block_number}:{txid} not found: {output:?}")]
+    #[error("UTXO spent in #{block_number}:{txid} not found: {out_point:?}")]
     UtxoNotFound {
         block_number: u32,
         txid: Txid,
-        output: OutPoint,
+        out_point: OutPoint,
     },
     #[error("Total output amount exceeds total input amount")]
     InsufficientFunds,
@@ -223,9 +223,9 @@ where
             let mut total_input_value = 0;
 
             for input in &tx.input {
-                let OutPoint { txid, vout } = input.previous_output;
+                let out_point = input.previous_output;
 
-                let amount = match self.fetch_utxo_in_state(parent_hash, txid, vout) {
+                let amount = match self.find_utxo_in_state(parent_hash, out_point) {
                     Some(coin) => coin.amount,
                     None => {
                         let get_txid = |tx_index: usize| {
@@ -233,22 +233,12 @@ where
                                 "Txid must exist as initialized in `check_block_sanity()`; qed",
                             )
                         };
-                        // Try to find UTXO from the previous transactions in current block.
-                        let take = tx_index.min(block.txdata.len());
-                        let transactions = &block.txdata[..=take];
-                        transactions
-                            .iter()
-                            .enumerate()
-                            .find_map(|(index, tx)| (get_txid(index) == txid).then_some(tx))
-                            .and_then(|tx| {
-                                tx.output
-                                    .get(vout as usize)
-                                    .map(|txout| txout.value.to_sat())
-                            })
+
+                        find_utxo_in_current_block(block, out_point, tx_index, get_txid)
                             .ok_or_else(|| Error::UtxoNotFound {
                                 block_number,
                                 txid: get_txid(tx_index),
-                                output: input.previous_output,
+                                out_point,
                             })?
                     }
                 };
@@ -268,7 +258,12 @@ where
         let mut block_fee = 0;
 
         // TODO: verify transactions in parallel.
-        for (index, tx) in transactions.iter().skip(1).enumerate() {
+        for (index, tx) in transactions.iter().enumerate() {
+            if index == 0 {
+                // TODO: verify coinbase script
+                continue;
+            }
+
             let tx_fee = verify_transaction(index, tx)?;
 
             block_fee += tx_fee;
@@ -292,7 +287,7 @@ where
         Ok(())
     }
 
-    fn fetch_utxo_in_state(&self, block_hash: Block::Hash, txid: Txid, index: u32) -> Option<Coin> {
+    fn find_utxo_in_state(&self, block_hash: Block::Hash, out_point: OutPoint) -> Option<Coin> {
         use codec::Decode;
 
         // Read state from the backend
@@ -300,7 +295,8 @@ where
         // TODO: optimizations:
         // - Read the state from the in memory backend.
         // - Maintain a flat in-memory UTXO cache and try to read from cache first.
-        let storage_key = self.coin_storage_key.storage_key(txid, index);
+        let OutPoint { txid, vout } = out_point;
+        let storage_key = self.coin_storage_key.storage_key(txid, vout);
 
         let maybe_storage_data = self
             .client
@@ -349,6 +345,27 @@ fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+// Try to find UTXO from the previous transactions in current block.
+fn find_utxo_in_current_block(
+    block: &BitcoinBlock,
+    out_point: OutPoint,
+    tx_index: usize,
+    get_txid: impl Fn(usize) -> Txid,
+) -> Option<u64> {
+    let OutPoint { txid, vout } = out_point;
+    block
+        .txdata
+        .iter()
+        .take(tx_index)
+        .enumerate()
+        .find_map(|(index, tx)| (get_txid(index) == txid).then_some(tx))
+        .and_then(|tx| {
+            tx.output
+                .get(vout as usize)
+                .map(|txout| txout.value.to_sat())
+        })
 }
 
 #[derive(Clone)]
@@ -494,5 +511,58 @@ fn calculate_next_work_required(
         pow_limit
     } else {
         target
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bitcoin::consensus::Decodable;
+    use bitcoin::hex::FromHex;
+
+    fn decode_raw_block(hex_str: &str) -> BitcoinBlock {
+        let data = Vec::<u8>::from_hex(hex_str).expect("Failed to convert hex str");
+        BitcoinBlock::consensus_decode(&mut data.as_slice())
+            .expect("Failed to convert hex data to Block")
+    }
+
+    #[test]
+    fn test_find_utxo_in_current_block() {
+        let test_block = std::env::current_dir()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("test_data")
+            .join("385044.data");
+        let raw_block = std::fs::read_to_string(test_block).unwrap();
+        let block = decode_raw_block(raw_block.trim());
+        println!("block: {:?}", block.header);
+
+        let txids = block
+            .txdata
+            .iter()
+            .enumerate()
+            .map(|(index, tx)| (index, tx.compute_txid()))
+            .collect::<HashMap<_, _>>();
+
+        // 385044:35:1
+        let out_point = OutPoint {
+            txid: "2b102a19161e5c93f71e16f9e8c9b2438f362c51ecc8f2a62e3c31d7615dd17d"
+                .parse()
+                .unwrap(),
+            vout: 1,
+        };
+
+        // The input of block 385044:36 is from the previous transaction 385044:35:1.
+        // https://www.blockchain.com/explorer/transactions/btc/5645cb0a3953b7766836919566b25321a976d06c958e69ff270358233a8c82d6
+        assert_eq!(
+            find_utxo_in_current_block(&block, out_point, 36, |index| txids
+                .get(&index)
+                .copied()
+                .unwrap()),
+            Some(295600000)
+        );
     }
 }
