@@ -22,11 +22,10 @@ use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_std::prelude::*;
 use sp_std::vec::Vec;
+use subcoin_runtime_primitives::Coin;
 
 // Re-export pallet items so that they can be accessed from the crate namespace.
 pub use pallet::*;
-
-const MAX_SCRIPT_SIZE: usize = 10_000;
 
 /// Transaction output index.
 pub type Vout = u32;
@@ -60,23 +59,6 @@ impl core::fmt::Debug for Txid {
             write!(f, "{:02x}", byte)?;
         }
         Ok(())
-    }
-}
-
-/// Unspent transaction output.
-#[derive(Debug, TypeInfo, Encode, Decode)]
-pub struct Coin {
-    /// Whether the coin is from a coinbase transaction.
-    pub is_coinbase: bool,
-    /// Transfer value in satoshis.
-    pub amount: u64,
-    /// Spending condition of the output.
-    pub script_pubkey: Vec<u8>,
-}
-
-impl MaxEncodedLen for Coin {
-    fn max_encoded_len() -> usize {
-        bool::max_encoded_len() + u64::max_encoded_len() + MAX_SCRIPT_SIZE
     }
 }
 

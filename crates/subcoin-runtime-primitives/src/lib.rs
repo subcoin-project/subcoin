@@ -2,6 +2,11 @@
 // TODO: This originates from `sp_api::decl_runtime_apis`.
 #![allow(clippy::multiple_bound_locations)]
 
+extern crate alloc;
+
+use alloc::vec::Vec;
+use codec::{Decode, Encode, MaxEncodedLen};
+use scale_info::TypeInfo;
 use sp_runtime::ConsensusEngineId;
 
 /// The `ConsensusEngineId` of Bitcoin block hash.
@@ -17,6 +22,25 @@ const COIN: u64 = 100_000_000;
 const INITIAL_SUBSIDY: u64 = 50 * COIN;
 
 const HALVING_INTERVAL: u32 = 210_000;
+
+const MAX_SCRIPT_SIZE: usize = 10_000;
+
+/// Unspent transaction output.
+#[derive(Debug, TypeInfo, Encode, Decode)]
+pub struct Coin {
+    /// Whether the coin is from a coinbase transaction.
+    pub is_coinbase: bool,
+    /// Transfer value in satoshis.
+    pub amount: u64,
+    /// Spending condition of the output.
+    pub script_pubkey: Vec<u8>,
+}
+
+impl MaxEncodedLen for Coin {
+    fn max_encoded_len() -> usize {
+        bool::max_encoded_len() + u64::max_encoded_len() + MAX_SCRIPT_SIZE
+    }
+}
 
 /// Returns the amount of subsidy in satoshis at given height.
 pub fn bitcoin_block_subsidy(height: u32) -> u64 {

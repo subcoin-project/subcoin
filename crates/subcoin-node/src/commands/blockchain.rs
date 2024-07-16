@@ -1,12 +1,12 @@
 use crate::cli::params::CommonParams;
 use crate::utils::Yield;
-use pallet_bitcoin::Coin;
 use sc_cli::{ImportParams, NodeKeyParams, SharedParams};
 use sc_client_api::{HeaderBackend, StorageProvider};
 use sc_consensus_nakamoto::BlockExecutionStrategy;
 use sp_core::storage::StorageKey;
 use sp_core::Decode;
 use std::sync::Arc;
+use subcoin_primitives::runtime::Coin;
 use subcoin_primitives::{BackendExt, CoinStorageKey};
 use subcoin_service::FullClient;
 
