@@ -14,21 +14,17 @@
 Subcoin is a full node implementation of Bitcoin in Rust, built using the Substrate framework.
 By leveraging Substrate's modular and flexible architecture, Subcoin aims to offer a robust
 and performant implementation of Bitcoin protocol. It is the first Bitcoin client that
-implements the snap (fast) sync in the Bitcoin ecosystem, a syncing strategy common in
-account-based systems (Ethereum, Polkadot, Near, etc) with a global chain state.
+introduces the snap (fast) sync into the Bitcoin ecosystem, a syncing strategy common in
+newer blockchains (Ethereum, Polkadot, Near, etc) with a global chain state.
 
 ## Features
 
-- 🔄 **Snap Sync**
-
-    Employs Substrate's advanced state sync strategy, enabling Bitcoin snap sync
+- 🔄 **Snap Sync**. Employs Substrate's advanced state sync strategy, enabling Bitcoin snap sync
 by downloading all headers and the state at a specific block, in decentralized manner. This allows
 new users to quickly sync to the latest state of the Bitcoin chain by running a Subcoin node.
 <!-- TODO: add a rough snap syncing time later -->
 
-- 🔗 **Substrate Integration**
-
-    Utilizes Substrate framework to provide production-level blockchain infrastructures.
+- 🔗 **Substrate Integration**. Utilizes Substrate framework to provide production-level blockchain infrastructures.
 
 ## Development Status
 

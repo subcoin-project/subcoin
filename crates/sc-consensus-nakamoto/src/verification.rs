@@ -5,7 +5,7 @@ use bitcoin::{Block as BitcoinBlock, OutPoint, Target, Transaction, Txid};
 use sc_client_api::{AuxStore, Backend, StorageProvider};
 use sp_blockchain::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -69,8 +69,14 @@ pub enum Error {
     BadScriptSigLength { got: usize, min: usize, max: usize },
     #[error("Transaction input refers to previous output that is null")]
     BadTxInput,
-    #[error("Referenced output in block {0} not found: {1:?}")]
-    OutputNotFound(u32, OutPoint),
+    #[error("Referenced output in #{block_number}:{tx_index}:{input_index} not found: {output:?}, txid: {txid:?}")]
+    OutputNotFound {
+        block_number: u32,
+        tx_index: usize,
+        input_index: usize,
+        txid: Txid,
+        output: OutPoint,
+    },
     #[error("Total output amount exceeds total input amount")]
     InsufficientFunds,
     #[error("Block reward is larger than the sum of block fee and subsidy")]
@@ -120,12 +126,12 @@ where
     /// References:
     /// - https://en.bitcoin.it/wiki/Protocol_rules#.22block.22_messages
     pub fn verify_block(&self, block_number: u32, block: &BitcoinBlock) -> Result<(), Error> {
-        self.check_block_sanity(block)?;
+        let txids = self.check_block_sanity(block)?;
 
         match self.block_verification {
             BlockVerification::Full => {
                 self.header_verifier.verify_header(&block.header)?;
-                self.verify_transactions(block_number, block)?;
+                self.verify_transactions(block_number, block, txids)?;
             }
             BlockVerification::HeaderOnly => {
                 self.header_verifier.verify_header(&block.header)?;
@@ -137,7 +143,7 @@ where
     }
 
     /// Performs some context free preliminary checks.
-    fn check_block_sanity(&self, block: &BitcoinBlock) -> Result<(), Error> {
+    fn check_block_sanity(&self, block: &BitcoinBlock) -> Result<HashMap<usize, Txid>, Error> {
         // Transaction list must be non-empty.
         if block.txdata.is_empty() {
             return Err(Error::EmptyTransactionList);
@@ -154,6 +160,7 @@ where
 
         // Check duplicate transactions
         let mut seen_transactions = HashSet::new();
+        let mut txids = HashMap::new();
         for (index, tx) in block.txdata.iter().enumerate() {
             let txid = tx.compute_txid();
             if !seen_transactions.insert(txid) {
@@ -162,6 +169,7 @@ where
             }
 
             check_transaction_sanity(tx)?;
+            txids.insert(index, txid);
         }
 
         // TODO: minor optimization: check_merkle_root() will invoke `compute_txid()`
@@ -175,10 +183,15 @@ where
 
         // Once segwit is active, we will still need to check for block mutability.
 
-        Ok(())
+        Ok(txids)
     }
 
-    fn verify_transactions(&self, block_number: u32, block: &BitcoinBlock) -> Result<(), Error> {
+    fn verify_transactions(
+        &self,
+        block_number: u32,
+        block: &BitcoinBlock,
+        txids: HashMap<usize, Txid>,
+    ) -> Result<(), Error> {
         let transactions = &block.txdata;
 
         let parent_hash =
@@ -189,7 +202,8 @@ where
                     block_number - 1
                 )))?;
 
-        let verify_single_transaction = |tx_index: usize, tx: &Transaction| -> Result<u64, Error> {
+        // Verifies non-coinbase transaction.
+        let verify_transaction = |tx_index: usize, tx: &Transaction| -> Result<u64, Error> {
             let total_output_value = tx
                 .output
                 .iter()
@@ -198,13 +212,25 @@ where
 
             let mut total_input_value = 0;
 
-            for input in &tx.input {
+            for (index, input) in tx.input.iter().enumerate() {
                 let OutPoint { txid, vout } = input.previous_output;
 
                 let amount = match self.fetch_coin_at(parent_hash, txid, vout) {
                     Some(coin) => coin.amount,
                     None => fetch_coin_value_in_current_block(block, txid, vout, tx_index)
-                        .ok_or(Error::OutputNotFound(block_number, input.previous_output))?,
+                        .ok_or_else(|| {
+                            let txid = txids
+                                .get(&tx_index)
+                                .copied()
+                                .expect("Txid must exist as added in `check_block_sanity()`; qed");
+                            Error::OutputNotFound {
+                                block_number,
+                                tx_index,
+                                input_index: index,
+                                output: input.previous_output,
+                                txid,
+                            }
+                        })?,
                 };
 
                 total_input_value += amount;
@@ -223,8 +249,8 @@ where
         let mut block_fee = 0;
 
         // TODO: verify transactions in parallel.
-        for (index, tx) in transactions.iter().enumerate() {
-            let tx_fee = verify_single_transaction(index, tx)?;
+        for (index, tx) in transactions.iter().skip(1).enumerate() {
+            let tx_fee = verify_transaction(index, tx)?;
 
             block_fee += tx_fee;
 
@@ -274,7 +300,7 @@ fn fetch_coin_value_in_current_block(
     transaction_index: usize,
 ) -> Option<u64> {
     let take = transaction_index.min(block.txdata.len());
-    let transactions = &block.txdata[..take];
+    let transactions = &block.txdata[..=take];
     transactions
         .iter()
         .find(|tx| tx.compute_txid() == txid)
