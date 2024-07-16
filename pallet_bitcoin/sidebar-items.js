@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["coin_storage_key","coin_storage_prefix"],"mod":["pallet"],"struct":["Coin","Txid"],"type":["Vout"]};
+window.SIDEBAR_ITEMS = {"fn":["coin_storage_key","coin_storage_prefix"],"mod":["pallet"],"struct":["Txid"],"type":["Vout"]};
