@@ -1,7 +1,11 @@
 use bitcoin::blockdata::block::{Header as BitcoinHeader, ValidationError};
+use bitcoin::blockdata::constants::MAX_BLOCK_SIGOPS_COST;
 use bitcoin::consensus::Params;
+use bitcoin::hashes::Hash;
 use bitcoin::pow::U256;
-use bitcoin::{Block as BitcoinBlock, OutPoint, Target, Transaction, TxMerkleNode, Txid};
+use bitcoin::{
+    Block as BitcoinBlock, BlockHash, OutPoint, Target, Transaction, TxMerkleNode, Txid,
+};
 use sc_client_api::{AuxStore, Backend, StorageProvider};
 use sp_blockchain::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
@@ -42,6 +46,8 @@ pub enum Error {
     /// The block's timestamp is too far in the future.
     #[error("Block time is too far in the future")]
     TooFarInFuture,
+    #[error("Time is the median time of last 11 blocks or before ")]
+    TimeTooOld,
     /// The block header is invalid.
     #[error("proof-of-work validation failed: {0:?}")]
     InvalidProofOfWork(ValidationError),
@@ -59,6 +65,8 @@ pub enum Error {
     FirstTransactionIsNotCoinbase,
     #[error("Block contains multiple coinbase transactions")]
     MultipleCoinbase,
+    #[error("Transaction script contains too many sigops (max: {MAX_BLOCK_SIGOPS_COST})")]
+    TooManySigOps { block_number: u32, tx_index: usize },
     #[error("Block contains duplicate transaction at index {0}")]
     DuplicateTransaction(usize),
     #[error("Transaction contains duplicate inputs at index {0}")]
@@ -69,6 +77,7 @@ pub enum Error {
     BadScriptSigLength { got: usize, min: usize, max: usize },
     #[error("Transaction input refers to previous output that is null")]
     BadTxInput,
+    /// Referenced output does not exist or has already been spent.
     #[error("UTXO spent in #{block_number}:{txid} not found: {out_point:?}")]
     UtxoNotFound {
         block_number: u32,
@@ -77,6 +86,7 @@ pub enum Error {
     },
     #[error("Total output amount exceeds total input amount")]
     InsufficientFunds,
+    // Invalid coinbase value.
     #[error("Block reward is larger than the sum of block fee and subsidy")]
     InvalidBlockReward,
     /// An error occurred in the client.
@@ -124,7 +134,7 @@ where
     /// References:
     /// - https://en.bitcoin.it/wiki/Protocol_rules#.22block.22_messages
     pub fn verify_block(&self, block_number: u32, block: &BitcoinBlock) -> Result<(), Error> {
-        let txids = self.check_block_sanity(block)?;
+        let txids = self.check_block_sanity(block_number, block)?;
 
         match self.block_verification {
             BlockVerification::Full => {
@@ -141,13 +151,21 @@ where
     }
 
     /// Performs some context free preliminary checks.
-    fn check_block_sanity(&self, block: &BitcoinBlock) -> Result<HashMap<usize, Txid>, Error> {
-        // Transaction list must be non-empty.
+    ///
+    /// - Transaction list must be non-empty.
+    /// - First transaction must be coinbase, the rest must not be.
+    /// - No duplicate transactions in the block.
+    /// - Check the sum of transaction sig opcounts does not exceed [`MAX_BLOCK_SIGOPS_COST`].
+    /// - Check the calculated merkle root of transactions matches the value declared in the header.
+    fn check_block_sanity(
+        &self,
+        block_number: u32,
+        block: &BitcoinBlock,
+    ) -> Result<HashMap<usize, Txid>, Error> {
         if block.txdata.is_empty() {
             return Err(Error::EmptyTransactionList);
         }
 
-        // First transaction must be coinbase, the rest must not be.
         if !block.txdata[0].is_coinbase() {
             return Err(Error::FirstTransactionIsNotCoinbase);
         }
@@ -169,6 +187,17 @@ where
 
             check_transaction_sanity(tx)?;
 
+            if tx
+                .input
+                .iter()
+                .any(|txin| txin.script_sig.count_sigops() > MAX_BLOCK_SIGOPS_COST as usize)
+            {
+                return Err(Error::TooManySigOps {
+                    block_number,
+                    tx_index: index,
+                });
+            }
+
             txids.insert(index, txid);
         }
 
@@ -187,9 +216,6 @@ where
         {
             return Err(Error::BadMerkleRoot);
         }
-
-        // TODO: check max_sig_ops
-        // ensure!(total_sig_ops <= MAX_BLOCK_SIGOPS_COST)
 
         // Once segwit is active, we will still need to check for block mutability.
 
@@ -394,7 +420,9 @@ where
     /// Verifies the validity of header.
     ///
     /// - Check proof of work.
-    /// - Check timestamp of the block .
+    /// - Check the timestamp of the block is in the range:
+    ///     - Time is not greater than 2 hours from now.
+    ///     - Time is not the median time of last 12 blocks or before.
     pub fn verify_header(&self, header: &BitcoinHeader) -> Result<(), Error> {
         let last_block_header = self.client.block_header(header.prev_blockhash).ok_or(
             sp_blockchain::Error::MissingHeader(header.prev_blockhash.to_string()),
@@ -432,7 +460,45 @@ where
             return Err(Error::TooFarInFuture);
         }
 
+        let median_time = self.calculate_past_median_time(header);
+        if header.time <= median_time {
+            return Err(Error::TimeTooOld);
+        }
+
         Ok(())
+    }
+
+    /// Calculates the median time of the previous few blocks prior to the header (inclusive).
+    fn calculate_past_median_time(&self, header: &BitcoinHeader) -> u32 {
+        let mut timestamps = Vec::with_capacity(11);
+
+        timestamps.push(header.time);
+
+        let zero_hash = BlockHash::all_zeros();
+
+        let mut block_hash = header.prev_blockhash;
+
+        for _ in 0..10 {
+            let header = self
+                .client
+                .block_header(block_hash)
+                .expect("Parent header must exist");
+
+            timestamps.push(header.time);
+
+            block_hash = header.prev_blockhash;
+
+            if block_hash == zero_hash {
+                break;
+            }
+        }
+
+        timestamps.sort_unstable();
+
+        timestamps
+            .get(timestamps.len() / 2)
+            .copied()
+            .expect("Timestamps must be non-empty; qed")
     }
 }
 
@@ -538,7 +604,6 @@ mod tests {
             .join("btc_mainnet_385044.data");
         let raw_block = std::fs::read_to_string(test_block).unwrap();
         let block = decode_raw_block(raw_block.trim());
-        println!("block: {:?}", block.header);
 
         let txids = block
             .txdata
