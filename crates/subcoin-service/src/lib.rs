@@ -435,14 +435,13 @@ pub async fn finalize_confirmed_blocks<Block, Client, Backend>(
     client: Arc<Client>,
     spawn_handle: impl SpawnNamed,
     confirmation_depth: u32,
+    major_sync_confirmation_depth: u32,
     is_major_syncing: Arc<AtomicBool>,
 ) where
     Block: BlockT + 'static,
     Client: HeaderBackend<Block> + Finalizer<Block, Backend> + BlockchainEvents<Block> + 'static,
     Backend: sc_client_api::backend::Backend<Block> + 'static,
 {
-    const MAJOR_SYNC_FINALIZATION_STEP: u32 = 100;
-
     let mut block_import_stream = client.import_notification_stream();
 
     while let Some(notification) = block_import_stream.next().await {
@@ -466,7 +465,7 @@ pub async fn finalize_confirmed_blocks<Block, Client, Backend>(
         if is_major_syncing.load(Ordering::SeqCst) {
             // During major sync, finalize every 10th block to avoid race conditions:
             // >Safety violation: attempted to revert finalized block...
-            if confirmed_block_number < finalized_number + MAJOR_SYNC_FINALIZATION_STEP.into() {
+            if confirmed_block_number < finalized_number + major_sync_confirmation_depth.into() {
                 continue;
             }
         }

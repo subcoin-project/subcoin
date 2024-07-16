@@ -16,6 +16,13 @@ pub struct Run {
     #[clap(long, default_value = "full")]
     pub block_verification: BlockVerification,
 
+    /// Specify the confirmation depth during the major sync.
+    ///
+    /// If you encounter a high memory usage when the node is major syncing, try to
+    /// specify a smaller number.
+    #[clap(long, default_value = "100")]
+    pub major_sync_confirmation_depth: u32,
+
     /// Do not run the finalizer which will finalize the blocks on confirmation depth.
     #[clap(long)]
     pub no_finalizer: bool,

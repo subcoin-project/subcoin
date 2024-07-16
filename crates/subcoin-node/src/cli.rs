@@ -87,6 +87,7 @@ pub fn run() -> sc_cli::Result<()> {
         Command::Run(run) => {
             let block_execution_strategy = run.common_params.block_execution_strategy();
             let no_finalizer = run.no_finalizer;
+            let major_sync_confirmation_depth = run.major_sync_confirmation_depth;
             let run_cmd = RunCmd::new(&run);
             let runner = SubstrateCli.create_runner(&run_cmd)?;
             runner.run_node_until_exit(|config| async move {
@@ -179,6 +180,7 @@ pub fn run() -> sc_cli::Result<()> {
                             client.clone(),
                             spawn_handle.clone(),
                             CONFIRMATION_DEPTH,
+                            major_sync_confirmation_depth,
                             network_handle.is_major_syncing(),
                         )
                     });
@@ -221,6 +223,7 @@ pub fn run() -> sc_cli::Result<()> {
                         client,
                         spawn_handle,
                         CONFIRMATION_DEPTH,
+                        100,
                         is_major_syncing,
                     )
                 });

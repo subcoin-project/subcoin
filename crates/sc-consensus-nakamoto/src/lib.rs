@@ -11,7 +11,7 @@ pub use block_import::{BitcoinBlockImport, BitcoinBlockImporter, ImportConfig, I
 pub use import_queue::{
     bitcoin_import_queue, BlockImportQueue, ImportBlocks, ImportManyBlocksResult,
 };
-pub use verification::BlockVerification;
+pub use verification::{BlockVerification, BlockVerifier, HeaderVerifier};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

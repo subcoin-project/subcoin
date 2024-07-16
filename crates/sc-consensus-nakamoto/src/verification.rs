@@ -94,6 +94,7 @@ pub enum Error {
     Client(#[from] sp_blockchain::Error),
 }
 
+/// A struct responsible for verifying Bitcoin blocks.
 #[derive(Clone)]
 pub struct BlockVerifier<Block, Client, BE> {
     client: Arc<Client>,
@@ -129,10 +130,10 @@ where
     BE: Backend<Block>,
     Client: HeaderBackend<Block> + StorageProvider<Block, BE> + AuxStore,
 {
-    /// Full block verification.
+    /// Performs full block verification.
     ///
     /// References:
-    /// - https://en.bitcoin.it/wiki/Protocol_rules#.22block.22_messages
+    /// - <https://en.bitcoin.it/wiki/Protocol_rules#.22block.22_messages>
     pub fn verify_block(&self, block_number: u32, block: &BitcoinBlock) -> Result<(), Error> {
         let txids = self.check_block_sanity(block_number, block)?;
 
@@ -150,7 +151,7 @@ where
         Ok(())
     }
 
-    /// Performs some context free preliminary checks.
+    /// Performs context-free preliminary checks.
     ///
     /// - Transaction list must be non-empty.
     /// - First transaction must be coinbase, the rest must not be.
@@ -313,6 +314,7 @@ where
         Ok(())
     }
 
+    /// Finds a UTXO in the state backend.
     fn find_utxo_in_state(&self, block_hash: Block::Hash, out_point: OutPoint) -> Option<Coin> {
         use codec::Decode;
 
@@ -332,6 +334,27 @@ where
 
         maybe_storage_data.and_then(|data| Coin::decode(&mut data.0.as_slice()).ok())
     }
+}
+
+// Find a UTXO from the previous transactions in current block.
+fn find_utxo_in_current_block(
+    block: &BitcoinBlock,
+    out_point: OutPoint,
+    tx_index: usize,
+    get_txid: impl Fn(usize) -> Txid,
+) -> Option<u64> {
+    let OutPoint { txid, vout } = out_point;
+    block
+        .txdata
+        .iter()
+        .take(tx_index)
+        .enumerate()
+        .find_map(|(index, tx)| (get_txid(index) == txid).then_some(tx))
+        .and_then(|tx| {
+            tx.output
+                .get(vout as usize)
+                .map(|txout| txout.value.to_sat())
+        })
 }
 
 fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
@@ -371,27 +394,6 @@ fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
     }
 
     Ok(())
-}
-
-// Try to find UTXO from the previous transactions in current block.
-fn find_utxo_in_current_block(
-    block: &BitcoinBlock,
-    out_point: OutPoint,
-    tx_index: usize,
-    get_txid: impl Fn(usize) -> Txid,
-) -> Option<u64> {
-    let OutPoint { txid, vout } = out_point;
-    block
-        .txdata
-        .iter()
-        .take(tx_index)
-        .enumerate()
-        .find_map(|(index, tx)| (get_txid(index) == txid).then_some(tx))
-        .and_then(|tx| {
-            tx.output
-                .get(vout as usize)
-                .map(|txout| txout.value.to_sat())
-        })
 }
 
 #[derive(Clone)]
@@ -470,7 +472,9 @@ where
 
     /// Calculates the median time of the previous few blocks prior to the header (inclusive).
     fn calculate_past_median_time(&self, header: &BitcoinHeader) -> u32 {
-        let mut timestamps = Vec::with_capacity(11);
+        const LAST_BLOCKS: usize = 11;
+
+        let mut timestamps = Vec::with_capacity(LAST_BLOCKS);
 
         timestamps.push(header.time);
 
@@ -478,7 +482,7 @@ where
 
         let mut block_hash = header.prev_blockhash;
 
-        for _ in 0..10 {
+        for _ in 0..LAST_BLOCKS - 1 {
             let header = self
                 .client
                 .block_header(block_hash)
