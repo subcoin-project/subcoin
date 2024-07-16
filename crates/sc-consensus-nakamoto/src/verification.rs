@@ -535,7 +535,7 @@ mod tests {
             .parent()
             .unwrap()
             .join("test_data")
-            .join("385044.data");
+            .join("btc_mainnet_385044.data");
         let raw_block = std::fs::read_to_string(test_block).unwrap();
         let block = decode_raw_block(raw_block.trim());
         println!("block: {:?}", block.header);
