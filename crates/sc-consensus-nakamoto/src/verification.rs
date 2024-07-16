@@ -1,7 +1,7 @@
 use bitcoin::blockdata::block::{Header as BitcoinHeader, ValidationError};
 use bitcoin::consensus::Params;
 use bitcoin::pow::U256;
-use bitcoin::{Block as BitcoinBlock, OutPoint, Target, Transaction, Txid};
+use bitcoin::{Block as BitcoinBlock, OutPoint, Target, Transaction, TxMerkleNode, Txid};
 use sc_client_api::{AuxStore, Backend, StorageProvider};
 use sp_blockchain::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
@@ -69,11 +69,9 @@ pub enum Error {
     BadScriptSigLength { got: usize, min: usize, max: usize },
     #[error("Transaction input refers to previous output that is null")]
     BadTxInput,
-    #[error("Referenced output in #{block_number}:{tx_index}:{input_index} not found: {output:?}, txid: {txid:?}")]
-    OutputNotFound {
+    #[error("UTXO spent in #{block_number}:{txid} not found: {output:?}")]
+    UtxoNotFound {
         block_number: u32,
-        tx_index: usize,
-        input_index: usize,
         txid: Txid,
         output: OutPoint,
     },
@@ -172,9 +170,19 @@ where
             txids.insert(index, txid);
         }
 
-        // TODO: minor optimization: check_merkle_root() will invoke `compute_txid()`
-        // again, we may make use `seen_transactions` and calculate the merkle root on our own.
-        if !block.check_merkle_root() {
+        // Inline `Block::check_merkle_root()` to avoid redundantly computing txid.
+        let hashes = block
+            .txdata
+            .iter()
+            .enumerate()
+            .filter_map(|(index, _obj)| txids.get(&index).map(|txid| txid.to_raw_hash()));
+        let maybe_merkle_root: Option<TxMerkleNode> =
+            bitcoin::merkle_tree::calculate_root(hashes).map(|h| h.into());
+
+        if !maybe_merkle_root
+            .map(|merkle_root| block.header.merkle_root == merkle_root)
+            .unwrap_or(false)
+        {
             return Err(Error::BadMerkleRoot);
         }
 
@@ -212,25 +220,35 @@ where
 
             let mut total_input_value = 0;
 
-            for (index, input) in tx.input.iter().enumerate() {
+            for input in &tx.input {
                 let OutPoint { txid, vout } = input.previous_output;
 
                 let amount = match self.fetch_coin_at(parent_hash, txid, vout) {
                     Some(coin) => coin.amount,
-                    None => fetch_coin_value_in_current_block(block, txid, vout, tx_index)
-                        .ok_or_else(|| {
-                            let txid = txids
-                                .get(&tx_index)
-                                .copied()
-                                .expect("Txid must exist as added in `check_block_sanity()`; qed");
-                            Error::OutputNotFound {
+                    None => {
+                        let get_txid = |tx_index: usize| {
+                            txids.get(&tx_index).copied().expect(
+                                "Txid must exist as initialized in `check_block_sanity()`; qed",
+                            )
+                        };
+                        // Try to find UTXO from the previous transactions in current block.
+                        let take = tx_index.min(block.txdata.len());
+                        let transactions = &block.txdata[..=take];
+                        transactions
+                            .iter()
+                            .enumerate()
+                            .find_map(|(index, tx)| (get_txid(index) == txid).then_some(tx))
+                            .and_then(|tx| {
+                                tx.output
+                                    .get(vout as usize)
+                                    .map(|txout| txout.value.to_sat())
+                            })
+                            .ok_or_else(|| Error::UtxoNotFound {
                                 block_number,
-                                tx_index,
-                                input_index: index,
+                                txid: get_txid(tx_index),
                                 output: input.previous_output,
-                                txid,
-                            }
-                        })?,
+                            })?
+                    }
                 };
 
                 total_input_value += amount;
@@ -257,7 +275,7 @@ where
             // TODO: Verify the script.
         }
 
-        let block_reward = transactions[0]
+        let coinbase_value = transactions[0]
             .output
             .iter()
             .map(|output| output.value.to_sat())
@@ -266,7 +284,7 @@ where
         let subsidy = bitcoin_block_subsidy(block_number);
 
         // Ensures no inflation.
-        if block_reward > block_fee + subsidy {
+        if coinbase_value > block_fee + subsidy {
             return Err(Error::InvalidBlockReward);
         }
 
@@ -280,7 +298,7 @@ where
         //
         // TODO: optimizations:
         // - Read the state from the in memory backend.
-        // - Maintain a in-memory UTXO cache and try to read from cache first.
+        // - Maintain a flat in-memory UTXO cache and try to read from cache first.
         let storage_key = self.coin_storage_key.storage_key(txid, index);
 
         let maybe_storage_data = self
@@ -291,21 +309,6 @@ where
 
         maybe_storage_data.and_then(|data| Coin::decode(&mut data.0.as_slice()).ok())
     }
-}
-
-fn fetch_coin_value_in_current_block(
-    block: &BitcoinBlock,
-    txid: Txid,
-    vout: u32,
-    transaction_index: usize,
-) -> Option<u64> {
-    let take = transaction_index.min(block.txdata.len());
-    let transactions = &block.txdata[..=take];
-    transactions
-        .iter()
-        .find(|tx| tx.compute_txid() == txid)
-        .and_then(|tx| tx.output.get(vout as usize))
-        .map(|txout| txout.value.to_sat())
 }
 
 fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
@@ -329,7 +332,7 @@ fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
     if tx.is_coinbase() {
         let script_sig_len = tx.input[0].script_sig.len();
 
-        if script_sig_len < MIN_COINBASE_SCRIPT_LEN || script_sig_len > MAX_COINBASE_SCRIPT_LEN {
+        if !(MIN_COINBASE_SCRIPT_LEN..=MAX_COINBASE_SCRIPT_LEN).contains(&script_sig_len) {
             return Err(Error::BadScriptSigLength {
                 got: script_sig_len,
                 min: MIN_COINBASE_SCRIPT_LEN,
