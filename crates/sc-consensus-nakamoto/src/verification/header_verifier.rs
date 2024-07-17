@@ -62,7 +62,7 @@ where
     /// - Check proof of work.
     /// - Check the timestamp of the block is in the range:
     ///     - Time is not greater than 2 hours from now.
-    ///     - Time is not the median time of last 12 blocks or before.
+    ///     - Time is not the median time of last 11 blocks or before.
     pub fn verify_header(&self, header: &BitcoinHeader) -> Result<(), Error> {
         let last_block_header = self.client.block_header(header.prev_blockhash).ok_or(
             sp_blockchain::Error::MissingHeader(header.prev_blockhash.to_string()),
@@ -100,9 +100,15 @@ where
             return Err(Error::TooFarInFuture);
         }
 
-        let median_time = self.calculate_median_time_past(header);
-        if header.time <= median_time {
-            return Err(Error::TimeTooOld);
+        let block_number = last_block_height + 1;
+
+        // TODO: check deployment state properly.
+        const MAINNET_CSV_HEIGHT: u32 = 419328;
+        if block_number >= MAINNET_CSV_HEIGHT {
+            let median_time = self.calculate_median_time_past(header);
+            if header.time <= median_time {
+                return Err(Error::TimeTooOld);
+            }
         }
 
         Ok(())

@@ -245,12 +245,12 @@ where
     ) -> Result<(), Error> {
         let transactions = &block.txdata;
 
+        let parent_number = block_number - 1;
         let parent_hash =
             self.client
-                .hash((block_number - 1).into())?
+                .hash(parent_number.into())?
                 .ok_or(sp_blockchain::Error::Backend(format!(
-                    "Parent block #{} not found",
-                    block_number - 1
+                    "Parent block #{parent_number} not found"
                 )))?;
 
         // Verifies non-coinbase transaction.
@@ -301,7 +301,7 @@ where
         // TODO: verify transactions in parallel.
         for (index, tx) in transactions.iter().enumerate() {
             if index == 0 {
-                // TODO: verify coinbase script
+                // Coinbase script was already checked in check_block_sanity().
                 continue;
             }
 
