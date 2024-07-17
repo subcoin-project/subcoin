@@ -100,7 +100,7 @@ where
             return Err(Error::TooFarInFuture);
         }
 
-        let median_time = self.calculate_past_median_time(header);
+        let median_time = self.calculate_median_time_past(header);
         if header.time <= median_time {
             return Err(Error::TimeTooOld);
         }
@@ -109,7 +109,7 @@ where
     }
 
     /// Calculates the median time of the previous few blocks prior to the header (inclusive).
-    fn calculate_past_median_time(&self, header: &BitcoinHeader) -> u32 {
+    fn calculate_median_time_past(&self, header: &BitcoinHeader) -> u32 {
         const LAST_BLOCKS: usize = 11;
 
         let mut timestamps = Vec::with_capacity(LAST_BLOCKS);
