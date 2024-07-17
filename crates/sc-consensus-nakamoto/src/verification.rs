@@ -3,7 +3,9 @@ mod header_verifier;
 use bitcoin::blockdata::constants::MAX_BLOCK_SIGOPS_COST;
 use bitcoin::blockdata::weight::WITNESS_SCALE_FACTOR;
 use bitcoin::consensus::Params;
-use bitcoin::{Block as BitcoinBlock, OutPoint, Transaction, TxMerkleNode, Txid, VarInt, Weight};
+use bitcoin::{
+    Amount, Block as BitcoinBlock, OutPoint, Transaction, TxMerkleNode, Txid, VarInt, Weight,
+};
 use sc_client_api::{AuxStore, Backend, StorageProvider};
 use sp_blockchain::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
@@ -62,11 +64,15 @@ pub enum Error {
     DuplicateTransaction(usize),
     #[error("Transaction contains duplicate inputs at index {0}")]
     DuplicateTxInput(usize),
+    #[error("Output value (0) is too large")]
+    OutputValueTooLarge(Amount),
+    #[error("Total output value (0) is too large")]
+    TotalOutputValueTooLarge(Amount),
     #[error(
         "Coinbase transaction script length of {0} is out of range \
         (min: {MIN_COINBASE_SCRIPT_LEN}, max: {MAX_COINBASE_SCRIPT_LEN})"
     )]
-    BadScriptSigLength(usize),
+    BadCoinbaseScriptSigLength(usize),
     #[error("Transaction input refers to previous output that is null")]
     BadTxInput,
     /// Referenced output does not exist or has already been spent.
@@ -430,12 +436,27 @@ fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
         }
     }
 
+    let mut total_output_value = Amount::ZERO;
+    tx.output.iter().try_for_each(|txout| {
+        if txout.value > Amount::MAX_MONEY {
+            return Err(Error::OutputValueTooLarge(txout.value));
+        }
+
+        total_output_value += txout.value;
+
+        if total_output_value > Amount::MAX_MONEY {
+            return Err(Error::TotalOutputValueTooLarge(total_output_value));
+        }
+
+        Ok(())
+    })?;
+
     // Coinbase script length must be between min and max length.
     if tx.is_coinbase() {
         let script_sig_len = tx.input[0].script_sig.len();
 
         if !(MIN_COINBASE_SCRIPT_LEN..=MAX_COINBASE_SCRIPT_LEN).contains(&script_sig_len) {
-            return Err(Error::BadScriptSigLength(script_sig_len));
+            return Err(Error::BadCoinbaseScriptSigLength(script_sig_len));
         }
     } else {
         // Previous transaction outputs referenced by the inputs to this
