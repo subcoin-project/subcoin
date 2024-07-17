@@ -1,8 +1,9 @@
 mod header_verifier;
 
 use bitcoin::blockdata::constants::MAX_BLOCK_SIGOPS_COST;
+use bitcoin::blockdata::weight::WITNESS_SCALE_FACTOR;
 use bitcoin::consensus::Params;
-use bitcoin::{Block as BitcoinBlock, OutPoint, Transaction, TxMerkleNode, Txid};
+use bitcoin::{Block as BitcoinBlock, OutPoint, Transaction, TxMerkleNode, Txid, VarInt, Weight};
 use sc_client_api::{AuxStore, Backend, StorageProvider};
 use sp_blockchain::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
@@ -19,6 +20,8 @@ const MIN_COINBASE_SCRIPT_LEN: usize = 2;
 
 // MaxCoinbaseScriptLen is the maximum length a coinbase script can be.
 const MAX_COINBASE_SCRIPT_LEN: usize = 100;
+
+const MAX_BLOCK_WEIGHT: usize = Weight::MAX_BLOCK.to_wu() as usize;
 
 /// Represents the level of block verification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,10 +44,14 @@ pub enum Error {
     /// Block must contain at least one coinbase transaction.
     #[error("Transaction list is empty")]
     EmptyTransactionList,
+    #[error("Block is too large")]
+    BadBlockLength,
     #[error("Transaction has no inputs")]
     EmptyInput,
     #[error("Transaction has no outputs")]
     EmptyOutput,
+    #[error("Transaction is too large")]
+    BadTransactionLength,
     #[error("First transaction is not coinbase")]
     FirstTransactionIsNotCoinbase,
     #[error("Block contains multiple coinbase transactions")]
@@ -54,11 +61,12 @@ pub enum Error {
     #[error("Block contains duplicate transaction at index {0}")]
     DuplicateTransaction(usize),
     #[error("Transaction contains duplicate inputs at index {0}")]
-    DuplicateTxInputs(usize),
+    DuplicateTxInput(usize),
     #[error(
-        "Coinbase transaction script length of {got} is out of range (min: {min}, max: {max})"
+        "Coinbase transaction script length of {0} is out of range \
+        (min: {MIN_COINBASE_SCRIPT_LEN}, max: {MAX_COINBASE_SCRIPT_LEN})"
     )]
-    BadScriptSigLength { got: usize, min: usize, max: usize },
+    BadScriptSigLength(usize),
     #[error("Transaction input refers to previous output that is null")]
     BadTxInput,
     /// Referenced output does not exist or has already been spent.
@@ -141,10 +149,13 @@ where
     /// Performs context-free preliminary checks.
     ///
     /// - Transaction list must be non-empty.
+    /// - Block size must not exceed `MAX_BLOCK_WEIGHT`.
     /// - First transaction must be coinbase, the rest must not be.
     /// - No duplicate transactions in the block.
     /// - Check the sum of transaction sig opcounts does not exceed [`MAX_BLOCK_SIGOPS_COST`].
     /// - Check the calculated merkle root of transactions matches the value declared in the header.
+    ///
+    /// https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L3986
     fn check_block_sanity(
         &self,
         block_number: u32,
@@ -158,15 +169,24 @@ where
             return Err(Error::FirstTransactionIsNotCoinbase);
         }
 
-        if block.txdata.iter().skip(1).any(|tx| tx.is_coinbase()) {
-            return Err(Error::MultipleCoinbase);
+        // Size limits.
+        let tx_count = block.txdata.len();
+
+        if tx_count * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT
+            || block_serialize_size_no_witness(block) * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT
+        {
+            return Err(Error::BadBlockLength);
         }
 
         // Check duplicate transactions
-        let tx_count = block.txdata.len();
         let mut seen_transactions = HashSet::with_capacity(tx_count);
         let mut txids = HashMap::with_capacity(tx_count);
+
         for (index, tx) in block.txdata.iter().enumerate() {
+            if index > 0 && tx.is_coinbase() {
+                return Err(Error::MultipleCoinbase);
+            }
+
             let txid = tx.compute_txid();
             if !seen_transactions.insert(txid) {
                 // If txid is already in the set, we've found a duplicate.
@@ -195,6 +215,7 @@ where
             .iter()
             .enumerate()
             .filter_map(|(index, _obj)| txids.get(&index).map(|txid| txid.to_raw_hash()));
+
         let maybe_merkle_root: Option<TxMerkleNode> =
             bitcoin::merkle_tree::calculate_root(hashes).map(|h| h.into());
 
@@ -323,6 +344,50 @@ where
     }
 }
 
+fn block_serialize_size_no_witness(block: &BitcoinBlock) -> usize {
+    let base_size = 80 + VarInt(block.txdata.len() as u64).size();
+    let tx_size: usize = block.txdata.iter().map(tx_serialize_size_no_witness).sum();
+    base_size + tx_size
+}
+
+/// Returns the serialized transaction size without witness.
+///
+/// Credit: https://github.com/jrawsthorne/rust-bitcoin-node/blob/d84e4a63c4ae4d6818ab22bd0c25531d367961be/src/primitives/tx.rs#L287
+fn tx_serialize_size_no_witness(tx: &Transaction) -> usize {
+    // OutPoint (32+4)
+    const OUTPOINT_SIZE: usize = 32 + 4;
+    // Sequence (4)
+    const SEQUENCE_SIZE: usize = 4;
+
+    let input_size: usize = tx
+        .input
+        .iter()
+        .map(|txin| {
+            let script_sig_len = txin.script_sig.len();
+            OUTPOINT_SIZE + SEQUENCE_SIZE + VarInt(script_sig_len as u64).size() + script_sig_len
+        })
+        .sum();
+
+    // Amount (8)
+    const VALUE_SIZE: usize = 8;
+    let output_size: usize = tx
+        .output
+        .iter()
+        .map(|txout| {
+            let script_pubkey_len = txout.script_pubkey.len();
+            VALUE_SIZE + VarInt(script_pubkey_len as u64).size() + script_pubkey_len
+        })
+        .sum();
+
+    const VERSION_SIZE: usize = 4;
+    const LOCK_TIME_SIZE: usize = 4;
+
+    VERSION_SIZE
+        + LOCK_TIME_SIZE
+        + VarInt(tx.input.len() as u64).size() + input_size // Vec<TxIn>
+        + VarInt(tx.output.len() as u64).size() + output_size // Vec<TxOut>
+}
+
 // Find a UTXO from the previous transactions in current block.
 fn find_utxo_in_current_block(
     block: &BitcoinBlock,
@@ -353,11 +418,15 @@ fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
         return Err(Error::EmptyOutput);
     }
 
-    // Check for duplicate transaction inputs.
+    if tx_serialize_size_no_witness(tx) * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT {
+        return Err(Error::BadTransactionLength);
+    }
+
+    // Check for duplicate inputs.
     let mut seen_inputs = HashSet::new();
     for (index, txin) in tx.input.iter().enumerate() {
         if !seen_inputs.insert(txin.previous_output) {
-            return Err(Error::DuplicateTxInputs(index));
+            return Err(Error::DuplicateTxInput(index));
         }
     }
 
@@ -366,11 +435,7 @@ fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
         let script_sig_len = tx.input[0].script_sig.len();
 
         if !(MIN_COINBASE_SCRIPT_LEN..=MAX_COINBASE_SCRIPT_LEN).contains(&script_sig_len) {
-            return Err(Error::BadScriptSigLength {
-                got: script_sig_len,
-                min: MIN_COINBASE_SCRIPT_LEN,
-                max: MAX_COINBASE_SCRIPT_LEN,
-            });
+            return Err(Error::BadScriptSigLength(script_sig_len));
         }
     } else {
         // Previous transaction outputs referenced by the inputs to this
