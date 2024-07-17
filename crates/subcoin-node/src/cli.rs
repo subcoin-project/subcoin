@@ -21,7 +21,7 @@ pub enum Command {
     /// Run subcoin node.
     Run(Run),
 
-    /// Import blocks.
+    /// Import blocks from bitcoind database.
     ImportBlocks(ImportBlocks),
 
     /// Utility tools.
