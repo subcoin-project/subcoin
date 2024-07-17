@@ -17,6 +17,9 @@ pub use subcoin_runtime_primitives as runtime;
 
 type Height = u32;
 
+// 6 blocks is the standard confirmation period in the Bitcoin community.
+pub const CONFIRMATION_DEPTH: u32 = 6u32;
+
 /// Returns the encoded Bitcoin genesis block.
 ///
 /// Used in the Substrate genesis block construction.

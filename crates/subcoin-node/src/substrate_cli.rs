@@ -22,7 +22,7 @@ impl sc_cli::SubstrateCli for SubstrateCli {
     }
 
     fn support_url() -> String {
-        "https://github.com/liuchengxu/subcoin/issues/new".into()
+        "https://github.com/subcoin-project/subcoin/issues/new".into()
     }
 
     fn copyright_start_year() -> i32 {
