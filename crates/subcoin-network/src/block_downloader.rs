@@ -177,7 +177,7 @@ impl BlockDownloadManager {
                 Err(BlockImportError::UnknownParent) => panic!("Unknown parent {hash}"),
                 Err(err) => {
                     // TODO: handle error properly
-                    tracing::error!(?err, "Failed to import block {hash:?}");
+                    panic!("Failed to import block {hash:?}: {err:?}");
                 }
             }
         }
