@@ -2,11 +2,8 @@ mod header_verifier;
 
 use bitcoin::absolute::{LockTime, LOCK_TIME_THRESHOLD};
 use bitcoin::blockdata::constants::MAX_BLOCK_SIGOPS_COST;
-use bitcoin::blockdata::weight::WITNESS_SCALE_FACTOR;
 use bitcoin::consensus::Params;
-use bitcoin::{
-    Amount, Block as BitcoinBlock, OutPoint, Transaction, TxMerkleNode, Txid, VarInt, Weight,
-};
+use bitcoin::{Amount, Block as BitcoinBlock, OutPoint, Transaction, TxMerkleNode, Txid, Weight};
 use sc_client_api::{AuxStore, Backend, StorageProvider};
 use sp_blockchain::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
@@ -24,7 +21,7 @@ const MIN_COINBASE_SCRIPT_LEN: usize = 2;
 // MaxCoinbaseScriptLen is the maximum length a coinbase script can be.
 const MAX_COINBASE_SCRIPT_LEN: usize = 100;
 
-const MAX_BLOCK_WEIGHT: usize = Weight::MAX_BLOCK.to_wu() as usize;
+const MAX_BLOCK_WEIGHT: Weight = Weight::MAX_BLOCK;
 
 /// Represents the level of block verification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -159,7 +156,7 @@ where
         Ok(())
     }
 
-    /// Performs context-free preliminary checks.
+    /// Performs preliminary checks.
     ///
     /// - Transaction list must be non-empty.
     /// - Block size must not exceed `MAX_BLOCK_WEIGHT`.
@@ -183,15 +180,12 @@ where
         }
 
         // Size limits.
-        let tx_count = block.txdata.len();
-
-        if tx_count * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT
-            || block.base_size() * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT
-        {
+        if block.weight() > MAX_BLOCK_WEIGHT {
             return Err(Error::BadBlockLength);
         }
 
         // Check duplicate transactions
+        let tx_count = block.txdata.len();
         let mut seen_transactions = HashSet::with_capacity(tx_count);
         let mut txids = HashMap::with_capacity(tx_count);
 
@@ -409,7 +403,7 @@ fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
         return Err(Error::EmptyOutput);
     }
 
-    if tx.base_size() * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT {
+    if tx.weight() > MAX_BLOCK_WEIGHT {
         return Err(Error::BadTransactionLength);
     }
 
