@@ -363,46 +363,8 @@ where
 
 fn block_serialize_size_no_witness(block: &BitcoinBlock) -> usize {
     let base_size = 80 + VarInt(block.txdata.len() as u64).size();
-    let tx_size: usize = block.txdata.iter().map(tx_serialize_size_no_witness).sum();
+    let tx_size: usize = block.txdata.iter().map(|tx| tx.base_size()).sum();
     base_size + tx_size
-}
-
-/// Returns the serialized transaction size without witness.
-///
-/// Credit: https://github.com/jrawsthorne/rust-bitcoin-node/blob/d84e4a63c4ae4d6818ab22bd0c25531d367961be/src/primitives/tx.rs#L287
-fn tx_serialize_size_no_witness(tx: &Transaction) -> usize {
-    // OutPoint (32+4)
-    const OUTPOINT_SIZE: usize = 32 + 4;
-    // Sequence (4)
-    const SEQUENCE_SIZE: usize = 4;
-
-    let input_size: usize = tx
-        .input
-        .iter()
-        .map(|txin| {
-            let script_sig_len = txin.script_sig.len();
-            OUTPOINT_SIZE + SEQUENCE_SIZE + VarInt(script_sig_len as u64).size() + script_sig_len
-        })
-        .sum();
-
-    // Amount (8)
-    const VALUE_SIZE: usize = 8;
-    let output_size: usize = tx
-        .output
-        .iter()
-        .map(|txout| {
-            let script_pubkey_len = txout.script_pubkey.len();
-            VALUE_SIZE + VarInt(script_pubkey_len as u64).size() + script_pubkey_len
-        })
-        .sum();
-
-    const VERSION_SIZE: usize = 4;
-    const LOCK_TIME_SIZE: usize = 4;
-
-    VERSION_SIZE
-        + LOCK_TIME_SIZE
-        + VarInt(tx.input.len() as u64).size() + input_size // Vec<TxIn>
-        + VarInt(tx.output.len() as u64).size() + output_size // Vec<TxOut>
 }
 
 fn is_final(tx: &Transaction, height: u32, block_time: u32) -> bool {
@@ -453,7 +415,7 @@ fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
         return Err(Error::EmptyOutput);
     }
 
-    if tx_serialize_size_no_witness(tx) * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT {
+    if tx.base_size() * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT {
         return Err(Error::BadTransactionLength);
     }
 
