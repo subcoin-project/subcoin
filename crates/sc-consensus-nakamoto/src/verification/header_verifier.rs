@@ -107,12 +107,12 @@ where
         const MAINNET_CSV_HEIGHT: u32 = 419328;
 
         if block_number >= MAINNET_CSV_HEIGHT {
-            let median_time = self.calculate_median_time_past(header);
-            if header.time <= median_time {
+            let mtp = self.calculate_median_time_past(header);
+            if header.time <= mtp {
                 return Err(Error::TimeTooOld);
             }
 
-            Ok(median_time)
+            Ok(mtp)
         } else {
             Ok(header.time)
         }
@@ -131,18 +131,19 @@ where
         let mut block_hash = header.prev_blockhash;
 
         for _ in 0..LAST_BLOCKS - 1 {
+            // Genesis block
+            if block_hash == zero_hash {
+                break;
+            }
+
             let header = self
                 .client
                 .block_header(block_hash)
-                .expect("Parent header must exist");
+                .expect("Parent header must exist; qed");
 
             timestamps.push(header.time);
 
             block_hash = header.prev_blockhash;
-
-            if block_hash == zero_hash {
-                break;
-            }
         }
 
         timestamps.sort_unstable();
