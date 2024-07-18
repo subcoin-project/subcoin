@@ -9,7 +9,7 @@ use bitcoin::{Block as BitcoinBlock, BlockHash};
 use sc_consensus::BlockImportError;
 use sc_consensus_nakamoto::ImportManyBlocksResult;
 use std::collections::{HashMap, HashSet};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Manages queued blocks.
 #[derive(Default, Debug, Clone)]
@@ -78,6 +78,8 @@ pub(crate) struct BlockDownloadManager {
     last_progress_time: Instant,
     /// Whether there are too many blocks in the queue.
     import_queue_is_overloaded: bool,
+    /// Last time the log of too many blocks in the queue was printed.
+    last_overloaded_queue_log_time: Option<Instant>,
 }
 
 impl BlockDownloadManager {
@@ -94,6 +96,7 @@ impl BlockDownloadManager {
             orphan_blocks_pool: OrphanBlocksPool::new(),
             last_progress_time: Instant::now(),
             import_queue_is_overloaded: false,
+            last_overloaded_queue_log_time: None,
         }
     }
 
@@ -133,11 +136,20 @@ impl BlockDownloadManager {
         let import_queue_is_overloaded = self.best_queued_number - best_number > max_queued_blocks;
 
         if import_queue_is_overloaded {
-            tracing::debug!(
-                best_number,
-                self.best_queued_number,
-                "Too many blocks in the queue, pausing download",
-            );
+            const INTERVAL: Duration = Duration::from_secs(5);
+
+            if self
+                .last_overloaded_queue_log_time
+                .map(|last_time| last_time.elapsed() > INTERVAL)
+                .unwrap_or(true)
+            {
+                tracing::debug!(
+                    best_number,
+                    self.best_queued_number,
+                    "Too many blocks in the queue, pausing download",
+                );
+                self.last_overloaded_queue_log_time.replace(Instant::now());
+            }
         }
 
         self.import_queue_is_overloaded = import_queue_is_overloaded;
@@ -177,7 +189,7 @@ impl BlockDownloadManager {
                 Err(BlockImportError::UnknownParent) => panic!("Unknown parent {hash}"),
                 Err(err) => {
                     // TODO: handle error properly
-                    tracing::error!(?err, "Failed to import block {hash:?}");
+                    panic!("Failed to import block {hash:?}: {err:?}");
                 }
             }
         }
