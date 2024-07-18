@@ -240,8 +240,6 @@ where
             return Err(Error::BadMerkleRoot);
         }
 
-        // Once segwit is active, we will still need to check for block mutability.
-
         Ok(txids)
     }
 

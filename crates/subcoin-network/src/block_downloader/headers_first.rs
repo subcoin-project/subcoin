@@ -75,11 +75,9 @@ impl Display for DownloadState {
             Self::Restarting => write!(f, "Restarting"),
             Self::Disconnecting => write!(f, "Disconnecting"),
             Self::DownloadingHeaders { start, end } => {
-                write!(f, "DownloadingHeaders {{ start: {}, end: {} }}", start, end)
+                write!(f, "DownloadingHeaders {{ start: {start}, end: {end} }}")
             }
-            Self::DownloadingBlocks(_range) => {
-                write!(f, "DownloadingBlocks")
-            }
+            Self::DownloadingBlocks(_range) => write!(f, "DownloadingBlocks"),
             Self::Completed => write!(f, "Completed"),
         }
     }
@@ -440,6 +438,8 @@ where
     }
 
     pub(crate) fn on_block(&mut self, block: BitcoinBlock, from: PeerId) -> SyncAction {
+        let block_hash = block.block_hash();
+
         let block_download_range = match &mut self.download_state {
             DownloadState::DownloadingBlocks(download_range) => download_range,
             state => {
@@ -447,25 +447,20 @@ where
                     ?state,
                     ?from,
                     current_sync_peer = ?self.peer_id,
-                    "Not in the block download mode, dropping block {}",
-                    block.block_hash()
+                    "Not in the block download mode, dropping block {block_hash}",
                 );
                 return SyncAction::None;
             }
         };
 
-        let block_hash = block.block_hash();
-
         let receive_requested_block = self.download_manager.on_block_response(block_hash);
 
         let parent_block_hash = block.header.prev_blockhash;
 
-        let maybe_parent =
-            if let Some(number) = self.download_manager.block_number(parent_block_hash) {
-                Some(number)
-            } else {
-                self.client.block_number(parent_block_hash)
-            };
+        let maybe_parent = self
+            .download_manager
+            .block_number(parent_block_hash)
+            .or_else(|| self.client.block_number(parent_block_hash));
 
         if let Some(parent_block_number) = maybe_parent {
             let block_number = parent_block_number + 1;
@@ -601,12 +596,10 @@ fn prepare_ordered_block_data_request(
     let mut blocks = blocks
         .into_iter()
         .map(|block_hash| {
-            (
-                downloaded_headers.get(&block_hash).expect(
-                    "Header of the block to download must exist in headers-first sync; qed",
-                ),
-                block_hash,
-            )
+            let block_number = downloaded_headers
+                .get(&block_hash)
+                .expect("Header must exist before downloading blocks in headers-first sync; qed");
+            (block_number, block_hash)
         })
         .collect::<Vec<_>>();
 
