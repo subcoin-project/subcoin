@@ -57,13 +57,14 @@ where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore,
 {
-    /// Verifies the validity of header.
+    /// Verifies the validity of header and returns the block time for verifying the finality of
+    /// transactions.
     ///
     /// - Check proof of work.
     /// - Check the timestamp of the block is in the range:
     ///     - Time is not greater than 2 hours from now.
     ///     - Time is not the median time of last 11 blocks or before.
-    pub fn verify_header(&self, header: &BitcoinHeader) -> Result<(), Error> {
+    pub fn verify_header(&self, header: &BitcoinHeader) -> Result<u32, Error> {
         let last_block_header = self.client.block_header(header.prev_blockhash).ok_or(
             sp_blockchain::Error::MissingHeader(header.prev_blockhash.to_string()),
         )?;
@@ -104,14 +105,17 @@ where
 
         // TODO: check deployment state properly.
         const MAINNET_CSV_HEIGHT: u32 = 419328;
+
         if block_number >= MAINNET_CSV_HEIGHT {
             let median_time = self.calculate_median_time_past(header);
             if header.time <= median_time {
                 return Err(Error::TimeTooOld);
             }
-        }
 
-        Ok(())
+            Ok(median_time)
+        } else {
+            Ok(header.time)
+        }
     }
 
     /// Calculates the median time of the previous few blocks prior to the header (inclusive).

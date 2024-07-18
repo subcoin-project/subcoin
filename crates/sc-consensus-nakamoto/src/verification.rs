@@ -1,5 +1,6 @@
 mod header_verifier;
 
+use bitcoin::absolute::{LockTime, LOCK_TIME_THRESHOLD};
 use bitcoin::blockdata::constants::MAX_BLOCK_SIGOPS_COST;
 use bitcoin::blockdata::weight::WITNESS_SCALE_FACTOR;
 use bitcoin::consensus::Params;
@@ -58,8 +59,14 @@ pub enum Error {
     FirstTransactionIsNotCoinbase,
     #[error("Block contains multiple coinbase transactions")]
     MultipleCoinbase,
-    #[error("Transaction script contains too many sigops (max: {MAX_BLOCK_SIGOPS_COST})")]
-    TooManySigOps { block_number: u32, tx_index: usize },
+    #[error("Transaction input script contains too many sigops (max: {MAX_BLOCK_SIGOPS_COST})")]
+    TooManySigOps {
+        block_number: u32,
+        txid: Txid,
+        index: usize,
+    },
+    #[error("Transaction is not finalized")]
+    TransactionNotFinal,
     #[error("Block contains duplicate transaction at index {0}")]
     DuplicateTransaction(usize),
     #[error("Transaction contains duplicate inputs at index {0}")]
@@ -140,8 +147,8 @@ where
 
         match self.block_verification {
             BlockVerification::Full => {
-                self.header_verifier.verify_header(&block.header)?;
-                self.verify_transactions(block_number, block, txids)?;
+                let time = self.header_verifier.verify_header(&block.header)?;
+                self.verify_transactions(block_number, block, txids, time)?;
             }
             BlockVerification::HeaderOnly => {
                 self.header_verifier.verify_header(&block.header)?;
@@ -208,7 +215,8 @@ where
             {
                 return Err(Error::TooManySigOps {
                     block_number,
-                    tx_index: index,
+                    txid,
+                    index,
                 });
             }
 
@@ -242,6 +250,7 @@ where
         block_number: u32,
         block: &BitcoinBlock,
         txids: HashMap<usize, Txid>,
+        time: u32,
     ) -> Result<(), Error> {
         let transactions = &block.txdata;
 
@@ -303,6 +312,10 @@ where
             if index == 0 {
                 // Coinbase script was already checked in check_block_sanity().
                 continue;
+            }
+
+            if !is_final(tx, block_number, time) {
+                return Err(Error::TransactionNotFinal);
             }
 
             let tx_fee = verify_transaction(index, tx)?;
@@ -392,6 +405,24 @@ fn tx_serialize_size_no_witness(tx: &Transaction) -> usize {
         + LOCK_TIME_SIZE
         + VarInt(tx.input.len() as u64).size() + input_size // Vec<TxIn>
         + VarInt(tx.output.len() as u64).size() + output_size // Vec<TxOut>
+}
+
+fn is_final(tx: &Transaction, height: u32, block_time: u32) -> bool {
+    if tx.lock_time == LockTime::ZERO {
+        return true;
+    }
+
+    let lock_time = if tx.lock_time.to_consensus_u32() < LOCK_TIME_THRESHOLD {
+        height
+    } else {
+        block_time
+    };
+
+    if tx.lock_time.to_consensus_u32() < lock_time {
+        return true;
+    }
+
+    tx.input.iter().all(|txin| txin.sequence.is_final())
 }
 
 // Find a UTXO from the previous transactions in current block.
