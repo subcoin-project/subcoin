@@ -186,7 +186,7 @@ where
         let tx_count = block.txdata.len();
 
         if tx_count * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT
-            || block_serialize_size_no_witness(block) * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT
+            || block.base_size() * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT
         {
             return Err(Error::BadBlockLength);
         }
@@ -359,12 +359,6 @@ where
 
         maybe_storage_data.and_then(|data| Coin::decode(&mut data.0.as_slice()).ok())
     }
-}
-
-fn block_serialize_size_no_witness(block: &BitcoinBlock) -> usize {
-    let base_size = 80 + VarInt(block.txdata.len() as u64).size();
-    let tx_size: usize = block.txdata.iter().map(|tx| tx.base_size()).sum();
-    base_size + tx_size
 }
 
 fn is_final(tx: &Transaction, height: u32, block_time: u32) -> bool {
