@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/block_downloader/headers_first.rs`."><title>headers_first.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../../static.files/rustdoc-dd39b87e5fcfba68.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.81.0-nightly (fcc325f1b 2024-07-17)" data-channel="nightly" data-search-js="search-d234aafac6c221dd.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-20a3ad099b048cf2.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/block_downloader/headers_first.rs`."><title>headers_first.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../../static.files/rustdoc-d7a46bd0e1dce774.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.81.0-nightly (5affbb171 2024-07-18)" data-channel="nightly" data-search-js="search-d234aafac6c221dd.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-20a3ad099b048cf2.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -620,10 +620,6 @@
 <a href="#620" id="620">620</a>
 <a href="#621" id="621">621</a>
 <a href="#622" id="622">622</a>
-<a href="#623" id="623">623</a>
-<a href="#624" id="624">624</a>
-<a href="#625" id="625">625</a>
-<a href="#626" id="626">626</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::block_downloader::BlockDownloadManager;
 <span class="kw">use </span><span class="kw">crate</span>::sync::{LocatorRequest, SyncAction, SyncRequest};
 <span class="kw">use crate</span>::{Error, PeerId, SyncStatus};
@@ -701,11 +697,9 @@
             <span class="self">Self</span>::Restarting =&gt; <span class="macro">write!</span>(f, <span class="string">"Restarting"</span>),
             <span class="self">Self</span>::Disconnecting =&gt; <span class="macro">write!</span>(f, <span class="string">"Disconnecting"</span>),
             <span class="self">Self</span>::DownloadingHeaders { start, end } =&gt; {
-                <span class="macro">write!</span>(f, <span class="string">"DownloadingHeaders {{ start: {}, end: {} }}"</span>, start, end)
+                <span class="macro">write!</span>(f, <span class="string">"DownloadingHeaders {{ start: {start}, end: {end} }}"</span>)
             }
-            <span class="self">Self</span>::DownloadingBlocks(_range) =&gt; {
-                <span class="macro">write!</span>(f, <span class="string">"DownloadingBlocks"</span>)
-            }
+            <span class="self">Self</span>::DownloadingBlocks(_range) =&gt; <span class="macro">write!</span>(f, <span class="string">"DownloadingBlocks"</span>),
             <span class="self">Self</span>::Completed =&gt; <span class="macro">write!</span>(f, <span class="string">"Completed"</span>),
         }
     }
@@ -1066,32 +1060,32 @@
     }
 
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>on_block(<span class="kw-2">&amp;mut </span><span class="self">self</span>, block: BitcoinBlock, from: PeerId) -&gt; SyncAction {
+        <span class="kw">let </span>block_hash = block.block_hash();
+
         <span class="kw">let </span>block_download_range = <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.download_state {
             DownloadState::DownloadingBlocks(download_range) =&gt; download_range,
             state =&gt; {
-                <span class="macro">tracing::warn!</span>(
+                <span class="comment">// TODO: we may receive the blocks from a peer that has been considered as stalled,
+                // should we try to cache and use such blocks since the bandwidth has been consumed
+                // already?
+                </span><span class="macro">tracing::warn!</span>(
                     <span class="question-mark">?</span>state,
                     <span class="question-mark">?</span>from,
                     current_sync_peer = <span class="question-mark">?</span><span class="self">self</span>.peer_id,
-                    <span class="string">"Not in the block download mode, dropping block {}"</span>,
-                    block.block_hash()
+                    <span class="string">"Not in the block download mode, dropping block {block_hash}"</span>,
                 );
                 <span class="kw">return </span>SyncAction::None;
             }
         };
 
-        <span class="kw">let </span>block_hash = block.block_hash();
-
         <span class="kw">let </span>receive_requested_block = <span class="self">self</span>.download_manager.on_block_response(block_hash);
 
         <span class="kw">let </span>parent_block_hash = block.header.prev_blockhash;
 
-        <span class="kw">let </span>maybe_parent =
-            <span class="kw">if let </span><span class="prelude-val">Some</span>(number) = <span class="self">self</span>.download_manager.block_number(parent_block_hash) {
-                <span class="prelude-val">Some</span>(number)
-            } <span class="kw">else </span>{
-                <span class="self">self</span>.client.block_number(parent_block_hash)
-            };
+        <span class="kw">let </span>maybe_parent = <span class="self">self
+            </span>.download_manager
+            .block_number(parent_block_hash)
+            .or_else(|| <span class="self">self</span>.client.block_number(parent_block_hash));
 
         <span class="kw">if let </span><span class="prelude-val">Some</span>(parent_block_number) = maybe_parent {
             <span class="kw">let </span>block_number = parent_block_number + <span class="number">1</span>;
@@ -1227,12 +1221,10 @@
     <span class="kw">let </span><span class="kw-2">mut </span>blocks = blocks
         .into_iter()
         .map(|block_hash| {
-            (
-                downloaded_headers.get(<span class="kw-2">&amp;</span>block_hash).expect(
-                    <span class="string">"Header of the block to download must exist in headers-first sync; qed"</span>,
-                ),
-                block_hash,
-            )
+            <span class="kw">let </span>block_number = downloaded_headers
+                .get(<span class="kw-2">&amp;</span>block_hash)
+                .expect(<span class="string">"Header must exist before downloading blocks in headers-first sync; qed"</span>);
+            (block_number, block_hash)
         })
         .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
 
