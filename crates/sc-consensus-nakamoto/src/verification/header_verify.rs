@@ -18,8 +18,8 @@ const MAX_FUTURE_BLOCK_TIME: u32 = 2 * 60 * 60;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// Block's difficulty is invalid.
-    #[error("Incorrect proof-of-work")]
-    BadDifficultyBits,
+    #[error("Incorrect proof-of-work: {{ got: {got:?}, expected: {expected:?} }}")]
+    BadDifficultyBits { got: Target, expected: Target },
     /// Block's proof-of-work is invalid.
     #[error("proof-of-work validation failed: {0:?}")]
     InvalidProofOfWork(ValidationError),
@@ -85,11 +85,15 @@ where
             &self.consensus_params,
             &self.client,
         );
+        let expected_bits = expected_target.to_compact_lossy().to_consensus();
 
         let actual_target = header.target();
 
-        if actual_target != expected_target {
-            return Err(Error::BadDifficultyBits);
+        if actual_target.to_compact_lossy().to_consensus() != expected_bits {
+            return Err(Error::BadDifficultyBits {
+                got: actual_target,
+                expected: expected_target,
+            });
         }
 
         header
@@ -200,7 +204,7 @@ where
         let last_block_time = last_block.time;
 
         calculate_next_work_required(
-            retarget_header.target().0,
+            last_block.target().0,
             first_block_time.into(),
             last_block_time.into(),
             consensus_params,
@@ -240,5 +244,39 @@ fn calculate_next_work_required(
         pow_limit
     } else {
         target
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bitcoin::consensus::encode::deserialize_hex;
+
+    #[test]
+    fn test_calculate_next_work_required() {
+        // block_354816
+        let block_354816: BitcoinHeader = deserialize_hex
+            ("020000003f99814a36d2a2043b1d4bf61a410f71828eca1decbf56000000000000000000b3762ed278ac44bb953e24262cfeb952d0abe6d3b7f8b74fd24e009b96b6cb965d674655dd1317186436e79d").unwrap();
+
+        let expected_target = block_354816.target();
+
+        // block_352800, first block in this period.
+        let first_block: BitcoinHeader = deserialize_hex("0200000074c51c1cc53aaf478c643bb612da6bd17b268cd9bdccc4000000000000000000ccc0a2618a1f973dfac37827435b463abd18cbfd0f280a90432d3d78497a36cc02f33355f0171718b72a1dc7").unwrap();
+
+        // block_354815, last block in this period.
+        let last_block: BitcoinHeader = deserialize_hex("030000004c9c1b59250f30b8d360886a5433501120b056a000bdc0160000000000000000caca1bf0c55a5ba2299f9e60d10c01c679bb266c7df815ff776a1b97fd3a199ac1644655f01717182707bd59").unwrap();
+
+        let new_target = calculate_next_work_required(
+            last_block.target().0,
+            first_block.time as u64,
+            last_block.time as u64,
+            &Params::new(bitcoin::Network::Bitcoin),
+        );
+
+        assert_eq!(
+            new_target.to_compact_lossy().to_consensus(),
+            expected_target.to_compact_lossy().to_consensus(),
+            "Difficulty bits must match"
+        );
     }
 }

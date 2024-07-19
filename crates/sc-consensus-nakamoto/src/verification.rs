@@ -77,8 +77,8 @@ pub enum Error {
     Header(#[from] HeaderError),
     #[error("Script verification: {0}")]
     Script(#[from] bitcoinconsensus::Error),
-    #[error(transparent)]
-    BitcoinCodec(#[from] bitcoin::io::Error),
+    #[error("Bitcoin codec: {0:?}")]
+    BitcoinCodec(bitcoin::io::Error),
     /// An error occurred in the client.
     #[error(transparent)]
     Client(#[from] sp_blockchain::Error),
@@ -263,7 +263,8 @@ where
             }
 
             tx_data.clear();
-            tx.consensus_encode(&mut tx_data)?;
+            tx.consensus_encode(&mut tx_data)
+                .map_err(Error::BitcoinCodec)?;
             let spending_transaction = tx_data.as_slice();
 
             let mut total_input_value = 0;
@@ -418,7 +419,8 @@ mod tests {
             find_utxo_in_current_block(&block, out_point, 36, |index| txids
                 .get(&index)
                 .copied()
-                .unwrap()),
+                .unwrap())
+            .map(|txout| txout.value.to_sat()),
             Some(295600000)
         );
     }
