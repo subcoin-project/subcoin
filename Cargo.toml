@@ -30,6 +30,7 @@ default-members = ["crates/subcoin-node"]
 ansi_term = "0.12.1"
 async-trait = "0.1"
 bitcoin = { git = "https://github.com/liuchengxu/rust-bitcoin", branch = "0.32.x-subcoin", default-features = false }
+bitcoinconsensus = "0.106.0"
 bitcoin-explorer = { git = "https://github.com/liuchengxu/Rusty-Bitcoin-Explorer", branch = "rust-bitcoin-upgrade", default-features = false }
 chrono = "0.4.37"
 clap = { version = "4", features = ["derive"] }

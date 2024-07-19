@@ -2,7 +2,7 @@ mod header_verify;
 mod tx_verify;
 
 use bitcoin::blockdata::constants::MAX_BLOCK_SIGOPS_COST;
-use bitcoin::consensus::Params;
+use bitcoin::consensus::{Encodable, Params};
 use bitcoin::{
     Amount, Block as BitcoinBlock, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid, Weight,
 };
@@ -75,6 +75,10 @@ pub enum Error {
     /// Block header error.
     #[error(transparent)]
     Header(#[from] HeaderError),
+    #[error("Script verification: {0}")]
+    Script(#[from] bitcoinconsensus::Error),
+    #[error(transparent)]
+    BitcoinCodec(#[from] bitcoin::io::Error),
     /// An error occurred in the client.
     #[error(transparent)]
     Client(#[from] sp_blockchain::Error),
@@ -244,6 +248,9 @@ where
 
         let mut block_fee = 0;
 
+        // Buffer for encoded transaction data.
+        let mut tx_data = Vec::<u8>::new();
+
         // TODO: verify transactions in parallel.
         for (tx_index, tx) in transactions.iter().enumerate() {
             if tx_index == 0 {
@@ -255,15 +262,13 @@ where
                 return Err(Error::TransactionNotFinal);
             }
 
-            let total_output_value = tx
-                .output
-                .iter()
-                .map(|output| output.value.to_sat())
-                .sum::<u64>();
+            tx_data.clear();
+            tx.consensus_encode(&mut tx_data)?;
+            let spending_transaction = tx_data.as_slice();
 
             let mut total_input_value = 0;
 
-            for input in &tx.input {
+            for (input_index, input) in tx.input.iter().enumerate() {
                 let out_point = input.previous_output;
 
                 let spent_output = match self.find_utxo_in_state(parent_hash, out_point) {
@@ -279,8 +284,28 @@ where
                         })?,
                 };
 
+                let script_verify_result = bitcoinconsensus::verify(
+                    spent_output.script_pubkey.as_bytes(),
+                    spent_output.value.to_sat(),
+                    spending_transaction,
+                    None,
+                    input_index,
+                );
+
+                if let Err(err) = script_verify_result {
+                    if err != bitcoinconsensus::Error::ERR_SCRIPT {
+                        return Err(err)?;
+                    }
+                }
+
                 total_input_value += spent_output.value.to_sat();
             }
+
+            let total_output_value = tx
+                .output
+                .iter()
+                .map(|output| output.value.to_sat())
+                .sum::<u64>();
 
             // Total input value must be no less than total output value.
             // Tx fee is the difference between inputs and outputs.
@@ -289,8 +314,6 @@ where
                 .ok_or(Error::InsufficientFunds)?;
 
             block_fee += tx_fee;
-
-            // TODO: Verify the script.
         }
 
         let coinbase_value = transactions[0]

@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 async-trait = { workspace = true }
 bitcoin = { workspace = true }
+bitcoinconsensus = { workspace = true }
 clap = { workspace = true, optional = true }
 codec = { workspace = true }
 futures = { workspace = true }
