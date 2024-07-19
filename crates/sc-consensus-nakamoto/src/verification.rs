@@ -3,7 +3,9 @@ mod tx_verify;
 
 use bitcoin::blockdata::constants::MAX_BLOCK_SIGOPS_COST;
 use bitcoin::consensus::Params;
-use bitcoin::{Block as BitcoinBlock, OutPoint, Transaction, TxMerkleNode, Txid, Weight};
+use bitcoin::{
+    Amount, Block as BitcoinBlock, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid, Weight,
+};
 use sc_client_api::{AuxStore, Backend, StorageProvider};
 use sp_blockchain::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
@@ -233,8 +235,26 @@ where
                     "Parent block #{parent_number} not found"
                 )))?;
 
-        // Verifies non-coinbase transaction.
-        let verify_transaction = |tx_index: usize, tx: &Transaction| -> Result<u64, Error> {
+        let get_txid = |tx_index: usize| {
+            txids
+                .get(&tx_index)
+                .copied()
+                .expect("Txid must exist as initialized in `check_block_sanity()`; qed")
+        };
+
+        let mut block_fee = 0;
+
+        // TODO: verify transactions in parallel.
+        for (tx_index, tx) in transactions.iter().enumerate() {
+            if tx_index == 0 {
+                // Coinbase script was already checked in check_block_sanity().
+                continue;
+            }
+
+            if !is_final(tx, block_number, time) {
+                return Err(Error::TransactionNotFinal);
+            }
+
             let total_output_value = tx
                 .output
                 .iter()
@@ -246,25 +266,20 @@ where
             for input in &tx.input {
                 let out_point = input.previous_output;
 
-                let amount = match self.find_utxo_in_state(parent_hash, out_point) {
-                    Some(coin) => coin.amount,
-                    None => {
-                        let get_txid = |tx_index: usize| {
-                            txids.get(&tx_index).copied().expect(
-                                "Txid must exist as initialized in `check_block_sanity()`; qed",
-                            )
-                        };
-
-                        find_utxo_in_current_block(block, out_point, tx_index, get_txid)
-                            .ok_or_else(|| Error::UtxoNotFound {
-                                block_number,
-                                txid: get_txid(tx_index),
-                                out_point,
-                            })?
-                    }
+                let spent_output = match self.find_utxo_in_state(parent_hash, out_point) {
+                    Some(coin) => TxOut {
+                        value: Amount::from_sat(coin.amount),
+                        script_pubkey: ScriptBuf::from_bytes(coin.script_pubkey),
+                    },
+                    None => find_utxo_in_current_block(block, out_point, tx_index, get_txid)
+                        .ok_or_else(|| Error::UtxoNotFound {
+                            block_number,
+                            txid: get_txid(tx_index),
+                            out_point,
+                        })?,
                 };
 
-                total_input_value += amount;
+                total_input_value += spent_output.value.to_sat();
             }
 
             // Total input value must be no less than total output value.
@@ -272,24 +287,6 @@ where
             let tx_fee = total_input_value
                 .checked_sub(total_output_value)
                 .ok_or(Error::InsufficientFunds)?;
-
-            Ok(tx_fee)
-        };
-
-        let mut block_fee = 0;
-
-        // TODO: verify transactions in parallel.
-        for (index, tx) in transactions.iter().enumerate() {
-            if index == 0 {
-                // Coinbase script was already checked in check_block_sanity().
-                continue;
-            }
-
-            if !is_final(tx, block_number, time) {
-                return Err(Error::TransactionNotFinal);
-            }
-
-            let tx_fee = verify_transaction(index, tx)?;
 
             block_fee += tx_fee;
 
@@ -340,7 +337,7 @@ fn find_utxo_in_current_block(
     out_point: OutPoint,
     tx_index: usize,
     get_txid: impl Fn(usize) -> Txid,
-) -> Option<u64> {
+) -> Option<TxOut> {
     let OutPoint { txid, vout } = out_point;
     block
         .txdata
@@ -348,11 +345,8 @@ fn find_utxo_in_current_block(
         .take(tx_index)
         .enumerate()
         .find_map(|(index, tx)| (get_txid(index) == txid).then_some(tx))
-        .and_then(|tx| {
-            tx.output
-                .get(vout as usize)
-                .map(|txout| txout.value.to_sat())
-        })
+        .and_then(|tx| tx.output.get(vout as usize))
+        .cloned()
 }
 
 #[cfg(test)]
