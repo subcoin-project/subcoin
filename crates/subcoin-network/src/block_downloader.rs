@@ -83,9 +83,6 @@ pub(crate) struct BlockDownloadManager {
 }
 
 impl BlockDownloadManager {
-    /// The downloader is considered as stalled if no progress in 60 seconds.
-    const STALL_TIMEOUT: u64 = 60;
-
     fn new() -> Self {
         Self {
             requested_blocks: HashSet::new(),
@@ -101,7 +98,14 @@ impl BlockDownloadManager {
     }
 
     fn is_stalled(&self) -> bool {
-        self.last_progress_time.elapsed().as_secs() > Self::STALL_TIMEOUT
+        // The downloader is considered as stalled if no progress for some time.
+        let stall_timeout = if self.best_queued_number > 300_000 {
+            120
+        } else {
+            60
+        };
+
+        self.last_progress_time.elapsed().as_secs() > stall_timeout
     }
 
     fn block_exists(&self, block_hash: BlockHash) -> bool {

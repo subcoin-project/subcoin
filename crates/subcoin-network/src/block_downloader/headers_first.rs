@@ -443,6 +443,9 @@ where
         let block_download_range = match &mut self.download_state {
             DownloadState::DownloadingBlocks(download_range) => download_range,
             state => {
+                // TODO: we may receive the blocks from a peer that has been considered as stalled,
+                // should we try to cache and use such blocks since the bandwidth has been consumed
+                // already?
                 tracing::warn!(
                     ?state,
                     ?from,
