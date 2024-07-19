@@ -1,4 +1,4 @@
-mod header_verifier;
+mod header_verify;
 mod tx_verify;
 
 use bitcoin::blockdata::constants::MAX_BLOCK_SIGOPS_COST;
@@ -14,7 +14,7 @@ use subcoin_primitives::runtime::{bitcoin_block_subsidy, Coin};
 use subcoin_primitives::CoinStorageKey;
 use tx_verify::{check_transaction_sanity, is_final};
 
-pub use header_verifier::{Error as HeaderError, HeaderVerifier};
+pub use header_verify::{Error as HeaderError, HeaderVerifier};
 pub use tx_verify::Error as TxError;
 
 const MAX_BLOCK_WEIGHT: Weight = Weight::MAX_BLOCK;
