@@ -1,11 +1,10 @@
-mod header_verifier;
+mod header_verify;
+mod tx_verify;
 
-use bitcoin::absolute::{LockTime, LOCK_TIME_THRESHOLD};
 use bitcoin::blockdata::constants::MAX_BLOCK_SIGOPS_COST;
-use bitcoin::blockdata::weight::WITNESS_SCALE_FACTOR;
-use bitcoin::consensus::Params;
+use bitcoin::consensus::{Encodable, Params};
 use bitcoin::{
-    Amount, Block as BitcoinBlock, OutPoint, Transaction, TxMerkleNode, Txid, VarInt, Weight,
+    Amount, Block as BitcoinBlock, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid, Weight,
 };
 use sc_client_api::{AuxStore, Backend, StorageProvider};
 use sp_blockchain::HeaderBackend;
@@ -15,16 +14,12 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use subcoin_primitives::runtime::{bitcoin_block_subsidy, Coin};
 use subcoin_primitives::CoinStorageKey;
+use tx_verify::{check_transaction_sanity, is_final};
 
-pub use header_verifier::{Error as HeaderError, HeaderVerifier};
+pub use header_verify::{Error as HeaderError, HeaderVerifier};
+pub use tx_verify::Error as TxError;
 
-// MinCoinbaseScriptLen is the minimum length a coinbase script can be.
-const MIN_COINBASE_SCRIPT_LEN: usize = 2;
-
-// MaxCoinbaseScriptLen is the maximum length a coinbase script can be.
-const MAX_COINBASE_SCRIPT_LEN: usize = 100;
-
-const MAX_BLOCK_WEIGHT: usize = Weight::MAX_BLOCK.to_wu() as usize;
+const MAX_BLOCK_WEIGHT: Weight = Weight::MAX_BLOCK;
 
 /// Represents the level of block verification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,12 +44,6 @@ pub enum Error {
     EmptyTransactionList,
     #[error("Block is too large")]
     BadBlockLength,
-    #[error("Transaction has no inputs")]
-    EmptyInput,
-    #[error("Transaction has no outputs")]
-    EmptyOutput,
-    #[error("Transaction is too large")]
-    BadTransactionLength,
     #[error("First transaction is not coinbase")]
     FirstTransactionIsNotCoinbase,
     #[error("Block contains multiple coinbase transactions")]
@@ -69,19 +58,6 @@ pub enum Error {
     TransactionNotFinal,
     #[error("Block contains duplicate transaction at index {0}")]
     DuplicateTransaction(usize),
-    #[error("Transaction contains duplicate inputs at index {0}")]
-    DuplicateTxInput(usize),
-    #[error("Output value (0) is too large")]
-    OutputValueTooLarge(Amount),
-    #[error("Total output value (0) is too large")]
-    TotalOutputValueTooLarge(Amount),
-    #[error(
-        "Coinbase transaction script length of {0} is out of range \
-        (min: {MIN_COINBASE_SCRIPT_LEN}, max: {MAX_COINBASE_SCRIPT_LEN})"
-    )]
-    BadCoinbaseScriptSigLength(usize),
-    #[error("Transaction input refers to previous output that is null")]
-    BadTxInput,
     /// Referenced output does not exist or has already been spent.
     #[error("UTXO spent in #{block_number}:{txid} not found: {out_point:?}")]
     UtxoNotFound {
@@ -94,9 +70,15 @@ pub enum Error {
     // Invalid coinbase value.
     #[error("Block reward is larger than the sum of block fee and subsidy")]
     InvalidBlockReward,
+    #[error(transparent)]
+    Transaction(#[from] TxError),
     /// Block header error.
     #[error(transparent)]
     Header(#[from] HeaderError),
+    #[error("Script verification: {0}")]
+    Script(#[from] bitcoinconsensus::Error),
+    #[error("Bitcoin codec: {0:?}")]
+    BitcoinCodec(bitcoin::io::Error),
     /// An error occurred in the client.
     #[error(transparent)]
     Client(#[from] sp_blockchain::Error),
@@ -159,7 +141,7 @@ where
         Ok(())
     }
 
-    /// Performs context-free preliminary checks.
+    /// Performs preliminary checks.
     ///
     /// - Transaction list must be non-empty.
     /// - Block size must not exceed `MAX_BLOCK_WEIGHT`.
@@ -183,15 +165,12 @@ where
         }
 
         // Size limits.
-        let tx_count = block.txdata.len();
-
-        if tx_count * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT
-            || block_serialize_size_no_witness(block) * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT
-        {
+        if block.weight() > MAX_BLOCK_WEIGHT {
             return Err(Error::BadBlockLength);
         }
 
         // Check duplicate transactions
+        let tx_count = block.txdata.len();
         let mut seen_transactions = HashSet::with_capacity(tx_count);
         let mut txids = HashMap::with_capacity(tx_count);
 
@@ -240,8 +219,6 @@ where
             return Err(Error::BadMerkleRoot);
         }
 
-        // Once segwit is active, we will still need to check for block mutability.
-
         Ok(txids)
     }
 
@@ -262,54 +239,21 @@ where
                     "Parent block #{parent_number} not found"
                 )))?;
 
-        // Verifies non-coinbase transaction.
-        let verify_transaction = |tx_index: usize, tx: &Transaction| -> Result<u64, Error> {
-            let total_output_value = tx
-                .output
-                .iter()
-                .map(|output| output.value.to_sat())
-                .sum::<u64>();
-
-            let mut total_input_value = 0;
-
-            for input in &tx.input {
-                let out_point = input.previous_output;
-
-                let amount = match self.find_utxo_in_state(parent_hash, out_point) {
-                    Some(coin) => coin.amount,
-                    None => {
-                        let get_txid = |tx_index: usize| {
-                            txids.get(&tx_index).copied().expect(
-                                "Txid must exist as initialized in `check_block_sanity()`; qed",
-                            )
-                        };
-
-                        find_utxo_in_current_block(block, out_point, tx_index, get_txid)
-                            .ok_or_else(|| Error::UtxoNotFound {
-                                block_number,
-                                txid: get_txid(tx_index),
-                                out_point,
-                            })?
-                    }
-                };
-
-                total_input_value += amount;
-            }
-
-            // Total input value must be no less than total output value.
-            // Tx fee is the difference between inputs and outputs.
-            let tx_fee = total_input_value
-                .checked_sub(total_output_value)
-                .ok_or(Error::InsufficientFunds)?;
-
-            Ok(tx_fee)
+        let get_txid = |tx_index: usize| {
+            txids
+                .get(&tx_index)
+                .copied()
+                .expect("Txid must exist as initialized in `check_block_sanity()`; qed")
         };
 
         let mut block_fee = 0;
 
+        // Buffer for encoded transaction data.
+        let mut tx_data = Vec::<u8>::new();
+
         // TODO: verify transactions in parallel.
-        for (index, tx) in transactions.iter().enumerate() {
-            if index == 0 {
+        for (tx_index, tx) in transactions.iter().enumerate() {
+            if tx_index == 0 {
                 // Coinbase script was already checked in check_block_sanity().
                 continue;
             }
@@ -318,11 +262,59 @@ where
                 return Err(Error::TransactionNotFinal);
             }
 
-            let tx_fee = verify_transaction(index, tx)?;
+            tx_data.clear();
+            tx.consensus_encode(&mut tx_data)
+                .map_err(Error::BitcoinCodec)?;
+            let spending_transaction = tx_data.as_slice();
+
+            let mut total_input_value = 0;
+
+            for (input_index, input) in tx.input.iter().enumerate() {
+                let out_point = input.previous_output;
+
+                let spent_output = match self.find_utxo_in_state(parent_hash, out_point) {
+                    Some(coin) => TxOut {
+                        value: Amount::from_sat(coin.amount),
+                        script_pubkey: ScriptBuf::from_bytes(coin.script_pubkey),
+                    },
+                    None => find_utxo_in_current_block(block, out_point, tx_index, get_txid)
+                        .ok_or_else(|| Error::UtxoNotFound {
+                            block_number,
+                            txid: get_txid(tx_index),
+                            out_point,
+                        })?,
+                };
+
+                let script_verify_result = bitcoinconsensus::verify(
+                    spent_output.script_pubkey.as_bytes(),
+                    spent_output.value.to_sat(),
+                    spending_transaction,
+                    None,
+                    input_index,
+                );
+
+                if let Err(err) = script_verify_result {
+                    if err != bitcoinconsensus::Error::ERR_SCRIPT {
+                        return Err(err)?;
+                    }
+                }
+
+                total_input_value += spent_output.value.to_sat();
+            }
+
+            let total_output_value = tx
+                .output
+                .iter()
+                .map(|output| output.value.to_sat())
+                .sum::<u64>();
+
+            // Total input value must be no less than total output value.
+            // Tx fee is the difference between inputs and outputs.
+            let tx_fee = total_input_value
+                .checked_sub(total_output_value)
+                .ok_or(Error::InsufficientFunds)?;
 
             block_fee += tx_fee;
-
-            // TODO: Verify the script.
         }
 
         let coinbase_value = transactions[0]
@@ -363,75 +355,13 @@ where
     }
 }
 
-fn block_serialize_size_no_witness(block: &BitcoinBlock) -> usize {
-    let base_size = 80 + VarInt(block.txdata.len() as u64).size();
-    let tx_size: usize = block.txdata.iter().map(tx_serialize_size_no_witness).sum();
-    base_size + tx_size
-}
-
-/// Returns the serialized transaction size without witness.
-///
-/// Credit: https://github.com/jrawsthorne/rust-bitcoin-node/blob/d84e4a63c4ae4d6818ab22bd0c25531d367961be/src/primitives/tx.rs#L287
-fn tx_serialize_size_no_witness(tx: &Transaction) -> usize {
-    // OutPoint (32+4)
-    const OUTPOINT_SIZE: usize = 32 + 4;
-    // Sequence (4)
-    const SEQUENCE_SIZE: usize = 4;
-
-    let input_size: usize = tx
-        .input
-        .iter()
-        .map(|txin| {
-            let script_sig_len = txin.script_sig.len();
-            OUTPOINT_SIZE + SEQUENCE_SIZE + VarInt(script_sig_len as u64).size() + script_sig_len
-        })
-        .sum();
-
-    // Amount (8)
-    const VALUE_SIZE: usize = 8;
-    let output_size: usize = tx
-        .output
-        .iter()
-        .map(|txout| {
-            let script_pubkey_len = txout.script_pubkey.len();
-            VALUE_SIZE + VarInt(script_pubkey_len as u64).size() + script_pubkey_len
-        })
-        .sum();
-
-    const VERSION_SIZE: usize = 4;
-    const LOCK_TIME_SIZE: usize = 4;
-
-    VERSION_SIZE
-        + LOCK_TIME_SIZE
-        + VarInt(tx.input.len() as u64).size() + input_size // Vec<TxIn>
-        + VarInt(tx.output.len() as u64).size() + output_size // Vec<TxOut>
-}
-
-fn is_final(tx: &Transaction, height: u32, block_time: u32) -> bool {
-    if tx.lock_time == LockTime::ZERO {
-        return true;
-    }
-
-    let lock_time = if tx.lock_time.to_consensus_u32() < LOCK_TIME_THRESHOLD {
-        height
-    } else {
-        block_time
-    };
-
-    if tx.lock_time.to_consensus_u32() < lock_time {
-        return true;
-    }
-
-    tx.input.iter().all(|txin| txin.sequence.is_final())
-}
-
 // Find a UTXO from the previous transactions in current block.
 fn find_utxo_in_current_block(
     block: &BitcoinBlock,
     out_point: OutPoint,
     tx_index: usize,
     get_txid: impl Fn(usize) -> Txid,
-) -> Option<u64> {
+) -> Option<TxOut> {
     let OutPoint { txid, vout } = out_point;
     block
         .txdata
@@ -439,65 +369,8 @@ fn find_utxo_in_current_block(
         .take(tx_index)
         .enumerate()
         .find_map(|(index, tx)| (get_txid(index) == txid).then_some(tx))
-        .and_then(|tx| {
-            tx.output
-                .get(vout as usize)
-                .map(|txout| txout.value.to_sat())
-        })
-}
-
-fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
-    if tx.input.is_empty() {
-        return Err(Error::EmptyInput);
-    }
-
-    if tx.output.is_empty() {
-        return Err(Error::EmptyOutput);
-    }
-
-    if tx_serialize_size_no_witness(tx) * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT {
-        return Err(Error::BadTransactionLength);
-    }
-
-    // Check for duplicate inputs.
-    let mut seen_inputs = HashSet::new();
-    for (index, txin) in tx.input.iter().enumerate() {
-        if !seen_inputs.insert(txin.previous_output) {
-            return Err(Error::DuplicateTxInput(index));
-        }
-    }
-
-    let mut total_output_value = Amount::ZERO;
-    tx.output.iter().try_for_each(|txout| {
-        if txout.value > Amount::MAX_MONEY {
-            return Err(Error::OutputValueTooLarge(txout.value));
-        }
-
-        total_output_value += txout.value;
-
-        if total_output_value > Amount::MAX_MONEY {
-            return Err(Error::TotalOutputValueTooLarge(total_output_value));
-        }
-
-        Ok(())
-    })?;
-
-    // Coinbase script length must be between min and max length.
-    if tx.is_coinbase() {
-        let script_sig_len = tx.input[0].script_sig.len();
-
-        if !(MIN_COINBASE_SCRIPT_LEN..=MAX_COINBASE_SCRIPT_LEN).contains(&script_sig_len) {
-            return Err(Error::BadCoinbaseScriptSigLength(script_sig_len));
-        }
-    } else {
-        // Previous transaction outputs referenced by the inputs to this
-        // transaction must not be null.
-        if tx.input.iter().any(|txin| txin.previous_output.is_null()) {
-            return Err(Error::BadTxInput);
-        }
-    }
-
-    Ok(())
+        .and_then(|tx| tx.output.get(vout as usize))
+        .cloned()
 }
 
 #[cfg(test)]
@@ -546,7 +419,8 @@ mod tests {
             find_utxo_in_current_block(&block, out_point, 36, |index| txids
                 .get(&index)
                 .copied()
-                .unwrap()),
+                .unwrap())
+            .map(|txout| txout.value.to_sat()),
             Some(295600000)
         );
     }
