@@ -1,6 +1,6 @@
 use crate::cli::params::{CommonParams, NetworkParams};
 use clap::Parser;
-use sc_cli::{DatabasePruningMode, NodeKeyParams, PruningParams, Role, SharedParams};
+use sc_cli::{DatabasePruningMode, ImportParams, NodeKeyParams, PruningParams, Role, SharedParams};
 use sc_client_api::UsageProvider;
 use sc_consensus_nakamoto::{BitcoinBlockImporter, BlockVerification, ImportConfig};
 use sc_service::{BlocksPruning, Configuration, TaskManager};
@@ -37,6 +37,10 @@ pub struct Run {
     #[allow(missing_docs)]
     #[clap(flatten)]
     pub network_params: NetworkParams,
+
+    #[allow(missing_docs)]
+    #[clap(flatten)]
+    pub import_params: ImportParams,
 }
 
 impl Run {
@@ -58,6 +62,7 @@ impl Run {
 pub struct RunCmd {
     shared_params: SharedParams,
     pruning_params: PruningParams,
+    import_params: ImportParams,
 }
 
 impl RunCmd {
@@ -70,6 +75,7 @@ impl RunCmd {
         Self {
             shared_params,
             pruning_params,
+            import_params: run.import_params.clone(),
         }
     }
 
@@ -186,6 +192,8 @@ impl RunCmd {
             subcoin_informant::build(client.clone(), network_handle, Default::default()),
         );
 
+        spawn_handle.spawn("profile-server", None, crate::run_profile_server());
+
         Ok(task_manager)
     }
 }
@@ -193,6 +201,10 @@ impl RunCmd {
 impl sc_cli::CliConfiguration for RunCmd {
     fn shared_params(&self) -> &SharedParams {
         &self.shared_params
+    }
+
+    fn import_params(&self) -> Option<&ImportParams> {
+        Some(&self.import_params)
     }
 
     fn pruning_params(&self) -> Option<&PruningParams> {
