@@ -622,11 +622,10 @@ where
             last_pong_at: Instant::now(),
         };
 
-        tracing::debug!(
-            "Received pong from {peer_id}, average latency: {}ms",
-            peer_info.ping_latency.average()
-        );
+        let average_latency = peer_info.ping_latency.average();
 
-        Ok(peer_info.ping_latency.average())
+        tracing::debug!("Received pong from {peer_id} with {average_latency}ms average latency");
+
+        Ok(average_latency)
     }
 }
