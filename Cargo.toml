@@ -126,3 +126,7 @@ inherits = "release"
 # Sacrifice compile speed for execution speed by using optimization flags:
 lto = "fat"       # https://doc.rust-lang.org/rustc/linker-plugin-lto.html
 codegen-units = 1 # https://doc.rust-lang.org/rustc/codegen-options/index.html#codegen-units
+
+[profile.profiling]
+inherits = "release"
+debug = true
