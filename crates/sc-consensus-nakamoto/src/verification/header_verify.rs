@@ -56,7 +56,7 @@ impl<Block, Client> HeaderVerifier<Block, Client> {
 impl<Block, Client> HeaderVerifier<Block, Client>
 where
     Block: BlockT,
-    Client: BackendExt<Block>,
+    Client: HeaderBackend<Block> + AuxStore,
 {
     /// Verifies the validity of header and returns the block time for verifying the finality of
     /// transactions.

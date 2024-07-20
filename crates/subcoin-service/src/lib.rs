@@ -576,7 +576,7 @@ pub struct VerifyNothing;
 #[async_trait::async_trait]
 impl<Block: BlockT> Verifier<Block> for VerifyNothing {
     async fn verify(
-        &mut self,
+        &self,
         block: BlockImportParams<Block>,
     ) -> Result<BlockImportParams<Block>, String> {
         Ok(BlockImportParams::new(block.origin, block.header))

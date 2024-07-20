@@ -34,7 +34,6 @@ use sp_core::{ConstU32, OpaqueMetadata};
 use sp_inherents::{CheckInherentsResult, InherentData};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{ApplyExtrinsicResult, ExtrinsicInclusionMode};
-use sp_std::boxed::Box;
 use sp_std::vec;
 use sp_std::vec::Vec;
 #[cfg(feature = "std")]
