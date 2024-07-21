@@ -624,7 +624,7 @@ where
 
         let average_latency = peer_info.ping_latency.average();
 
-        tracing::debug!("Received pong from {peer_id} with {average_latency}ms average latency");
+        tracing::debug!("Received pong from {peer_id} (Avg. Latency: {average_latency}ms)");
 
         Ok(average_latency)
     }
