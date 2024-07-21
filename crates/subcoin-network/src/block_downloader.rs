@@ -149,8 +149,8 @@ impl BlockDownloadManager {
             {
                 tracing::debug!(
                     best_number,
-                    self.best_queued_number,
-                    "Too many blocks in the queue, pausing download",
+                    best_queued_number = self.best_queued_number,
+                    "⏸️ Pausing download: too many blocks in the queue",
                 );
                 self.last_overloaded_queue_log_time.replace(Instant::now());
             }

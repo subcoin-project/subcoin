@@ -125,7 +125,7 @@ impl<B: BlockT> InformantDisplay<B> {
 
         tracing::info!(
             target: "subcoin",
-            "{level} {}{target} ({} peers), best: #{} ({best_bitcoin_hash},{best_hash}), confirmed #{} ({finalized_bitcoin_hash},{finalized_hash}), {} {}",
+            "{level} {}{target} ({} peers), best: #{} ({best_bitcoin_hash},{best_hash}), finalized #{} ({finalized_bitcoin_hash},{finalized_hash}), {} {}",
             self.format.print_with_color(Colour::White.bold(), status),
             self.format.print_with_color(Colour::White.bold(), num_connected_peers),
             self.format.print_with_color(Colour::White.bold(), best_number),

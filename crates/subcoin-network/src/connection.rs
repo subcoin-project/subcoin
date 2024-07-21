@@ -274,14 +274,11 @@ async fn read_peer_messages(
                 decoder.input(&read_buffer[..n]);
 
                 while let Some(msg) = decoder.decode_next::<RawNetworkMessage>()? {
-                    // TODO: patch upstream to avoid the clone?
-                    let payload = msg.payload().clone();
-
                     network_event_sender
                         .send(Event::PeerMessage {
                             from: peer,
                             direction,
-                            payload,
+                            payload: msg.into_payload(),
                         })
                         .map_err(|_| Error::NetworkEventStreamError)?;
                 }
