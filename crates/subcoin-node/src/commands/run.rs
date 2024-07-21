@@ -192,8 +192,6 @@ impl RunCmd {
             subcoin_informant::build(client.clone(), network_handle, Default::default()),
         );
 
-        spawn_handle.spawn("profile-server", None, crate::run_profile_server());
-
         Ok(task_manager)
     }
 }
