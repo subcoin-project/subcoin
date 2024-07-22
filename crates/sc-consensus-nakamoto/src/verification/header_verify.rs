@@ -113,10 +113,7 @@ where
 
         let block_number = prev_block_height + 1;
 
-        // TODO: check deployment state properly.
-        const MAINNET_CSV_HEIGHT: u32 = 419328;
-
-        if block_number >= MAINNET_CSV_HEIGHT {
+        if block_number >= self.chain_params.csv_height {
             let mtp = self.calculate_median_time_past(header);
             if header.time <= mtp {
                 return Err(Error::TimeTooOld);
