@@ -1,8 +1,9 @@
 mod header_verify;
 mod tx_verify;
 
+use crate::chain_params::ChainParams;
 use bitcoin::blockdata::constants::MAX_BLOCK_SIGOPS_COST;
-use bitcoin::consensus::{Encodable, Params};
+use bitcoin::consensus::Encodable;
 use bitcoin::{
     Amount, Block as BitcoinBlock, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid, Weight,
 };
@@ -89,7 +90,7 @@ pub enum Error {
 #[derive(Clone)]
 pub struct BlockVerifier<Block, Client, BE> {
     client: Arc<Client>,
-    consensus_params: Params,
+    chain_params: ChainParams,
     header_verifier: HeaderVerifier<Block, Client>,
     block_verification: BlockVerification,
     coin_storage_key: Arc<dyn CoinStorageKey>,
@@ -104,11 +105,11 @@ impl<Block, Client, BE> BlockVerifier<Block, Client, BE> {
         block_verification: BlockVerification,
         coin_storage_key: Arc<dyn CoinStorageKey>,
     ) -> Self {
-        let consensus_params = Params::new(network);
-        let header_verifier = HeaderVerifier::new(client.clone(), consensus_params.clone());
+        let chain_params = ChainParams::new(network);
+        let header_verifier = HeaderVerifier::new(client.clone(), chain_params.clone());
         Self {
             client,
-            consensus_params,
+            chain_params,
             header_verifier,
             block_verification,
             coin_storage_key,
@@ -249,7 +250,7 @@ where
                 .expect("Txid must exist as initialized in `check_block_sanity()`; qed")
         };
 
-        let flags = get_validation_flags(block_number, &self.consensus_params);
+        let flags = get_validation_flags(block_number, &self.chain_params);
 
         let mut block_fee = 0;
 
@@ -373,7 +374,7 @@ fn find_utxo_in_current_block(
 }
 
 /// Returns the validation flags for the block at specified height.
-fn get_validation_flags(height: u32, consensus_params: &Params) -> c_uint {
+fn get_validation_flags(height: u32, chain_params: &ChainParams) -> c_uint {
     // From Bitcoin Core:
     // BIP16 didn't become active until Apr 1 2012 (on mainnet, and
     // retroactively applied to testnet)
@@ -385,23 +386,19 @@ fn get_validation_flags(height: u32, consensus_params: &Params) -> c_uint {
     // violating blocks.
     let mut flags = bitcoinconsensus::VERIFY_P2SH | bitcoinconsensus::VERIFY_WITNESS;
 
-    if height >= consensus_params.bip65_height {
+    if height >= chain_params.params.bip65_height {
         flags |= bitcoinconsensus::VERIFY_CHECKLOCKTIMEVERIFY;
     }
 
-    if height >= consensus_params.bip66_height {
+    if height >= chain_params.params.bip66_height {
         flags |= bitcoinconsensus::VERIFY_DERSIG;
     }
 
-    // TODO: proper params
-    const MAINNET_CSV_HEIGHT: u32 = 419328;
-    const MAINNET_SEGWIT_HEIGHT: u32 = 481824;
-
-    if height >= MAINNET_CSV_HEIGHT {
+    if height >= chain_params.csv_height {
         flags |= bitcoinconsensus::VERIFY_CHECKSEQUENCEVERIFY;
     }
 
-    if height >= MAINNET_SEGWIT_HEIGHT {
+    if height >= chain_params.segwit_height {
         flags |= bitcoinconsensus::VERIFY_NULLDUMMY;
     }
 

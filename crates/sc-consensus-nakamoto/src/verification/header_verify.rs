@@ -1,3 +1,4 @@
+use crate::chain_params::ChainParams;
 use bitcoin::blockdata::block::{Header as BitcoinHeader, ValidationError};
 use bitcoin::consensus::Params;
 use bitcoin::hashes::Hash;
@@ -38,16 +39,16 @@ pub enum Error {
 #[derive(Clone)]
 pub struct HeaderVerifier<Block, Client> {
     client: Arc<Client>,
-    consensus_params: Params,
+    chain_params: ChainParams,
     _phantom: PhantomData<Block>,
 }
 
 impl<Block, Client> HeaderVerifier<Block, Client> {
     /// Constructs a new instance of [`HeaderVerifier`].
-    pub fn new(client: Arc<Client>, consensus_params: Params) -> Self {
+    pub fn new(client: Arc<Client>, chain_params: ChainParams) -> Self {
         Self {
             client,
-            consensus_params,
+            chain_params,
             _phantom: Default::default(),
         }
     }
@@ -82,7 +83,7 @@ where
         let expected_target = get_next_work_required(
             prev_block_height,
             prev_block_header,
-            &self.consensus_params,
+            &self.chain_params.params,
             &self.client,
         );
         let expected_bits = expected_target.to_compact_lossy().to_consensus();
@@ -171,20 +172,20 @@ where
 fn get_next_work_required<Block, Client>(
     last_block_height: u32,
     last_block: BitcoinHeader,
-    consensus_params: &Params,
+    params: &Params,
     client: &Arc<Client>,
 ) -> Target
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore,
 {
-    if consensus_params.no_pow_retargeting {
+    if params.no_pow_retargeting {
         return last_block.target();
     }
 
     let height = last_block_height + 1;
 
-    let difficulty_adjustment_interval = consensus_params.difficulty_adjustment_interval() as u32;
+    let difficulty_adjustment_interval = params.difficulty_adjustment_interval() as u32;
 
     // Only change once per difficulty adjustment interval.
     if height >= difficulty_adjustment_interval && height % difficulty_adjustment_interval == 0 {
@@ -207,7 +208,7 @@ where
             last_block.target().0,
             first_block_time.into(),
             last_block_time.into(),
-            consensus_params,
+            params,
         )
     } else {
         last_block.target()
@@ -219,11 +220,11 @@ fn calculate_next_work_required(
     previous_target: U256,
     first_block_time: u64,
     last_block_time: u64,
-    consensus_params: &Params,
+    params: &Params,
 ) -> Target {
     let mut actual_timespan = last_block_time.saturating_sub(first_block_time);
 
-    let pow_target_timespan = consensus_params.pow_target_timespan;
+    let pow_target_timespan = params.pow_target_timespan;
 
     // Limit adjustment step.
     if actual_timespan < pow_target_timespan / 4 {
@@ -234,7 +235,7 @@ fn calculate_next_work_required(
         actual_timespan = pow_target_timespan * 4;
     }
 
-    let pow_limit = consensus_params.max_attainable_target;
+    let pow_limit = params.max_attainable_target;
 
     // Retarget.
     let target = previous_target * actual_timespan.into();
@@ -270,7 +271,7 @@ mod tests {
             last_block.target().0,
             first_block.time as u64,
             last_block.time as u64,
-            &Params::new(bitcoin::Network::Bitcoin),
+            &ChainParams::new(bitcoin::Network::Bitcoin),
         );
 
         assert_eq!(
