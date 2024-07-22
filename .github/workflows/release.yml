@@ -3,6 +3,8 @@ name: Build Executables
 
 on:
   push:
+    branches:
+      - rocksdb-build
     tags:
       - 'v*'
 
@@ -90,7 +92,7 @@ jobs:
 
     - name: Build binary
       run: |
-        ${{ matrix.build.command }} build --profile production --bin subcoin --locked --target ${{ matrix.build.target }}
+        ${{ matrix.build.command }} build --profile production --bin subcoin --locked --target ${{ matrix.build.target }} --features rocksdb
 
     - name: Get version without v prefix (Ubuntu/macOS)
       run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
@@ -102,11 +104,11 @@ jobs:
         echo "VERSION=$version" >> $env:GITHUB_ENV
       if: ${{ matrix.build.os == 'windows-latest' }}
 
-    - name: Upload binaries to release
-      uses: svenstaro/upload-release-action@v2
-      with:
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: target/${{ matrix.build.target }}/production/${{ matrix.build.artifact_name }}
-        tag: ${{ github.ref }}
-        asset_name: ${{ matrix.build.artifact_name }}-${{ env.VERSION }}-${{ matrix.build.target }}
-        prerelease: true
+    # - name: Upload binaries to release
+      # uses: svenstaro/upload-release-action@v2
+      # with:
+        # repo_token: ${{ secrets.GITHUB_TOKEN }}
+        # file: target/${{ matrix.build.target }}/production/${{ matrix.build.artifact_name }}
+        # tag: ${{ github.ref }}
+        # asset_name: ${{ matrix.build.artifact_name }}-${{ env.VERSION }}-${{ matrix.build.target }}
+        # prerelease: true
