@@ -133,6 +133,9 @@ where
                 let sync_peers = self.chain_sync.peers.values().cloned().collect::<Vec<_>>();
                 let _ = result_sender.send(sync_peers);
             }
+            NetworkWorkerMessage::InboundPeersCount(result_sender) => {
+                let _ = result_sender.send(self.peer_manager.inbound_peers_count());
+            }
         }
     }
 

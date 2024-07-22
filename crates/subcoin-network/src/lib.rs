@@ -220,6 +220,8 @@ enum NetworkWorkerMessage {
     NetworkStatus(oneshot::Sender<NetworkStatus>),
     /// Retrieve the sync peers.
     SyncPeers(oneshot::Sender<Vec<PeerSync>>),
+    /// Retrieve the number of inbound connected peers.
+    InboundPeersCount(oneshot::Sender<usize>),
 }
 
 /// A handle for interacting with the network worker.
@@ -309,6 +311,7 @@ pub struct Network<Block, Client> {
     params: Params,
     import_queue: BlockImportQueue,
     spawn_handle: SpawnTaskHandle,
+    worker_msg_sender: TracingUnboundedSender<NetworkWorkerMessage>,
     worker_msg_receiver: TracingUnboundedReceiver<NetworkWorkerMessage>,
     is_major_syncing: Arc<AtomicBool>,
     _phantom: PhantomData<Block>,
@@ -335,6 +338,7 @@ where
             params,
             import_queue,
             spawn_handle,
+            worker_msg_sender: worker_msg_sender.clone(),
             worker_msg_receiver,
             is_major_syncing: is_major_syncing.clone(),
             _phantom: Default::default(),
@@ -358,6 +362,7 @@ where
             params,
             import_queue,
             spawn_handle,
+            worker_msg_sender,
             worker_msg_receiver,
             is_major_syncing,
             _phantom,
@@ -399,15 +404,35 @@ where
         spawn_handle.spawn("inbound-connection", None, {
             let local_addr = listener.local_addr()?;
             let connection_initiator = connection_initiator.clone();
+            let max_inbound_peers = params.max_inbound_peers;
 
             async move {
                 tracing::info!("🔊 Listening on {local_addr:?}",);
 
                 while let Ok((socket, peer_addr)) = listener.accept().await {
-                    tracing::debug!(?peer_addr, "New peer accepted");
+                    let (sender, receiver) = oneshot::channel();
 
-                    if let Err(err) = connection_initiator.initiate_inbound_connection(socket) {
-                        tracing::debug!(?err, ?peer_addr, "Failed to initiate inbound connection");
+                    if worker_msg_sender
+                        .unbounded_send(NetworkWorkerMessage::InboundPeersCount(sender))
+                        .is_err()
+                    {
+                        return;
+                    }
+
+                    let Ok(inbound_peers_count) = receiver.await else {
+                        return;
+                    };
+
+                    if inbound_peers_count < max_inbound_peers {
+                        tracing::debug!(?peer_addr, "New peer accepted");
+
+                        if let Err(err) = connection_initiator.initiate_inbound_connection(socket) {
+                            tracing::debug!(
+                                ?err,
+                                ?peer_addr,
+                                "Failed to initiate inbound connection"
+                            );
+                        }
                     }
                 }
             }
