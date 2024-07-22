@@ -1,6 +1,8 @@
 use bitcoin::consensus::Params;
 use bitcoin::Network;
 
+pub const MEDIAN_TIME_SPAN: usize = 11;
+
 /// Extended [`Params`].
 #[derive(Debug, Clone)]
 pub struct ChainParams {

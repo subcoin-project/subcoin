@@ -1,4 +1,4 @@
-use crate::chain_params::ChainParams;
+use crate::chain_params::{ChainParams, MEDIAN_TIME_SPAN};
 use bitcoin::blockdata::block::{Header as BitcoinHeader, ValidationError};
 use bitcoin::consensus::Params;
 use bitcoin::hashes::Hash;
@@ -130,9 +130,7 @@ where
 
     /// Calculates the median time of the previous few blocks prior to the header (inclusive).
     fn calculate_median_time_past(&self, header: &BitcoinHeader) -> u32 {
-        const LAST_BLOCKS: usize = 11;
-
-        let mut timestamps = Vec::with_capacity(LAST_BLOCKS);
+        let mut timestamps = Vec::with_capacity(MEDIAN_TIME_SPAN);
 
         timestamps.push(header.time);
 
@@ -140,7 +138,7 @@ where
 
         let mut block_hash = header.prev_blockhash;
 
-        for _ in 0..LAST_BLOCKS - 1 {
+        for _ in 0..MEDIAN_TIME_SPAN - 1 {
             // Genesis block
             if block_hash == zero_hash {
                 break;
@@ -271,7 +269,7 @@ mod tests {
             last_block.target().0,
             first_block.time as u64,
             last_block.time as u64,
-            &ChainParams::new(bitcoin::Network::Bitcoin),
+            &Params::new(bitcoin::Network::Bitcoin),
         );
 
         assert_eq!(
