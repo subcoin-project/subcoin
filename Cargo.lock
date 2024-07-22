@@ -838,6 +838,7 @@ dependencies = [
  "bitcoin-io 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "bitcoin-units 0.1.2",
  "bitcoin_hashes 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bitcoinconsensus",
  "hex-conservative 0.2.1",
  "hex_lit",
  "secp256k1 0.29.0",
@@ -947,9 +948,9 @@ dependencies = [
 
 [[package]]
 name = "bitcoinconsensus"
-version = "0.106.0+26.0"
+version = "0.105.0+25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e12cba9cce5043cdda968e07b9df6d05ec6b0b38aa27a9a40bb575cf3e521ae9"
+checksum = "f260ac8fb2c621329013fc0ed371c940fcc512552dcbcb9095ed0179098c9e18"
 dependencies = [
  "cc",
 ]

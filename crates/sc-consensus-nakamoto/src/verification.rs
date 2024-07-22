@@ -10,6 +10,7 @@ use sc_client_api::{AuxStore, Backend, StorageProvider};
 use sp_blockchain::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
 use std::collections::{HashMap, HashSet};
+use std::ffi::c_uint;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subcoin_primitives::runtime::{bitcoin_block_subsidy, Coin};
@@ -75,8 +76,8 @@ pub enum Error {
     /// Block header error.
     #[error(transparent)]
     Header(#[from] HeaderError),
-    #[error("Script verification: {0}")]
-    Script(#[from] bitcoinconsensus::Error),
+    #[error(transparent)]
+    BitcoinConsensus(#[from] bitcoin::consensus::validation::BitcoinconsensusError),
     #[error("Bitcoin codec: {0:?}")]
     BitcoinCodec(bitcoin::io::Error),
     /// An error occurred in the client.
@@ -88,6 +89,7 @@ pub enum Error {
 #[derive(Clone)]
 pub struct BlockVerifier<Block, Client, BE> {
     client: Arc<Client>,
+    consensus_params: Params,
     header_verifier: HeaderVerifier<Block, Client>,
     block_verification: BlockVerification,
     coin_storage_key: Arc<dyn CoinStorageKey>,
@@ -103,9 +105,10 @@ impl<Block, Client, BE> BlockVerifier<Block, Client, BE> {
         coin_storage_key: Arc<dyn CoinStorageKey>,
     ) -> Self {
         let consensus_params = Params::new(network);
-        let header_verifier = HeaderVerifier::new(client.clone(), consensus_params);
+        let header_verifier = HeaderVerifier::new(client.clone(), consensus_params.clone());
         Self {
             client,
+            consensus_params,
             header_verifier,
             block_verification,
             coin_storage_key,
@@ -246,6 +249,8 @@ where
                 .expect("Txid must exist as initialized in `check_block_sanity()`; qed")
         };
 
+        let flags = get_validation_flags(block_number, &self.consensus_params);
+
         let mut block_fee = 0;
 
         // Buffer for encoded transaction data.
@@ -285,19 +290,13 @@ where
                         })?,
                 };
 
-                let script_verify_result = bitcoinconsensus::verify(
-                    spent_output.script_pubkey.as_bytes(),
-                    spent_output.value.to_sat(),
-                    spending_transaction,
-                    None,
+                bitcoin::consensus::validation::verify_script_with_flags(
+                    &spent_output.script_pubkey,
                     input_index,
-                );
-
-                if let Err(err) = script_verify_result {
-                    if err != bitcoinconsensus::Error::ERR_SCRIPT {
-                        return Err(err)?;
-                    }
-                }
+                    spent_output.value,
+                    spending_transaction,
+                    flags,
+                )?;
 
                 total_input_value += spent_output.value.to_sat();
             }
@@ -371,6 +370,42 @@ fn find_utxo_in_current_block(
         .find_map(|(index, tx)| (get_txid(index) == txid).then_some(tx))
         .and_then(|tx| tx.output.get(vout as usize))
         .cloned()
+}
+
+/// Returns the validation flags for the block at specified height.
+fn get_validation_flags(height: u32, consensus_params: &Params) -> c_uint {
+    // From Bitcoin Core:
+    // BIP16 didn't become active until Apr 1 2012 (on mainnet, and
+    // retroactively applied to testnet)
+    // However, only one historical block violated the P2SH rules (on both
+    // mainnet and testnet).
+    // Similarly, only one historical block violated the TAPROOT rules on
+    // mainnet.
+    // For simplicity, always leave P2SH+WITNESS+TAPROOT on except for the two
+    // violating blocks.
+    let mut flags = bitcoinconsensus::VERIFY_P2SH | bitcoinconsensus::VERIFY_WITNESS;
+
+    if height >= consensus_params.bip65_height {
+        flags |= bitcoinconsensus::VERIFY_CHECKLOCKTIMEVERIFY;
+    }
+
+    if height >= consensus_params.bip66_height {
+        flags |= bitcoinconsensus::VERIFY_DERSIG;
+    }
+
+    // TODO: proper params
+    const MAINNET_CSV_HEIGHT: u32 = 419328;
+    const MAINNET_SEGWIT_HEIGHT: u32 = 481824;
+
+    if height >= MAINNET_CSV_HEIGHT {
+        flags |= bitcoinconsensus::VERIFY_CHECKSEQUENCEVERIFY;
+    }
+
+    if height >= MAINNET_SEGWIT_HEIGHT {
+        flags |= bitcoinconsensus::VERIFY_NULLDUMMY;
+    }
+
+    flags
 }
 
 #[cfg(test)]
