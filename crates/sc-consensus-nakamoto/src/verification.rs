@@ -5,7 +5,8 @@ use crate::chain_params::ChainParams;
 use bitcoin::blockdata::constants::MAX_BLOCK_SIGOPS_COST;
 use bitcoin::consensus::Encodable;
 use bitcoin::{
-    Amount, Block as BitcoinBlock, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid, Weight,
+    Amount, Block as BitcoinBlock, BlockHash, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid,
+    Weight,
 };
 use sc_client_api::{AuxStore, Backend, StorageProvider};
 use sp_blockchain::HeaderBackend;
@@ -257,7 +258,7 @@ where
                 .expect("Txid must exist as initialized in `check_block_sanity()`; qed")
         };
 
-        let flags = get_validation_flags(block_number, &self.chain_params);
+        let flags = get_block_script_flags(block_number, block.block_hash(), &self.chain_params);
 
         let mut block_fee = 0;
         let mut spent_utxos = HashSet::new();
@@ -390,17 +391,20 @@ fn find_utxo_in_current_block(
         .cloned()
 }
 
-/// Returns the validation flags for the block at specified height.
-fn get_validation_flags(height: u32, chain_params: &ChainParams) -> c_uint {
-    // From Bitcoin Core:
-    // BIP16 didn't become active until Apr 1 2012 (on mainnet, and
-    // retroactively applied to testnet)
-    // However, only one historical block violated the P2SH rules (on both
-    // mainnet and testnet).
-    // Similarly, only one historical block violated the TAPROOT rules on
-    // mainnet.
-    // For simplicity, always leave P2SH+WITNESS+TAPROOT on except for the two
-    // violating blocks.
+/// Returns the script validation flags for the specified block.
+fn get_block_script_flags(
+    height: u32,
+    block_hash: BlockHash,
+    chain_params: &ChainParams,
+) -> c_uint {
+    if let Some(flag) = chain_params
+        .script_flag_exceptions
+        .get(&block_hash)
+        .copied()
+    {
+        return flag;
+    }
+
     let mut flags = bitcoinconsensus::VERIFY_P2SH | bitcoinconsensus::VERIFY_WITNESS;
 
     if height >= chain_params.params.bip65_height {
