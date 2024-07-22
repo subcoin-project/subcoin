@@ -65,42 +65,44 @@ pub type Latency = u128;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("received 0 bytes, peer performed an orderly shutdown")]
+    #[error("Received 0 bytes, peer performed an orderly shutdown")]
     PeerShutdown,
-    #[error("cannot communicate with the network event stream")]
+    #[error("Cannot communicate with the network event stream")]
     NetworkEventStreamError,
-    #[error("peer {0:?} not found")]
+    #[error("Peer {0:?} not found")]
     PeerNotFound(PeerId),
-    #[error("connection of peer {0:?} not found")]
+    #[error("Connection of peer {0:?} not found")]
     ConnectionNotFound(PeerId),
     #[error("Connecting to the stream timed out")]
     ConnectionTimeout,
     #[error("Ping timeout")]
     PingTimeout,
+    #[error("Unexpected pong message")]
+    UnexpectedPong,
     #[error("Too many block entries in inv message")]
     TooManyBlockEntries,
     #[error("Too many headers (> 2000)")]
     TooManyHeaders,
     #[error("Too many inventory items ")]
     TooManyInventoryItems,
-    #[error("peer is not a full node")]
+    #[error("Peer is not a full node")]
     NotFullNode,
-    #[error("peer is not a segwit node")]
+    #[error("Peer is not a segwit node")]
     NotSegwitNode,
-    #[error("peer's protocol version is too low")]
+    #[error("Peer's protocol version is too low")]
     ProtocolVersionTooLow,
-    #[error("invalid pong message: bad nonce")]
+    #[error("Invalid pong message: bad nonce")]
     BadPong,
-    #[error("invalid bootnode address: {0}")]
+    #[error("Invalid bootnode address: {0}")]
     InvalidBootnode(String),
-    #[error("not expecting pong message")]
-    UnexpectedPong,
-    #[error("received an unrequested block: {0:?}")]
+    #[error("Received an unrequested block: {0:?}")]
     UnrequestedBlock(BlockHash),
-    #[error("unexpected handshake state: {0:?}")]
+    #[error("Unexpected handshake state: {0:?}")]
     UnexpectedHandshakeState(Box<HandshakeState>),
-    #[error("only peers in ipv4 are supported")]
+    #[error("Only IPv4 peers are supported")]
     Ipv4Only,
+    #[error("Other: {0}")]
+    Other(String),
     #[error(transparent)]
     IO(#[from] std::io::Error),
     #[error(transparent)]
@@ -113,8 +115,6 @@ pub enum Error {
     BitcoinIO(#[from] bitcoin::io::Error),
     #[error(transparent)]
     BitcoinEncoding(#[from] bitcoin::consensus::encode::Error),
-    #[error("Other: {0}")]
-    Other(String),
 }
 
 fn seednodes(network: BitcoinNetwork) -> Vec<&'static str> {
@@ -146,17 +146,6 @@ fn seednodes(network: BitcoinNetwork) -> Vec<&'static str> {
     }
 }
 
-/// Represents the strategy for block syncing.
-#[derive(Debug, Clone, Copy, Default)]
-#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
-pub enum SyncStrategy {
-    /// Download the headers first, followed by the block bodies.
-    #[default]
-    HeadersFirst,
-    /// Download the full blocks (both headers and bodies) in sequence.
-    BlocksFirst,
-}
-
 // Ignore the peer if it is not full with witness enabled as we only want to
 // download from peers that can provide use full witness data for blocks.
 fn validate_outbound_services(services: ServiceFlags) -> Result<(), Error> {
@@ -169,6 +158,17 @@ fn validate_outbound_services(services: ServiceFlags) -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+/// Represents the strategy for block syncing.
+#[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
+pub enum SyncStrategy {
+    /// Download the headers first, followed by the block bodies.
+    #[default]
+    HeadersFirst,
+    /// Download the full blocks (both headers and bodies) in sequence.
+    BlocksFirst,
 }
 
 /// Represents the sync status of node.
@@ -367,13 +367,8 @@ where
         let listener = match TcpListener::bind(&listen_on).await {
             Ok(listener) => listener,
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
-                tracing::warn!(
-                    "{} is occupied, trying any available port.",
-                    params.listen_on
-                );
-
+                tracing::warn!("{listen_on} is occupied, trying any available port.");
                 listen_on.set_port(0);
-
                 TcpListener::bind(listen_on).await?
             }
             Err(err) => return Err(err.into()),
