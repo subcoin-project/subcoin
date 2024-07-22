@@ -393,6 +393,7 @@ where
             params.sync_strategy,
             is_major_syncing,
             connection_initiator.clone(),
+            params.max_outbound_peers,
         );
 
         spawn_handle.spawn("inbound-connection", None, {

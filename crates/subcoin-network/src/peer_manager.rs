@@ -235,10 +235,10 @@ pub struct PeerManager<Block, Client> {
     config: Config,
     client: Arc<Client>,
     address_book: AddressBook,
-    connections: HashMap<PeerId, Connection>,
     handshaking_peers: HashMap<PeerId, HandshakeState>,
+    connections: HashMap<PeerId, Connection>,
     connected_peers: HashMap<PeerId, PeerInfo>,
-    max_connections: usize,
+    max_outbound_peers: usize,
     connection_initiator: ConnectionInitiator,
     rng: fastrand::Rng,
     _phantom: PhantomData<Block>,
@@ -254,6 +254,7 @@ where
         client: Arc<Client>,
         config: Config,
         connection_initiator: ConnectionInitiator,
+        max_outbound_peers: usize,
     ) -> Self {
         Self {
             config,
@@ -262,7 +263,7 @@ where
             handshaking_peers: HashMap::new(),
             connections: HashMap::new(),
             connected_peers: HashMap::new(),
-            max_connections: 20,
+            max_outbound_peers,
             connection_initiator,
             rng: fastrand::Rng::new(),
             _phantom: Default::default(),
@@ -292,7 +293,7 @@ where
             self.disconnect(peer_id, Error::PingTimeout);
         }
 
-        if self.connections.len() < self.max_connections {
+        if self.connected_peers.len() < self.max_outbound_peers {
             if let Some(addr) = self.address_book.pop() {
                 if !self.connections.contains_key(&addr) {
                     self.connection_initiator.initiate_outbound_connection(addr);

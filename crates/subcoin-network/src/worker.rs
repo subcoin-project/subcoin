@@ -57,11 +57,17 @@ where
         sync_strategy: SyncStrategy,
         is_major_syncing: Arc<AtomicBool>,
         connection_initiator: ConnectionInitiator,
+        max_outbound_peers: usize,
     ) -> Self {
         let config = Config::new();
         Self {
             network_event_receiver,
-            peer_manager: PeerManager::new(client.clone(), config.clone(), connection_initiator),
+            peer_manager: PeerManager::new(
+                client.clone(),
+                config.clone(),
+                connection_initiator,
+                max_outbound_peers,
+            ),
             chain_sync: ChainSync::new(client, import_queue, sync_strategy, is_major_syncing),
             config,
         }
