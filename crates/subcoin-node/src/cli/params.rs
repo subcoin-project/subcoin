@@ -49,7 +49,7 @@ pub struct NetworkParams {
     pub max_inbound_peers: usize,
 
     /// Specify the maximum number of outbound peers.
-    #[clap(long, default_value = "10")]
+    #[clap(long, default_value = "20")]
     pub max_outbound_peers: usize,
 }
 

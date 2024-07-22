@@ -1,15 +1,18 @@
 mod header_verify;
 mod tx_verify;
 
+use crate::chain_params::ChainParams;
 use bitcoin::blockdata::constants::MAX_BLOCK_SIGOPS_COST;
-use bitcoin::consensus::{Encodable, Params};
+use bitcoin::consensus::Encodable;
 use bitcoin::{
-    Amount, Block as BitcoinBlock, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid, Weight,
+    Amount, Block as BitcoinBlock, BlockHash, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid,
+    Weight,
 };
 use sc_client_api::{AuxStore, Backend, StorageProvider};
 use sp_blockchain::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
 use std::collections::{HashMap, HashSet};
+use std::ffi::c_uint;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subcoin_primitives::runtime::{bitcoin_block_subsidy, Coin};
@@ -58,9 +61,16 @@ pub enum Error {
     TransactionNotFinal,
     #[error("Block contains duplicate transaction at index {0}")]
     DuplicateTransaction(usize),
-    /// Referenced output does not exist or has already been spent.
-    #[error("UTXO spent in #{block_number}:{txid} not found: {out_point:?}")]
+    /// Referenced output does not exist or was spent before.
+    #[error("UTXO not found (#{block_number}:{txid}: {out_point:?})")]
     UtxoNotFound {
+        block_number: u32,
+        txid: Txid,
+        out_point: OutPoint,
+    },
+    /// Referenced output has already been spent in this block.
+    #[error("UTXO already spent in current block (#{block_number}:{txid}: {out_point:?})")]
+    AlreadySpentInCurrentBlock {
         block_number: u32,
         txid: Txid,
         out_point: OutPoint,
@@ -75,8 +85,8 @@ pub enum Error {
     /// Block header error.
     #[error(transparent)]
     Header(#[from] HeaderError),
-    #[error("Script verification: {0}")]
-    Script(#[from] bitcoinconsensus::Error),
+    #[error(transparent)]
+    BitcoinConsensus(#[from] bitcoin::consensus::validation::BitcoinconsensusError),
     #[error("Bitcoin codec: {0:?}")]
     BitcoinCodec(bitcoin::io::Error),
     /// An error occurred in the client.
@@ -88,6 +98,7 @@ pub enum Error {
 #[derive(Clone)]
 pub struct BlockVerifier<Block, Client, BE> {
     client: Arc<Client>,
+    chain_params: ChainParams,
     header_verifier: HeaderVerifier<Block, Client>,
     block_verification: BlockVerification,
     coin_storage_key: Arc<dyn CoinStorageKey>,
@@ -102,10 +113,11 @@ impl<Block, Client, BE> BlockVerifier<Block, Client, BE> {
         block_verification: BlockVerification,
         coin_storage_key: Arc<dyn CoinStorageKey>,
     ) -> Self {
-        let consensus_params = Params::new(network);
-        let header_verifier = HeaderVerifier::new(client.clone(), consensus_params);
+        let chain_params = ChainParams::new(network);
+        let header_verifier = HeaderVerifier::new(client.clone(), chain_params.clone());
         Self {
             client,
+            chain_params,
             header_verifier,
             block_verification,
             coin_storage_key,
@@ -246,7 +258,10 @@ where
                 .expect("Txid must exist as initialized in `check_block_sanity()`; qed")
         };
 
+        let flags = get_block_script_flags(block_number, block.block_hash(), &self.chain_params);
+
         let mut block_fee = 0;
+        let mut spent_utxos = HashSet::new();
 
         // Buffer for encoded transaction data.
         let mut tx_data = Vec::<u8>::new();
@@ -272,6 +287,14 @@ where
             for (input_index, input) in tx.input.iter().enumerate() {
                 let out_point = input.previous_output;
 
+                if spent_utxos.contains(&out_point) {
+                    return Err(Error::AlreadySpentInCurrentBlock {
+                        block_number,
+                        txid: get_txid(tx_index),
+                        out_point,
+                    });
+                }
+
                 let spent_output = match self.find_utxo_in_state(parent_hash, out_point) {
                     Some(coin) => TxOut {
                         value: Amount::from_sat(coin.amount),
@@ -285,20 +308,15 @@ where
                         })?,
                 };
 
-                let script_verify_result = bitcoinconsensus::verify(
-                    spent_output.script_pubkey.as_bytes(),
-                    spent_output.value.to_sat(),
-                    spending_transaction,
-                    None,
+                bitcoin::consensus::validation::verify_script_with_flags(
+                    &spent_output.script_pubkey,
                     input_index,
-                );
+                    spent_output.value,
+                    spending_transaction,
+                    flags,
+                )?;
 
-                if let Err(err) = script_verify_result {
-                    if err != bitcoinconsensus::Error::ERR_SCRIPT {
-                        return Err(err)?;
-                    }
-                }
-
+                spent_utxos.insert(out_point);
                 total_input_value += spent_output.value.to_sat();
             }
 
@@ -373,17 +391,45 @@ fn find_utxo_in_current_block(
         .cloned()
 }
 
+/// Returns the script validation flags for the specified block.
+fn get_block_script_flags(
+    height: u32,
+    block_hash: BlockHash,
+    chain_params: &ChainParams,
+) -> c_uint {
+    if let Some(flag) = chain_params
+        .script_flag_exceptions
+        .get(&block_hash)
+        .copied()
+    {
+        return flag;
+    }
+
+    let mut flags = bitcoinconsensus::VERIFY_P2SH | bitcoinconsensus::VERIFY_WITNESS;
+
+    if height >= chain_params.params.bip65_height {
+        flags |= bitcoinconsensus::VERIFY_CHECKLOCKTIMEVERIFY;
+    }
+
+    if height >= chain_params.params.bip66_height {
+        flags |= bitcoinconsensus::VERIFY_DERSIG;
+    }
+
+    if height >= chain_params.csv_height {
+        flags |= bitcoinconsensus::VERIFY_CHECKSEQUENCEVERIFY;
+    }
+
+    if height >= chain_params.segwit_height {
+        flags |= bitcoinconsensus::VERIFY_NULLDUMMY;
+    }
+
+    flags
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bitcoin::consensus::Decodable;
-    use bitcoin::hex::FromHex;
-
-    fn decode_raw_block(hex_str: &str) -> BitcoinBlock {
-        let data = Vec::<u8>::from_hex(hex_str).expect("Failed to convert hex str");
-        BitcoinBlock::consensus_decode(&mut data.as_slice())
-            .expect("Failed to convert hex data to Block")
-    }
+    use bitcoin::consensus::encode::deserialize_hex;
 
     #[test]
     fn test_find_utxo_in_current_block() {
@@ -396,7 +442,7 @@ mod tests {
             .join("test_data")
             .join("btc_mainnet_385044.data");
         let raw_block = std::fs::read_to_string(test_block).unwrap();
-        let block = decode_raw_block(raw_block.trim());
+        let block = deserialize_hex::<BitcoinBlock>(raw_block.trim()).unwrap();
 
         let txids = block
             .txdata

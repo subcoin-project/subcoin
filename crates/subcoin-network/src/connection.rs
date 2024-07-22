@@ -32,6 +32,16 @@ pub enum Direction {
     Outbound,
 }
 
+impl Direction {
+    pub fn is_inbound(&self) -> bool {
+        matches!(self, Self::Inbound)
+    }
+
+    pub fn is_outbound(&self) -> bool {
+        matches!(self, Self::Outbound)
+    }
+}
+
 /// An incoming peer connection.
 #[derive(Debug)]
 pub struct NewConnection {

@@ -118,7 +118,7 @@ impl HandshakeState {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PingLatency {
     pub received_pongs: u64,
     pub total_latency: Latency,
@@ -203,10 +203,12 @@ pub struct PeerInfo {
     pub ping_state: PingState,
     /// Whether the ping has ever sent to the peer.
     pub has_sent_ping: bool,
+    /// Inbound or outbound peer?
+    pub direction: Direction,
 }
 
 impl PeerInfo {
-    fn from_version_message(msg: VersionMessage) -> Self {
+    fn new(msg: VersionMessage, direction: Direction) -> Self {
         Self {
             best_height: msg.start_height as u32,
             services: msg.services,
@@ -218,14 +220,12 @@ impl PeerInfo {
             nonce: msg.nonce,
             prefer_headers: false,
             want_addrv2: false,
-            ping_latency: PingLatency {
-                received_pongs: 0,
-                total_latency: 0,
-            },
+            ping_latency: PingLatency::default(),
             ping_state: PingState::Idle {
                 last_pong_at: Instant::now(),
             },
             has_sent_ping: false,
+            direction,
         }
     }
 }
@@ -235,10 +235,10 @@ pub struct PeerManager<Block, Client> {
     config: Config,
     client: Arc<Client>,
     address_book: AddressBook,
-    connections: HashMap<PeerId, Connection>,
     handshaking_peers: HashMap<PeerId, HandshakeState>,
+    connections: HashMap<PeerId, Connection>,
     connected_peers: HashMap<PeerId, PeerInfo>,
-    max_connections: usize,
+    max_outbound_peers: usize,
     connection_initiator: ConnectionInitiator,
     rng: fastrand::Rng,
     _phantom: PhantomData<Block>,
@@ -254,6 +254,7 @@ where
         client: Arc<Client>,
         config: Config,
         connection_initiator: ConnectionInitiator,
+        max_outbound_peers: usize,
     ) -> Self {
         Self {
             config,
@@ -262,7 +263,7 @@ where
             handshaking_peers: HashMap::new(),
             connections: HashMap::new(),
             connected_peers: HashMap::new(),
-            max_connections: 20,
+            max_outbound_peers,
             connection_initiator,
             rng: fastrand::Rng::new(),
             _phantom: Default::default(),
@@ -292,7 +293,13 @@ where
             self.disconnect(peer_id, Error::PingTimeout);
         }
 
-        if self.connections.len() < self.max_connections {
+        let outbound_peers_count = self
+            .connected_peers
+            .values()
+            .filter(|peer_info| peer_info.direction.is_outbound())
+            .count();
+
+        if outbound_peers_count < self.max_outbound_peers {
             if let Some(addr) = self.address_book.pop() {
                 if !self.connections.contains_key(&addr) {
                     self.connection_initiator.initiate_outbound_connection(addr);
@@ -373,6 +380,14 @@ where
     /// Returns the number of connected peers.
     pub(crate) fn connect_peers_count(&self) -> usize {
         self.connected_peers.len()
+    }
+
+    /// Returns the number of connected peers.
+    pub(crate) fn inbound_peers_count(&self) -> usize {
+        self.connected_peers
+            .values()
+            .filter(|peer_info| peer_info.direction.is_inbound())
+            .count()
     }
 
     /// Handles a new connection.
@@ -549,7 +564,7 @@ where
             return Err(Error::UnexpectedHandshakeState(Box::new(handshake_state)));
         };
 
-        let peer_info = PeerInfo::from_version_message(version);
+        let peer_info = PeerInfo::new(version, direction);
 
         let new_peer = NewPeer {
             peer_id,
