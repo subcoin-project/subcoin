@@ -6,7 +6,7 @@ use bitcoin::Network;
 pub struct ChainParams {
     /// Chain params defined in rust-bitcoin.
     pub params: Params,
-    /// Block height at which BIP66 becomes active.
+    /// Block height at which CSV becomes active.
     pub csv_height: u32,
     /// Block height at which Segwit becomes active.
     pub segwit_height: u32,

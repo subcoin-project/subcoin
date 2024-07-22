@@ -60,9 +60,16 @@ pub enum Error {
     TransactionNotFinal,
     #[error("Block contains duplicate transaction at index {0}")]
     DuplicateTransaction(usize),
-    /// Referenced output does not exist or has already been spent.
-    #[error("UTXO spent in #{block_number}:{txid} not found: {out_point:?}")]
+    /// Referenced output does not exist or was spent before.
+    #[error("UTXO not found (#{block_number}:{txid}: {out_point:?})")]
     UtxoNotFound {
+        block_number: u32,
+        txid: Txid,
+        out_point: OutPoint,
+    },
+    /// Referenced output has already been spent in this block.
+    #[error("UTXO already spent in current block (#{block_number}:{txid}: {out_point:?})")]
+    AlreadySpentInCurrentBlock {
         block_number: u32,
         txid: Txid,
         out_point: OutPoint,
@@ -253,6 +260,7 @@ where
         let flags = get_validation_flags(block_number, &self.chain_params);
 
         let mut block_fee = 0;
+        let mut spent_utxos = HashSet::new();
 
         // Buffer for encoded transaction data.
         let mut tx_data = Vec::<u8>::new();
@@ -278,6 +286,14 @@ where
             for (input_index, input) in tx.input.iter().enumerate() {
                 let out_point = input.previous_output;
 
+                if spent_utxos.contains(&out_point) {
+                    return Err(Error::AlreadySpentInCurrentBlock {
+                        block_number,
+                        txid: get_txid(tx_index),
+                        out_point,
+                    });
+                }
+
                 let spent_output = match self.find_utxo_in_state(parent_hash, out_point) {
                     Some(coin) => TxOut {
                         value: Amount::from_sat(coin.amount),
@@ -299,6 +315,7 @@ where
                     flags,
                 )?;
 
+                spent_utxos.insert(out_point);
                 total_input_value += spent_output.value.to_sat();
             }
 
