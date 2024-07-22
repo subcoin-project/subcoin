@@ -29,21 +29,18 @@ impl ChainParams {
                 script_flag_exceptions: [
                     // BIP16 exception
                     (
-                        "0x00000000000002dc756eebf4f49723ed8d30cc28a5f108eb94b1ba88ac4f9c22",
+                        "00000000000002dc756eebf4f49723ed8d30cc28a5f108eb94b1ba88ac4f9c22",
                         bitcoinconsensus::VERIFY_NONE,
                     ),
                     // Taproot exception
                     (
-                        "0x0000000000000000000f14c35b2d841e986ab5441de8c585d5ffe55ea1e395ad",
+                        "0000000000000000000f14c35b2d841e986ab5441de8c585d5ffe55ea1e395ad",
                         bitcoinconsensus::VERIFY_P2SH | bitcoinconsensus::VERIFY_WITNESS,
                     ),
                 ]
                 .into_iter()
                 .map(|(block_hash, flag)| {
-                    (
-                        block_hash.parse().expect("Hash must be correctly; qed"),
-                        flag,
-                    )
+                    (block_hash.parse().expect("Hash must be valid; qed"), flag)
                 })
                 .collect(),
             },
@@ -54,9 +51,9 @@ impl ChainParams {
                 script_flag_exceptions: HashMap::from_iter([
                     // BIP16 exception
                     (
-                        "0x00000000dd30457c001f4095d208cc1296b0eed002427aa599874af7a432b105"
+                        "00000000dd30457c001f4095d208cc1296b0eed002427aa599874af7a432b105"
                             .parse()
-                            .unwrap(),
+                            .expect("Hash must be valid; qed"),
                         bitcoinconsensus::VERIFY_NONE,
                     ),
                 ]),

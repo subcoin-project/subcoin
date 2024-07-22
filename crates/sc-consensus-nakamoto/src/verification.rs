@@ -429,14 +429,7 @@ fn get_block_script_flags(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bitcoin::consensus::Decodable;
-    use bitcoin::hex::FromHex;
-
-    fn decode_raw_block(hex_str: &str) -> BitcoinBlock {
-        let data = Vec::<u8>::from_hex(hex_str).expect("Failed to convert hex str");
-        BitcoinBlock::consensus_decode(&mut data.as_slice())
-            .expect("Failed to convert hex data to Block")
-    }
+    use bitcoin::consensus::encode::deserialize_hex;
 
     #[test]
     fn test_find_utxo_in_current_block() {
@@ -449,7 +442,7 @@ mod tests {
             .join("test_data")
             .join("btc_mainnet_385044.data");
         let raw_block = std::fs::read_to_string(test_block).unwrap();
-        let block = decode_raw_block(raw_block.trim());
+        let block = deserialize_hex::<BitcoinBlock>(raw_block.trim()).unwrap();
 
         let txids = block
             .txdata
