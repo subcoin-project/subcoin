@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/peer_manager.rs`."><title>peer_manager.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-c5d6553a23f1e5a6.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.81.0-nightly (506985649 2024-07-20)" data-channel="nightly" data-search-js="search-d234aafac6c221dd.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-d2fab2bf619172d3.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/peer_manager.rs`."><title>peer_manager.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-c5d6553a23f1e5a6.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (92c6c0380 2024-07-21)" data-channel="nightly" data-search-js="search-d234aafac6c221dd.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-d2fab2bf619172d3.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -629,6 +629,21 @@
 <a href="#629" id="629">629</a>
 <a href="#630" id="630">630</a>
 <a href="#631" id="631">631</a>
+<a href="#632" id="632">632</a>
+<a href="#633" id="633">633</a>
+<a href="#634" id="634">634</a>
+<a href="#635" id="635">635</a>
+<a href="#636" id="636">636</a>
+<a href="#637" id="637">637</a>
+<a href="#638" id="638">638</a>
+<a href="#639" id="639">639</a>
+<a href="#640" id="640">640</a>
+<a href="#641" id="641">641</a>
+<a href="#642" id="642">642</a>
+<a href="#643" id="643">643</a>
+<a href="#644" id="644">644</a>
+<a href="#645" id="645">645</a>
+<a href="#646" id="646">646</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::address_book::AddressBook;
 <span class="kw">use </span><span class="kw">crate</span>::connection::{ConnectionInitiator, ConnectionWriter, Direction, NewConnection};
 <span class="kw">use crate</span>::{validate_outbound_services, Error, Latency, PeerId};
@@ -749,7 +764,7 @@
     }
 }
 
-<span class="attr">#[derive(Debug, Clone)]
+<span class="attr">#[derive(Debug, Clone, Default)]
 </span><span class="kw">pub struct </span>PingLatency {
     <span class="kw">pub </span>received_pongs: u64,
     <span class="kw">pub </span>total_latency: Latency,
@@ -834,10 +849,12 @@
     </span><span class="kw">pub </span>ping_state: PingState,
     <span class="doccomment">/// Whether the ping has ever sent to the peer.
     </span><span class="kw">pub </span>has_sent_ping: bool,
+    <span class="doccomment">/// Inbound or outbound peer?
+    </span><span class="kw">pub </span>direction: Direction,
 }
 
 <span class="kw">impl </span>PeerInfo {
-    <span class="kw">fn </span>from_version_message(msg: VersionMessage) -&gt; <span class="self">Self </span>{
+    <span class="kw">fn </span>new(msg: VersionMessage, direction: Direction) -&gt; <span class="self">Self </span>{
         <span class="self">Self </span>{
             best_height: msg.start_height <span class="kw">as </span>u32,
             services: msg.services,
@@ -849,14 +866,12 @@
             nonce: msg.nonce,
             prefer_headers: <span class="bool-val">false</span>,
             want_addrv2: <span class="bool-val">false</span>,
-            ping_latency: PingLatency {
-                received_pongs: <span class="number">0</span>,
-                total_latency: <span class="number">0</span>,
-            },
+            ping_latency: PingLatency::default(),
             ping_state: PingState::Idle {
                 last_pong_at: Instant::now(),
             },
             has_sent_ping: <span class="bool-val">false</span>,
+            direction,
         }
     }
 }
@@ -866,10 +881,10 @@
     config: Config,
     client: Arc&lt;Client&gt;,
     address_book: AddressBook,
-    connections: HashMap&lt;PeerId, Connection&gt;,
     handshaking_peers: HashMap&lt;PeerId, HandshakeState&gt;,
+    connections: HashMap&lt;PeerId, Connection&gt;,
     connected_peers: HashMap&lt;PeerId, PeerInfo&gt;,
-    max_connections: usize,
+    max_outbound_peers: usize,
     connection_initiator: ConnectionInitiator,
     rng: fastrand::Rng,
     _phantom: PhantomData&lt;Block&gt;,
@@ -885,6 +900,7 @@
         client: Arc&lt;Client&gt;,
         config: Config,
         connection_initiator: ConnectionInitiator,
+        max_outbound_peers: usize,
     ) -&gt; <span class="self">Self </span>{
         <span class="self">Self </span>{
             config,
@@ -893,7 +909,7 @@
             handshaking_peers: HashMap::new(),
             connections: HashMap::new(),
             connected_peers: HashMap::new(),
-            max_connections: <span class="number">20</span>,
+            max_outbound_peers,
             connection_initiator,
             rng: fastrand::Rng::new(),
             _phantom: Default::default(),
@@ -923,7 +939,13 @@
             <span class="self">self</span>.disconnect(peer_id, Error::PingTimeout);
         }
 
-        <span class="kw">if </span><span class="self">self</span>.connections.len() &lt; <span class="self">self</span>.max_connections {
+        <span class="kw">let </span>outbound_peers_count = <span class="self">self
+            </span>.connected_peers
+            .values()
+            .filter(|peer_info| peer_info.direction.is_outbound())
+            .count();
+
+        <span class="kw">if </span>outbound_peers_count &lt; <span class="self">self</span>.max_outbound_peers {
             <span class="kw">if let </span><span class="prelude-val">Some</span>(addr) = <span class="self">self</span>.address_book.pop() {
                 <span class="kw">if </span>!<span class="self">self</span>.connections.contains_key(<span class="kw-2">&amp;</span>addr) {
                     <span class="self">self</span>.connection_initiator.initiate_outbound_connection(addr);
@@ -1004,6 +1026,14 @@
     <span class="doccomment">/// Returns the number of connected peers.
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>connect_peers_count(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize {
         <span class="self">self</span>.connected_peers.len()
+    }
+
+    <span class="doccomment">/// Returns the number of connected peers.
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>inbound_peers_count(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize {
+        <span class="self">self</span>.connected_peers
+            .values()
+            .filter(|peer_info| peer_info.direction.is_inbound())
+            .count()
     }
 
     <span class="doccomment">/// Handles a new connection.
@@ -1180,7 +1210,7 @@
             <span class="kw">return </span><span class="prelude-val">Err</span>(Error::UnexpectedHandshakeState(Box::new(handshake_state)));
         };
 
-        <span class="kw">let </span>peer_info = PeerInfo::from_version_message(version);
+        <span class="kw">let </span>peer_info = PeerInfo::new(version, direction);
 
         <span class="kw">let </span>new_peer = NewPeer {
             peer_id,

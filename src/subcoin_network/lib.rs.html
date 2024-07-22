@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/lib.rs`."><title>lib.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-c5d6553a23f1e5a6.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.81.0-nightly (506985649 2024-07-20)" data-channel="nightly" data-search-js="search-d234aafac6c221dd.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-d2fab2bf619172d3.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/lib.rs`."><title>lib.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-c5d6553a23f1e5a6.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (92c6c0380 2024-07-21)" data-channel="nightly" data-search-js="search-d234aafac6c221dd.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-d2fab2bf619172d3.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -431,6 +431,27 @@
 <a href="#431" id="431">431</a>
 <a href="#432" id="432">432</a>
 <a href="#433" id="433">433</a>
+<a href="#434" id="434">434</a>
+<a href="#435" id="435">435</a>
+<a href="#436" id="436">436</a>
+<a href="#437" id="437">437</a>
+<a href="#438" id="438">438</a>
+<a href="#439" id="439">439</a>
+<a href="#440" id="440">440</a>
+<a href="#441" id="441">441</a>
+<a href="#442" id="442">442</a>
+<a href="#443" id="443">443</a>
+<a href="#444" id="444">444</a>
+<a href="#445" id="445">445</a>
+<a href="#446" id="446">446</a>
+<a href="#447" id="447">447</a>
+<a href="#448" id="448">448</a>
+<a href="#449" id="449">449</a>
+<a href="#450" id="450">450</a>
+<a href="#451" id="451">451</a>
+<a href="#452" id="452">452</a>
+<a href="#453" id="453">453</a>
+<a href="#454" id="454">454</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # Bitcoin Network
 //!
 //! This crate facilitates communication with other nodes in the Bitcoin P2P network. It handles
@@ -498,42 +519,44 @@
 
 <span class="attr">#[derive(Debug, thiserror::Error)]
 </span><span class="kw">pub enum </span>Error {
-    <span class="attr">#[error(<span class="string">"received 0 bytes, peer performed an orderly shutdown"</span>)]
+    <span class="attr">#[error(<span class="string">"Received 0 bytes, peer performed an orderly shutdown"</span>)]
     </span>PeerShutdown,
-    <span class="attr">#[error(<span class="string">"cannot communicate with the network event stream"</span>)]
+    <span class="attr">#[error(<span class="string">"Cannot communicate with the network event stream"</span>)]
     </span>NetworkEventStreamError,
-    <span class="attr">#[error(<span class="string">"peer {0:?} not found"</span>)]
+    <span class="attr">#[error(<span class="string">"Peer {0:?} not found"</span>)]
     </span>PeerNotFound(PeerId),
-    <span class="attr">#[error(<span class="string">"connection of peer {0:?} not found"</span>)]
+    <span class="attr">#[error(<span class="string">"Connection of peer {0:?} not found"</span>)]
     </span>ConnectionNotFound(PeerId),
     <span class="attr">#[error(<span class="string">"Connecting to the stream timed out"</span>)]
     </span>ConnectionTimeout,
     <span class="attr">#[error(<span class="string">"Ping timeout"</span>)]
     </span>PingTimeout,
+    <span class="attr">#[error(<span class="string">"Unexpected pong message"</span>)]
+    </span>UnexpectedPong,
     <span class="attr">#[error(<span class="string">"Too many block entries in inv message"</span>)]
     </span>TooManyBlockEntries,
     <span class="attr">#[error(<span class="string">"Too many headers (&gt; 2000)"</span>)]
     </span>TooManyHeaders,
     <span class="attr">#[error(<span class="string">"Too many inventory items "</span>)]
     </span>TooManyInventoryItems,
-    <span class="attr">#[error(<span class="string">"peer is not a full node"</span>)]
+    <span class="attr">#[error(<span class="string">"Peer is not a full node"</span>)]
     </span>NotFullNode,
-    <span class="attr">#[error(<span class="string">"peer is not a segwit node"</span>)]
+    <span class="attr">#[error(<span class="string">"Peer is not a segwit node"</span>)]
     </span>NotSegwitNode,
-    <span class="attr">#[error(<span class="string">"peer's protocol version is too low"</span>)]
+    <span class="attr">#[error(<span class="string">"Peer's protocol version is too low"</span>)]
     </span>ProtocolVersionTooLow,
-    <span class="attr">#[error(<span class="string">"invalid pong message: bad nonce"</span>)]
+    <span class="attr">#[error(<span class="string">"Invalid pong message: bad nonce"</span>)]
     </span>BadPong,
-    <span class="attr">#[error(<span class="string">"invalid bootnode address: {0}"</span>)]
+    <span class="attr">#[error(<span class="string">"Invalid bootnode address: {0}"</span>)]
     </span>InvalidBootnode(String),
-    <span class="attr">#[error(<span class="string">"not expecting pong message"</span>)]
-    </span>UnexpectedPong,
-    <span class="attr">#[error(<span class="string">"received an unrequested block: {0:?}"</span>)]
+    <span class="attr">#[error(<span class="string">"Received an unrequested block: {0:?}"</span>)]
     </span>UnrequestedBlock(BlockHash),
-    <span class="attr">#[error(<span class="string">"unexpected handshake state: {0:?}"</span>)]
+    <span class="attr">#[error(<span class="string">"Unexpected handshake state: {0:?}"</span>)]
     </span>UnexpectedHandshakeState(Box&lt;HandshakeState&gt;),
-    <span class="attr">#[error(<span class="string">"only peers in ipv4 are supported"</span>)]
+    <span class="attr">#[error(<span class="string">"Only IPv4 peers are supported"</span>)]
     </span>Ipv4Only,
+    <span class="attr">#[error(<span class="string">"Other: {0}"</span>)]
+    </span>Other(String),
     <span class="attr">#[error(transparent)]
     </span>IO(<span class="attr">#[from] </span>std::io::Error),
     <span class="attr">#[error(transparent)]
@@ -546,8 +569,6 @@
     </span>BitcoinIO(<span class="attr">#[from] </span>bitcoin::io::Error),
     <span class="attr">#[error(transparent)]
     </span>BitcoinEncoding(<span class="attr">#[from] </span>bitcoin::consensus::encode::Error),
-    <span class="attr">#[error(<span class="string">"Other: {0}"</span>)]
-    </span>Other(String),
 }
 
 <span class="kw">fn </span>seednodes(network: BitcoinNetwork) -&gt; Vec&lt;<span class="kw-2">&amp;</span><span class="lifetime">'static </span>str&gt; {
@@ -579,17 +600,6 @@
     }
 }
 
-<span class="doccomment">/// Represents the strategy for block syncing.
-</span><span class="attr">#[derive(Debug, Clone, Copy, Default)]
-#[cfg_attr(feature = <span class="string">"cli"</span>, derive(clap::ValueEnum))]
-</span><span class="kw">pub enum </span>SyncStrategy {
-    <span class="doccomment">/// Download the headers first, followed by the block bodies.
-    </span><span class="attr">#[default]
-    </span>HeadersFirst,
-    <span class="doccomment">/// Download the full blocks (both headers and bodies) in sequence.
-    </span>BlocksFirst,
-}
-
 <span class="comment">// Ignore the peer if it is not full with witness enabled as we only want to
 // download from peers that can provide use full witness data for blocks.
 </span><span class="kw">fn </span>validate_outbound_services(services: ServiceFlags) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
@@ -602,6 +612,17 @@
     }
 
     <span class="prelude-val">Ok</span>(())
+}
+
+<span class="doccomment">/// Represents the strategy for block syncing.
+</span><span class="attr">#[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = <span class="string">"cli"</span>, derive(clap::ValueEnum))]
+</span><span class="kw">pub enum </span>SyncStrategy {
+    <span class="doccomment">/// Download the headers first, followed by the block bodies.
+    </span><span class="attr">#[default]
+    </span>HeadersFirst,
+    <span class="doccomment">/// Download the full blocks (both headers and bodies) in sequence.
+    </span>BlocksFirst,
 }
 
 <span class="doccomment">/// Represents the sync status of node.
@@ -653,6 +674,8 @@
     </span>NetworkStatus(oneshot::Sender&lt;NetworkStatus&gt;),
     <span class="doccomment">/// Retrieve the sync peers.
     </span>SyncPeers(oneshot::Sender&lt;Vec&lt;PeerSync&gt;&gt;),
+    <span class="doccomment">/// Retrieve the number of inbound connected peers.
+    </span>InboundPeersCount(oneshot::Sender&lt;usize&gt;),
 }
 
 <span class="doccomment">/// A handle for interacting with the network worker.
@@ -742,6 +765,7 @@
     params: Params,
     import_queue: BlockImportQueue,
     spawn_handle: SpawnTaskHandle,
+    worker_msg_sender: TracingUnboundedSender&lt;NetworkWorkerMessage&gt;,
     worker_msg_receiver: TracingUnboundedReceiver&lt;NetworkWorkerMessage&gt;,
     is_major_syncing: Arc&lt;AtomicBool&gt;,
     _phantom: PhantomData&lt;Block&gt;,
@@ -768,6 +792,7 @@
             params,
             import_queue,
             spawn_handle,
+            worker_msg_sender: worker_msg_sender.clone(),
             worker_msg_receiver,
             is_major_syncing: is_major_syncing.clone(),
             _phantom: Default::default(),
@@ -791,6 +816,7 @@
             params,
             import_queue,
             spawn_handle,
+            worker_msg_sender,
             worker_msg_receiver,
             is_major_syncing,
             _phantom,
@@ -800,13 +826,8 @@
         <span class="kw">let </span>listener = <span class="kw">match </span>TcpListener::bind(<span class="kw-2">&amp;</span>listen_on).<span class="kw">await </span>{
             <span class="prelude-val">Ok</span>(listener) =&gt; listener,
             <span class="prelude-val">Err</span>(e) <span class="kw">if </span>e.kind() == std::io::ErrorKind::AddrInUse =&gt; {
-                <span class="macro">tracing::warn!</span>(
-                    <span class="string">"{} is occupied, trying any available port."</span>,
-                    params.listen_on
-                );
-
+                <span class="macro">tracing::warn!</span>(<span class="string">"{listen_on} is occupied, trying any available port."</span>);
                 listen_on.set_port(<span class="number">0</span>);
-
                 TcpListener::bind(listen_on).<span class="kw">await</span><span class="question-mark">?
             </span>}
             <span class="prelude-val">Err</span>(err) =&gt; <span class="kw">return </span><span class="prelude-val">Err</span>(err.into()),
@@ -831,20 +852,41 @@
             params.sync_strategy,
             is_major_syncing,
             connection_initiator.clone(),
+            params.max_outbound_peers,
         );
 
         spawn_handle.spawn(<span class="string">"inbound-connection"</span>, <span class="prelude-val">None</span>, {
             <span class="kw">let </span>local_addr = listener.local_addr()<span class="question-mark">?</span>;
             <span class="kw">let </span>connection_initiator = connection_initiator.clone();
+            <span class="kw">let </span>max_inbound_peers = params.max_inbound_peers;
 
             <span class="kw">async move </span>{
                 <span class="macro">tracing::info!</span>(<span class="string">"🔊 Listening on {local_addr:?}"</span>,);
 
                 <span class="kw">while let </span><span class="prelude-val">Ok</span>((socket, peer_addr)) = listener.accept().<span class="kw">await </span>{
-                    <span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>peer_addr, <span class="string">"New peer accepted"</span>);
+                    <span class="kw">let </span>(sender, receiver) = oneshot::channel();
 
-                    <span class="kw">if let </span><span class="prelude-val">Err</span>(err) = connection_initiator.initiate_inbound_connection(socket) {
-                        <span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>err, <span class="question-mark">?</span>peer_addr, <span class="string">"Failed to initiate inbound connection"</span>);
+                    <span class="kw">if </span>worker_msg_sender
+                        .unbounded_send(NetworkWorkerMessage::InboundPeersCount(sender))
+                        .is_err()
+                    {
+                        <span class="kw">return</span>;
+                    }
+
+                    <span class="kw">let </span><span class="prelude-val">Ok</span>(inbound_peers_count) = receiver.<span class="kw">await else </span>{
+                        <span class="kw">return</span>;
+                    };
+
+                    <span class="kw">if </span>inbound_peers_count &lt; max_inbound_peers {
+                        <span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>peer_addr, <span class="string">"New peer accepted"</span>);
+
+                        <span class="kw">if let </span><span class="prelude-val">Err</span>(err) = connection_initiator.initiate_inbound_connection(socket) {
+                            <span class="macro">tracing::debug!</span>(
+                                <span class="question-mark">?</span>err,
+                                <span class="question-mark">?</span>peer_addr,
+                                <span class="string">"Failed to initiate inbound connection"
+                            </span>);
+                        }
                     }
                 }
             }
