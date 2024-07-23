@@ -3,12 +3,13 @@ mod tx_verify;
 
 use crate::chain_params::ChainParams;
 use bitcoin::block::Bip34Error;
+use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::blockdata::constants::MAX_BLOCK_SIGOPS_COST;
 use bitcoin::blockdata::weight::WITNESS_SCALE_FACTOR;
 use bitcoin::consensus::Encodable;
 use bitcoin::{
     Amount, Block as BitcoinBlock, BlockHash, OutPoint, ScriptBuf, Transaction, TxMerkleNode,
-    TxOut, Txid, Weight,
+    TxOut, Txid, VarInt, Weight,
 };
 use sc_client_api::{AuxStore, Backend, StorageProvider};
 use sp_blockchain::HeaderBackend;
@@ -56,6 +57,8 @@ pub enum Error {
     MultipleCoinbase,
     #[error("Transaction input script contains too many sigops (max: {MAX_BLOCK_SIGOPS_COST})")]
     TooManySigOps { block_number: u32 },
+    #[error("Invalid witness commitment")]
+    BadWitnessCommitment,
     #[error("Transaction is not finalized")]
     TransactionNotFinal,
     #[error("Block contains duplicate transaction at index {0}")]
@@ -154,6 +157,18 @@ where
         match self.block_verification {
             BlockVerification::Full => {
                 let lock_time_cutoff = self.header_verifier.verify_header(&block.header)?;
+
+                if block_number >= self.chain_params.segwit_height
+                    && !block.check_witness_commitment()
+                {
+                    return Err(Error::BadWitnessCommitment);
+                }
+
+                // Check the block weight with witness data.
+                if block.weight() > MAX_BLOCK_WEIGHT {
+                    return Err(Error::BadBlockLength);
+                }
+
                 self.verify_transactions(block_number, block, txids, lock_time_cutoff)?;
             }
             BlockVerification::HeaderOnly => {
@@ -184,8 +199,12 @@ where
             return Err(Error::EmptyTransactionList);
         }
 
-        // Size limits.
-        if block.weight() > MAX_BLOCK_WEIGHT {
+        // Size limits, without tx witness data.
+        if Weight::from_wu(block.txdata.len() as u64 * WITNESS_SCALE_FACTOR as u64)
+            > MAX_BLOCK_WEIGHT
+            || Weight::from_wu(block_base_size(block) as u64 * WITNESS_SCALE_FACTOR as u64)
+                > MAX_BLOCK_WEIGHT
+        {
             return Err(Error::BadBlockLength);
         }
 
@@ -455,6 +474,20 @@ fn get_block_script_flags(
     }
 
     flags
+}
+
+/// Returns the base block size.
+///
+/// > Base size is the block size in bytes with the original transaction serialization without
+/// > any witness-related data, as seen by a non-upgraded node.
+// TODO: copied from rust-bitcoin, send a patch upstream to make this API public?
+fn block_base_size(block: &BitcoinBlock) -> usize {
+    let mut size = BitcoinHeader::SIZE;
+
+    size += VarInt::from(block.txdata.len()).size();
+    size += block.txdata.iter().map(|tx| tx.base_size()).sum::<usize>();
+
+    size
 }
 
 #[cfg(test)]
