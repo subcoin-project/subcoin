@@ -2,6 +2,7 @@ mod header_verify;
 mod tx_verify;
 
 use crate::chain_params::ChainParams;
+use bitcoin::block::Bip34Error;
 use bitcoin::blockdata::constants::MAX_BLOCK_SIGOPS_COST;
 use bitcoin::blockdata::weight::WITNESS_SCALE_FACTOR;
 use bitcoin::consensus::Encodable;
@@ -59,6 +60,8 @@ pub enum Error {
     TransactionNotFinal,
     #[error("Block contains duplicate transaction at index {0}")]
     DuplicateTransaction(usize),
+    #[error("Block height mismatches in coinbase (got: {got}, expected: {expected})")]
+    BadCoinbaseBlockHeight { got: u32, expected: u32 },
     /// Referenced output does not exist or was spent before.
     #[error("UTXO not found (#{block_number}:{txid}: {out_point:?})")]
     UtxoNotFound {
@@ -85,6 +88,8 @@ pub enum Error {
     Header(#[from] HeaderError),
     #[error(transparent)]
     BitcoinConsensus(#[from] bitcoin::consensus::validation::BitcoinconsensusError),
+    #[error(transparent)]
+    Bip34(#[from] Bip34Error),
     #[error("Bitcoin codec: {0:?}")]
     BitcoinCodec(bitcoin::io::Error),
     /// An error occurred in the client.
@@ -137,10 +142,19 @@ where
     pub fn verify_block(&self, block_number: u32, block: &BitcoinBlock) -> Result<(), Error> {
         let txids = self.check_block_sanity(block_number, block)?;
 
+        self.contextual_check_block(block_number, block, txids)
+    }
+
+    fn contextual_check_block(
+        &self,
+        block_number: u32,
+        block: &BitcoinBlock,
+        txids: HashMap<usize, Txid>,
+    ) -> Result<(), Error> {
         match self.block_verification {
             BlockVerification::Full => {
-                let time = self.header_verifier.verify_header(&block.header)?;
-                self.verify_transactions(block_number, block, txids, time)?;
+                let lock_time_cutoff = self.header_verifier.verify_header(&block.header)?;
+                self.verify_transactions(block_number, block, txids, lock_time_cutoff)?;
             }
             BlockVerification::HeaderOnly => {
                 self.header_verifier.verify_header(&block.header)?;
@@ -248,10 +262,8 @@ where
         block_number: u32,
         block: &BitcoinBlock,
         txids: HashMap<usize, Txid>,
-        time: u32,
+        lock_time_cutoff: u32,
     ) -> Result<(), Error> {
-        let transactions = &block.txdata;
-
         let parent_number = block_number - 1;
         let parent_hash =
             self.client
@@ -272,23 +284,33 @@ where
         let mut block_fee = 0;
         let mut spent_utxos = HashSet::new();
 
-        // Buffer for encoded transaction data.
         let mut tx_data = Vec::<u8>::new();
 
         // TODO: verify transactions in parallel.
-        for (tx_index, tx) in transactions.iter().enumerate() {
+        for (tx_index, tx) in block.txdata.iter().enumerate() {
             if tx_index == 0 {
-                // Coinbase script was already checked in check_block_sanity().
+                // Enforce rule that the coinbase starts with serialized block height.
+                if block_number >= self.chain_params.params.bip34_height {
+                    let block_height_in_coinbase = block.bip34_block_height()? as u32;
+                    if block_height_in_coinbase != block_number {
+                        return Err(Error::BadCoinbaseBlockHeight {
+                            got: block_height_in_coinbase,
+                            expected: block_number,
+                        });
+                    }
+                }
+
                 continue;
             }
 
-            if !is_final(tx, block_number, time) {
+            if !is_final(tx, block_number, lock_time_cutoff) {
                 return Err(Error::TransactionNotFinal);
             }
 
             tx_data.clear();
             tx.consensus_encode(&mut tx_data)
                 .map_err(Error::BitcoinCodec)?;
+
             let spending_transaction = tx_data.as_slice();
 
             let mut total_input_value = 0;
@@ -344,7 +366,7 @@ where
             block_fee += tx_fee;
         }
 
-        let coinbase_value = transactions[0]
+        let coinbase_value = block.txdata[0]
             .output
             .iter()
             .map(|output| output.value.to_sat())

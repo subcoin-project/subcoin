@@ -113,6 +113,7 @@ where
 
         let block_number = prev_block_height + 1;
 
+        // BIP 113
         if block_number >= self.chain_params.csv_height {
             let mtp = self.calculate_median_time_past(header);
             if header.time <= mtp {
