@@ -28,9 +28,9 @@ pub enum Error {
         "Coinbase transaction script length of {0} is out of range \
         (min: {MIN_COINBASE_SCRIPT_LEN}, max: {MAX_COINBASE_SCRIPT_LEN})"
     )]
-    BadCoinbaseScriptSigLength(usize),
-    #[error("Transaction input refers to previous output that is null")]
-    BadTxInput,
+    BadCoinbaseLength(usize),
+    #[error("Transaction input refers to a previous output that is null")]
+    PreviousOutPointNull,
 }
 
 pub fn is_final(tx: &Transaction, height: u32, block_time: u32) -> bool {
@@ -51,6 +51,7 @@ pub fn is_final(tx: &Transaction, height: u32, block_time: u32) -> bool {
     tx.input.iter().all(|txin| txin.sequence.is_final())
 }
 
+// <https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/consensus/tx_check.cpp#L11>
 pub fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
     if tx.input.is_empty() {
         return Err(Error::EmptyInput);
@@ -62,14 +63,6 @@ pub fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
 
     if tx.weight() > MAX_BLOCK_WEIGHT {
         return Err(Error::BadTransactionLength);
-    }
-
-    // Check for duplicate inputs.
-    let mut seen_inputs = HashSet::new();
-    for (index, txin) in tx.input.iter().enumerate() {
-        if !seen_inputs.insert(txin.previous_output) {
-            return Err(Error::DuplicateTxInput(index));
-        }
     }
 
     let mut total_output_value = Amount::ZERO;
@@ -87,18 +80,26 @@ pub fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
         Ok(())
     })?;
 
+    // Check for duplicate inputs.
+    let mut seen_inputs = HashSet::new();
+    for (index, txin) in tx.input.iter().enumerate() {
+        if !seen_inputs.insert(txin.previous_output) {
+            return Err(Error::DuplicateTxInput(index));
+        }
+    }
+
     // Coinbase script length must be between min and max length.
     if tx.is_coinbase() {
         let script_sig_len = tx.input[0].script_sig.len();
 
         if !(MIN_COINBASE_SCRIPT_LEN..=MAX_COINBASE_SCRIPT_LEN).contains(&script_sig_len) {
-            return Err(Error::BadCoinbaseScriptSigLength(script_sig_len));
+            return Err(Error::BadCoinbaseLength(script_sig_len));
         }
     } else {
         // Previous transaction outputs referenced by the inputs to this
         // transaction must not be null.
         if tx.input.iter().any(|txin| txin.previous_output.is_null()) {
-            return Err(Error::BadTxInput);
+            return Err(Error::PreviousOutPointNull);
         }
     }
 

@@ -67,7 +67,7 @@ where
     ///     - Time is not greater than 2 hours from now.
     ///     - Time is not the median time of last 11 blocks or before.
     ///
-    /// https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L4146
+    /// <https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L4146>
     pub fn verify_header(&self, header: &BitcoinHeader) -> Result<u32, Error> {
         let prev_block_hash = header.prev_blockhash;
 
@@ -163,7 +163,7 @@ where
 /// Usually, it's just the target of last block. However, if we are in a retarget period,
 /// it will be calculated from the last 2016 blocks (about two weeks for Bitcoin mainnet).
 ///
-/// https://github.com/bitcoin/bitcoin/blob/89b910711c004c21b7d67baa888073742f7f94f0/src/pow.cpp#L13
+/// <https://github.com/bitcoin/bitcoin/blob/89b910711c004c21b7d67baa888073742f7f94f0/src/pow.cpp#L13>
 fn get_next_work_required<Block, Client>(
     last_block_height: u32,
     last_block: BitcoinHeader,
@@ -210,7 +210,7 @@ where
     }
 }
 
-// https://github.com/bitcoin/bitcoin/blob/89b910711c004c21b7d67baa888073742f7f94f0/src/pow.cpp#L49-L72
+// <https://github.com/bitcoin/bitcoin/blob/89b910711c004c21b7d67baa888073742f7f94f0/src/pow.cpp#L49-L72>
 fn calculate_next_work_required(
     previous_target: U256,
     first_block_time: u64,

@@ -3,10 +3,11 @@ mod tx_verify;
 
 use crate::chain_params::ChainParams;
 use bitcoin::blockdata::constants::MAX_BLOCK_SIGOPS_COST;
+use bitcoin::blockdata::weight::WITNESS_SCALE_FACTOR;
 use bitcoin::consensus::Encodable;
 use bitcoin::{
-    Amount, Block as BitcoinBlock, BlockHash, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid,
-    Weight,
+    Amount, Block as BitcoinBlock, BlockHash, OutPoint, ScriptBuf, Transaction, TxMerkleNode,
+    TxOut, Txid, Weight,
 };
 use sc_client_api::{AuxStore, Backend, StorageProvider};
 use sp_blockchain::HeaderBackend;
@@ -22,7 +23,8 @@ use tx_verify::{check_transaction_sanity, is_final};
 pub use header_verify::{Error as HeaderError, HeaderVerifier};
 pub use tx_verify::Error as TxError;
 
-const MAX_BLOCK_WEIGHT: Weight = Weight::MAX_BLOCK;
+/// The maximum allowed weight for a block, see BIP 141 (network rule).
+pub const MAX_BLOCK_WEIGHT: Weight = Weight::MAX_BLOCK;
 
 /// Represents the level of block verification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,14 +51,10 @@ pub enum Error {
     BadBlockLength,
     #[error("First transaction is not coinbase")]
     FirstTransactionIsNotCoinbase,
-    #[error("Block contains multiple coinbase transactions")]
+    #[error("Block contains more than one coinbase")]
     MultipleCoinbase,
     #[error("Transaction input script contains too many sigops (max: {MAX_BLOCK_SIGOPS_COST})")]
-    TooManySigOps {
-        block_number: u32,
-        txid: Txid,
-        index: usize,
-    },
+    TooManySigOps { block_number: u32 },
     #[error("Transaction is not finalized")]
     TransactionNotFinal,
     #[error("Block contains duplicate transaction at index {0}")]
@@ -156,13 +154,13 @@ where
     /// Performs preliminary checks.
     ///
     /// - Transaction list must be non-empty.
-    /// - Block size must not exceed `MAX_BLOCK_WEIGHT`.
+    /// - Block size must not exceed [`MAX_BLOCK_WEIGHT`].
     /// - First transaction must be coinbase, the rest must not be.
     /// - No duplicate transactions in the block.
     /// - Check the sum of transaction sig opcounts does not exceed [`MAX_BLOCK_SIGOPS_COST`].
-    /// - Check the calculated merkle root of transactions matches the value declared in the header.
+    /// - Check the calculated merkle root of transactions matches the one declared in the header.
     ///
-    /// https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L3986
+    /// <https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L3986>
     fn check_block_sanity(
         &self,
         block_number: u32,
@@ -172,19 +170,36 @@ where
             return Err(Error::EmptyTransactionList);
         }
 
-        if !block.txdata[0].is_coinbase() {
-            return Err(Error::FirstTransactionIsNotCoinbase);
-        }
-
         // Size limits.
         if block.weight() > MAX_BLOCK_WEIGHT {
             return Err(Error::BadBlockLength);
         }
 
+        if !block.txdata[0].is_coinbase() {
+            return Err(Error::FirstTransactionIsNotCoinbase);
+        }
+
+        let get_legacy_sig_op_count = |tx: &Transaction| {
+            let mut sig_ops = 0;
+
+            tx.input.iter().for_each(|txin| {
+                sig_ops += txin.script_sig.count_sigops_legacy();
+            });
+
+            tx.output.iter().for_each(|txout| {
+                sig_ops += txout.script_pubkey.count_sigops_legacy();
+            });
+
+            sig_ops
+        };
+
         // Check duplicate transactions
         let tx_count = block.txdata.len();
+
         let mut seen_transactions = HashSet::with_capacity(tx_count);
         let mut txids = HashMap::with_capacity(tx_count);
+
+        let mut sig_ops = 0;
 
         for (index, tx) in block.txdata.iter().enumerate() {
             if index > 0 && tx.is_coinbase() {
@@ -199,19 +214,13 @@ where
 
             check_transaction_sanity(tx)?;
 
-            if tx
-                .input
-                .iter()
-                .any(|txin| txin.script_sig.count_sigops() > MAX_BLOCK_SIGOPS_COST as usize)
-            {
-                return Err(Error::TooManySigOps {
-                    block_number,
-                    txid,
-                    index,
-                });
-            }
+            sig_ops += get_legacy_sig_op_count(tx);
 
             txids.insert(index, txid);
+        }
+
+        if sig_ops * WITNESS_SCALE_FACTOR > MAX_BLOCK_SIGOPS_COST as usize {
+            return Err(Error::TooManySigOps { block_number });
         }
 
         // Inline `Block::check_merkle_root()` to avoid redundantly computing txid.
