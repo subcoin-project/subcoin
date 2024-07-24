@@ -30,6 +30,8 @@ pub enum Error {
     /// Block's timestamp is too old.
     #[error("Time is the median time of last 11 blocks or before")]
     TimeTooOld,
+    #[error("Outdated version")]
+    BadVersion,
     /// An error occurred in the client.
     #[error(transparent)]
     Client(#[from] sp_blockchain::Error),
@@ -114,16 +116,26 @@ where
         let block_number = prev_block_height + 1;
 
         // BIP 113
-        if block_number >= self.chain_params.csv_height {
+        let lock_time_cutoff = if block_number >= self.chain_params.csv_height {
             let mtp = self.calculate_median_time_past(header);
             if header.time <= mtp {
                 return Err(Error::TimeTooOld);
             }
-
-            Ok(mtp)
+            mtp
         } else {
-            Ok(header.time)
+            header.time
+        };
+
+        let version = header.version.to_consensus();
+
+        if version < 2 && block_number >= self.chain_params.params.bip34_height
+            || version < 3 && block_number >= self.chain_params.params.bip66_height
+            || version < 4 && block_number >= self.chain_params.params.bip65_height
+        {
+            return Err(Error::BadVersion);
         }
+
+        Ok(lock_time_cutoff)
     }
 
     /// Calculates the median time of the previous few blocks prior to the header (inclusive).
