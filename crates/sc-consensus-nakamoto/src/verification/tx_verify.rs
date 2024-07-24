@@ -105,3 +105,14 @@ pub fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
 
     Ok(())
 }
+
+pub fn get_legacy_sig_op_count(tx: &Transaction) -> usize {
+    tx.input
+        .iter()
+        .map(|txin| txin.script_sig.count_sigops_legacy())
+        .sum::<usize>()
+        + tx.output
+            .iter()
+            .map(|txout| txout.script_pubkey.count_sigops_legacy())
+            .sum::<usize>()
+}

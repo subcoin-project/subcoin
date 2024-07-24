@@ -8,8 +8,8 @@ use bitcoin::blockdata::constants::{COINBASE_MATURITY, MAX_BLOCK_SIGOPS_COST};
 use bitcoin::blockdata::weight::WITNESS_SCALE_FACTOR;
 use bitcoin::consensus::Encodable;
 use bitcoin::{
-    Amount, Block as BitcoinBlock, BlockHash, OutPoint, ScriptBuf, Transaction, TxMerkleNode,
-    TxOut, Txid, VarInt, Weight,
+    Amount, Block as BitcoinBlock, BlockHash, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid,
+    VarInt, Weight,
 };
 use sc_client_api::{AuxStore, Backend, StorageProvider};
 use sp_blockchain::HeaderBackend;
@@ -20,7 +20,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use subcoin_primitives::runtime::{bitcoin_block_subsidy, Coin};
 use subcoin_primitives::CoinStorageKey;
-use tx_verify::{check_transaction_sanity, is_final};
+use tx_verify::{check_transaction_sanity, get_legacy_sig_op_count, is_final};
 
 pub use header_verify::{Error as HeaderError, HeaderVerifier};
 pub use tx_verify::Error as TxError;
@@ -191,7 +191,7 @@ where
     /// - Check the sum of transaction sig opcounts does not exceed [`MAX_BLOCK_SIGOPS_COST`].
     /// - Check the calculated merkle root of transactions matches the one declared in the header.
     ///
-    /// <https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L3986>
+    /// <https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccdCOIN787161bf2b87e03cc1f/src/validation.cpp#L3986>
     fn check_block_sanity(
         &self,
         block_number: u32,
@@ -213,20 +213,6 @@ where
         if !block.txdata[0].is_coinbase() {
             return Err(Error::FirstTransactionIsNotCoinbase);
         }
-
-        let get_legacy_sig_op_count = |tx: &Transaction| {
-            let mut sig_ops = 0;
-
-            tx.input.iter().for_each(|txin| {
-                sig_ops += txin.script_sig.count_sigops_legacy();
-            });
-
-            tx.output.iter().for_each(|txout| {
-                sig_ops += txout.script_pubkey.count_sigops_legacy();
-            });
-
-            sig_ops
-        };
 
         // Check duplicate transactions
         let tx_count = block.txdata.len();
