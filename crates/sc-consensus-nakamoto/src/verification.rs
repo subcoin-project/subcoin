@@ -321,8 +321,26 @@ where
 
             let spending_transaction = tx_data.as_slice();
 
+            let access_coin = |out_point: OutPoint| -> Option<(TxOut, bool, u32)> {
+                match self.find_utxo_in_state(parent_hash, out_point) {
+                    Some(coin) => {
+                        let is_coinbase = coin.is_coinbase;
+                        let height = coin.height;
+                        let txout = TxOut {
+                            value: Amount::from_sat(coin.amount),
+                            script_pubkey: ScriptBuf::from_bytes(coin.script_pubkey),
+                        };
+
+                        Some((txout, is_coinbase, height))
+                    }
+                    None => find_utxo_in_current_block(block, out_point, tx_index, get_txid)
+                        .map(|(txout, is_coinbase)| (txout, is_coinbase, block_number)),
+                }
+            };
+
             // CheckTxInputs.
             let mut value_in = 0;
+            let mut sig_ops_cost = 0;
 
             for (input_index, input) in tx.input.iter().enumerate() {
                 let coin = input.previous_output;
@@ -337,25 +355,11 @@ where
 
                 // Access coin.
                 let (spent_output, is_coinbase, coin_height) =
-                    match self.find_utxo_in_state(parent_hash, coin) {
-                        Some(coin) => {
-                            let is_coinbase = coin.is_coinbase;
-                            let height = coin.height;
-                            let txout = TxOut {
-                                value: Amount::from_sat(coin.amount),
-                                script_pubkey: ScriptBuf::from_bytes(coin.script_pubkey),
-                            };
-
-                            (txout, is_coinbase, height)
-                        }
-                        None => find_utxo_in_current_block(block, coin, tx_index, get_txid)
-                            .map(|(txout, is_coinbase)| (txout, is_coinbase, block_number))
-                            .ok_or_else(|| Error::UtxoNotFound {
-                                block_number,
-                                txid: get_txid(tx_index),
-                                utxo: coin,
-                            })?,
-                    };
+                    access_coin(coin).ok_or_else(|| Error::UtxoNotFound {
+                        block_number,
+                        txid: get_txid(tx_index),
+                        utxo: coin,
+                    })?;
 
                 // If coin is coinbase, check that it's matured.
                 if is_coinbase && block_number - coin_height < COINBASE_MATURITY {
@@ -372,6 +376,18 @@ where
 
                 spent_utxos.insert(coin);
                 value_in += spent_output.value.to_sat();
+            }
+
+            // > GetTransactionSigOpCost counts 3 types of sigops:
+            // > * legacy (always)
+            // > * p2sh (when P2SH enabled in flags and excludes coinbase)
+            // > * witness (when witness enabled in flags and excludes coinbase)
+            sig_ops_cost += tx.total_sigop_cost(|out_point: &OutPoint| {
+                access_coin(out_point.clone()).map(|(txout, _, _)| txout)
+            });
+
+            if sig_ops_cost > MAX_BLOCK_SIGOPS_COST as usize {
+                return Err(Error::TooManySigOps { block_number });
             }
 
             let value_out = tx
