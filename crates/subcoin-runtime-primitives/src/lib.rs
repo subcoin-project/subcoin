@@ -32,7 +32,10 @@ pub struct Coin {
     pub is_coinbase: bool,
     /// Transfer value in satoshis.
     pub amount: u64,
+    // Block height at which this containing transaction was included.
+    pub height: u32,
     /// Spending condition of the output.
+    /// TODO: store the full script_pubkey offchain?
     pub script_pubkey: Vec<u8>,
 }
 

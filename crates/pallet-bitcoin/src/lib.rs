@@ -20,6 +20,8 @@ use frame_support::dispatch::DispatchResult;
 use frame_support::weights::Weight;
 use scale_info::TypeInfo;
 use sp_core::H256;
+use sp_runtime::traits::BlockNumberProvider;
+use sp_runtime::SaturatedConversion;
 use sp_std::prelude::*;
 use sp_std::vec::Vec;
 use subcoin_runtime_primitives::Coin;
@@ -156,6 +158,7 @@ pub mod pallet {
                         is_coinbase: true,
                         amount: txout.value.to_sat(),
                         script_pubkey: txout.script_pubkey.clone().into_bytes(),
+                        height: 0u32,
                     };
                     Coins::<T>::insert(txid.clone(), index as u32, coin);
                 });
@@ -197,6 +200,8 @@ impl<T: Config> Pallet<T> {
         let txid = tx.compute_txid();
         let is_coinbase = tx.is_coinbase();
 
+        let height = frame_system::Pallet::<T>::current_block_number();
+
         let new_coins = tx
             .output
             .into_iter()
@@ -210,6 +215,7 @@ impl<T: Config> Pallet<T> {
                     is_coinbase,
                     amount: txout.value.to_sat(),
                     script_pubkey: txout.script_pubkey.into_bytes(),
+                    height: height.saturated_into(),
                 };
 
                 (out_point, coin)

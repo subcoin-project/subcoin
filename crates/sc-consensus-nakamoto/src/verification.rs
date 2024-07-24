@@ -66,21 +66,21 @@ pub enum Error {
     #[error("Block height mismatches in coinbase (got: {got}, expected: {expected})")]
     BadCoinbaseBlockHeight { got: u32, expected: u32 },
     /// Referenced output does not exist or was spent before.
-    #[error("UTXO not found (#{block_number}:{txid}: {out_point:?})")]
+    #[error("UTXO not found (#{block_number}:{txid}: {utxo:?})")]
     UtxoNotFound {
         block_number: u32,
         txid: Txid,
-        out_point: OutPoint,
+        utxo: OutPoint,
     },
     /// Referenced output has already been spent in this block.
-    #[error("UTXO already spent in current block (#{block_number}:{txid}: {out_point:?})")]
+    #[error("UTXO already spent in current block (#{block_number}:{txid}: {utxo:?})")]
     AlreadySpentInCurrentBlock {
         block_number: u32,
         txid: Txid,
-        out_point: OutPoint,
+        utxo: OutPoint,
     },
-    #[error("Total output amount exceeds total input amount")]
-    InsufficientFunds,
+    #[error("Total input amount is below total output amount ({value_in} < {value_out})")]
+    InsufficientFunds { value_in: u64, value_out: u64 },
     // Invalid coinbase value.
     #[error("Block reward is larger than the sum of block fee and subsidy")]
     InvalidBlockReward,
@@ -306,6 +306,7 @@ where
         let mut tx_data = Vec::<u8>::new();
 
         // TODO: verify transactions in parallel.
+        // https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L2611
         for (tx_index, tx) in block.txdata.iter().enumerate() {
             if tx_index == 0 {
                 // Enforce rule that the coinbase starts with serialized block height.
@@ -332,31 +333,40 @@ where
 
             let spending_transaction = tx_data.as_slice();
 
-            let mut total_input_value = 0;
+            // CheckTxInputs.
+            let mut value_in = 0;
 
             for (input_index, input) in tx.input.iter().enumerate() {
-                let out_point = input.previous_output;
+                let coin = input.previous_output;
 
-                if spent_utxos.contains(&out_point) {
+                if spent_utxos.contains(&coin) {
                     return Err(Error::AlreadySpentInCurrentBlock {
                         block_number,
                         txid: get_txid(tx_index),
-                        out_point,
+                        utxo: coin,
                     });
                 }
 
-                let spent_output = match self.find_utxo_in_state(parent_hash, out_point) {
-                    Some(coin) => TxOut {
-                        value: Amount::from_sat(coin.amount),
-                        script_pubkey: ScriptBuf::from_bytes(coin.script_pubkey),
-                    },
-                    None => find_utxo_in_current_block(block, out_point, tx_index, get_txid)
+                // Access coin.
+                let (spent_output, is_coinbase) = match self.find_utxo_in_state(parent_hash, coin) {
+                    Some(coin) => (
+                        TxOut {
+                            value: Amount::from_sat(coin.amount),
+                            script_pubkey: ScriptBuf::from_bytes(coin.script_pubkey),
+                        },
+                        coin.is_coinbase,
+                    ),
+                    None => find_utxo_in_current_block(block, coin, tx_index, get_txid)
                         .ok_or_else(|| Error::UtxoNotFound {
                             block_number,
                             txid: get_txid(tx_index),
-                            out_point,
+                            utxo: coin,
                         })?,
                 };
+
+                if is_coinbase {
+                    // TODO: check that it's matured.
+                }
 
                 bitcoin::consensus::validation::verify_script_with_flags(
                     &spent_output.script_pubkey,
@@ -366,11 +376,11 @@ where
                     flags,
                 )?;
 
-                spent_utxos.insert(out_point);
-                total_input_value += spent_output.value.to_sat();
+                spent_utxos.insert(coin);
+                value_in += spent_output.value.to_sat();
             }
 
-            let total_output_value = tx
+            let value_out = tx
                 .output
                 .iter()
                 .map(|output| output.value.to_sat())
@@ -378,9 +388,12 @@ where
 
             // Total input value must be no less than total output value.
             // Tx fee is the difference between inputs and outputs.
-            let tx_fee = total_input_value
-                .checked_sub(total_output_value)
-                .ok_or(Error::InsufficientFunds)?;
+            let tx_fee = value_in
+                .checked_sub(value_out)
+                .ok_or(Error::InsufficientFunds {
+                    value_in,
+                    value_out,
+                })?;
 
             block_fee += tx_fee;
         }
@@ -429,16 +442,20 @@ fn find_utxo_in_current_block(
     out_point: OutPoint,
     tx_index: usize,
     get_txid: impl Fn(usize) -> Txid,
-) -> Option<TxOut> {
+) -> Option<(TxOut, bool)> {
     let OutPoint { txid, vout } = out_point;
     block
         .txdata
         .iter()
         .take(tx_index)
         .enumerate()
-        .find_map(|(index, tx)| (get_txid(index) == txid).then_some(tx))
-        .and_then(|tx| tx.output.get(vout as usize))
-        .cloned()
+        .find_map(|(index, tx)| (get_txid(index) == txid).then(|| (tx, index == 0)))
+        .and_then(|(tx, is_coinbase)| {
+            tx.output
+                .get(vout as usize)
+                .cloned()
+                .map(|txout| (txout, is_coinbase))
+        })
 }
 
 /// Returns the script validation flags for the specified block.
@@ -530,8 +547,9 @@ mod tests {
                 .get(&index)
                 .copied()
                 .unwrap())
-            .map(|txout| txout.value.to_sat()),
-            Some(295600000)
+            .map(|txout| txout.value.to_sat())
+            .unwrap(),
+            (295600000, false)
         );
     }
 }
