@@ -4,7 +4,7 @@ mod tx_verify;
 use crate::chain_params::ChainParams;
 use bitcoin::block::Bip34Error;
 use bitcoin::blockdata::block::Header as BitcoinHeader;
-use bitcoin::blockdata::constants::MAX_BLOCK_SIGOPS_COST;
+use bitcoin::blockdata::constants::{COINBASE_MATURITY, MAX_BLOCK_SIGOPS_COST};
 use bitcoin::blockdata::weight::WITNESS_SCALE_FACTOR;
 use bitcoin::consensus::Encodable;
 use bitcoin::{
@@ -79,6 +79,8 @@ pub enum Error {
         txid: Txid,
         utxo: OutPoint,
     },
+    #[error("Premature spend of coinbase")]
+    PrematureSpendOfCoinbase,
     #[error("Total input amount is below total output amount ({value_in} < {value_out})")]
     InsufficientFunds { value_in: u64, value_out: u64 },
     // Invalid coinbase value.
@@ -348,24 +350,30 @@ where
                 }
 
                 // Access coin.
-                let (spent_output, is_coinbase) = match self.find_utxo_in_state(parent_hash, coin) {
-                    Some(coin) => (
-                        TxOut {
-                            value: Amount::from_sat(coin.amount),
-                            script_pubkey: ScriptBuf::from_bytes(coin.script_pubkey),
-                        },
-                        coin.is_coinbase,
-                    ),
-                    None => find_utxo_in_current_block(block, coin, tx_index, get_txid)
-                        .ok_or_else(|| Error::UtxoNotFound {
-                            block_number,
-                            txid: get_txid(tx_index),
-                            utxo: coin,
-                        })?,
-                };
+                let (spent_output, is_coinbase, coin_height) =
+                    match self.find_utxo_in_state(parent_hash, coin) {
+                        Some(coin) => {
+                            let is_coinbase = coin.is_coinbase;
+                            let height = coin.height;
+                            let txout = TxOut {
+                                value: Amount::from_sat(coin.amount),
+                                script_pubkey: ScriptBuf::from_bytes(coin.script_pubkey),
+                            };
 
-                if is_coinbase {
-                    // TODO: check that it's matured.
+                            (txout, is_coinbase, height)
+                        }
+                        None => find_utxo_in_current_block(block, coin, tx_index, get_txid)
+                            .map(|(txout, is_coinbase)| (txout, is_coinbase, block_number))
+                            .ok_or_else(|| Error::UtxoNotFound {
+                                block_number,
+                                txid: get_txid(tx_index),
+                                utxo: coin,
+                            })?,
+                    };
+
+                // If coin is coinbase, check that it's matured.
+                if is_coinbase && block_number - coin_height < COINBASE_MATURITY {
+                    return Err(Error::PrematureSpendOfCoinbase);
                 }
 
                 bitcoin::consensus::validation::verify_script_with_flags(
