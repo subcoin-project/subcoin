@@ -383,7 +383,7 @@ where
             // > * p2sh (when P2SH enabled in flags and excludes coinbase)
             // > * witness (when witness enabled in flags and excludes coinbase)
             sig_ops_cost += tx.total_sigop_cost(|out_point: &OutPoint| {
-                access_coin(out_point.clone()).map(|(txout, _, _)| txout)
+                access_coin(*out_point).map(|(txout, _, _)| txout)
             });
 
             if sig_ops_cost > MAX_BLOCK_SIGOPS_COST as usize {
@@ -459,7 +459,7 @@ fn find_utxo_in_current_block(
         .iter()
         .take(tx_index)
         .enumerate()
-        .find_map(|(index, tx)| (get_txid(index) == txid).then(|| (tx, index == 0)))
+        .find_map(|(index, tx)| (get_txid(index) == txid).then_some((tx, index == 0)))
         .and_then(|(tx, is_coinbase)| {
             tx.output
                 .get(vout as usize)
