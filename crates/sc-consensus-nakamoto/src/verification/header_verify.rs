@@ -61,13 +61,14 @@ where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore,
 {
-    /// Verifies the validity of header and returns the block time for verifying the finality of
-    /// transactions.
+    /// Validates the header and returns the block time, which is used for verifying the finality of
+    /// transactions in [`super::tx_verify::is_final`].
     ///
-    /// - Check proof of work.
-    /// - Check the timestamp of block.
-    ///     - Time is not greater than 2 hours from now.
-    ///     - Time is not the median time of last 11 blocks or before.
+    /// The validation process includes:
+    /// - Checking the proof of work.
+    /// - Validating the block's timestamp:
+    ///     - The time must not be more than 2 hours in the future.
+    ///     - The time must be greater than the median time of the last 11 blocks.
     ///
     /// <https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L4146>
     pub fn verify_header(&self, header: &BitcoinHeader) -> Result<u32, Error> {
