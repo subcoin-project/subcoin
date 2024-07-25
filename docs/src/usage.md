@@ -49,6 +49,11 @@ Ensure you have installed `subcoin`. If not, refer to [installation](./installat
 subcoin import-blocks /tmp/btc-data -d subcoin-data --state-pruning archive
 ```
 
+```bash
+# For Docker user.
+docker run -v /tmp/btc-data:/tmp/btc-data -v $(pwd)/subcoin-data:/subcoin-data ghcr.io/subcoin-project/subcoin:v0.1.0 import-blocks /tmp/btc-data -d /subcoin-data --state-pruning archive
+```
+
 You should see output similar to this:
 
 ```log
@@ -72,6 +77,15 @@ subcoin import-blocks /tmp/btc-data -d subcoin-data --block-count 20000
 
 # Import blocks up to height 30000.
 subcoin import-blocks /tmp/btc-data -d subcoin-data --end-block 30000
+```
+
+```bash
+# For Docker users.
+# Import 20000 blocks from the best block of Subcoin.
+docker run -v /tmp/btc-data:/tmp/btc-data -v $(pwd)/subcoin-data:/subcoin-data ghcr.io/subcoin-project/subcoin:v0.1.0 import-blocks /tmp/btc-data -d /subcoin-data --block-count 20000
+
+# Import blocks up to height 30000.
+docker run -v /tmp/btc-data:/tmp/btc-data -v $(pwd)/subcoin-data:/subcoin-data ghcr.io/subcoin-project/subcoin:v0.1.0 import-blocks /tmp/btc-data -d /subcoin-data --end-block 30000
 ```
 
 <div class="warning">
