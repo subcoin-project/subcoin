@@ -1,3 +1,29 @@
+//! This module provides block verification functionalities based on Bitcoin's consensus rules.
+//! The primary reference for these consensus rules is Bitcoin Core. We utilize the `rust-bitcoinconsensus`
+//! from `rust-bitcoin` for handling the most complex aspects of script verification.
+//!
+//! The main components of this module are:
+//! - `header_verify`: Module responsible for verifying block headers.
+//! - `tx_verify`: Module responsible for verifying individual transactions within a block.
+//!
+//! This module ensures that blocks adhere to Bitcoin's consensus rules by performing checks on
+//! the proof of work, timestamps, transaction validity, and more.
+//!
+//! # Components
+//!
+//! ## Modules
+//!
+//! - `header_verify`: Contains functions and structures for verifying block headers.
+//! - `tx_verify`: Contains functions and structures for verifying transactions.
+//!
+//! ## Structures
+//!
+//! - [`BlockVerifier`]: Responsible for verifying Bitcoin blocks, including headers and transactions.
+//!
+//! ## Enums
+//!
+//! - [`BlockVerification`]: Represents the level of block verification (None, Full, HeaderOnly).
+
 mod header_verify;
 mod tx_verify;
 
@@ -202,9 +228,8 @@ where
         }
 
         // Size limits, without tx witness data.
-        if Weight::from_wu(block.txdata.len() as u64 * WITNESS_SCALE_FACTOR as u64)
-            > MAX_BLOCK_WEIGHT
-            || Weight::from_wu(block_base_size(block) as u64 * WITNESS_SCALE_FACTOR as u64)
+        if Weight::from_wu((block.txdata.len() * WITNESS_SCALE_FACTOR) as u64) > MAX_BLOCK_WEIGHT
+            || Weight::from_wu((block_base_size(block) * WITNESS_SCALE_FACTOR) as u64)
                 > MAX_BLOCK_WEIGHT
         {
             return Err(Error::BadBlockLength);
@@ -324,11 +349,16 @@ where
             let access_coin = |out_point: OutPoint| -> Option<(TxOut, bool, u32)> {
                 match self.find_utxo_in_state(parent_hash, out_point) {
                     Some(coin) => {
-                        let is_coinbase = coin.is_coinbase;
-                        let height = coin.height;
+                        let Coin {
+                            is_coinbase,
+                            amount,
+                            height,
+                            script_pubkey,
+                        } = coin;
+
                         let txout = TxOut {
-                            value: Amount::from_sat(coin.amount),
-                            script_pubkey: ScriptBuf::from_bytes(coin.script_pubkey),
+                            value: Amount::from_sat(amount),
+                            script_pubkey: ScriptBuf::from_bytes(script_pubkey),
                         };
 
                         Some((txout, is_coinbase, height))
@@ -469,6 +499,8 @@ fn find_utxo_in_current_block(
 }
 
 /// Returns the script validation flags for the specified block.
+///
+/// <https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L2360>
 fn get_block_script_flags(
     height: u32,
     block_hash: BlockHash,
@@ -484,18 +516,22 @@ fn get_block_script_flags(
 
     let mut flags = bitcoinconsensus::VERIFY_P2SH | bitcoinconsensus::VERIFY_WITNESS;
 
-    if height >= chain_params.params.bip65_height {
-        flags |= bitcoinconsensus::VERIFY_CHECKLOCKTIMEVERIFY;
-    }
-
+    // Enforce the DERSIG (BIP66) rule
     if height >= chain_params.params.bip66_height {
         flags |= bitcoinconsensus::VERIFY_DERSIG;
     }
 
+    // Enforce CHECKLOCKTIMEVERIFY (BIP65)
+    if height >= chain_params.params.bip65_height {
+        flags |= bitcoinconsensus::VERIFY_CHECKLOCKTIMEVERIFY;
+    }
+
+    // Enforce CHECKSEQUENCEVERIFY (BIP112)
     if height >= chain_params.csv_height {
         flags |= bitcoinconsensus::VERIFY_CHECKSEQUENCEVERIFY;
     }
 
+    // Enforce BIP147 NULLDUMMY (activated simultaneously with segwit)
     if height >= chain_params.segwit_height {
         flags |= bitcoinconsensus::VERIFY_NULLDUMMY;
     }

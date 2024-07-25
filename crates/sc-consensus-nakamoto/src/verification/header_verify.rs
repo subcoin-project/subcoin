@@ -62,7 +62,7 @@ where
     Client: HeaderBackend<Block> + AuxStore,
 {
     /// Validates the header and returns the block time, which is used for verifying the finality of
-    /// transactions in [`super::tx_verify::is_final`].
+    /// transactions.
     ///
     /// The validation process includes:
     /// - Checking the proof of work.
@@ -116,6 +116,15 @@ where
 
         let block_number = prev_block_height + 1;
 
+        let version = header.version.to_consensus();
+
+        if version < 2 && block_number >= self.chain_params.params.bip34_height
+            || version < 3 && block_number >= self.chain_params.params.bip66_height
+            || version < 4 && block_number >= self.chain_params.params.bip65_height
+        {
+            return Err(Error::BadVersion);
+        }
+
         // BIP 113
         let lock_time_cutoff = if block_number >= self.chain_params.csv_height {
             let mtp = self.calculate_median_time_past(header);
@@ -126,15 +135,6 @@ where
         } else {
             header.time
         };
-
-        let version = header.version.to_consensus();
-
-        if version < 2 && block_number >= self.chain_params.params.bip34_height
-            || version < 3 && block_number >= self.chain_params.params.bip66_height
-            || version < 4 && block_number >= self.chain_params.params.bip65_height
-        {
-            return Err(Error::BadVersion);
-        }
 
         Ok(lock_time_cutoff)
     }

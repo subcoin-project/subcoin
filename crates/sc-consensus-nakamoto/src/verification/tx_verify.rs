@@ -1,6 +1,7 @@
 use super::MAX_BLOCK_WEIGHT;
 use bitcoin::absolute::{LockTime, LOCK_TIME_THRESHOLD};
-use bitcoin::{Amount, Transaction};
+use bitcoin::blockdata::weight::WITNESS_SCALE_FACTOR;
+use bitcoin::{Amount, Transaction, Weight};
 use std::collections::HashSet;
 
 // MinCoinbaseScriptLen is the minimum length a coinbase script can be.
@@ -17,7 +18,7 @@ pub enum Error {
     #[error("Transaction has no outputs")]
     EmptyOutput,
     #[error("Transaction is too large")]
-    BadTransactionLength,
+    TransactionOversize,
     #[error("Transaction contains duplicate inputs at index {0}")]
     DuplicateTxInput(usize),
     #[error("Output value (0) is too large")]
@@ -30,7 +31,7 @@ pub enum Error {
     )]
     BadCoinbaseLength(usize),
     #[error("Transaction input refers to a previous output that is null")]
-    PreviousOutPointNull,
+    PreviousOutputNull,
 }
 
 pub fn is_final(tx: &Transaction, height: u32, block_time: u32) -> bool {
@@ -61,20 +62,20 @@ pub fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
         return Err(Error::EmptyOutput);
     }
 
-    if tx.weight() > MAX_BLOCK_WEIGHT {
-        return Err(Error::BadTransactionLength);
+    if Weight::from_wu((tx.base_size() * WITNESS_SCALE_FACTOR) as u64) > MAX_BLOCK_WEIGHT {
+        return Err(Error::TransactionOversize);
     }
 
-    let mut total_output_value = Amount::ZERO;
+    let mut value_out = Amount::ZERO;
     tx.output.iter().try_for_each(|txout| {
         if txout.value > Amount::MAX_MONEY {
             return Err(Error::OutputValueTooLarge(txout.value));
         }
 
-        total_output_value += txout.value;
+        value_out += txout.value;
 
-        if total_output_value > Amount::MAX_MONEY {
-            return Err(Error::TotalOutputValueTooLarge(total_output_value));
+        if value_out > Amount::MAX_MONEY {
+            return Err(Error::TotalOutputValueTooLarge(value_out));
         }
 
         Ok(())
@@ -99,7 +100,7 @@ pub fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
         // Previous transaction outputs referenced by the inputs to this
         // transaction must not be null.
         if tx.input.iter().any(|txin| txin.previous_output.is_null()) {
-            return Err(Error::PreviousOutPointNull);
+            return Err(Error::PreviousOutputNull);
         }
     }
 
