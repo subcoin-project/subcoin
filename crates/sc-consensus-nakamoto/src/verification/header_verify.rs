@@ -30,6 +30,8 @@ pub enum Error {
     /// Block's timestamp is too old.
     #[error("Time is the median time of last 11 blocks or before")]
     TimeTooOld,
+    #[error("Outdated version")]
+    BadVersion,
     /// An error occurred in the client.
     #[error(transparent)]
     Client(#[from] sp_blockchain::Error),
@@ -59,15 +61,16 @@ where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore,
 {
-    /// Verifies the validity of header and returns the block time for verifying the finality of
+    /// Validates the header and returns the block time, which is used for verifying the finality of
     /// transactions.
     ///
-    /// - Check proof of work.
-    /// - Check the timestamp of block.
-    ///     - Time is not greater than 2 hours from now.
-    ///     - Time is not the median time of last 11 blocks or before.
+    /// The validation process includes:
+    /// - Checking the proof of work.
+    /// - Validating the block's timestamp:
+    ///     - The time must not be more than 2 hours in the future.
+    ///     - The time must be greater than the median time of the last 11 blocks.
     ///
-    /// https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L4146
+    /// <https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L4146>
     pub fn verify_header(&self, header: &BitcoinHeader) -> Result<u32, Error> {
         let prev_block_hash = header.prev_blockhash;
 
@@ -113,16 +116,27 @@ where
 
         let block_number = prev_block_height + 1;
 
-        if block_number >= self.chain_params.csv_height {
+        let version = header.version.to_consensus();
+
+        if version < 2 && block_number >= self.chain_params.params.bip34_height
+            || version < 3 && block_number >= self.chain_params.params.bip66_height
+            || version < 4 && block_number >= self.chain_params.params.bip65_height
+        {
+            return Err(Error::BadVersion);
+        }
+
+        // BIP 113
+        let lock_time_cutoff = if block_number >= self.chain_params.csv_height {
             let mtp = self.calculate_median_time_past(header);
             if header.time <= mtp {
                 return Err(Error::TimeTooOld);
             }
-
-            Ok(mtp)
+            mtp
         } else {
-            Ok(header.time)
-        }
+            header.time
+        };
+
+        Ok(lock_time_cutoff)
     }
 
     /// Calculates the median time of the previous few blocks prior to the header (inclusive).
@@ -163,7 +177,7 @@ where
 /// Usually, it's just the target of last block. However, if we are in a retarget period,
 /// it will be calculated from the last 2016 blocks (about two weeks for Bitcoin mainnet).
 ///
-/// https://github.com/bitcoin/bitcoin/blob/89b910711c004c21b7d67baa888073742f7f94f0/src/pow.cpp#L13
+/// <https://github.com/bitcoin/bitcoin/blob/89b910711c004c21b7d67baa888073742f7f94f0/src/pow.cpp#L13>
 fn get_next_work_required<Block, Client>(
     last_block_height: u32,
     last_block: BitcoinHeader,
@@ -210,7 +224,7 @@ where
     }
 }
 
-// https://github.com/bitcoin/bitcoin/blob/89b910711c004c21b7d67baa888073742f7f94f0/src/pow.cpp#L49-L72
+// <https://github.com/bitcoin/bitcoin/blob/89b910711c004c21b7d67baa888073742f7f94f0/src/pow.cpp#L49-L72>
 fn calculate_next_work_required(
     previous_target: U256,
     first_block_time: u64,

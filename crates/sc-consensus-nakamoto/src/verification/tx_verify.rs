@@ -1,6 +1,7 @@
 use super::MAX_BLOCK_WEIGHT;
 use bitcoin::absolute::{LockTime, LOCK_TIME_THRESHOLD};
-use bitcoin::{Amount, Transaction};
+use bitcoin::blockdata::weight::WITNESS_SCALE_FACTOR;
+use bitcoin::{Amount, Transaction, Weight};
 use std::collections::HashSet;
 
 // MinCoinbaseScriptLen is the minimum length a coinbase script can be.
@@ -17,7 +18,7 @@ pub enum Error {
     #[error("Transaction has no outputs")]
     EmptyOutput,
     #[error("Transaction is too large")]
-    BadTransactionLength,
+    TransactionOversize,
     #[error("Transaction contains duplicate inputs at index {0}")]
     DuplicateTxInput(usize),
     #[error("Output value (0) is too large")]
@@ -28,9 +29,9 @@ pub enum Error {
         "Coinbase transaction script length of {0} is out of range \
         (min: {MIN_COINBASE_SCRIPT_LEN}, max: {MAX_COINBASE_SCRIPT_LEN})"
     )]
-    BadCoinbaseScriptSigLength(usize),
-    #[error("Transaction input refers to previous output that is null")]
-    BadTxInput,
+    BadCoinbaseLength(usize),
+    #[error("Transaction input refers to a previous output that is null")]
+    PreviousOutputNull,
 }
 
 pub fn is_final(tx: &Transaction, height: u32, block_time: u32) -> bool {
@@ -51,6 +52,7 @@ pub fn is_final(tx: &Transaction, height: u32, block_time: u32) -> bool {
     tx.input.iter().all(|txin| txin.sequence.is_final())
 }
 
+// <https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/consensus/tx_check.cpp#L11>
 pub fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
     if tx.input.is_empty() {
         return Err(Error::EmptyInput);
@@ -60,9 +62,24 @@ pub fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
         return Err(Error::EmptyOutput);
     }
 
-    if tx.weight() > MAX_BLOCK_WEIGHT {
-        return Err(Error::BadTransactionLength);
+    if Weight::from_wu((tx.base_size() * WITNESS_SCALE_FACTOR) as u64) > MAX_BLOCK_WEIGHT {
+        return Err(Error::TransactionOversize);
     }
+
+    let mut value_out = Amount::ZERO;
+    tx.output.iter().try_for_each(|txout| {
+        if txout.value > Amount::MAX_MONEY {
+            return Err(Error::OutputValueTooLarge(txout.value));
+        }
+
+        value_out += txout.value;
+
+        if value_out > Amount::MAX_MONEY {
+            return Err(Error::TotalOutputValueTooLarge(value_out));
+        }
+
+        Ok(())
+    })?;
 
     // Check for duplicate inputs.
     let mut seen_inputs = HashSet::new();
@@ -72,35 +89,31 @@ pub fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
         }
     }
 
-    let mut total_output_value = Amount::ZERO;
-    tx.output.iter().try_for_each(|txout| {
-        if txout.value > Amount::MAX_MONEY {
-            return Err(Error::OutputValueTooLarge(txout.value));
-        }
-
-        total_output_value += txout.value;
-
-        if total_output_value > Amount::MAX_MONEY {
-            return Err(Error::TotalOutputValueTooLarge(total_output_value));
-        }
-
-        Ok(())
-    })?;
-
     // Coinbase script length must be between min and max length.
     if tx.is_coinbase() {
         let script_sig_len = tx.input[0].script_sig.len();
 
         if !(MIN_COINBASE_SCRIPT_LEN..=MAX_COINBASE_SCRIPT_LEN).contains(&script_sig_len) {
-            return Err(Error::BadCoinbaseScriptSigLength(script_sig_len));
+            return Err(Error::BadCoinbaseLength(script_sig_len));
         }
     } else {
         // Previous transaction outputs referenced by the inputs to this
         // transaction must not be null.
         if tx.input.iter().any(|txin| txin.previous_output.is_null()) {
-            return Err(Error::BadTxInput);
+            return Err(Error::PreviousOutputNull);
         }
     }
 
     Ok(())
+}
+
+pub fn get_legacy_sig_op_count(tx: &Transaction) -> usize {
+    tx.input
+        .iter()
+        .map(|txin| txin.script_sig.count_sigops_legacy())
+        .sum::<usize>()
+        + tx.output
+            .iter()
+            .map(|txout| txout.script_pubkey.count_sigops_legacy())
+            .sum::<usize>()
 }

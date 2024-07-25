@@ -4,6 +4,7 @@ use sc_client_api::{AuxStore, Backend, BlockBackend, HeaderBackend, StorageProvi
 use sc_consensus::{BlockImport, BlockImportParams, ImportResult, StateAction, StorageChanges};
 use sp_api::{ApiExt, CallApiAt, CallContext, Core, ProvideRuntimeApi};
 use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT};
+use sp_runtime::SaturatedConversion;
 use sp_state_machine::{StorageKey, StorageValue};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -312,6 +313,7 @@ fn apply_extrinsics_off_runtime<
 >(
     extrinsics: Vec<Block::Extrinsic>,
     coin_storage_key: &Arc<dyn CoinStorageKey>,
+    height: u32,
 ) -> Vec<(Vec<StorageEntry>, Option<u32>)> {
     use codec::Encode;
 
@@ -338,6 +340,7 @@ fn apply_extrinsics_off_runtime<
                     is_coinbase,
                     amount: txout.value.to_sat(),
                     script_pubkey: txout.script_pubkey.into_bytes(),
+                    height,
                 };
 
                 changes.push((storage_key, Some(coin.encode())));
@@ -418,9 +421,17 @@ where
         exec_details.pre = t.elapsed().as_nanos();
 
         let t = std::time::Instant::now();
+        let parent_number: u32 = self
+            .client
+            .number(parent_hash)
+            .ok()
+            .flatten()
+            .expect("Parent block must exist; qed")
+            .saturated_into();
         let block_storage_changes = apply_extrinsics_off_runtime::<Block, TransactionAdapter>(
             extrinsics,
             &self.coin_storage_key,
+            parent_number + 1,
         );
         exec_details.apply = t.elapsed().as_nanos();
 
