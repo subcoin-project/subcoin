@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/sc-consensus-nakamoto/src/verification/header_verify.rs`."><title>header_verify.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../../static.files/rustdoc-c5d6553a23f1e5a6.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="sc_consensus_nakamoto" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (92c6c0380 2024-07-21)" data-channel="nightly" data-search-js="search-d234aafac6c221dd.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-d2fab2bf619172d3.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/sc-consensus-nakamoto/src/verification/header_verify.rs`."><title>header_verify.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../../static.files/rustdoc-5ca6ca2a1f83705a.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="sc_consensus_nakamoto" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (c1a6199e9 2024-07-24)" data-channel="nightly" data-search-js="search-d234aafac6c221dd.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-d2fab2bf619172d3.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -276,6 +276,20 @@
 <a href="#276" id="276">276</a>
 <a href="#277" id="277">277</a>
 <a href="#278" id="278">278</a>
+<a href="#279" id="279">279</a>
+<a href="#280" id="280">280</a>
+<a href="#281" id="281">281</a>
+<a href="#282" id="282">282</a>
+<a href="#283" id="283">283</a>
+<a href="#284" id="284">284</a>
+<a href="#285" id="285">285</a>
+<a href="#286" id="286">286</a>
+<a href="#287" id="287">287</a>
+<a href="#288" id="288">288</a>
+<a href="#289" id="289">289</a>
+<a href="#290" id="290">290</a>
+<a href="#291" id="291">291</a>
+<a href="#292" id="292">292</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::chain_params::{ChainParams, MEDIAN_TIME_SPAN};
 <span class="kw">use </span>bitcoin::blockdata::block::{Header <span class="kw">as </span>BitcoinHeader, ValidationError};
 <span class="kw">use </span>bitcoin::consensus::Params;
@@ -308,6 +322,8 @@
     <span class="doccomment">/// Block's timestamp is too old.
     </span><span class="attr">#[error(<span class="string">"Time is the median time of last 11 blocks or before"</span>)]
     </span>TimeTooOld,
+    <span class="attr">#[error(<span class="string">"Outdated version"</span>)]
+    </span>BadVersion,
     <span class="doccomment">/// An error occurred in the client.
     </span><span class="attr">#[error(transparent)]
     </span>Client(<span class="attr">#[from] </span>sp_blockchain::Error),
@@ -337,15 +353,16 @@
     </span>Block: BlockT,
     Client: HeaderBackend&lt;Block&gt; + AuxStore,
 {
-    <span class="doccomment">/// Verifies the validity of header and returns the block time for verifying the finality of
+    <span class="doccomment">/// Validates the header and returns the block time, which is used for verifying the finality of
     /// transactions.
     ///
-    /// - Check proof of work.
-    /// - Check the timestamp of block.
-    ///     - Time is not greater than 2 hours from now.
-    ///     - Time is not the median time of last 11 blocks or before.
+    /// The validation process includes:
+    /// - Checking the proof of work.
+    /// - Validating the block's timestamp:
+    ///     - The time must not be more than 2 hours in the future.
+    ///     - The time must be greater than the median time of the last 11 blocks.
     ///
-    /// https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L4146
+    /// &lt;https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L4146&gt;
     </span><span class="kw">pub fn </span>verify_header(<span class="kw-2">&amp;</span><span class="self">self</span>, header: <span class="kw-2">&amp;</span>BitcoinHeader) -&gt; <span class="prelude-ty">Result</span>&lt;u32, Error&gt; {
         <span class="kw">let </span>prev_block_hash = header.prev_blockhash;
 
@@ -391,16 +408,27 @@
 
         <span class="kw">let </span>block_number = prev_block_height + <span class="number">1</span>;
 
-        <span class="kw">if </span>block_number &gt;= <span class="self">self</span>.chain_params.csv_height {
+        <span class="kw">let </span>version = header.version.to_consensus();
+
+        <span class="kw">if </span>version &lt; <span class="number">2 </span>&amp;&amp; block_number &gt;= <span class="self">self</span>.chain_params.params.bip34_height
+            || version &lt; <span class="number">3 </span>&amp;&amp; block_number &gt;= <span class="self">self</span>.chain_params.params.bip66_height
+            || version &lt; <span class="number">4 </span>&amp;&amp; block_number &gt;= <span class="self">self</span>.chain_params.params.bip65_height
+        {
+            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadVersion);
+        }
+
+        <span class="comment">// BIP 113
+        </span><span class="kw">let </span>lock_time_cutoff = <span class="kw">if </span>block_number &gt;= <span class="self">self</span>.chain_params.csv_height {
             <span class="kw">let </span>mtp = <span class="self">self</span>.calculate_median_time_past(header);
             <span class="kw">if </span>header.time &lt;= mtp {
                 <span class="kw">return </span><span class="prelude-val">Err</span>(Error::TimeTooOld);
             }
-
-            <span class="prelude-val">Ok</span>(mtp)
+            mtp
         } <span class="kw">else </span>{
-            <span class="prelude-val">Ok</span>(header.time)
-        }
+            header.time
+        };
+
+        <span class="prelude-val">Ok</span>(lock_time_cutoff)
     }
 
     <span class="doccomment">/// Calculates the median time of the previous few blocks prior to the header (inclusive).
@@ -441,7 +469,7 @@
 <span class="doccomment">/// Usually, it's just the target of last block. However, if we are in a retarget period,
 /// it will be calculated from the last 2016 blocks (about two weeks for Bitcoin mainnet).
 ///
-/// https://github.com/bitcoin/bitcoin/blob/89b910711c004c21b7d67baa888073742f7f94f0/src/pow.cpp#L13
+/// &lt;https://github.com/bitcoin/bitcoin/blob/89b910711c004c21b7d67baa888073742f7f94f0/src/pow.cpp#L13&gt;
 </span><span class="kw">fn </span>get_next_work_required&lt;Block, Client&gt;(
     last_block_height: u32,
     last_block: BitcoinHeader,
@@ -488,7 +516,7 @@
     }
 }
 
-<span class="comment">// https://github.com/bitcoin/bitcoin/blob/89b910711c004c21b7d67baa888073742f7f94f0/src/pow.cpp#L49-L72
+<span class="comment">// &lt;https://github.com/bitcoin/bitcoin/blob/89b910711c004c21b7d67baa888073742f7f94f0/src/pow.cpp#L49-L72&gt;
 </span><span class="kw">fn </span>calculate_next_work_required(
     previous_target: U256,
     first_block_time: u64,

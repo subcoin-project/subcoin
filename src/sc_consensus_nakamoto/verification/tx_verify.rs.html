@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/sc-consensus-nakamoto/src/verification/tx_verify.rs`."><title>tx_verify.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../../static.files/rustdoc-c5d6553a23f1e5a6.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="sc_consensus_nakamoto" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (92c6c0380 2024-07-21)" data-channel="nightly" data-search-js="search-d234aafac6c221dd.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-d2fab2bf619172d3.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/sc-consensus-nakamoto/src/verification/tx_verify.rs`."><title>tx_verify.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../../static.files/rustdoc-5ca6ca2a1f83705a.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="sc_consensus_nakamoto" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (c1a6199e9 2024-07-24)" data-channel="nightly" data-search-js="search-d234aafac6c221dd.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-d2fab2bf619172d3.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -104,9 +104,23 @@
 <a href="#104" id="104">104</a>
 <a href="#105" id="105">105</a>
 <a href="#106" id="106">106</a>
+<a href="#107" id="107">107</a>
+<a href="#108" id="108">108</a>
+<a href="#109" id="109">109</a>
+<a href="#110" id="110">110</a>
+<a href="#111" id="111">111</a>
+<a href="#112" id="112">112</a>
+<a href="#113" id="113">113</a>
+<a href="#114" id="114">114</a>
+<a href="#115" id="115">115</a>
+<a href="#116" id="116">116</a>
+<a href="#117" id="117">117</a>
+<a href="#118" id="118">118</a>
+<a href="#119" id="119">119</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">super</span>::MAX_BLOCK_WEIGHT;
 <span class="kw">use </span>bitcoin::absolute::{LockTime, LOCK_TIME_THRESHOLD};
-<span class="kw">use </span>bitcoin::{Amount, Transaction};
+<span class="kw">use </span>bitcoin::blockdata::weight::WITNESS_SCALE_FACTOR;
+<span class="kw">use </span>bitcoin::{Amount, Transaction, Weight};
 <span class="kw">use </span>std::collections::HashSet;
 
 <span class="comment">// MinCoinbaseScriptLen is the minimum length a coinbase script can be.
@@ -123,7 +137,7 @@
     <span class="attr">#[error(<span class="string">"Transaction has no outputs"</span>)]
     </span>EmptyOutput,
     <span class="attr">#[error(<span class="string">"Transaction is too large"</span>)]
-    </span>BadTransactionLength,
+    </span>TransactionOversize,
     <span class="attr">#[error(<span class="string">"Transaction contains duplicate inputs at index {0}"</span>)]
     </span>DuplicateTxInput(usize),
     <span class="attr">#[error(<span class="string">"Output value (0) is too large"</span>)]
@@ -134,9 +148,9 @@
         <span class="string">"Coinbase transaction script length of {0} is out of range \
         (min: {MIN_COINBASE_SCRIPT_LEN}, max: {MAX_COINBASE_SCRIPT_LEN})"
     </span>)]
-    </span>BadCoinbaseScriptSigLength(usize),
-    <span class="attr">#[error(<span class="string">"Transaction input refers to previous output that is null"</span>)]
-    </span>BadTxInput,
+    </span>BadCoinbaseLength(usize),
+    <span class="attr">#[error(<span class="string">"Transaction input refers to a previous output that is null"</span>)]
+    </span>PreviousOutputNull,
 }
 
 <span class="kw">pub fn </span>is_final(tx: <span class="kw-2">&amp;</span>Transaction, height: u32, block_time: u32) -&gt; bool {
@@ -157,7 +171,8 @@
     tx.input.iter().all(|txin| txin.sequence.is_final())
 }
 
-<span class="kw">pub fn </span>check_transaction_sanity(tx: <span class="kw-2">&amp;</span>Transaction) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
+<span class="comment">// &lt;https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/consensus/tx_check.cpp#L11&gt;
+</span><span class="kw">pub fn </span>check_transaction_sanity(tx: <span class="kw-2">&amp;</span>Transaction) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
     <span class="kw">if </span>tx.input.is_empty() {
         <span class="kw">return </span><span class="prelude-val">Err</span>(Error::EmptyInput);
     }
@@ -166,9 +181,24 @@
         <span class="kw">return </span><span class="prelude-val">Err</span>(Error::EmptyOutput);
     }
 
-    <span class="kw">if </span>tx.weight() &gt; MAX_BLOCK_WEIGHT {
-        <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadTransactionLength);
+    <span class="kw">if </span>Weight::from_wu((tx.base_size() * WITNESS_SCALE_FACTOR) <span class="kw">as </span>u64) &gt; MAX_BLOCK_WEIGHT {
+        <span class="kw">return </span><span class="prelude-val">Err</span>(Error::TransactionOversize);
     }
+
+    <span class="kw">let </span><span class="kw-2">mut </span>value_out = Amount::ZERO;
+    tx.output.iter().try_for_each(|txout| {
+        <span class="kw">if </span>txout.value &gt; Amount::MAX_MONEY {
+            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::OutputValueTooLarge(txout.value));
+        }
+
+        value_out += txout.value;
+
+        <span class="kw">if </span>value_out &gt; Amount::MAX_MONEY {
+            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::TotalOutputValueTooLarge(value_out));
+        }
+
+        <span class="prelude-val">Ok</span>(())
+    })<span class="question-mark">?</span>;
 
     <span class="comment">// Check for duplicate inputs.
     </span><span class="kw">let </span><span class="kw-2">mut </span>seen_inputs = HashSet::new();
@@ -178,36 +208,32 @@
         }
     }
 
-    <span class="kw">let </span><span class="kw-2">mut </span>total_output_value = Amount::ZERO;
-    tx.output.iter().try_for_each(|txout| {
-        <span class="kw">if </span>txout.value &gt; Amount::MAX_MONEY {
-            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::OutputValueTooLarge(txout.value));
-        }
-
-        total_output_value += txout.value;
-
-        <span class="kw">if </span>total_output_value &gt; Amount::MAX_MONEY {
-            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::TotalOutputValueTooLarge(total_output_value));
-        }
-
-        <span class="prelude-val">Ok</span>(())
-    })<span class="question-mark">?</span>;
-
     <span class="comment">// Coinbase script length must be between min and max length.
     </span><span class="kw">if </span>tx.is_coinbase() {
         <span class="kw">let </span>script_sig_len = tx.input[<span class="number">0</span>].script_sig.len();
 
         <span class="kw">if </span>!(MIN_COINBASE_SCRIPT_LEN..=MAX_COINBASE_SCRIPT_LEN).contains(<span class="kw-2">&amp;</span>script_sig_len) {
-            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadCoinbaseScriptSigLength(script_sig_len));
+            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadCoinbaseLength(script_sig_len));
         }
     } <span class="kw">else </span>{
         <span class="comment">// Previous transaction outputs referenced by the inputs to this
         // transaction must not be null.
         </span><span class="kw">if </span>tx.input.iter().any(|txin| txin.previous_output.is_null()) {
-            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadTxInput);
+            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::PreviousOutputNull);
         }
     }
 
     <span class="prelude-val">Ok</span>(())
+}
+
+<span class="kw">pub fn </span>get_legacy_sig_op_count(tx: <span class="kw-2">&amp;</span>Transaction) -&gt; usize {
+    tx.input
+        .iter()
+        .map(|txin| txin.script_sig.count_sigops_legacy())
+        .sum::&lt;usize&gt;()
+        + tx.output
+            .iter()
+            .map(|txout| txout.script_pubkey.count_sigops_legacy())
+            .sum::&lt;usize&gt;()
 }
 </code></pre></div></section></main></body></html>
