@@ -2,6 +2,23 @@ mod flags;
 
 use bitcoin::Opcode;
 
+/// Maximum number of bytes pushable to the stack
+pub const MAX_SCRIPT_ELEMENT_SIZE: usize = 520;
+
+/// Maximum number of non-push operations per script
+pub const MAX_OPS_PER_SCRIPT: u32 = 201;
+
+/// Maximum number of public keys per multisig
+pub const MAX_PUBKEYS_PER_MULTISIG: usize = 20;
+
+/// Maximum script length in bytes
+pub const MAX_SCRIPT_SIZE: usize = 10000;
+
+// Below flags apply in the context of BIP 68
+// If this flag set, CTxIn::nSequence is NOT interpreted as a
+// relative lock-time.
+pub const SEQUENCE_LOCKTIME_DISABLE_FLAG: u32 = 1u32 << 31;
+
 /// Bitcoin script interpreter errors.
 #[derive(Debug, PartialEq, thiserror::Error)]
 pub enum Error {

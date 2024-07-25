@@ -1,13 +1,14 @@
-use std::{cmp, mem};
 use bytes::Bytes;
 use keys::{Message, Signature, Public};
-use chain::constants::SEQUENCE_LOCKTIME_DISABLE_FLAG;
 use crypto::{sha1, sha256, dhash160, dhash256, ripemd160};
 use sign::{SignatureVersion, Sighash};
-use script::MAX_SCRIPT_ELEMENT_SIZE;
 use {
-	script, Builder, Script, ScriptWitness, Num, VerificationFlags, Opcode, Error, SignatureChecker, Stack
+	script, Builder, Script, ScriptWitness, Num, SignatureChecker, Stack
 };
+
+use super::flags::VerificationFlags;
+use super::{MAX_SCRIPT_ELEMENT_SIZE, Error, SEQUENCE_LOCKTIME_DISABLE_FLAG};
+use bitcoin::Opcode;
 
 /// Helper function.
 fn check_signature(
@@ -307,7 +308,7 @@ pub fn verify_script(
 			return Err(Error::SignaturePushOnly);
 		}
 
-		mem::swap(&mut stack, &mut stack_copy);
+		std::mem::swap(&mut stack, &mut stack_copy);
 
 		// stack cannot be empty here, because if it was the
 		// P2SH  HASH <> EQUAL  scriptPubKey would be evaluated with
@@ -978,12 +979,12 @@ pub fn eval_script(
 			Opcode::OP_MIN => {
 				let v1 = Num::from_slice(&stack.pop()?, flags.verify_minimaldata, 4)?;
 				let v2 = Num::from_slice(&stack.pop()?, flags.verify_minimaldata, 4)?;
-				stack.push(cmp::min(v1, v2).to_bytes());
+				stack.push(v1.min(v2).to_bytes());
 			},
 			Opcode::OP_MAX => {
 				let v1 = Num::from_slice(&stack.pop()?, flags.verify_minimaldata, 4)?;
 				let v2 = Num::from_slice(&stack.pop()?, flags.verify_minimaldata, 4)?;
-				stack.push(cmp::max(v1, v2).to_bytes());
+				stack.push(v1.max(v2).to_bytes());
 			},
 			Opcode::OP_WITHIN => {
 				let v1 = Num::from_slice(&stack.pop()?, flags.verify_minimaldata, 4)?;
