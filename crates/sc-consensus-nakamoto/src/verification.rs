@@ -557,7 +557,7 @@ mod tests {
                 .get(&index)
                 .copied()
                 .unwrap())
-            .map(|txout| txout.value.to_sat())
+            .map(|(txout, _is_coinbase)| txout.value.to_sat())
             .unwrap(),
             (295600000, false)
         );
