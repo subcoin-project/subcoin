@@ -2,6 +2,7 @@ mod block_executor;
 mod block_import;
 mod chain_params;
 mod import_queue;
+mod script;
 mod verification;
 
 pub use block_executor::{
