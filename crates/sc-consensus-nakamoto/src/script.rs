@@ -1,3 +1,5 @@
+mod flags;
+
 use bitcoin::Opcode;
 
 /// Bitcoin script interpreter errors.
