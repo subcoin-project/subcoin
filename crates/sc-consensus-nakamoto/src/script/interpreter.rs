@@ -3,9 +3,10 @@ use keys::{Message, Signature, Public};
 use crypto::{sha1, sha256, dhash160, dhash256, ripemd160};
 use sign::{SignatureVersion, Sighash};
 use {
-	script, Builder, Script, ScriptWitness, Num, SignatureChecker, Stack
+	script, ScriptWitness, Num, SignatureChecker, Stack
 };
 
+use bitcoin::blockdata::script::{Builder, Script};
 use super::flags::VerificationFlags;
 use super::{MAX_SCRIPT_ELEMENT_SIZE, Error, SEQUENCE_LOCKTIME_DISABLE_FLAG};
 use bitcoin::Opcode;
@@ -324,7 +325,7 @@ pub fn verify_script(
 
 		if flags.verify_witness {
 			if let Some((witness_version, witness_program)) = pubkey2.parse_witness_program() {
-				if script_sig != &Builder::default().push_data(&pubkey2).into_script() {
+				if script_sig != &Builder::default().push_slice(&pubkey2).into_script() {
 					return Err(Error::WitnessMalleatedP2SH);
 				}
 
@@ -403,7 +404,7 @@ fn verify_witness_program(
 			let script_pubkey = Builder::default()
 				.push_opcode(Opcode::OP_DUP)
 				.push_opcode(Opcode::OP_HASH160)
-				.push_data(witness_program)
+				.push_slice(witness_program)
 				.push_opcode(Opcode::OP_EQUALVERIFY)
 				.push_opcode(Opcode::OP_CHECKSIG)
 				.into_script();
@@ -1028,7 +1029,7 @@ pub fn eval_script(
 					SignatureVersion::ForkId if sighash.fork_id => (),
 					SignatureVersion::WitnessV0 => (),
 					SignatureVersion::Base | SignatureVersion::ForkId => {
-						let signature_script = Builder::default().push_data(&*signature).into_script();
+						let signature_script = Builder::default().push_slice(&*signature).into_script();
 						subscript = subscript.find_and_delete(&*signature_script);
 					},
 				}
@@ -1076,7 +1077,7 @@ pub fn eval_script(
 						SignatureVersion::ForkId if sighash.fork_id => (),
 						SignatureVersion::WitnessV0 => (),
 						SignatureVersion::Base | SignatureVersion::ForkId => {
-							let signature_script = Builder::default().push_data(&*signature).into_script();
+							let signature_script = Builder::default().push_slice(&*signature).into_script();
 							subscript = subscript.find_and_delete(&*signature_script);
 						},
 					}
@@ -1249,8 +1250,8 @@ mod tests {
 	#[test]
 	fn test_equal() {
 		let script = Builder::default()
-			.push_data(&[0x4])
-			.push_data(&[0x4])
+			.push_slice(&[0x4])
+			.push_slice(&[0x4])
 			.push_opcode(Opcode::OP_EQUAL)
 			.into_script();
 		let result = Ok(true);
@@ -1261,8 +1262,8 @@ mod tests {
 	#[test]
 	fn test_equal_false() {
 		let script = Builder::default()
-			.push_data(&[0x4])
-			.push_data(&[0x3])
+			.push_slice(&[0x4])
+			.push_slice(&[0x3])
 			.push_opcode(Opcode::OP_EQUAL)
 			.into_script();
 		let result = Ok(false);
@@ -1273,7 +1274,7 @@ mod tests {
 	#[test]
 	fn test_equal_invalid_stack() {
 		let script = Builder::default()
-			.push_data(&[0x4])
+			.push_slice(&[0x4])
 			.push_opcode(Opcode::OP_EQUAL)
 			.into_script();
 		let result = Err(Error::InvalidStackOperation);
@@ -1283,8 +1284,8 @@ mod tests {
 	#[test]
 	fn test_equal_verify() {
 		let script = Builder::default()
-			.push_data(&[0x4])
-			.push_data(&[0x4])
+			.push_slice(&[0x4])
+			.push_slice(&[0x4])
 			.push_opcode(Opcode::OP_EQUALVERIFY)
 			.into_script();
 		let result = Ok(false);
@@ -1295,8 +1296,8 @@ mod tests {
 	#[test]
 	fn test_equal_verify_failed() {
 		let script = Builder::default()
-			.push_data(&[0x4])
-			.push_data(&[0x3])
+			.push_slice(&[0x4])
+			.push_slice(&[0x3])
 			.push_opcode(Opcode::OP_EQUALVERIFY)
 			.into_script();
 		let result = Err(Error::EqualVerify);
@@ -1306,7 +1307,7 @@ mod tests {
 	#[test]
 	fn test_equal_verify_invalid_stack() {
 		let script = Builder::default()
-			.push_data(&[0x4])
+			.push_slice(&[0x4])
 			.push_opcode(Opcode::OP_EQUALVERIFY)
 			.into_script();
 		let result = Err(Error::InvalidStackOperation);
@@ -1316,7 +1317,7 @@ mod tests {
 	#[test]
 	fn test_size() {
 		let script = Builder::default()
-			.push_data(&[0x12, 0x34])
+			.push_slice(&[0x12, 0x34])
 			.push_opcode(Opcode::OP_SIZE)
 			.into_script();
 		let result = Ok(true);
@@ -1327,7 +1328,7 @@ mod tests {
 	#[test]
 	fn test_size_false() {
 		let script = Builder::default()
-			.push_data(&[])
+			.push_slice(&[])
 			.push_opcode(Opcode::OP_SIZE)
 			.into_script();
 		let result = Ok(false);
@@ -1347,7 +1348,7 @@ mod tests {
 	#[test]
 	fn test_hash256() {
 		let script = Builder::default()
-			.push_data(b"hello")
+			.push_slice(b"hello")
 			.push_opcode(Opcode::OP_HASH256)
 			.into_script();
 		let result = Ok(true);
@@ -1367,7 +1368,7 @@ mod tests {
 	#[test]
 	fn test_ripemd160() {
 		let script = Builder::default()
-			.push_data(b"hello")
+			.push_slice(b"hello")
 			.push_opcode(Opcode::OP_RIPEMD160)
 			.into_script();
 		let result = Ok(true);
@@ -1387,7 +1388,7 @@ mod tests {
 	#[test]
 	fn test_sha1() {
 		let script = Builder::default()
-			.push_data(b"hello")
+			.push_slice(b"hello")
 			.push_opcode(Opcode::OP_SHA1)
 			.into_script();
 		let result = Ok(true);
@@ -1407,7 +1408,7 @@ mod tests {
 	#[test]
 	fn test_sha256() {
 		let script = Builder::default()
-			.push_data(b"hello")
+			.push_slice(b"hello")
 			.push_opcode(Opcode::OP_SHA256)
 			.into_script();
 		let result = Ok(true);
@@ -2295,7 +2296,7 @@ mod tests {
 
 		let key_pair = KeyPair::from_private(Private { network: Network::Mainnet, secret: 1.into(), compressed: false, }).unwrap();
 		let redeem_script = Builder::default()
-			.push_data(key_pair.public())
+			.push_slice(key_pair.public())
 			.push_opcode(Opcode::OP_CHECKSIG)
 			.into_script();
 
@@ -3248,8 +3249,8 @@ mod tests {
 	#[test]
 	fn op_cat_disabled_by_default() {
 		let script = Builder::default()
-			.push_data(&[1; 1])
-			.push_data(&[1; 1])
+			.push_slice(&[1; 1])
+			.push_slice(&[1; 1])
 			.push_opcode(Opcode::OP_CAT)
 			.into_script();
 		let result = Err(Error::DisabledOpcode(Opcode::OP_CAT));
@@ -3261,8 +3262,8 @@ mod tests {
 	fn op_cat_max_and_non_empty_succeeds() {
 		// maxlen_x empty OP_CAT → ok
 		let script = Builder::default()
-			.push_data(&[1; MAX_SCRIPT_ELEMENT_SIZE])
-			.push_data(&[1; 0])
+			.push_slice(&[1; MAX_SCRIPT_ELEMENT_SIZE])
+			.push_slice(&[1; 0])
 			.push_opcode(Opcode::OP_CAT)
 			.into_script();
 		let result = Ok(true);
@@ -3274,8 +3275,8 @@ mod tests {
 	fn op_cat_max_and_non_empty_fails() {
 		// maxlen_x y OP_CAT → failure
 		let script = Builder::default()
-			.push_data(&[1; MAX_SCRIPT_ELEMENT_SIZE])
-			.push_data(&[1; 1])
+			.push_slice(&[1; MAX_SCRIPT_ELEMENT_SIZE])
+			.push_slice(&[1; 1])
 			.push_opcode(Opcode::OP_CAT)
 			.into_script();
 		let result = Err(Error::PushSize);
@@ -3287,8 +3288,8 @@ mod tests {
 	fn op_cat_large_and_large_fails() {
 		// large_x large_y OP_CAT → failure
 		let script = Builder::default()
-			.push_data(&[1; MAX_SCRIPT_ELEMENT_SIZE / 2 + 1])
-			.push_data(&[1; MAX_SCRIPT_ELEMENT_SIZE / 2 + 1])
+			.push_slice(&[1; MAX_SCRIPT_ELEMENT_SIZE / 2 + 1])
+			.push_slice(&[1; MAX_SCRIPT_ELEMENT_SIZE / 2 + 1])
 			.push_opcode(Opcode::OP_CAT)
 			.into_script();
 		let result = Err(Error::PushSize);
@@ -3313,7 +3314,7 @@ mod tests {
 	fn op_cat_non_empty_and_empty_succeeds() {
 		// x OP_0 OP_CAT → x
 		let script = Builder::default()
-			.push_data(&[1; 1])
+			.push_slice(&[1; 1])
 			.push_opcode(Opcode::OP_0)
 			.push_opcode(Opcode::OP_CAT)
 			.into_script();
@@ -3327,7 +3328,7 @@ mod tests {
 		// OP_0 x OP_CAT → x
 		let script = Builder::default()
 			.push_opcode(Opcode::OP_0)
-			.push_data(&[1; 1])
+			.push_slice(&[1; 1])
 			.push_opcode(Opcode::OP_CAT)
 			.into_script();
 		let result = Ok(true);
@@ -3339,8 +3340,8 @@ mod tests {
 	fn op_cat_non_empty_and_non_empty_succeeds() {
 		// x y OP_CAT → concat(x,y)
 		let script = Builder::default()
-			.push_data(&[0x11])
-			.push_data(&[0x22, 0x33])
+			.push_slice(&[0x11])
+			.push_slice(&[0x22, 0x33])
 			.push_opcode(Opcode::OP_CAT)
 			.into_script();
 		let result = Ok(true);
@@ -3351,7 +3352,7 @@ mod tests {
 	#[test]
 	fn op_split_disabled_by_default() {
 		let script = Builder::default()
-			.push_data(&[0x11, 0x22])
+			.push_slice(&[0x11, 0x22])
 			.push_num(1.into())
 			.push_opcode(Opcode::OP_SUBSTR)
 			.into_script();
@@ -3377,7 +3378,7 @@ mod tests {
 	fn op_split_non_empty_at_zero_succeeds() {
 		// x 0 OP_SPLIT -> OP_0 x
 		let script = Builder::default()
-			.push_data(&[0x00, 0x11, 0x22])
+			.push_slice(&[0x00, 0x11, 0x22])
 			.push_num(0.into())
 			.push_opcode(Opcode::OP_SUBSTR)
 			.into_script();
@@ -3390,7 +3391,7 @@ mod tests {
 	fn op_split_non_empty_at_len_succeeds() {
 		// x len(x) OP_SPLIT -> x OP_0
 		let script = Builder::default()
-			.push_data(&[0x00, 0x11, 0x22])
+			.push_slice(&[0x00, 0x11, 0x22])
 			.push_num(3.into())
 			.push_opcode(Opcode::OP_SUBSTR)
 			.into_script();
@@ -3403,7 +3404,7 @@ mod tests {
 	fn op_split_non_empty_at_post_len_fails() {
 		// x (len(x) + 1) OP_SPLIT -> FAIL
 		let script = Builder::default()
-			.push_data(&[0x00, 0x11, 0x22])
+			.push_slice(&[0x00, 0x11, 0x22])
 			.push_num(4.into())
 			.push_opcode(Opcode::OP_SUBSTR)
 			.into_script();
@@ -3415,7 +3416,7 @@ mod tests {
 	#[test]
 	fn op_split_non_empty_at_mid_succeeds() {
 		let script = Builder::default()
-			.push_data(&[0x00, 0x11, 0x22])
+			.push_slice(&[0x00, 0x11, 0x22])
 			.push_num(2.into())
 			.push_opcode(Opcode::OP_SUBSTR)
 			.into_script();
@@ -3427,7 +3428,7 @@ mod tests {
 	#[test]
 	fn op_split_fails_if_position_is_nan() {
 		let script = Builder::default()
-			.push_data(&[0x00, 0x11, 0x22])
+			.push_slice(&[0x00, 0x11, 0x22])
 			.push_opcode(Opcode::OP_1NEGATE) // NaN
 			.push_opcode(Opcode::OP_SUBSTR)
 			.into_script();
@@ -3439,7 +3440,7 @@ mod tests {
 	#[test]
 	fn op_split_fails_if_position_is_negative() {
 		let script = Builder::default()
-			.push_data(&[0x00, 0x11, 0x22])
+			.push_slice(&[0x00, 0x11, 0x22])
 			.push_num((-10).into())
 			.push_opcode(Opcode::OP_SUBSTR)
 			.into_script();
@@ -3451,8 +3452,8 @@ mod tests {
 	#[test]
 	fn op_and_disabled_by_default() {
 		let script = Builder::default()
-			.push_data(&[0x11])
-			.push_data(&[0x22])
+			.push_slice(&[0x11])
+			.push_slice(&[0x22])
 			.push_opcode(Opcode::OP_AND)
 			.into_script();
 		let result = Err(Error::DisabledOpcode(Opcode::OP_AND));
@@ -3463,8 +3464,8 @@ mod tests {
 	#[test]
 	fn op_and_fails_with_different_len_args() {
 		let script = Builder::default()
-			.push_data(&[0x11, 0x22])
-			.push_data(&[0x22])
+			.push_slice(&[0x11, 0x22])
+			.push_slice(&[0x22])
 			.push_opcode(Opcode::OP_AND)
 			.into_script();
 		let result = Err(Error::InvalidOperandSize);
@@ -3475,8 +3476,8 @@ mod tests {
 	#[test]
 	fn op_and_succeeds() {
 		let script = Builder::default()
-			.push_data(&[0x34, 0x56])
-			.push_data(&[0x56, 0x78])
+			.push_slice(&[0x34, 0x56])
+			.push_slice(&[0x56, 0x78])
 			.push_opcode(Opcode::OP_AND)
 			.into_script();
 		let result = Ok(true);
@@ -3487,8 +3488,8 @@ mod tests {
 	#[test]
 	fn op_or_disabled_by_default() {
 		let script = Builder::default()
-			.push_data(&[0x11])
-			.push_data(&[0x22])
+			.push_slice(&[0x11])
+			.push_slice(&[0x22])
 			.push_opcode(Opcode::OP_OR)
 			.into_script();
 		let result = Err(Error::DisabledOpcode(Opcode::OP_OR));
@@ -3499,8 +3500,8 @@ mod tests {
 	#[test]
 	fn op_or_fails_with_different_len_args() {
 		let script = Builder::default()
-			.push_data(&[0x11, 0x22])
-			.push_data(&[0x22])
+			.push_slice(&[0x11, 0x22])
+			.push_slice(&[0x22])
 			.push_opcode(Opcode::OP_OR)
 			.into_script();
 		let result = Err(Error::InvalidOperandSize);
@@ -3511,8 +3512,8 @@ mod tests {
 	#[test]
 	fn op_or_succeeds() {
 		let script = Builder::default()
-			.push_data(&[0x34, 0x56])
-			.push_data(&[0x56, 0x78])
+			.push_slice(&[0x34, 0x56])
+			.push_slice(&[0x56, 0x78])
 			.push_opcode(Opcode::OP_OR)
 			.into_script();
 		let result = Ok(true);
@@ -3523,8 +3524,8 @@ mod tests {
 	#[test]
 	fn op_xor_disabled_by_default() {
 		let script = Builder::default()
-			.push_data(&[0x11])
-			.push_data(&[0x22])
+			.push_slice(&[0x11])
+			.push_slice(&[0x22])
 			.push_opcode(Opcode::OP_XOR)
 			.into_script();
 		let result = Err(Error::DisabledOpcode(Opcode::OP_XOR));
@@ -3535,8 +3536,8 @@ mod tests {
 	#[test]
 	fn op_xor_fails_with_different_len_args() {
 		let script = Builder::default()
-			.push_data(&[0x11, 0x22])
-			.push_data(&[0x22])
+			.push_slice(&[0x11, 0x22])
+			.push_slice(&[0x22])
 			.push_opcode(Opcode::OP_XOR)
 			.into_script();
 		let result = Err(Error::InvalidOperandSize);
@@ -3547,8 +3548,8 @@ mod tests {
 	#[test]
 	fn op_xor_succeeds() {
 		let script = Builder::default()
-			.push_data(&[0x34, 0x56])
-			.push_data(&[0x56, 0x78])
+			.push_slice(&[0x34, 0x56])
+			.push_slice(&[0x56, 0x78])
 			.push_opcode(Opcode::OP_XOR)
 			.into_script();
 		let result = Ok(true);
@@ -3808,8 +3809,8 @@ mod tests {
 	fn test_num2bin_all() {
 		fn test_num2bin(num: &[u8], size: &[u8], result: Result<bool, Error>, output: Vec<u8>) {
 			let script = Builder::default()
-				.push_data(num)
-				.push_data(size)
+				.push_slice(num)
+				.push_slice(size)
 				.push_opcode(Opcode::OP_LEFT)
 				.into_script();
 			let stack = if result.is_ok() {
@@ -3872,13 +3873,13 @@ mod tests {
 	fn test_split_cat_are_reverse_ops() {
 		let script = Builder::default()
 			// split array
-			.push_data(&vec![0x01, 0x02, 0x03, 0x04, 0x05])
+			.push_slice(&vec![0x01, 0x02, 0x03, 0x04, 0x05])
 			.push_num(2.into())
 			.push_opcode(Opcode::OP_SUBSTR)
 			// and then concat again
 			.push_opcode(Opcode::OP_CAT)
 			// check that numbers are the same
-			.push_data(&vec![0x01, 0x02, 0x03, 0x04, 0x05])
+			.push_slice(&vec![0x01, 0x02, 0x03, 0x04, 0x05])
 			.push_opcode(Opcode::OP_EQUAL)
 			.into_script();
 
@@ -3911,9 +3912,9 @@ mod tests {
 		let incorrect_flags = VerificationFlags::default().verify_checkdatasig(false);
 
 		let correct_signature_script = Builder::default()
-			.push_data(&*correct_signature)
-			.push_data(&*message)
-			.push_data(&*pubkey)
+			.push_slice(&*correct_signature)
+			.push_slice(&*message)
+			.push_slice(&*pubkey)
 			.push_opcode(Opcode::OP_CHECKDATASIG)
 			.into_script();
 
@@ -3922,17 +3923,17 @@ mod tests {
 
 		// <sig> <msg> OP_CHECKDATASIG fails if there are fewer than 3 items on stack.
 		let too_few_args_sig_script = Builder::default()
-			.push_data(&[1u8; 32])
-			.push_data(&*message)
+			.push_slice(&[1u8; 32])
+			.push_slice(&*message)
 			.push_opcode(Opcode::OP_CHECKDATASIG)
 			.into_script();
 		basic_test_with_flags(&too_few_args_sig_script, &correct_flags, Err(Error::InvalidStackOperation), vec![].into());
 
 		// <sig> <msg> <pubKey> OP_CHECKDATASIG fails if <pubKey> is not a validly encoded public key.
 		let incorrect_pubkey_script = Builder::default()
-			.push_data(&*correct_signature)
-			.push_data(&*message)
-			.push_data(&[77u8; 15])
+			.push_slice(&*correct_signature)
+			.push_slice(&*message)
+			.push_slice(&[77u8; 15])
 			.push_opcode(Opcode::OP_CHECKDATASIG)
 			.into_script();
 		basic_test_with_flags(&incorrect_pubkey_script, &correct_flags, Err(Error::PubkeyType), vec![].into());
@@ -3941,27 +3942,27 @@ mod tests {
 		// <sig> <msg> <pubKey> OP_CHECKDATASIG fails if <sig> is not a validly encoded signature with strict DER encoding.
 		// <sig> <msg> <pubKey> OP_CHECKDATASIG fails if signature <sig> is not empty and does not pass the Low S check.
 		let incorrectly_encoded_signature_script = Builder::default()
-			.push_data(&[0u8; 65])
-			.push_data(&*message)
-			.push_data(&*pubkey)
+			.push_slice(&[0u8; 65])
+			.push_slice(&*message)
+			.push_slice(&*pubkey)
 			.push_opcode(Opcode::OP_CHECKDATASIG)
 			.into_script();
 		basic_test_with_flags(&incorrectly_encoded_signature_script, &correct_flags, Err(Error::SignatureDer), vec![].into());
 
 		// <sig> <msg> <pubKey> OP_CHECKDATASIG fails if signature <sig> is not empty and does not pass signature validation of <msg> and <pubKey>.
 		let incorrect_signature_script = Builder::default()
-			.push_data(&*correct_signature_for_other_message)
-			.push_data(&*message)
-			.push_data(&*pubkey)
+			.push_slice(&*correct_signature_for_other_message)
+			.push_slice(&*message)
+			.push_slice(&*pubkey)
 			.push_opcode(Opcode::OP_CHECKDATASIG)
 			.into_script();
 		basic_test_with_flags(&incorrect_signature_script, &correct_flags, Ok(false), vec![Bytes::new()].into());
 
 		// <sig> <msg> <pubKey> OP_CHECKDATASIG pops three elements and pushes false onto the stack if <sig> is an empty byte array.
 		let empty_signature_script = Builder::default()
-			.push_data(&[])
-			.push_data(&*message)
-			.push_data(&*pubkey)
+			.push_slice(&[])
+			.push_slice(&*message)
+			.push_slice(&*pubkey)
 			.push_opcode(Opcode::OP_CHECKDATASIG)
 			.into_script();
 		basic_test_with_flags(&empty_signature_script, &correct_flags, Ok(false), vec![Bytes::new()].into());
@@ -3993,9 +3994,9 @@ mod tests {
 		let incorrect_flags = VerificationFlags::default().verify_checkdatasig(false);
 
 		let correct_signature_script = Builder::default()
-			.push_data(&*correct_signature)
-			.push_data(&*message)
-			.push_data(&*pubkey)
+			.push_slice(&*correct_signature)
+			.push_slice(&*message)
+			.push_slice(&*pubkey)
 			.push_opcode(Opcode::OP_CHECKDATASIGVERIFY)
 			.into_script();
 
@@ -4004,17 +4005,17 @@ mod tests {
 
 		// <sig> <msg> OP_CHECKDATASIGVERIFY fails if there are fewer than 3 item on stack.
 		let too_few_args_sig_script = Builder::default()
-			.push_data(&[1u8; 32])
-			.push_data(&*message)
+			.push_slice(&[1u8; 32])
+			.push_slice(&*message)
 			.push_opcode(Opcode::OP_CHECKDATASIGVERIFY)
 			.into_script();
 		basic_test_with_flags(&too_few_args_sig_script, &correct_flags, Err(Error::InvalidStackOperation), vec![].into());
 
 		// <sig> <msg> <pubKey> OP_CHECKDATASIGVERIFYfails if <pubKey> is not a validly encoded public key.
 		let incorrect_pubkey_script = Builder::default()
-			.push_data(&*correct_signature)
-			.push_data(&*message)
-			.push_data(&[77u8; 15])
+			.push_slice(&*correct_signature)
+			.push_slice(&*message)
+			.push_slice(&[77u8; 15])
 			.push_opcode(Opcode::OP_CHECKDATASIGVERIFY)
 			.into_script();
 		basic_test_with_flags(&incorrect_pubkey_script, &correct_flags, Err(Error::PubkeyType), vec![].into());
@@ -4023,18 +4024,18 @@ mod tests {
 		// <sig> <msg> <pubKey> OP_CHECKDATASIGVERIFY fails if <sig> is not a validly encoded signature with strict DER encoding.
 		// <sig> <msg> <pubKey> OP_CHECKDATASIGVERIFY fails if signature <sig> is not empty and does not pass the Low S check.
 		let incorrectly_encoded_signature_script = Builder::default()
-			.push_data(&[0u8; 65])
-			.push_data(&*message)
-			.push_data(&*pubkey)
+			.push_slice(&[0u8; 65])
+			.push_slice(&*message)
+			.push_slice(&*pubkey)
 			.push_opcode(Opcode::OP_CHECKDATASIGVERIFY)
 			.into_script();
 		basic_test_with_flags(&incorrectly_encoded_signature_script, &correct_flags, Err(Error::SignatureDer), vec![].into());
 
 		// <sig> <msg> <pubKey> OP_CHECKDATASIGVERIFY fails if <sig> is not a valid signature of <msg> with respect to <pubKey>.
 		let incorrect_signature_script = Builder::default()
-			.push_data(&*correct_signature_for_other_message)
-			.push_data(&*message)
-			.push_data(&*pubkey)
+			.push_slice(&*correct_signature_for_other_message)
+			.push_slice(&*message)
+			.push_slice(&*pubkey)
 			.push_opcode(Opcode::OP_CHECKDATASIGVERIFY)
 			.into_script();
 		basic_test_with_flags(&incorrect_signature_script, &correct_flags, Err(Error::CheckDataSigVerify), vec![].into());
