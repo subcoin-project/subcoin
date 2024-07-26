@@ -27,6 +27,15 @@ pub const PROTOCOL_VERSION: u32 = 70016;
 /// This version includes support for the `sendheaders` feature.
 pub const MIN_PROTOCOL_VERSION: u32 = 70012;
 
+/// Peer is considered as a slow one if the average ping latency is higher than 5 seconds.
+const SLOW_PEER_LATENCY: Latency = 5_000;
+
+/// Interval for evicting the slowest peer, 10 minutes.
+///
+/// Periodically evict the slowest peer whose latency is above the threshold [`SLOW_PEER_LATENCY`]
+/// when the peer set is full. This creates opportunities to connect with potentially better peers.
+const EVICTION_INTERVAL: Duration = Duration::from_secs(600);
+
 /// Peer configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -230,6 +239,12 @@ impl PeerInfo {
     }
 }
 
+#[derive(Debug)]
+pub(crate) struct SlowPeer {
+    pub(crate) peer_id: PeerId,
+    pub(crate) peer_latency: Latency,
+}
+
 /// Manages the peers in the network.
 pub struct PeerManager<Block, Client> {
     config: Config,
@@ -240,6 +255,8 @@ pub struct PeerManager<Block, Client> {
     connected_peers: HashMap<PeerId, PeerInfo>,
     max_outbound_peers: usize,
     connection_initiator: ConnectionInitiator,
+    /// Time at which the slowest peer was evicted.
+    last_eviction: Instant,
     rng: fastrand::Rng,
     _phantom: PhantomData<Block>,
 }
@@ -265,12 +282,13 @@ where
             connected_peers: HashMap::new(),
             max_outbound_peers,
             connection_initiator,
+            last_eviction: Instant::now(),
             rng: fastrand::Rng::new(),
             _phantom: Default::default(),
         }
     }
 
-    pub(crate) fn on_tick(&mut self) {
+    pub(crate) fn on_tick(&mut self) -> Option<SlowPeer> {
         let mut timeout_peers = vec![];
         let mut should_ping_peers = vec![];
 
@@ -305,7 +323,33 @@ where
                     self.connection_initiator.initiate_outbound_connection(addr);
                 }
             }
+            None
+        } else if self.last_eviction.elapsed() > EVICTION_INTERVAL {
+            // The set of outbound peers is full and the eviction interval elapsed,
+            // try to evict the slowest peer for discovering potential better peers.
+            self.find_slowest_peer()
+        } else {
+            None
         }
+    }
+
+    fn find_slowest_peer(&self) -> Option<SlowPeer> {
+        self.connected_peers
+            .iter()
+            .filter_map(|(peer_id, peer_info)| {
+                let average_latency = peer_info.ping_latency.average();
+
+                if average_latency > SLOW_PEER_LATENCY {
+                    Some((peer_id, average_latency))
+                } else {
+                    None
+                }
+            })
+            .max_by_key(|(_peer_id, average_latency)| *average_latency)
+            .map(|(peer_id, peer_latency)| SlowPeer {
+                peer_id: *peer_id,
+                peer_latency,
+            })
     }
 
     fn send_pings(&mut self, should_pings: Vec<PeerId>) {
@@ -370,6 +414,10 @@ where
         self.connected_peers.entry(peer_id).and_modify(|info| {
             info.prefer_headers = true;
         });
+    }
+
+    pub(crate) fn update_last_eviction(&mut self) {
+        self.last_eviction = Instant::now();
     }
 
     /// Checks if a peer is connected.

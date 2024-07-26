@@ -1,5 +1,5 @@
 use crate::connection::{ConnectionInitiator, Direction, NewConnection};
-use crate::peer_manager::{Config, PeerManager};
+use crate::peer_manager::{Config, PeerManager, SlowPeer};
 use crate::sync::{ChainSync, LocatorRequest, SyncAction, SyncRequest};
 use crate::{Bandwidth, Error, Latency, NetworkStatus, NetworkWorkerMessage, PeerId, SyncStrategy};
 use bitcoin::p2p::message::NetworkMessage;
@@ -118,7 +118,16 @@ where
     fn perform_periodic_actions(&mut self) {
         let sync_action = self.chain_sync.on_tick();
         self.do_sync_action(sync_action);
-        self.peer_manager.on_tick();
+        if let Some(SlowPeer {
+            peer_id,
+            peer_latency,
+        }) = self.peer_manager.on_tick()
+        {
+            self.peer_manager
+                .disconnect(peer_id, Error::SlowPeer(peer_latency));
+            self.peer_manager.update_last_eviction();
+            self.chain_sync.remove_peer(peer_id);
+        }
     }
 
     fn process_worker_message(&self, worker_msg: NetworkWorkerMessage, bandwidth: &Bandwidth) {
@@ -240,7 +249,8 @@ where
                     Ok(latency) => {
                         // Disconnect the peer directly if the latency is higher than the threshold.
                         if latency > LATENCY_THRESHOLD {
-                            self.peer_manager.disconnect(from, err);
+                            self.peer_manager
+                                .disconnect(from, Error::PingLatencyTooHigh);
                             self.chain_sync.remove_peer(from);
                         } else {
                             self.chain_sync.set_peer_latency(from, latency);
