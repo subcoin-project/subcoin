@@ -1,4 +1,5 @@
 mod flags;
+mod stack;
 
 use bitcoin::Opcode;
 
