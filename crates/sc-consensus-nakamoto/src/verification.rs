@@ -1,6 +1,8 @@
 //! This module provides block verification functionalities based on Bitcoin's consensus rules.
-//! The primary reference for these consensus rules is Bitcoin Core. We utilize the `rust-bitcoinconsensus`
-//! from `rust-bitcoin` for handling the most complex aspects of script verification.
+//! The primary code reference for these consensus rules is Bitcoin Core.
+//!
+//! We utilize the `rust-bitcoinconsensus` from `rust-bitcoin` for handling the most complex
+//! aspects of script verification.
 //!
 //! The main components of this module are:
 //! - `header_verify`: Module responsible for verifying block headers.
@@ -136,6 +138,7 @@ pub struct BlockVerifier<Block, Client, BE> {
     header_verifier: HeaderVerifier<Block, Client>,
     block_verification: BlockVerification,
     coin_storage_key: Arc<dyn CoinStorageKey>,
+    verify_script: bool,
     _phantom: PhantomData<(Block, BE)>,
 }
 
@@ -146,6 +149,7 @@ impl<Block, Client, BE> BlockVerifier<Block, Client, BE> {
         network: bitcoin::Network,
         block_verification: BlockVerification,
         coin_storage_key: Arc<dyn CoinStorageKey>,
+        verify_script: bool,
     ) -> Self {
         let chain_params = ChainParams::new(network);
         let header_verifier = HeaderVerifier::new(client.clone(), chain_params.clone());
@@ -155,6 +159,7 @@ impl<Block, Client, BE> BlockVerifier<Block, Client, BE> {
             header_verifier,
             block_verification,
             coin_storage_key,
+            verify_script,
             _phantom: Default::default(),
         }
     }
@@ -396,13 +401,15 @@ where
                     return Err(Error::PrematureSpendOfCoinbase);
                 }
 
-                bitcoin::consensus::validation::verify_script_with_flags(
-                    &spent_output.script_pubkey,
-                    input_index,
-                    spent_output.value,
-                    spending_transaction,
-                    flags,
-                )?;
+                if self.verify_script {
+                    bitcoin::consensus::validation::verify_script_with_flags(
+                        &spent_output.script_pubkey,
+                        input_index,
+                        spent_output.value,
+                        spending_transaction,
+                        flags,
+                    )?;
+                }
 
                 spent_utxos.insert(coin);
                 value_in += spent_output.value.to_sat();

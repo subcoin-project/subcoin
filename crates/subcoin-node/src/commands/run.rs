@@ -89,6 +89,7 @@ impl RunCmd {
     ) -> sc_cli::Result<TaskManager> {
         let block_execution_strategy = run.common_params.block_execution_strategy();
         let network = run.common_params.bitcoin_network();
+        let verify_script = run.common_params.verify_script;
         let no_finalizer = run.no_finalizer;
         let major_sync_confirmation_depth = run.major_sync_confirmation_depth;
 
@@ -120,6 +121,7 @@ impl RunCmd {
                     network,
                     block_verification: run.block_verification,
                     execute_block: true,
+                    verify_script,
                 },
                 Arc::new(subcoin_service::CoinStorageKey),
                 block_executor,

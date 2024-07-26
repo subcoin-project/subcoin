@@ -92,6 +92,7 @@ pub fn run() -> sc_cli::Result<()> {
         }
         Command::ImportBlocks(cmd) => {
             let block_execution_strategy = cmd.common_params.block_execution_strategy();
+            let verify_script = cmd.common_params.verify_script;
             let import_blocks_cmd = ImportBlocksCmd::new(&cmd);
             let runner = SubstrateCli.create_runner(&import_blocks_cmd)?;
             let data_dir = cmd.data_dir;
@@ -122,7 +123,7 @@ pub fn run() -> sc_cli::Result<()> {
                     )
                 });
                 Ok((
-                    import_blocks_cmd.run(client, block_executor, data_dir),
+                    import_blocks_cmd.run(client, block_executor, data_dir, verify_script),
                     task_manager,
                 ))
             })

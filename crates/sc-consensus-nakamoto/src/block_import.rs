@@ -78,6 +78,8 @@ pub struct ImportConfig {
     pub block_verification: BlockVerification,
     /// Whether to execute the transactions in the block.
     pub execute_block: bool,
+    /// Whether to verify the Bitcoin script.
+    pub verify_script: bool,
 }
 
 #[derive(Debug, Default)]
@@ -160,6 +162,7 @@ where
             config.network,
             config.block_verification,
             coin_storage_key,
+            config.verify_script,
         );
         Self {
             client,

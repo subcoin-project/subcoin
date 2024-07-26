@@ -78,6 +78,7 @@ impl ImportBlocksCmd {
         client: Arc<FullClient>,
         block_executor: Box<dyn sc_consensus_nakamoto::BlockExecutor<OpaqueBlock>>,
         data_dir: PathBuf,
+        verify_script: bool,
     ) -> sc_cli::Result<()> {
         let from = (client.info().best_number + 1) as usize;
 
@@ -109,6 +110,7 @@ impl ImportBlocksCmd {
                     network: bitcoin::Network::Bitcoin,
                     block_verification: BlockVerification::None,
                     execute_block: self.execute_block,
+                    verify_script,
                 },
                 Arc::new(subcoin_service::CoinStorageKey),
                 block_executor,
