@@ -1,8 +1,7 @@
 //! Wrapper around `Vec<u8>`
 
 use bitcoin::hex::error::HexToBytesError;
-use bitcoin::hex::DisplayHex;
-use bitcoin::hex::FromHex;
+use bitcoin::hex::{DisplayHex, FromHex};
 use std::{fmt, io, marker, ops, str};
 
 /// Wrapper around `Vec<u8>`

@@ -1,0 +1,11 @@
+[package]
+name = "subcoin-script"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+bitcoin = { workspace = true }
+thiserror = { workspace = true }
