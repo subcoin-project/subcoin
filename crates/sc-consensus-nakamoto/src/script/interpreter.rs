@@ -1,14 +1,13 @@
-use bytes::Bytes;
 use keys::{Message, Signature, Public};
 use crypto::{sha1, sha256, dhash160, dhash256, ripemd160};
 use sign::{SignatureVersion, Sighash};
-use {
-	script, ScriptWitness, Num, SignatureChecker, Stack
-};
+use ScriptWitness, Num, SignatureChecker;
 
+use super::bytes::Bytes;
 use bitcoin::blockdata::script::{Builder, Script};
+use super::stack::Stack;
 use super::flags::VerificationFlags;
-use super::{MAX_SCRIPT_ELEMENT_SIZE, Error, SEQUENCE_LOCKTIME_DISABLE_FLAG};
+use super::{MAX_SCRIPT_ELEMENT_SIZE, Error, SEQUENCE_LOCKTIME_DISABLE_FLAG, MAX_SCRIPT_ELEMENT_SIZE, MAX_SCRIPT_SIZE, MAX_OPS_PER_SCRIPT, MAX_PUBKEYS_PER_MULTISIG };
 use bitcoin::Opcode;
 
 /// Helper function.
@@ -439,7 +438,7 @@ pub fn eval_script(
 	checker: &dyn SignatureChecker,
 	version: SignatureVersion
 ) -> Result<bool, Error> {
-	if script.len() > script::MAX_SCRIPT_SIZE {
+	if script.len() > MAX_SCRIPT_SIZE {
 		return Err(Error::ScriptSize);
 	}
 
@@ -462,7 +461,7 @@ pub fn eval_script(
 		let opcode = instruction.opcode;
 
 		if let Some(data) = instruction.data {
-			if data.len() > script::MAX_SCRIPT_ELEMENT_SIZE {
+			if data.len() > MAX_SCRIPT_ELEMENT_SIZE {
 				return Err(Error::PushSize);
 			}
 
@@ -473,7 +472,7 @@ pub fn eval_script(
 
 		if opcode.is_countable() {
 			op_count += 1;
-			if op_count > script::MAX_OPS_PER_SCRIPT {
+			if op_count > MAX_OPS_PER_SCRIPT {
 				return Err(Error::OpCount);
 			}
 		}
@@ -594,7 +593,7 @@ pub fn eval_script(
 			Opcode::OP_CAT if flags.verify_concat => {
 				let mut value_to_append = stack.pop()?;
 				let value_to_update = stack.last_mut()?;
-				if value_to_update.len() + value_to_append.len() > script::MAX_SCRIPT_ELEMENT_SIZE {
+				if value_to_update.len() + value_to_append.len() > MAX_SCRIPT_ELEMENT_SIZE {
 					return Err(Error::PushSize);
 				}
 				value_to_update.append(&mut value_to_append);
@@ -1054,7 +1053,7 @@ pub fn eval_script(
 			},
 			Opcode::OP_CHECKMULTISIG | Opcode::OP_CHECKMULTISIGVERIFY => {
 				let keys_count = Num::from_slice(&stack.pop()?, flags.verify_minimaldata, 4)?;
-				if keys_count < 0.into() || keys_count > script::MAX_PUBKEYS_PER_MULTISIG.into() {
+				if keys_count < 0.into() || keys_count > MAX_PUBKEYS_PER_MULTISIG.into() {
 					return Err(Error::PubkeyCount);
 				}
 
@@ -1186,12 +1185,11 @@ mod tests {
 	use crypto::sha256;
 	use keys::{KeyPair, Private, Message, Network};
 	use sign::SignatureVersion;
-	use script::MAX_SCRIPT_ELEMENT_SIZE;
+	use super::*;
 	use {
-		Opcode, Script, ScriptWitness, VerificationFlags, Builder, Error, Num, TransactionInputSigner,
-		NoopSignatureChecker, TransactionSignatureChecker, Stack
+		ScriptWitness, Num, TransactionInputSigner,
+		NoopSignatureChecker, TransactionSignatureChecker,
 	};
-	use super::{eval_script, verify_script, is_public_key};
 
 	#[test]
 	fn tests_is_public_key() {
