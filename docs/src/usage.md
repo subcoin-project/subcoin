@@ -2,51 +2,54 @@
 
 <!-- clap-markdown-toc -->
 
-*   [Import bitcoin blocks from `bitcoind` database](#import-bitcoin-blocks-from-`bitcoind`-database)
-    *   [Run `bitcoind`](#run-`bitcoind`)
-    *   [Run `subcoin import-blocks`](#run-`subcoin-import-blocks`)
-    *   [Verify the state of UTXO set](#verify-the-state-of-utxo-set)
+*   [Import Bitcoin Blocks from `bitcoind` Database](#import-bitcoin-blocks-from-bitcoind-database)
+    *   [Get the `bitcoind` Binary](#get-the-bitcoind-binary)
+    *   [Run `subcoin import-blocks`](#run-subcoin-import-blocks)
+    *   [Verify the UTXO Set State](#verify-the-utxo-set-state)
 
 <!-- /clap-markdown-toc -->
 
-This page only describes a subnet of features supported in subcoin with details, check out `subcoin --help` for the full usage.
+This page covers some specific features supported in Subcoin. For full usage details, refer to `subcoin --help`.
 
-## Import bitcoin blocks from `bitcoind` database
+## Import Bitcoin Blocks from `bitcoind` Database
 
-### Run `bitcoind`
+### Get the `bitcoind` Binary
 
-Firstly, we need to install the `bitcoind` binary which can be downloaded directly from [https://bitcoincore.org/en/download](https://bitcoincore.org/en/download/).
-And then we need to spin up a `bitcoind` node with `txindex` and `coinstatsindex` enabled. `txindex` is required to import the blocks in subcoin, `coinstatsindex` is required
-to query the UTXO set of specific block later.
+To have flexible control over `bitcoind` behavior, it’s recommended to compile the `bitcoind` binary from source rather than downloading it directly from [Bitcoin releases](https://github.com/bitcoin/bitcoin/releases) which do not conveniently expose developer-oriented options. You can find the build instructions for your operating system under `build-*.md` in the [Bitcoin repository](https://github.com/bitcoin/bitcoin/tree/master/doc). For Linux, refer to [build-unix.md](https://github.com/bitcoin/bitcoin/blob/master/doc/build-unix.md).
 
-For instance, we use `/tmp/btc-data` as the data dir:
+```bash
+# Ensure these two commands exist after successfully compiling the Bitcoin Core source code.
+./src/bitcoind --help
+./src/bitcoin-cli --help
+```
 
-<!-- TODO: specify the exact version of bitcoind we are using here. -->
+Next, start a `bitcoind` node with `txindex` and `coinstatsindex` enabled. `txindex` is necessary for importing blocks into Subcoin, and `coinstatsindex` is required to query and verify the UTXO set of a specific block later. For example, use `/tmp/btc-data` as the data directory:
 
 ```bash
 mkdir -p /tmp/btc-data && ./src/bitcoind -datadir=/tmp/btc-data -txindex -coinstatsindex
 ```
 
-Keep the `bitcoind` process running for a while and ensure it has synced a number of blocks.
+Keep the `bitcoind` process running for a while to ensure it has synchronized a number of blocks. Note that `bitcoind` will first synchronize the block headers and only start downloading blocks after the headers are synced. This step might take some time depending on the peer connections (10+ minutes on my machine).
 
-```text
+```log
 ...
-8-29T01:17:02Z' progress=0.001342 cache=33.0MiB(304329txo)
 2024-07-11T17:23:10Z UpdateTip: new best=00000000000008c273c4c215892eacbafec33c199cfd3d9b539cdb6aafc39f54 height=142979 version=0x00000001 log2_work=66.385350 tx=1392173 date='2011-08-29T01:23:19Z' progress=0.001342 cache=33.0MiB(304442txo)
-2024-07-11T17:23:10Z UpdateTip: new best=000000000000000f338e8635c5f78666f0ca2e6b70425fe22aad47d2087a2740 height=142980 version=0x00000001 log2_work=66.385466 tx=1392186 date='2011-08-29T01:29:29Z' progress=0.001342 cache=33.0MiB(304451txo)
-2024-07-11T17:23:10Z UpdateTip: new best=000000000000071504dedbc2edd4ae008aca9a6086afb3d4d9cd3cbdd0e67b04 height=142981 version=0x00000001 log2_work=66.385582 tx=1392218 date='2011-08-29T01:35:02Z' progress=0.001342 cache=33.0MiB(304470txo)
-2024-07-11T17:23:10Z UpdateTip: new best=00000000000001c59463d1a0b6d70274ed4aea4cf757289363ff99f670f02812 height=142982 version=0x00000001 log2_work=66.385698 tx=1392232 date='2011-08-29T01:37:36Z' progress=0.001342 cache=33.0MiB(304605txo)
+...
 ```
 
-Now stop the `bitcoind` process and proceed to import the blocks in `bitcoind` database into subcoin.
+Stop the `bitcoind` process and proceed to import the blocks from the `bitcoind` database into Subcoin.
 
 ### Run `subcoin import-blocks`
 
+Ensure you have installed `subcoin`. If not, refer to [installation](./installation.md) to install the `subcoin` binary.
+
 ```bash
-target/release/subcoin import-blocks /tmp/btc-data
+# Specify `subcoin-data` as the data directory for Subcoin and import the blocks from `/tmp/btc-data` which is the `bitcoind` database we set up earlier.
+# `--state-pruning archive` is necessary for querying the state of the Subcoin UTXO set later.
+subcoin import-blocks /tmp/btc-data -d subcoin-data --state-pruning archive
 ```
 
-You'll see the output like this:
+You should see output similar to this:
 
 ```log
 2024-07-12 01:28:51 🔨 Initializing Genesis block/state (state: 0x1c68…f3f8, header-hash: 0xbdc8…a76b)
@@ -57,18 +60,23 @@ You'll see the output like this:
 2024-07-12 01:28:53 Start loading block_index
 2024-07-12 01:28:53 Successfully opened tx_index DB!
 2024-07-12 01:28:53 Start to import blocks from #1 to #142984 from bitcoind database: /tmp/btc-data
-2024-07-12 01:28:54 Imported 1000 blocks,, best#1001,00000000a2887344f8db859e372e7e4bc26b23b9de340f725afbf2edb265b4c6 (0x3ff4…6eb5)
-2024-07-12 01:28:54 Imported 2000 blocks, 3802.2 bps, best#2001,0000000067217a46c49054bad67cda2da943607d326e89896786de10b07cb7c0 (0x296d…6a47)
-2024-07-12 01:28:54 Imported 3000 blocks, 3636.3 bps, best#3001,00000000ee1d6b98d28b71c969d4bc8a20ee43a379ce49547bcad30c606d8845 (0xac16…c220)
-2024-07-12 01:28:54 Imported 4000 blocks, 3597.1 bps, best#4001,00000000a86f68e8de06c6b46623fdd16b7a11ad9651fa48ecbe8c731658dc06 (0xb5bd…8a28)
-2024-07-12 01:28:55 Imported 5000 blocks, 3773.5 bps, best#5001,00000000284bcd658fd7a76f5a88ee526f18592251341a05fd7f3d7abaf0c3ec (0x751f…3375)
-2024-07-12 01:28:55 Imported 6000 blocks, 3484.3 bps, best#6001,0000000055fcaf04cb9a82bb86b46a21b15fcaa75ac8c18679b0234f79c4c615 (0xcc4a…3090)
+2024-07-12 01:28:54 Imported 1000 blocks, best#1001,00000000a2887344f8db859e372e7e4bc26b23b9de340f725afbf2edb265b4c6 (0x3ff4…6eb5)
 ...
+```
+
+By default, Subcoin will import all blocks up to the latest indexed Bitcoin block in the `bitcoind` database. You can specify the total number of blocks to import or the target number of blocks to import:
+
+```bash
+# Import 20000 blocks from the best block of Subcoin.
+subcoin import-blocks /tmp/btc-data -d subcoin-data --block-count 20000
+
+# Import blocks up to height 30000.
+subcoin import-blocks /tmp/btc-data -d subcoin-data --end-block 30000
 ```
 
 <div class="warning">
 
-NOTE: _The bitcoind process must be stopped when running the import-blocks command otherwise you will run into the following error_:
+NOTE: _The `bitcoind` process must be stopped when running the import-blocks command, otherwise you will encounter the following error_:
 
 ```text
 Error: Application(OpError { kind: None, message: "LevelDB error: IO error: lock /tmp/btc-data/blocks/index/LOCK: Resource temporarily unavailable" })
@@ -76,17 +84,44 @@ Error: Application(OpError { kind: None, message: "LevelDB error: IO error: lock
 
 </div>
 
-### Verify the state of UTXO set
+### Verify the UTXO Set State
 
-`bitcoind` offers an interface to inspect the state of UTXO set, we can use it to check the the correctness of subcoin's the UTXO set after the blocks
-imported to the subcoin node successfully. For instance, export the UTXO set information at height 10000:
+`bitcoind` provides an interface to inspect the UTXO set state. This can be used to check the correctness of Subcoin’s UTXO set after importing blocks. For example, to export the UTXO set of `bitcoind` at height 10000:
 
 ```bash
+# Note that running this command requires the bitcoind process running in the background.
+# If it was stopped, now restart it. You can stop it again after this command finishes.
 ./src/bitcoin-cli -datadir=/tmp/btc-data gettxoutsetinfo none 10000 true
+{
+  "height": 10000,
+  "bestblock": "0000000099c744455f58e6c6e98b671e1bf7f37346bfd4cf5d0274ad8ee660cb",
+  "txouts": 9494,
+  "bogosize": 1109244,
+  "total_amount": 500000.00000000,
+  "total_unspendable_amount": 50.00000000,
+  "block_info": {
+    "prevout_spent": 0.00000000,
+    "coinbase": 50.00000000,
+    "new_outputs_ex_coinbase": 0.00000000,
+    "unspendable": 0.00000000,
+    "unspendables": {
+      "genesis_block": 0.00000000,
+      "bip30": 0.00000000,
+      "scripts": 0.00000000,
+      "unclaimed_rewards": 0.00000000
+    }
+  }
+}
 ```
 
-Check out the state of UTXO set in subcoin at the same height:
+Check the state of the UTXO set in Subcoin at the same height:
 
 ```bash
-./target/release/subcoin blockchain gettxoutsetinfo --height 10000 -d /tmp/subcoin-data
+# Note that the existing `gettxoutsetinfo` only displays a subset of the information in `bitcoind`.
+subcoin blockchain gettxoutsetinfo --height 10000 -d subcoin-data
+block_number: 10000
+block_hash: 0000000099c744455f58e6c6e98b671e1bf7f37346bfd4cf5d0274ad8ee660cb
+txouts: 9494
+bogosize: 1109244
+total_amount: 500000.00000000
 ```
