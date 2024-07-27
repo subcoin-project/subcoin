@@ -83,6 +83,10 @@ pub struct CommonParams {
     #[clap(long, value_enum, default_value_t = BlockExecution::RuntimeDisk)]
     pub block_execution: BlockExecution,
 
+    /// Whether to verify the TxIn scripts during the block verification.
+    #[clap(long, default_value_t = true)]
+    pub verify_script: bool,
+
     /// Specify custom base path.
     #[arg(long, short = 'd', value_name = "PATH")]
     pub base_path: Option<PathBuf>,

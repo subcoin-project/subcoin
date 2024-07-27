@@ -77,6 +77,10 @@ pub enum Error {
     ConnectionTimeout,
     #[error("Ping timeout")]
     PingTimeout,
+    #[error("Ping latency exceeds the threshold")]
+    PingLatencyTooHigh,
+    #[error("Peer's latency ({0} ms) is too high")]
+    SlowPeer(Latency),
     #[error("Unexpected pong message")]
     UnexpectedPong,
     #[error("Too many block entries in inv message")]
