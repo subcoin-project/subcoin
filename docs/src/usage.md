@@ -6,6 +6,7 @@
     *   [Get the `bitcoind` Binary](#get-the-bitcoind-binary)
     *   [Run `subcoin import-blocks`](#run-subcoin-import-blocks)
     *   [Verify the UTXO Set State](#verify-the-utxo-set-state)
+*   [Syncing the Bitcoin Network](#syncing-the-bitcoin-network)
 
 <!-- /clap-markdown-toc -->
 
@@ -124,4 +125,14 @@ block_hash: 0000000099c744455f58e6c6e98b671e1bf7f37346bfd4cf5d0274ad8ee660cb
 txouts: 9494
 bogosize: 1109244
 total_amount: 500000.00000000
+```
+
+## Syncing the Bitcoin Network
+
+Run the following command to sync the Bitcoin blockchain from the Bitcoin P2P network. The `--log subcoin_network=debug` option
+will enable debug-level logging to show detailed information about the syncing process. By default, the block will be fully verified.
+You can use `--block-verification=none` to skip the block verification. Check out `subcoin run --help` for more options.
+
+```bash
+subcoin run -d data --log subcoin_network=debug
 ```
