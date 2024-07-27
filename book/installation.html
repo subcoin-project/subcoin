@@ -176,15 +176,17 @@
                         <h1 id="installing-subcoin"><a class="header" href="#installing-subcoin">Installing Subcoin</a></h1>
 <h2 id="compile-from-source"><a class="header" href="#compile-from-source">Compile from source</a></h2>
 <h3 id="install-prerequisites"><a class="header" href="#install-prerequisites">Install prerequisites</a></h3>
-<p>Since subcoin is a Substrate-based chain, you must install the necessary development tools to compile the binary from source.
-Please refer to https://docs.substrate.io/install/ for the full guide of installing the prerequisites.</p>
+<p>Subcoin is a Substrate-based chain, so you need to install the necessary development tools to compile the binary from source. Follow the full guide for installing the prerequisites at <a href="https://docs.substrate.io/install/">Substrate Installation Guide</a>.</p>
 <h3 id="compile-subcoin-node-binary"><a class="header" href="#compile-subcoin-node-binary">Compile subcoin node binary</a></h3>
-<p>Once the required packages and Rust installed, we can proceed to compile the binary.</p>
+<p>After installing the required packages and Rust, proceed to compile the binary using the following command:</p>
 <pre><code class="language-bash">cargo build --profile production --bin subcoin
 </code></pre>
-<p>The Subcoin node executable <code>subcoin</code> should be present at <code>target/production/subcoin</code>.</p>
+<p>Once the compilation is complete, the Subcoin node executable subcoin will be located at <code>target/production/subcoin</code>.</p>
 <h2 id="docker"><a class="header" href="#docker">Docker</a></h2>
-<pre><code></code></pre>
+<p>You can pull the Docker image built from the latest commit of the main branch with the following command:</p>
+<pre><code class="language-bash">docker pull ghcr.io/subcoin-project/subcoin:main
+</code></pre>
+<p>For a list of all available versions, refer to the <a href="https://github.com/subcoin-project/subcoin/pkgs/container/subcoin/versions">Subcoin Docker Container Versions</a>.</p>
 
                     </main>
 

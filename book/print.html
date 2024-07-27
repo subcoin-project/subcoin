@@ -179,50 +179,54 @@
 <div style="break-before: page; page-break-before: always;"></div><h1 id="installing-subcoin"><a class="header" href="#installing-subcoin">Installing Subcoin</a></h1>
 <h2 id="compile-from-source"><a class="header" href="#compile-from-source">Compile from source</a></h2>
 <h3 id="install-prerequisites"><a class="header" href="#install-prerequisites">Install prerequisites</a></h3>
-<p>Since subcoin is a Substrate-based chain, you must install the necessary development tools to compile the binary from source.
-Please refer to https://docs.substrate.io/install/ for the full guide of installing the prerequisites.</p>
+<p>Subcoin is a Substrate-based chain, so you need to install the necessary development tools to compile the binary from source. Follow the full guide for installing the prerequisites at <a href="https://docs.substrate.io/install/">Substrate Installation Guide</a>.</p>
 <h3 id="compile-subcoin-node-binary"><a class="header" href="#compile-subcoin-node-binary">Compile subcoin node binary</a></h3>
-<p>Once the required packages and Rust installed, we can proceed to compile the binary.</p>
+<p>After installing the required packages and Rust, proceed to compile the binary using the following command:</p>
 <pre><code class="language-bash">cargo build --profile production --bin subcoin
 </code></pre>
-<p>The Subcoin node executable <code>subcoin</code> should be present at <code>target/production/subcoin</code>.</p>
+<p>Once the compilation is complete, the Subcoin node executable subcoin will be located at <code>target/production/subcoin</code>.</p>
 <h2 id="docker"><a class="header" href="#docker">Docker</a></h2>
-<pre><code></code></pre>
+<p>You can pull the Docker image built from the latest commit of the main branch with the following command:</p>
+<pre><code class="language-bash">docker pull ghcr.io/subcoin-project/subcoin:main
+</code></pre>
+<p>For a list of all available versions, refer to the <a href="https://github.com/subcoin-project/subcoin/pkgs/container/subcoin/versions">Subcoin Docker Container Versions</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="using-subcoin"><a class="header" href="#using-subcoin">Using Subcoin</a></h1>
 <!-- clap-markdown-toc -->
 <ul>
-<li><a href="usage.html#import-bitcoin-blocks-from-%60bitcoind%60-database">Import bitcoin blocks from <code>bitcoind</code> database</a>
+<li><a href="usage.html#import-bitcoin-blocks-from-bitcoind-database">Import Bitcoin Blocks from <code>bitcoind</code> Database</a>
 <ul>
-<li><a href="usage.html#run-%60bitcoind%60">Run <code>bitcoind</code></a></li>
-<li><a href="usage.html#run-%60subcoin-import-blocks%60">Run <code>subcoin import-blocks</code></a></li>
-<li><a href="usage.html#verify-the-state-of-utxo-set">Verify the state of UTXO set</a></li>
+<li><a href="usage.html#get-the-bitcoind-binary">Get the <code>bitcoind</code> Binary</a></li>
+<li><a href="usage.html#run-subcoin-import-blocks">Run <code>subcoin import-blocks</code></a></li>
+<li><a href="usage.html#verify-the-utxo-set-state">Verify the UTXO Set State</a></li>
 </ul>
 </li>
+<li><a href="usage.html#syncing-the-bitcoin-network">Syncing the Bitcoin Network</a></li>
 </ul>
 <!-- /clap-markdown-toc -->
-<p>This page only describes a subnet of features supported in subcoin with details, check out <code>subcoin --help</code> for the full usage.</p>
-<h2 id="import-bitcoin-blocks-from-bitcoind-database"><a class="header" href="#import-bitcoin-blocks-from-bitcoind-database">Import bitcoin blocks from <code>bitcoind</code> database</a></h2>
-<h3 id="run-bitcoind"><a class="header" href="#run-bitcoind">Run <code>bitcoind</code></a></h3>
-<p>Firstly, we need to install the <code>bitcoind</code> binary which can be downloaded directly from <a href="https://bitcoincore.org/en/download/">https://bitcoincore.org/en/download</a>.
-And then we need to spin up a <code>bitcoind</code> node with <code>txindex</code> and <code>coinstatsindex</code> enabled. <code>txindex</code> is required to import the blocks in subcoin, <code>coinstatsindex</code> is required
-to query the UTXO set of specific block later.</p>
-<p>For instance, we use <code>/tmp/btc-data</code> as the data dir:</p>
-<!-- TODO: specify the exact version of bitcoind we are using here. -->
+<p>This page covers some specific features supported in Subcoin. For full usage details, refer to <code>subcoin --help</code>.</p>
+<h2 id="import-bitcoin-blocks-from-bitcoind-database"><a class="header" href="#import-bitcoin-blocks-from-bitcoind-database">Import Bitcoin Blocks from <code>bitcoind</code> Database</a></h2>
+<h3 id="get-the-bitcoind-binary"><a class="header" href="#get-the-bitcoind-binary">Get the <code>bitcoind</code> Binary</a></h3>
+<p>To have flexible control over <code>bitcoind</code> behavior, it’s recommended to compile the <code>bitcoind</code> binary from source rather than downloading it directly from <a href="https://github.com/bitcoin/bitcoin/releases">Bitcoin releases</a> which do not conveniently expose developer-oriented options. You can find the build instructions for your operating system under <code>build-*.md</code> in the <a href="https://github.com/bitcoin/bitcoin/tree/master/doc">Bitcoin repository</a>. For Linux, refer to <a href="https://github.com/bitcoin/bitcoin/blob/master/doc/build-unix.md">build-unix.md</a>.</p>
+<pre><code class="language-bash"># Ensure these two commands exist after successfully compiling the Bitcoin Core source code.
+./src/bitcoind --help
+./src/bitcoin-cli --help
+</code></pre>
+<p>Next, start a <code>bitcoind</code> node with <code>txindex</code> and <code>coinstatsindex</code> enabled. <code>txindex</code> is necessary for importing blocks into Subcoin, and <code>coinstatsindex</code> is required to query and verify the UTXO set of a specific block later. For example, use <code>/tmp/btc-data</code> as the data directory:</p>
 <pre><code class="language-bash">mkdir -p /tmp/btc-data &amp;&amp; ./src/bitcoind -datadir=/tmp/btc-data -txindex -coinstatsindex
 </code></pre>
-<p>Keep the <code>bitcoind</code> process running for a while and ensure it has synced a number of blocks.</p>
-<pre><code class="language-text">...
-8-29T01:17:02Z' progress=0.001342 cache=33.0MiB(304329txo)
+<p>Keep the <code>bitcoind</code> process running for a while to ensure it has synchronized a number of blocks. Note that <code>bitcoind</code> will first synchronize the block headers and only start downloading blocks after the headers are synced. This step might take some time depending on the peer connections (10+ minutes on my machine).</p>
+<pre><code class="language-log">...
 2024-07-11T17:23:10Z UpdateTip: new best=00000000000008c273c4c215892eacbafec33c199cfd3d9b539cdb6aafc39f54 height=142979 version=0x00000001 log2_work=66.385350 tx=1392173 date='2011-08-29T01:23:19Z' progress=0.001342 cache=33.0MiB(304442txo)
-2024-07-11T17:23:10Z UpdateTip: new best=000000000000000f338e8635c5f78666f0ca2e6b70425fe22aad47d2087a2740 height=142980 version=0x00000001 log2_work=66.385466 tx=1392186 date='2011-08-29T01:29:29Z' progress=0.001342 cache=33.0MiB(304451txo)
-2024-07-11T17:23:10Z UpdateTip: new best=000000000000071504dedbc2edd4ae008aca9a6086afb3d4d9cd3cbdd0e67b04 height=142981 version=0x00000001 log2_work=66.385582 tx=1392218 date='2011-08-29T01:35:02Z' progress=0.001342 cache=33.0MiB(304470txo)
-2024-07-11T17:23:10Z UpdateTip: new best=00000000000001c59463d1a0b6d70274ed4aea4cf757289363ff99f670f02812 height=142982 version=0x00000001 log2_work=66.385698 tx=1392232 date='2011-08-29T01:37:36Z' progress=0.001342 cache=33.0MiB(304605txo)
+...
 </code></pre>
-<p>Now stop the <code>bitcoind</code> process and proceed to import the blocks in <code>bitcoind</code> database into subcoin.</p>
+<p>Stop the <code>bitcoind</code> process and proceed to import the blocks from the <code>bitcoind</code> database into Subcoin.</p>
 <h3 id="run-subcoin-import-blocks"><a class="header" href="#run-subcoin-import-blocks">Run <code>subcoin import-blocks</code></a></h3>
-<pre><code class="language-bash">target/release/subcoin import-blocks /tmp/btc-data
+<p>Ensure you have installed <code>subcoin</code>. If not, refer to <a href="./installation.html">installation</a> to install the <code>subcoin</code> binary.</p>
+<pre><code class="language-bash"># Specify `subcoin-data` as the data directory for Subcoin and import the blocks from `/tmp/btc-data` which is the `bitcoind` database we set up earlier.
+# `--state-pruning archive` is necessary for querying the state of the Subcoin UTXO set later.
+subcoin import-blocks /tmp/btc-data -d subcoin-data --state-pruning archive
 </code></pre>
-<p>You'll see the output like this:</p>
+<p>You should see output similar to this:</p>
 <pre><code class="language-log">2024-07-12 01:28:51 🔨 Initializing Genesis block/state (state: 0x1c68…f3f8, header-hash: 0xbdc8…a76b)
 2024-07-12 01:28:53 🏁 CPU score: 1.15 GiBs
 2024-07-12 01:28:53 🏁 Memory score: 13.87 GiBs
@@ -231,26 +235,61 @@ to query the UTXO set of specific block later.</p>
 2024-07-12 01:28:53 Start loading block_index
 2024-07-12 01:28:53 Successfully opened tx_index DB!
 2024-07-12 01:28:53 Start to import blocks from #1 to #142984 from bitcoind database: /tmp/btc-data
-2024-07-12 01:28:54 Imported 1000 blocks,, best#1001,00000000a2887344f8db859e372e7e4bc26b23b9de340f725afbf2edb265b4c6 (0x3ff4…6eb5)
-2024-07-12 01:28:54 Imported 2000 blocks, 3802.2 bps, best#2001,0000000067217a46c49054bad67cda2da943607d326e89896786de10b07cb7c0 (0x296d…6a47)
-2024-07-12 01:28:54 Imported 3000 blocks, 3636.3 bps, best#3001,00000000ee1d6b98d28b71c969d4bc8a20ee43a379ce49547bcad30c606d8845 (0xac16…c220)
-2024-07-12 01:28:54 Imported 4000 blocks, 3597.1 bps, best#4001,00000000a86f68e8de06c6b46623fdd16b7a11ad9651fa48ecbe8c731658dc06 (0xb5bd…8a28)
-2024-07-12 01:28:55 Imported 5000 blocks, 3773.5 bps, best#5001,00000000284bcd658fd7a76f5a88ee526f18592251341a05fd7f3d7abaf0c3ec (0x751f…3375)
-2024-07-12 01:28:55 Imported 6000 blocks, 3484.3 bps, best#6001,0000000055fcaf04cb9a82bb86b46a21b15fcaa75ac8c18679b0234f79c4c615 (0xcc4a…3090)
+2024-07-12 01:28:54 Imported 1000 blocks, best#1001,00000000a2887344f8db859e372e7e4bc26b23b9de340f725afbf2edb265b4c6 (0x3ff4…6eb5)
 ...
 </code></pre>
+<p>By default, Subcoin will import all blocks up to the latest indexed Bitcoin block in the <code>bitcoind</code> database. You can specify the total number of blocks to import or the target number of blocks to import:</p>
+<pre><code class="language-bash"># Import 20000 blocks from the best block of Subcoin.
+subcoin import-blocks /tmp/btc-data -d subcoin-data --block-count 20000
+
+# Import blocks up to height 30000.
+subcoin import-blocks /tmp/btc-data -d subcoin-data --end-block 30000
+</code></pre>
 <div class="warning">
-<p>NOTE: <em>The bitcoind process must be stopped when running the import-blocks command otherwise you will run into the following error</em>:</p>
+<p>NOTE: <em>The <code>bitcoind</code> process must be stopped when running the import-blocks command, otherwise you will encounter the following error</em>:</p>
 <pre><code class="language-text">Error: Application(OpError { kind: None, message: "LevelDB error: IO error: lock /tmp/btc-data/blocks/index/LOCK: Resource temporarily unavailable" })
 </code></pre>
 </div>
-<h3 id="verify-the-state-of-utxo-set"><a class="header" href="#verify-the-state-of-utxo-set">Verify the state of UTXO set</a></h3>
-<p><code>bitcoind</code> offers an interface to inspect the state of UTXO set, we can use it to check the the correctness of subcoin's the UTXO set after the blocks
-imported to the subcoin node successfully. For instance, export the UTXO set information at height 10000:</p>
-<pre><code class="language-bash">./src/bitcoin-cli -datadir=/tmp/btc-data gettxoutsetinfo none 10000 true
+<h3 id="verify-the-utxo-set-state"><a class="header" href="#verify-the-utxo-set-state">Verify the UTXO Set State</a></h3>
+<p><code>bitcoind</code> provides an interface to inspect the UTXO set state. This can be used to check the correctness of Subcoin’s UTXO set after importing blocks. For example, to export the UTXO set of <code>bitcoind</code> at height 10000:</p>
+<pre><code class="language-bash"># Note that running this command requires the bitcoind process running in the background.
+# If it was stopped, now restart it. You can stop it again after this command finishes.
+./src/bitcoin-cli -datadir=/tmp/btc-data gettxoutsetinfo none 10000 true
+{
+  "height": 10000,
+  "bestblock": "0000000099c744455f58e6c6e98b671e1bf7f37346bfd4cf5d0274ad8ee660cb",
+  "txouts": 9494,
+  "bogosize": 1109244,
+  "total_amount": 500000.00000000,
+  "total_unspendable_amount": 50.00000000,
+  "block_info": {
+    "prevout_spent": 0.00000000,
+    "coinbase": 50.00000000,
+    "new_outputs_ex_coinbase": 0.00000000,
+    "unspendable": 0.00000000,
+    "unspendables": {
+      "genesis_block": 0.00000000,
+      "bip30": 0.00000000,
+      "scripts": 0.00000000,
+      "unclaimed_rewards": 0.00000000
+    }
+  }
+}
 </code></pre>
-<p>Check out the state of UTXO set in subcoin at the same height:</p>
-<pre><code class="language-bash">./target/release/subcoin blockchain gettxoutsetinfo --height 10000 -d /tmp/subcoin-data
+<p>Check the state of the UTXO set in Subcoin at the same height:</p>
+<pre><code class="language-bash"># Note that the existing `gettxoutsetinfo` only displays a subset of the information in `bitcoind`.
+subcoin blockchain gettxoutsetinfo --height 10000 -d subcoin-data
+block_number: 10000
+block_hash: 0000000099c744455f58e6c6e98b671e1bf7f37346bfd4cf5d0274ad8ee660cb
+txouts: 9494
+bogosize: 1109244
+total_amount: 500000.00000000
+</code></pre>
+<h2 id="syncing-the-bitcoin-network"><a class="header" href="#syncing-the-bitcoin-network">Syncing the Bitcoin Network</a></h2>
+<p>Run the following command to sync the Bitcoin blockchain from the Bitcoin P2P network. The <code>--log subcoin_network=debug</code> option
+will enable debug-level logging to show detailed information about the syncing process. By default, the block will be fully verified.
+You can use <code>--block-verification=none</code> to skip the block verification. Check out <code>subcoin run --help</code> for more options.</p>
+<pre><code class="language-bash">subcoin run -d data --log subcoin_network=debug
 </code></pre>
 
                     </main>

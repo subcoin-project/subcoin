@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/peer_manager.rs`."><title>peer_manager.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-5ca6ca2a1f83705a.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (c1a6199e9 2024-07-24)" data-channel="nightly" data-search-js="search-d234aafac6c221dd.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-d2fab2bf619172d3.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/peer_manager.rs`."><title>peer_manager.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-5ca6ca2a1f83705a.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (7c2012d0e 2024-07-26)" data-channel="nightly" data-search-js="search-d234aafac6c221dd.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-d2fab2bf619172d3.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -644,6 +644,54 @@
 <a href="#644" id="644">644</a>
 <a href="#645" id="645">645</a>
 <a href="#646" id="646">646</a>
+<a href="#647" id="647">647</a>
+<a href="#648" id="648">648</a>
+<a href="#649" id="649">649</a>
+<a href="#650" id="650">650</a>
+<a href="#651" id="651">651</a>
+<a href="#652" id="652">652</a>
+<a href="#653" id="653">653</a>
+<a href="#654" id="654">654</a>
+<a href="#655" id="655">655</a>
+<a href="#656" id="656">656</a>
+<a href="#657" id="657">657</a>
+<a href="#658" id="658">658</a>
+<a href="#659" id="659">659</a>
+<a href="#660" id="660">660</a>
+<a href="#661" id="661">661</a>
+<a href="#662" id="662">662</a>
+<a href="#663" id="663">663</a>
+<a href="#664" id="664">664</a>
+<a href="#665" id="665">665</a>
+<a href="#666" id="666">666</a>
+<a href="#667" id="667">667</a>
+<a href="#668" id="668">668</a>
+<a href="#669" id="669">669</a>
+<a href="#670" id="670">670</a>
+<a href="#671" id="671">671</a>
+<a href="#672" id="672">672</a>
+<a href="#673" id="673">673</a>
+<a href="#674" id="674">674</a>
+<a href="#675" id="675">675</a>
+<a href="#676" id="676">676</a>
+<a href="#677" id="677">677</a>
+<a href="#678" id="678">678</a>
+<a href="#679" id="679">679</a>
+<a href="#680" id="680">680</a>
+<a href="#681" id="681">681</a>
+<a href="#682" id="682">682</a>
+<a href="#683" id="683">683</a>
+<a href="#684" id="684">684</a>
+<a href="#685" id="685">685</a>
+<a href="#686" id="686">686</a>
+<a href="#687" id="687">687</a>
+<a href="#688" id="688">688</a>
+<a href="#689" id="689">689</a>
+<a href="#690" id="690">690</a>
+<a href="#691" id="691">691</a>
+<a href="#692" id="692">692</a>
+<a href="#693" id="693">693</a>
+<a href="#694" id="694">694</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::address_book::AddressBook;
 <span class="kw">use </span><span class="kw">crate</span>::connection::{ConnectionInitiator, ConnectionWriter, Direction, NewConnection};
 <span class="kw">use crate</span>::{validate_outbound_services, Error, Latency, PeerId};
@@ -672,6 +720,15 @@
 <span class="doccomment">/// Minimum supported peer protocol version.
 /// This version includes support for the `sendheaders` feature.
 </span><span class="kw">pub const </span>MIN_PROTOCOL_VERSION: u32 = <span class="number">70012</span>;
+
+<span class="doccomment">/// Peer is considered as a slow one if the average ping latency is higher than 5 seconds.
+</span><span class="kw">const </span>SLOW_PEER_LATENCY: Latency = <span class="number">5_000</span>;
+
+<span class="doccomment">/// Interval for evicting the slowest peer, 10 minutes.
+///
+/// Periodically evict the slowest peer whose latency is above the threshold [`SLOW_PEER_LATENCY`]
+/// when the peer set is full. This creates opportunities to connect with potentially better peers.
+</span><span class="kw">const </span>EVICTION_INTERVAL: Duration = Duration::from_secs(<span class="number">600</span>);
 
 <span class="doccomment">/// Peer configuration.
 </span><span class="attr">#[derive(Debug, Clone)]
@@ -876,6 +933,12 @@
     }
 }
 
+<span class="attr">#[derive(Debug)]
+</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">struct </span>SlowPeer {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) peer_id: PeerId,
+    <span class="kw">pub</span>(<span class="kw">crate</span>) peer_latency: Latency,
+}
+
 <span class="doccomment">/// Manages the peers in the network.
 </span><span class="kw">pub struct </span>PeerManager&lt;Block, Client&gt; {
     config: Config,
@@ -886,6 +949,8 @@
     connected_peers: HashMap&lt;PeerId, PeerInfo&gt;,
     max_outbound_peers: usize,
     connection_initiator: ConnectionInitiator,
+    <span class="doccomment">/// Time at which the slowest peer was evicted.
+    </span>last_eviction: Instant,
     rng: fastrand::Rng,
     _phantom: PhantomData&lt;Block&gt;,
 }
@@ -911,12 +976,13 @@
             connected_peers: HashMap::new(),
             max_outbound_peers,
             connection_initiator,
+            last_eviction: Instant::now(),
             rng: fastrand::Rng::new(),
             _phantom: Default::default(),
         }
     }
 
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>on_tick(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>on_tick(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;SlowPeer&gt; {
         <span class="kw">let </span><span class="kw-2">mut </span>timeout_peers = <span class="macro">vec!</span>[];
         <span class="kw">let </span><span class="kw-2">mut </span>should_ping_peers = <span class="macro">vec!</span>[];
 
@@ -951,7 +1017,33 @@
                     <span class="self">self</span>.connection_initiator.initiate_outbound_connection(addr);
                 }
             }
-        }
+            <span class="prelude-val">None
+        </span>} <span class="kw">else if </span><span class="self">self</span>.last_eviction.elapsed() &gt; EVICTION_INTERVAL {
+            <span class="comment">// The set of outbound peers is full and the eviction interval elapsed,
+            // try to evict the slowest peer for discovering potential better peers.
+            </span><span class="self">self</span>.find_slowest_peer()
+        } <span class="kw">else </span>{
+            <span class="prelude-val">None
+        </span>}
+    }
+
+    <span class="kw">fn </span>find_slowest_peer(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;SlowPeer&gt; {
+        <span class="self">self</span>.connected_peers
+            .iter()
+            .filter_map(|(peer_id, peer_info)| {
+                <span class="kw">let </span>average_latency = peer_info.ping_latency.average();
+
+                <span class="kw">if </span>average_latency &gt; SLOW_PEER_LATENCY {
+                    <span class="prelude-val">Some</span>((peer_id, average_latency))
+                } <span class="kw">else </span>{
+                    <span class="prelude-val">None
+                </span>}
+            })
+            .max_by_key(|(_peer_id, average_latency)| <span class="kw-2">*</span>average_latency)
+            .map(|(peer_id, peer_latency)| SlowPeer {
+                peer_id: <span class="kw-2">*</span>peer_id,
+                peer_latency,
+            })
     }
 
     <span class="kw">fn </span>send_pings(<span class="kw-2">&amp;mut </span><span class="self">self</span>, should_pings: Vec&lt;PeerId&gt;) {
@@ -1016,6 +1108,10 @@
         <span class="self">self</span>.connected_peers.entry(peer_id).and_modify(|info| {
             info.prefer_headers = <span class="bool-val">true</span>;
         });
+    }
+
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>update_last_eviction(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
+        <span class="self">self</span>.last_eviction = Instant::now();
     }
 
     <span class="doccomment">/// Checks if a peer is connected.
