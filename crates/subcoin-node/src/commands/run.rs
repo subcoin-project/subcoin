@@ -1,6 +1,9 @@
 use crate::cli::params::{CommonParams, NetworkParams};
 use clap::Parser;
-use sc_cli::{DatabasePruningMode, ImportParams, NodeKeyParams, PruningParams, Role, SharedParams};
+use sc_cli::{
+    DatabasePruningMode, ImportParams, NodeKeyParams, PrometheusParams, PruningParams, Role,
+    SharedParams,
+};
 use sc_client_api::UsageProvider;
 use sc_consensus_nakamoto::{BitcoinBlockImporter, BlockVerification, ImportConfig};
 use sc_service::{BlocksPruning, Configuration, TaskManager};
@@ -29,6 +32,10 @@ pub struct Run {
     /// Do not run the finalizer which will finalize the blocks on confirmation depth.
     #[clap(long)]
     pub no_finalizer: bool,
+
+    #[allow(missing_docs)]
+    #[clap(flatten)]
+    pub prometheus_params: PrometheusParams,
 
     #[allow(missing_docs)]
     #[clap(flatten)]
@@ -63,6 +70,7 @@ pub struct RunCmd {
     shared_params: SharedParams,
     pruning_params: PruningParams,
     import_params: ImportParams,
+    prometheus_params: PrometheusParams,
 }
 
 impl RunCmd {
@@ -75,6 +83,7 @@ impl RunCmd {
         Self {
             shared_params,
             pruning_params,
+            prometheus_params: run.prometheus_params.clone(),
             import_params: run.import_params.clone(),
         }
     }
@@ -95,9 +104,12 @@ impl RunCmd {
 
         let subcoin_service::NodeComponents {
             client,
+            backend,
             mut task_manager,
             block_executor,
             system_rpc_tx,
+            keystore_container,
+            telemetry,
             ..
         } = subcoin_service::new_node(subcoin_service::SubcoinConfiguration {
             network,
@@ -173,7 +185,35 @@ impl RunCmd {
         };
 
         let rpc = sc_service::start_rpc_servers(&config, gen_rpc_module, None)?;
-        task_manager.keep_alive((config.base_path, rpc));
+        task_manager.keep_alive((config.base_path.clone(), rpc));
+
+        match config.network.network_backend {
+            sc_network::config::NetworkBackendType::Libp2p => {
+                subcoin_service::start_substrate_network::<
+                    sc_network::NetworkWorker<
+                        subcoin_runtime::interface::OpaqueBlock,
+                        <subcoin_runtime::interface::OpaqueBlock as sp_runtime::traits::Block>::Hash,
+                    >,
+                >(
+                    config,
+                    client.clone(),
+                    backend,
+                    &mut task_manager,
+                    keystore_container.keystore(),
+                    telemetry,
+                )?;
+            }
+            sc_network::config::NetworkBackendType::Litep2p => {
+                subcoin_service::start_substrate_network::<sc_network::Litep2pNetworkBackend>(
+                    config,
+                    client.clone(),
+                    backend,
+                    &mut task_manager,
+                    keystore_container.keystore(),
+                    telemetry,
+                )?;
+            }
+        }
 
         if !no_finalizer {
             spawn_handle.spawn("finalizer", None, {
@@ -222,5 +262,15 @@ impl sc_cli::CliConfiguration for RunCmd {
     fn blocks_pruning(&self) -> sc_cli::Result<BlocksPruning> {
         // TODO: configurable blocks pruning
         Ok(BlocksPruning::KeepAll)
+    }
+
+    fn prometheus_config(
+        &self,
+        default_listen_port: u16,
+        chain_spec: &Box<dyn sc_service::ChainSpec>,
+    ) -> sc_cli::Result<Option<sc_service::config::PrometheusConfig>> {
+        Ok(self
+            .prometheus_params
+            .prometheus_config(default_listen_port, chain_spec.id().to_string()))
     }
 }

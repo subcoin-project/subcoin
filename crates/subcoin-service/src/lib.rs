@@ -19,6 +19,7 @@ use sc_consensus_nakamoto::{BlockExecutionStrategy, BlockExecutor};
 use sc_executor::NativeElseWasmExecutor;
 use sc_network::PeerId;
 use sc_service::error::Error as ServiceError;
+use sc_service::KeystoreContainer;
 use sc_service::{Configuration, NativeExecutionDispatch, Role, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
@@ -181,6 +182,8 @@ pub struct NodeComponents {
     pub block_executor: Box<dyn BlockExecutor<Block>>,
     /// TODO: useless, remove later?
     pub system_rpc_tx: TracingUnboundedSender<sc_rpc::system::Request<Block>>,
+    pub keystore_container: KeystoreContainer,
+    pub telemetry: Option<Telemetry>,
 }
 
 /// Subcoin node configuration.
@@ -252,7 +255,7 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
         executor.clone(),
     )?;
 
-    let (client, backend, _keystore_container, task_manager) =
+    let (client, backend, keystore_container, task_manager) =
         sc_service::new_full_parts_with_genesis_builder::<Block, RuntimeApi, _, _>(
             config,
             telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
@@ -352,6 +355,8 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
         task_manager,
         block_executor,
         system_rpc_tx,
+        keystore_container,
+        telemetry,
     })
 }
 
