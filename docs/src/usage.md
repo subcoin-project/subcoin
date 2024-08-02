@@ -136,3 +136,11 @@ You can use `--block-verification=none` to skip the block verification. Check ou
 ```bash
 subcoin run -d data --log subcoin_network=debug
 ```
+
+```bash
+# For Docker users.
+docker run -d -v data:/node-data --user root --name subcoin ghcr.io/subcoin-project/subcoin:v0.2.0 run -d /node-data --log subcoin_network=debug
+
+# Check out the log.
+docker logs -f subcoin
+```
