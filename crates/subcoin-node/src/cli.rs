@@ -16,7 +16,7 @@ use subcoin_primitives::CONFIRMATION_DEPTH;
 #[derive(Debug, clap::Subcommand)]
 pub enum Command {
     /// Run subcoin node.
-    Run(Run),
+    Run(Box<Run>),
 
     /// Import blocks from bitcoind database.
     ImportBlocks(ImportBlocks),
@@ -86,7 +86,7 @@ pub fn run() -> sc_cli::Result<()> {
             let runner = SubstrateCli.create_runner(&run_cmd)?;
             runner.run_node_until_exit(|config| async move {
                 run_cmd
-                    .start(config, run, no_hardware_benchmarks, storage_monitor)
+                    .start(config, *run, no_hardware_benchmarks, storage_monitor)
                     .await
             })
         }
