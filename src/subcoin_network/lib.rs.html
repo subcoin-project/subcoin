@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/lib.rs`."><title>lib.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-5ca6ca2a1f83705a.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (7c2012d0e 2024-07-26)" data-channel="nightly" data-search-js="search-d234aafac6c221dd.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-d2fab2bf619172d3.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/lib.rs`."><title>lib.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-970bf1bf55bd1c15.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (fd8d6fbe5 2024-08-02)" data-channel="nightly" data-search-js="search-ef54e092fea9c776.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-6fcc09bb2cf2f6ca.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -583,25 +583,25 @@
     <span class="kw">match </span>network {
         BitcoinNetwork::Bitcoin =&gt; {
             <span class="macro">vec!</span>[
-                <span class="string">"seed.bitcoin.sipa.be:8333"</span>,          <span class="comment">// Pieter Wuille
-                </span><span class="string">"dnsseed.bluematt.me:8333"</span>,           <span class="comment">// Matt Corallo
-                </span><span class="string">"dnsseed.bitcoin.dashjr.org:8333"</span>,    <span class="comment">// Luke Dashjr
-                </span><span class="string">"seed.bitcoinstats.com:8333"</span>,         <span class="comment">// Christian Decker
-                </span><span class="string">"seed.bitcoin.jonasschnelli.ch:8333"</span>, <span class="comment">// Jonas Schnelli
-                </span><span class="string">"seed.btc.petertodd.org:8333"</span>,        <span class="comment">// Peter Todd
-                </span><span class="string">"seed.bitcoin.sprovoost.nl:8333"</span>,     <span class="comment">// Sjors Provoost
-                </span><span class="string">"dnsseed.emzy.de:8333"</span>,               <span class="comment">// Stephan Oeste
-                </span><span class="string">"seed.bitcoin.wiz.biz:8333"</span>,          <span class="comment">// Jason Maurice
-                </span><span class="string">"seed.cloudhead.io:8333"</span>,             <span class="comment">// Alexis Sellier
+                <span class="string">"seed.bitcoin.sipa.be:8333"</span>,                        <span class="comment">// Pieter Wuille
+                </span><span class="string">"dnsseed.bluematt.me:8333"</span>,                         <span class="comment">// Matt Corallo
+                </span><span class="string">"dnsseed.bitcoin.dashjr-list-of-p2p-nodes.us:8333"</span>, <span class="comment">// Luke Dashjr
+                </span><span class="string">"seed.bitcoinstats.com:8333"</span>,                       <span class="comment">// Christian Decker
+                </span><span class="string">"seed.bitcoin.jonasschnelli.ch:8333"</span>,               <span class="comment">// Jonas Schnelli
+                </span><span class="string">"seed.btc.petertodd.net:8333"</span>,                      <span class="comment">// Peter Todd
+                </span><span class="string">"seed.bitcoin.sprovoost.nl:8333"</span>,                   <span class="comment">// Sjors Provoost
+                </span><span class="string">"dnsseed.emzy.de:8333"</span>,                             <span class="comment">// Stephan Oeste
+                </span><span class="string">"seed.bitcoin.wiz.biz:8333"</span>,                        <span class="comment">// Jason Maurice
+                </span><span class="string">"seed.mainnet.achownodes.xyz:8333"</span>,                 <span class="comment">// Ava Chow
             </span>]
         }
         BitcoinNetwork::Testnet =&gt; {
             <span class="macro">vec!</span>[
                 <span class="string">"testnet-seed.bitcoin.jonasschnelli.ch:18333"</span>,
-                <span class="string">"seed.tbtc.petertodd.org:18333"</span>,
+                <span class="string">"seed.tbtc.petertodd.net:18333"</span>,
+                <span class="string">"seed.testnet.bitcoin.sprovoost.nl:18333"</span>,
                 <span class="string">"testnet-seed.bluematt.me:18333"</span>,
-                <span class="string">"testnet-seed.bitcoin.schildbach.de:18333"</span>,
-                <span class="string">"testnet-seed.voskuil.org:18333"</span>,
+                <span class="string">"testnet-seed.achownodes.xyz:18333"</span>,
             ]
         }
         <span class="kw">_ </span>=&gt; Vec::new(),
