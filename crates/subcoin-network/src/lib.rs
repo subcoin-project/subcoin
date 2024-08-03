@@ -125,25 +125,25 @@ fn seednodes(network: BitcoinNetwork) -> Vec<&'static str> {
     match network {
         BitcoinNetwork::Bitcoin => {
             vec![
-                "seed.bitcoin.sipa.be:8333",          // Pieter Wuille
-                "dnsseed.bluematt.me:8333",           // Matt Corallo
-                "dnsseed.bitcoin.dashjr.org:8333",    // Luke Dashjr
-                "seed.bitcoinstats.com:8333",         // Christian Decker
-                "seed.bitcoin.jonasschnelli.ch:8333", // Jonas Schnelli
-                "seed.btc.petertodd.org:8333",        // Peter Todd
-                "seed.bitcoin.sprovoost.nl:8333",     // Sjors Provoost
-                "dnsseed.emzy.de:8333",               // Stephan Oeste
-                "seed.bitcoin.wiz.biz:8333",          // Jason Maurice
-                "seed.cloudhead.io:8333",             // Alexis Sellier
+                "seed.bitcoin.sipa.be:8333",                        // Pieter Wuille
+                "dnsseed.bluematt.me:8333",                         // Matt Corallo
+                "dnsseed.bitcoin.dashjr-list-of-p2p-nodes.us:8333", // Luke Dashjr
+                "seed.bitcoinstats.com:8333",                       // Christian Decker
+                "seed.bitcoin.jonasschnelli.ch:8333",               // Jonas Schnelli
+                "seed.btc.petertodd.net:8333",                      // Peter Todd
+                "seed.bitcoin.sprovoost.nl:8333",                   // Sjors Provoost
+                "dnsseed.emzy.de:8333",                             // Stephan Oeste
+                "seed.bitcoin.wiz.biz:8333",                        // Jason Maurice
+                "seed.mainnet.achownodes.xyz:8333",                 // Ava Chow
             ]
         }
         BitcoinNetwork::Testnet => {
             vec![
                 "testnet-seed.bitcoin.jonasschnelli.ch:18333",
-                "seed.tbtc.petertodd.org:18333",
+                "seed.tbtc.petertodd.net:18333",
+                "seed.testnet.bitcoin.sprovoost.nl:18333",
                 "testnet-seed.bluematt.me:18333",
-                "testnet-seed.bitcoin.schildbach.de:18333",
-                "testnet-seed.voskuil.org:18333",
+                "testnet-seed.achownodes.xyz:18333",
             ]
         }
         _ => Vec::new(),
