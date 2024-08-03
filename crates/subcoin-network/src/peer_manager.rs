@@ -425,8 +425,13 @@ where
         self.connected_peers.contains_key(&peer_id)
     }
 
+    /// Returns the list of connected peers.
+    pub(crate) fn connected_peers(&self) -> impl Iterator<Item = &PeerId> {
+        self.connected_peers.keys()
+    }
+
     /// Returns the number of connected peers.
-    pub(crate) fn connect_peers_count(&self) -> usize {
+    pub(crate) fn connected_peers_count(&self) -> usize {
         self.connected_peers.len()
     }
 

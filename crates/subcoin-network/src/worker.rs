@@ -1,8 +1,9 @@
 use crate::connection::{ConnectionInitiator, Direction, NewConnection};
 use crate::peer_manager::{Config, PeerManager, SlowPeer};
 use crate::sync::{ChainSync, LocatorRequest, SyncAction, SyncRequest};
+use crate::transaction_manager::TransactionManager;
 use crate::{Bandwidth, Error, Latency, NetworkStatus, NetworkWorkerMessage, PeerId, SyncStrategy};
-use bitcoin::p2p::message::NetworkMessage;
+use bitcoin::p2p::message::{NetworkMessage, MAX_INV_SIZE};
 use bitcoin::p2p::message_blockdata::{GetBlocksMessage, GetHeadersMessage, Inventory};
 use futures::stream::FusedStream;
 use futures::StreamExt;
@@ -44,6 +45,7 @@ pub struct NetworkWorker<Block, Client> {
     config: Config,
     network_event_receiver: UnboundedReceiver<Event>,
     peer_manager: PeerManager<Block, Client>,
+    transaction_manager: TransactionManager,
     chain_sync: ChainSync<Block, Client>,
 }
 
@@ -71,6 +73,7 @@ where
                 connection_initiator,
                 max_outbound_peers,
             ),
+            transaction_manager: TransactionManager::new(),
             chain_sync: ChainSync::new(client, import_queue, sync_strategy, is_major_syncing),
             config,
         }
@@ -115,42 +118,6 @@ where
         }
     }
 
-    fn perform_periodic_actions(&mut self) {
-        let sync_action = self.chain_sync.on_tick();
-        self.do_sync_action(sync_action);
-        if let Some(SlowPeer {
-            peer_id,
-            peer_latency,
-        }) = self.peer_manager.on_tick()
-        {
-            self.peer_manager
-                .disconnect(peer_id, Error::SlowPeer(peer_latency));
-            self.peer_manager.update_last_eviction();
-            self.chain_sync.remove_peer(peer_id);
-        }
-    }
-
-    fn process_worker_message(&self, worker_msg: NetworkWorkerMessage, bandwidth: &Bandwidth) {
-        match worker_msg {
-            NetworkWorkerMessage::NetworkStatus(result_sender) => {
-                let net_status = NetworkStatus {
-                    num_connected_peers: self.peer_manager.connect_peers_count(),
-                    total_bytes_inbound: bandwidth.total_bytes_inbound.load(Ordering::Relaxed),
-                    total_bytes_outbound: bandwidth.total_bytes_outbound.load(Ordering::Relaxed),
-                    sync_status: self.chain_sync.sync_status(),
-                };
-                let _ = result_sender.send(net_status);
-            }
-            NetworkWorkerMessage::SyncPeers(result_sender) => {
-                let sync_peers = self.chain_sync.peers.values().cloned().collect::<Vec<_>>();
-                let _ = result_sender.send(sync_peers);
-            }
-            NetworkWorkerMessage::InboundPeersCount(result_sender) => {
-                let _ = result_sender.send(self.peer_manager.inbound_peers_count());
-            }
-        }
-    }
-
     async fn process_event(&mut self, event: Event) {
         match event {
             Event::NewConnection(new_connection) => {
@@ -179,6 +146,54 @@ where
                         tracing::error!(?from, ?err, "Failed to process peer message: {msg_cmd}");
                     }
                 }
+            }
+        }
+    }
+
+    fn perform_periodic_actions(&mut self) {
+        let sync_action = self.chain_sync.on_tick();
+        self.do_sync_action(sync_action);
+
+        if let Some(SlowPeer {
+            peer_id,
+            peer_latency,
+        }) = self.peer_manager.on_tick()
+        {
+            self.peer_manager
+                .disconnect(peer_id, Error::SlowPeer(peer_latency));
+            self.peer_manager.update_last_eviction();
+            self.chain_sync.remove_peer(peer_id);
+        }
+
+        for (peer, txids) in self
+            .transaction_manager
+            .on_tick(self.peer_manager.connected_peers())
+        {
+            tracing::debug!("Broadcasting Txids {txids:?} to {peer:?}");
+            let msg = NetworkMessage::Inv(txids.into_iter().map(Inventory::Transaction).collect());
+            if let Err(err) = self.send(peer, msg) {
+                self.peer_manager.disconnect(peer, err);
+            }
+        }
+    }
+
+    fn process_worker_message(&self, worker_msg: NetworkWorkerMessage, bandwidth: &Bandwidth) {
+        match worker_msg {
+            NetworkWorkerMessage::NetworkStatus(result_sender) => {
+                let net_status = NetworkStatus {
+                    num_connected_peers: self.peer_manager.connected_peers_count(),
+                    total_bytes_inbound: bandwidth.total_bytes_inbound.load(Ordering::Relaxed),
+                    total_bytes_outbound: bandwidth.total_bytes_outbound.load(Ordering::Relaxed),
+                    sync_status: self.chain_sync.sync_status(),
+                };
+                let _ = result_sender.send(net_status);
+            }
+            NetworkWorkerMessage::SyncPeers(result_sender) => {
+                let sync_peers = self.chain_sync.peers.values().cloned().collect::<Vec<_>>();
+                let _ = result_sender.send(sync_peers);
+            }
+            NetworkWorkerMessage::InboundPeersCount(result_sender) => {
+                let _ = result_sender.send(self.peer_manager.inbound_peers_count());
             }
         }
     }
@@ -220,8 +235,8 @@ where
                 self.peer_manager.on_addr(from, addresses);
                 Ok(SyncAction::None)
             }
-            NetworkMessage::Tx(_tx) => {
-                // TODO: handle tx
+            NetworkMessage::Tx(tx) => {
+                tracing::info!("======================== TODO processing {tx:?}");
                 Ok(SyncAction::None)
             }
             NetworkMessage::GetData(inv) => {
@@ -280,7 +295,7 @@ where
                 self.send(from, NetworkMessage::FeeFilter(1000))?;
                 Ok(SyncAction::None)
             }
-            NetworkMessage::Inv(inv) => Ok(self.chain_sync.on_inv(inv, from)),
+            NetworkMessage::Inv(inv) => self.process_inv(from, inv),
             NetworkMessage::Block(block) => Ok(self.chain_sync.on_block(block, from)),
             NetworkMessage::Headers(headers) => Ok(self.chain_sync.on_headers(headers, from)),
             NetworkMessage::MerkleBlock(_) => Ok(SyncAction::None),
@@ -369,6 +384,16 @@ where
             };
             let _ = self.send(from, NetworkMessage::GetBlocks(msg));
         }
+    }
+
+    fn process_inv(&mut self, from: PeerId, inv: Vec<Inventory>) -> Result<SyncAction, Error> {
+        if inv.len() > MAX_INV_SIZE {
+            return Ok(SyncAction::Disconnect(from, Error::TooManyInventoryItems));
+        }
+
+        // TODO: handle getdata tx
+
+        Ok(self.chain_sync.on_inv(inv, from))
     }
 
     fn process_get_data(&self, get_data_requests: Vec<Inventory>) {

@@ -35,6 +35,7 @@ mod peer_manager;
 mod sync;
 #[cfg(test)]
 mod tests;
+mod transaction_manager;
 mod worker;
 
 use crate::connection::ConnectionInitiator;

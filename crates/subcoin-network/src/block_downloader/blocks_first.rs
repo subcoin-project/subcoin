@@ -2,7 +2,6 @@ use crate::block_downloader::BlockDownloadManager;
 use crate::sync::{LocatorRequest, SyncAction, SyncRequest};
 use crate::{Error, PeerId, SyncStatus};
 use bitcoin::hashes::Hash;
-use bitcoin::p2p::message::MAX_INV_SIZE;
 use bitcoin::p2p::message_blockdata::Inventory;
 use bitcoin::{Block as BitcoinBlock, BlockHash};
 use sc_client_api::AuxStore;
@@ -136,10 +135,6 @@ where
     // NOTE: `inv` can be received unsolicited as an announcement of a new block,
     // or in reply to `getblocks`.
     pub(crate) fn on_inv(&mut self, inventories: Vec<Inventory>, from: PeerId) -> SyncAction {
-        if inventories.len() > MAX_INV_SIZE {
-            return SyncAction::Disconnect(from, Error::TooManyInventoryItems);
-        }
-
         // TODO: only handle the data from self.peer_id?
 
         let mut block_data_request = Vec::new();
