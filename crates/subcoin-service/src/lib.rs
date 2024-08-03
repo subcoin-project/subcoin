@@ -10,7 +10,7 @@ mod transaction_adapter;
 use bitcoin::hashes::Hash;
 use block_executor::{new_block_executor, new_in_memory_client};
 use frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE;
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
 use genesis_block_builder::GenesisBlockBuilder;
 use sc_client_api::{AuxStore, BlockchainEvents, Finalizer, HeaderBackend};
 use sc_consensus::import_queue::BasicQueue;
@@ -18,8 +18,11 @@ use sc_consensus::{BlockImportParams, Verifier};
 use sc_consensus_nakamoto::{BlockExecutionStrategy, BlockExecutor};
 use sc_executor::NativeElseWasmExecutor;
 use sc_network::PeerId;
+use sc_service::config::PrometheusConfig;
 use sc_service::error::Error as ServiceError;
-use sc_service::{Configuration, KeystoreContainer, NativeExecutionDispatch, Role, TaskManager};
+use sc_service::{
+    Configuration, KeystoreContainer, MetricsService, NativeExecutionDispatch, Role, TaskManager,
+};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_core::traits::SpawnNamed;
@@ -361,11 +364,11 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
 
 /// Runs the Substrate networking.
 pub fn start_substrate_network<N>(
-    config: Configuration,
+    mut config: Configuration,
     client: Arc<FullClient>,
-    backend: Arc<FullBackend>,
+    _backend: Arc<FullBackend>,
     task_manager: &mut TaskManager,
-    keystore: KeystorePtr,
+    _keystore: KeystorePtr,
     mut telemetry: Option<Telemetry>,
 ) -> Result<(), ServiceError>
 where
@@ -386,14 +389,14 @@ where
     );
 
     let import_queue = BasicQueue::new(
-        VerifyNothing,
+        ImportQueueVerifier,
         Box::new(client.clone()),
         None,
         &task_manager.spawn_essential_handle(),
         None,
     );
 
-    let (network, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
+    let (network, system_rpc_tx, _tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config: &config,
             net_config,
@@ -407,25 +410,65 @@ where
             metrics,
         })?;
 
-    let rpc_extensions_builder = {
-        // RPCs are started in `new_node`.
-        Box::new(move |_deny_unsafe, _| Ok(jsonrpsee::RpcModule::<()>::new(())))
-    };
+    // Custom `sc_service::spawn_tasks` with some needless tasks removed.
+    let spawn_handle = task_manager.spawn_handle();
 
-    let _rpc_handlers = sc_service::spawn_tasks(sc_service::SpawnTasksParams {
-        network: Arc::new(network.clone()),
-        client: client.clone(),
-        keystore,
-        task_manager,
-        transaction_pool: transaction_pool.clone(),
-        rpc_builder: rpc_extensions_builder,
-        backend,
-        system_rpc_tx,
-        tx_handler_controller,
-        sync_service: sync_service.clone(),
-        config,
-        telemetry: telemetry.as_mut(),
-    })?;
+    let sysinfo = sc_sysinfo::gather_sysinfo();
+    sc_sysinfo::print_sysinfo(&sysinfo);
+
+    let telemetry = telemetry
+        .as_mut()
+        .map(|telemetry| {
+            sc_service::init_telemetry(
+                &mut config,
+                network.clone(),
+                client.clone(),
+                telemetry,
+                Some(sysinfo),
+            )
+        })
+        .transpose()?;
+
+    // Prometheus metrics.
+    let metrics_service =
+        if let Some(PrometheusConfig { port, registry }) = config.prometheus_config.clone() {
+            // Set static metrics.
+            let metrics = MetricsService::with_prometheus(telemetry, &registry, &config)?;
+            spawn_handle.spawn(
+                "prometheus-endpoint",
+                None,
+                substrate_prometheus_endpoint::init_prometheus(port, registry).map(drop),
+            );
+
+            metrics
+        } else {
+            MetricsService::new(telemetry)
+        };
+
+    // Periodically updated metrics and telemetry updates.
+    spawn_handle.spawn(
+        "telemetry-periodic-send",
+        None,
+        metrics_service.run(
+            client.clone(),
+            transaction_pool.clone(),
+            network.clone(),
+            sync_service.clone(),
+        ),
+    );
+
+    spawn_handle.spawn(
+        "substrate-informant",
+        None,
+        sc_informant::build(
+            client.clone(),
+            Arc::new(network),
+            sync_service.clone(),
+            config.informant_output_format,
+        ),
+    );
+
+    task_manager.keep_alive(system_rpc_tx);
 
     network_starter.start_network();
 
@@ -556,7 +599,7 @@ pub fn new_partial(config: &Configuration) -> Result<PartialComponents, ServiceE
     );
 
     let import_queue = BasicQueue::new(
-        VerifyNothing,
+        ImportQueueVerifier,
         Box::new(client.clone()),
         None,
         &task_manager.spawn_essential_handle(),
@@ -575,14 +618,17 @@ pub fn new_partial(config: &Configuration) -> Result<PartialComponents, ServiceE
     })
 }
 
-pub struct VerifyNothing;
+/// Verifier used by the import queue.
+pub struct ImportQueueVerifier;
 
 #[async_trait::async_trait]
-impl<Block: BlockT> Verifier<Block> for VerifyNothing {
+impl<Block: BlockT> Verifier<Block> for ImportQueueVerifier {
     async fn verify(
         &self,
-        block: BlockImportParams<Block>,
+        mut block: BlockImportParams<Block>,
     ) -> Result<BlockImportParams<Block>, String> {
-        Ok(BlockImportParams::new(block.origin, block.header))
+        // TODO: PowVerifier
+        block.fork_choice = Some(sc_consensus::ForkChoiceStrategy::LongestChain);
+        Ok(block)
     }
 }

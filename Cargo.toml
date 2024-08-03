@@ -71,6 +71,7 @@ sc-informant = { git = "https://github.com/subcoin-project/polkadot-sdk", branch
 sc-network = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v1" }
 sc-network-sync = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v1" }
 sc-rpc = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v1" }
+sc-rpc-api = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v1" }
 # Disable the default `rocksdb` feature
 sc-service = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v1", default-features = false }
 sc-storage-monitor = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v1" }
@@ -102,6 +103,7 @@ sp-trie = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "s
 sp-version = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v1", default-features = false }
 substrate-build-script-utils = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v1" }
 substrate-frame-rpc-system = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v1" }
+substrate-prometheus-endpoint = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v1", default-features = false }
 substrate-wasm-builder = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v1" }
 
 pallet-bitcoin = { path = "crates/pallet-bitcoin", default-features = false }

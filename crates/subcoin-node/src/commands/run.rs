@@ -1,8 +1,8 @@
 use crate::cli::params::{CommonParams, NetworkParams};
 use clap::Parser;
 use sc_cli::{
-    DatabasePruningMode, ImportParams, NodeKeyParams, PrometheusParams, PruningParams, Role,
-    SharedParams,
+    DatabasePruningMode, ImportParams, KeystoreParams, NetworkParams as SubstrateNetworkParams,
+    NodeKeyParams, PrometheusParams, PruningParams, Role, SharedParams,
 };
 use sc_client_api::UsageProvider;
 use sc_consensus_nakamoto::{BitcoinBlockImporter, BlockVerification, ImportConfig};
@@ -33,6 +33,10 @@ pub struct Run {
     #[clap(long)]
     pub no_finalizer: bool,
 
+    /// Disable the Bitcoin networking.
+    #[clap(long)]
+    pub disable_subcoin_networking: bool,
+
     #[allow(missing_docs)]
     #[clap(flatten)]
     pub prometheus_params: PrometheusParams,
@@ -44,6 +48,10 @@ pub struct Run {
     #[allow(missing_docs)]
     #[clap(flatten)]
     pub network_params: NetworkParams,
+
+    #[allow(missing_docs)]
+    #[clap(flatten)]
+    pub substrate_network_params: SubstrateNetworkParams,
 
     #[allow(missing_docs)]
     #[clap(flatten)]
@@ -71,6 +79,7 @@ pub struct RunCmd {
     pruning_params: PruningParams,
     import_params: ImportParams,
     prometheus_params: PrometheusParams,
+    substrate_network_params: SubstrateNetworkParams,
 }
 
 impl RunCmd {
@@ -85,6 +94,8 @@ impl RunCmd {
             pruning_params,
             prometheus_params: run.prometheus_params.clone(),
             import_params: run.import_params.clone(),
+            substrate_network_params: run.substrate_network_params.clone(),
+            // keystore_params: run.keystore_params.clone(),
         }
     }
 
@@ -152,15 +163,19 @@ impl RunCmd {
         );
 
         // TODO: handle Substrate networking and Bitcoin networking properly.
-        task_manager.spawn_essential_handle().spawn_blocking(
-            "subcoin-networking",
-            None,
-            async move {
-                if let Err(err) = bitcoin_network.run().await {
-                    tracing::error!(?err, "Subcoin network worker exited");
-                }
-            },
-        );
+        if !run.disable_subcoin_networking {
+            task_manager.spawn_essential_handle().spawn_blocking(
+                "subcoin-networking",
+                None,
+                async move {
+                    if let Err(err) = bitcoin_network.run().await {
+                        tracing::error!(?err, "Subcoin network worker exited");
+                    }
+                },
+            );
+        } else {
+            task_manager.keep_alive(bitcoin_network);
+        }
 
         // TODO: Bitcoin-compatible RPC
         // Start JSON-RPC server.
@@ -252,11 +267,15 @@ impl sc_cli::CliConfiguration for RunCmd {
     }
 
     fn node_key_params(&self) -> Option<&NodeKeyParams> {
-        None
+        Some(&self.substrate_network_params.node_key_params)
     }
 
     fn role(&self, _is_dev: bool) -> sc_cli::Result<Role> {
         Ok(Role::Full)
+    }
+
+    fn network_params(&self) -> Option<&SubstrateNetworkParams> {
+        Some(&self.substrate_network_params)
     }
 
     fn blocks_pruning(&self) -> sc_cli::Result<BlocksPruning> {
