@@ -65,6 +65,8 @@ pub type Latency = u128;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("Invalid bootnode address: {0}")]
+    InvalidBootnode(String),
     #[error("Received 0 bytes, peer performed an orderly shutdown")]
     PeerShutdown,
     #[error("Cannot communicate with the network event stream")]
@@ -75,6 +77,22 @@ pub enum Error {
     ConnectionNotFound(PeerId),
     #[error("Connecting to the stream timed out")]
     ConnectionTimeout,
+    #[error("Unexpected handshake state: {0:?}")]
+    UnexpectedHandshakeState(Box<HandshakeState>),
+    #[error("Only IPv4 peers are supported")]
+    Ipv4Only,
+    #[error("Peer is not a full node")]
+    NotFullNode,
+    #[error("Peer is not a segwit node")]
+    NotSegwitNode,
+    #[error("Peer's protocol version is too low")]
+    ProtocolVersionTooLow,
+    #[error("Too many block entries in inv message")]
+    TooManyBlockEntries,
+    #[error("Too many headers (> 2000)")]
+    TooManyHeaders,
+    #[error("Too many inventory items")]
+    TooManyInventoryItems,
     #[error("Ping timeout")]
     PingTimeout,
     #[error("Ping latency exceeds the threshold")]
@@ -83,28 +101,10 @@ pub enum Error {
     SlowPeer(Latency),
     #[error("Unexpected pong message")]
     UnexpectedPong,
-    #[error("Too many block entries in inv message")]
-    TooManyBlockEntries,
-    #[error("Too many headers (> 2000)")]
-    TooManyHeaders,
-    #[error("Too many inventory items ")]
-    TooManyInventoryItems,
-    #[error("Peer is not a full node")]
-    NotFullNode,
-    #[error("Peer is not a segwit node")]
-    NotSegwitNode,
-    #[error("Peer's protocol version is too low")]
-    ProtocolVersionTooLow,
     #[error("Invalid pong message: bad nonce")]
     BadPong,
-    #[error("Invalid bootnode address: {0}")]
-    InvalidBootnode(String),
     #[error("Received an unrequested block: {0:?}")]
     UnrequestedBlock(BlockHash),
-    #[error("Unexpected handshake state: {0:?}")]
-    UnexpectedHandshakeState(Box<HandshakeState>),
-    #[error("Only IPv4 peers are supported")]
-    Ipv4Only,
     #[error("Other: {0}")]
     Other(String),
     #[error(transparent)]

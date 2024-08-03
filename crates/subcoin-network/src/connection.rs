@@ -12,10 +12,10 @@ use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
+const MSG_HEADER_SIZE: usize = 24;
+
 /// Channel for sending messages to the peer.
 pub type ConnectionWriter = UnboundedSender<NetworkMessage>;
-
-const MSG_HEADER_SIZE: usize = 24;
 
 /// Represents the direction of connection.
 ///
