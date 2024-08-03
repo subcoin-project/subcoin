@@ -1,8 +1,8 @@
 use crate::cli::params::{CommonParams, NetworkParams};
 use clap::Parser;
 use sc_cli::{
-    DatabasePruningMode, ImportParams, NetworkParams as SubstrateNetworkParams, NodeKeyParams,
-    PrometheusParams, PruningParams, Role, SharedParams,
+    ImportParams, NetworkParams as SubstrateNetworkParams, NodeKeyParams, PrometheusParams, Role,
+    SharedParams,
 };
 use sc_client_api::UsageProvider;
 use sc_consensus_nakamoto::{BitcoinBlockImporter, BlockVerification, ImportConfig};
@@ -76,7 +76,6 @@ impl Run {
 /// Adapter of [`sc_cli::RunCmd`].
 pub struct RunCmd {
     shared_params: SharedParams,
-    pruning_params: PruningParams,
     import_params: ImportParams,
     prometheus_params: PrometheusParams,
     substrate_network_params: SubstrateNetworkParams,
@@ -85,13 +84,8 @@ pub struct RunCmd {
 impl RunCmd {
     pub fn new(run: &Run) -> Self {
         let shared_params = run.common_params.as_shared_params();
-        let pruning_params = PruningParams {
-            state_pruning: Some(DatabasePruningMode::Archive),
-            blocks_pruning: DatabasePruningMode::Archive,
-        };
         Self {
             shared_params,
-            pruning_params,
             prometheus_params: run.prometheus_params.clone(),
             import_params: run.import_params.clone(),
             substrate_network_params: run.substrate_network_params.clone(),
@@ -259,10 +253,6 @@ impl sc_cli::CliConfiguration for RunCmd {
 
     fn import_params(&self) -> Option<&ImportParams> {
         Some(&self.import_params)
-    }
-
-    fn pruning_params(&self) -> Option<&PruningParams> {
-        Some(&self.pruning_params)
     }
 
     fn node_key_params(&self) -> Option<&NodeKeyParams> {
