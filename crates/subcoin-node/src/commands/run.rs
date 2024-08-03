@@ -1,12 +1,12 @@
 use crate::cli::params::{CommonParams, NetworkParams};
 use clap::Parser;
 use sc_cli::{
-    DatabasePruningMode, ImportParams, KeystoreParams, NetworkParams as SubstrateNetworkParams,
-    NodeKeyParams, PrometheusParams, PruningParams, Role, SharedParams,
+    DatabasePruningMode, ImportParams, NetworkParams as SubstrateNetworkParams, NodeKeyParams,
+    PrometheusParams, PruningParams, Role, SharedParams,
 };
 use sc_client_api::UsageProvider;
 use sc_consensus_nakamoto::{BitcoinBlockImporter, BlockVerification, ImportConfig};
-use sc_service::{BlocksPruning, Configuration, TaskManager};
+use sc_service::{Configuration, TaskManager};
 use std::sync::Arc;
 use subcoin_network::SyncStrategy;
 use subcoin_primitives::CONFIRMATION_DEPTH;
@@ -95,7 +95,6 @@ impl RunCmd {
             prometheus_params: run.prometheus_params.clone(),
             import_params: run.import_params.clone(),
             substrate_network_params: run.substrate_network_params.clone(),
-            // keystore_params: run.keystore_params.clone(),
         }
     }
 
@@ -276,11 +275,6 @@ impl sc_cli::CliConfiguration for RunCmd {
 
     fn network_params(&self) -> Option<&SubstrateNetworkParams> {
         Some(&self.substrate_network_params)
-    }
-
-    fn blocks_pruning(&self) -> sc_cli::Result<BlocksPruning> {
-        // TODO: configurable blocks pruning
-        Ok(BlocksPruning::KeepAll)
     }
 
     fn prometheus_config(
