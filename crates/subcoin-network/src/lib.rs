@@ -41,7 +41,7 @@ mod worker;
 use crate::connection::ConnectionInitiator;
 use crate::worker::NetworkWorker;
 use bitcoin::p2p::ServiceFlags;
-use bitcoin::{BlockHash, Network as BitcoinNetwork};
+use bitcoin::{BlockHash, Network as BitcoinNetwork, Transaction, Txid};
 use peer_manager::HandshakeState;
 use sc_client_api::{AuxStore, HeaderBackend};
 use sc_consensus_nakamoto::BlockImportQueue;
@@ -227,8 +227,10 @@ enum NetworkWorkerMessage {
     SyncPeers(oneshot::Sender<Vec<PeerSync>>),
     /// Retrieve the number of inbound connected peers.
     InboundPeersCount(oneshot::Sender<usize>),
+    /// Retrieve the transaction.
+    GetTransaction((Txid, oneshot::Sender<Option<Transaction>>)),
     /// Add transaction to the transaction manager.
-    SendRawTransaction(Vec<u8>),
+    SendTransaction(Transaction),
 }
 
 /// A handle for interacting with the network worker.
@@ -271,14 +273,28 @@ impl NetworkHandle {
         receiver.await.unwrap_or_default()
     }
 
-    pub fn send_transaction(&self, raw_tx: Vec<u8>) {
-        let tx_size = raw_tx.len();
+    pub async fn get_transaction(&self, txid: Txid) -> Option<Transaction> {
+        let (sender, receiver) = oneshot::channel();
+
         if self
             .worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::SendRawTransaction(raw_tx))
+            .unbounded_send(NetworkWorkerMessage::GetTransaction((txid, sender)))
             .is_err()
         {
-            tracing::error!("Failed to send raw tx ({tx_size} bytes) to worker");
+            return None;
+        }
+
+        receiver.await.ok().flatten()
+    }
+
+    pub fn send_transaction(&self, tx: Transaction) {
+        let txid = tx.compute_txid();
+        if self
+            .worker_msg_sender
+            .unbounded_send(NetworkWorkerMessage::SendTransaction(tx))
+            .is_err()
+        {
+            tracing::error!("Failed to send transaction ({txid}) to worker");
         }
     }
 

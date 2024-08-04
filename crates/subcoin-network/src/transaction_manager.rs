@@ -1,5 +1,4 @@
 use crate::PeerId;
-use bitcoin::consensus::deserialize;
 use bitcoin::{Transaction, Txid};
 use indexmap::map::Entry;
 use indexmap::IndexMap;
@@ -88,12 +87,6 @@ impl TransactionManager {
         self.transactions
             .get(txid)
             .map(|tx_info| tx_info.transaction.clone())
-    }
-
-    pub fn add_raw_transaction(&mut self, raw_tx: &[u8]) {
-        if let Ok(transaction) = deserialize::<Transaction>(raw_tx) {
-            self.add_transaction(transaction);
-        }
     }
 
     pub fn add_transaction(&mut self, transaction: Transaction) {

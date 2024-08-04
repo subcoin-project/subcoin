@@ -195,8 +195,11 @@ where
             NetworkWorkerMessage::InboundPeersCount(result_sender) => {
                 let _ = result_sender.send(self.peer_manager.inbound_peers_count());
             }
-            NetworkWorkerMessage::SendRawTransaction(raw_tx) => {
-                self.transaction_manager.add_raw_transaction(&raw_tx);
+            NetworkWorkerMessage::GetTransaction((txid, result_sender)) => {
+                let _ = result_sender.send(self.transaction_manager.get_transaction(&txid));
+            }
+            NetworkWorkerMessage::SendTransaction(tx) => {
+                self.transaction_manager.add_transaction(tx);
             }
         }
     }

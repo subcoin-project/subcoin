@@ -1,4 +1,6 @@
 use crate::error::Error;
+use bitcoin::consensus::encode::{deserialize_hex, serialize_hex};
+use bitcoin::{Transaction, Txid};
 use jsonrpsee::proc_macros::rpc;
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 use serde::{Deserialize, Serialize};
@@ -26,9 +28,13 @@ pub trait SubcoinApi {
     #[method(name = "subcoin_networkPeers")]
     async fn network_peers(&self) -> Result<NetworkPeers, Error>;
 
-    /// Send the raw transaction to the network.
-    #[method(name = "subcoin_sendTransaction", blocking)]
-    fn send_transaction(&self, raw_tx: Vec<u8>) -> Result<(), Error>;
+    /// Send the raw transaction in hex string to the network.
+    #[method(name = "subcoin_getRawTransaction")]
+    async fn get_raw_transaction(&self, txid: Txid) -> Result<Option<String>, Error>;
+
+    /// Send the raw transaction in hex string to the network.
+    #[method(name = "subcoin_sendRawTransaction", blocking)]
+    fn send_raw_transaction(&self, raw_tx: String) -> Result<(), Error>;
 }
 
 /// This struct provides the Subcoin API.
@@ -92,8 +98,14 @@ where
         })
     }
 
-    fn send_transaction(&self, raw_tx: Vec<u8>) -> Result<(), Error> {
-        self.network_handle.send_transaction(raw_tx);
+    async fn get_raw_transaction(&self, txid: Txid) -> Result<Option<String>, Error> {
+        let maybe_transaction = self.network_handle.get_transaction(txid).await;
+        Ok(maybe_transaction.as_ref().map(serialize_hex))
+    }
+
+    fn send_raw_transaction(&self, raw_tx: String) -> Result<(), Error> {
+        self.network_handle
+            .send_transaction(deserialize_hex::<Transaction>(&raw_tx)?);
         Ok(())
     }
 }
