@@ -18,6 +18,8 @@ pub enum Error {
     Blockchain(#[from] sp_blockchain::Error),
     #[error(transparent)]
     DecodeHex(#[from] FromHexError),
+    #[error(transparent)]
+    SerdeJson(#[from] serde_json::Error),
     /// Client error.
     #[error("Client error: {0}")]
     Client(#[from] Box<dyn std::error::Error + Send + Sync>),

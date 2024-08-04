@@ -98,11 +98,11 @@ impl TransactionManager {
 
         match self.transactions.entry(txid) {
             Entry::Occupied(_) => {
-                tracing::debug!("Tx {txid} already exists");
+                tracing::debug!("Transaction {txid} already exists");
             }
             Entry::Vacant(entry) => {
                 entry.insert(TransactionInfo::new(transaction));
-                tracing::debug!("Added new tx {txid}");
+                tracing::debug!("Added new transaction {txid}");
             }
         }
     }

@@ -169,7 +169,7 @@ where
             .transaction_manager
             .on_tick(self.peer_manager.connected_peers())
         {
-            tracing::debug!("Broadcasting Txids {txids:?} to {peer:?}");
+            tracing::debug!("Broadcasting transaction IDs {txids:?} to {peer:?}");
             let msg = NetworkMessage::Inv(txids.into_iter().map(Inventory::Transaction).collect());
             if let Err(err) = self.send(peer, msg) {
                 self.peer_manager.disconnect(peer, err);
