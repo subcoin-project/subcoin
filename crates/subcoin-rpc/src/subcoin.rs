@@ -12,6 +12,7 @@ use subcoin_network::{
 };
 
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NetworkPeers {
     total: usize,
     available: usize,

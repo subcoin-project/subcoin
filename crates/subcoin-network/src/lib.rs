@@ -178,6 +178,7 @@ pub enum SyncStrategy {
 
 /// Represents the sync status of node.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum SyncStatus {
     /// The node is idle and not currently major syncing.
     Idle,
@@ -192,6 +193,7 @@ pub enum SyncStatus {
 
 /// Represents the status of network.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NetworkStatus {
     /// The number of peers currently connected to the node.
     pub num_connected_peers: usize,
@@ -219,6 +221,7 @@ impl Clone for Bandwidth {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum SendTransactionResult {
     Success(Txid),
     Failure(String),

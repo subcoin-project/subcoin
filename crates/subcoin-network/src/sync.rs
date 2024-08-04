@@ -24,6 +24,7 @@ const LATENCY_IMPROVEMENT_THRESHOLD: f64 = 1.2;
 
 /// The state of syncing between a Peer and ourselves.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum PeerSyncState {
     /// Available for sync requests.
     Available,
@@ -42,6 +43,7 @@ impl PeerSyncState {
 
 /// Ping letency of the peer.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum PeerLatency {
     Unknown,
     Average(Latency),
@@ -66,6 +68,7 @@ impl PartialOrd for PeerLatency {
 
 /// Contains all the data about a Peer that we are trying to sync with.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PeerSync {
     /// Peer id of this peer.
     pub peer_id: PeerId,
