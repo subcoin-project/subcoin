@@ -1,4 +1,4 @@
-use crate::PeerId;
+use crate::{IncomingTransaction, PeerId};
 use bitcoin::{Transaction, Txid};
 use indexmap::map::Entry;
 use indexmap::IndexMap;
@@ -89,20 +89,21 @@ impl TransactionManager {
             .map(|tx_info| tx_info.transaction.clone())
     }
 
-    pub fn add_transaction(&mut self, transaction: Transaction) {
-        let txid = transaction.compute_txid();
+    pub fn add_transaction(
+        &mut self,
+        incoming_transaction: IncomingTransaction,
+    ) -> Result<Txid, String> {
+        let IncomingTransaction { txid, transaction } = incoming_transaction;
 
         if self.transactions.len() == Self::MAX_TRANSACTIONS {
             self.transactions.shift_remove_index(0);
         }
 
         match self.transactions.entry(txid) {
-            Entry::Occupied(_) => {
-                tracing::debug!("Transaction {txid} already exists");
-            }
+            Entry::Occupied(_) => Err(format!("Already have transaction {txid}")),
             Entry::Vacant(entry) => {
                 entry.insert(TransactionInfo::new(transaction));
-                tracing::debug!("Added new transaction {txid}");
+                Ok(txid)
             }
         }
     }

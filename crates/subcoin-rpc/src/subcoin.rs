@@ -7,7 +7,9 @@ use serde::{Deserialize, Serialize};
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subcoin_network::{NetworkHandle, NetworkStatus, PeerSync, PeerSyncState};
+use subcoin_network::{
+    NetworkHandle, NetworkStatus, PeerSync, PeerSyncState, SendTransactionResult,
+};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct NetworkPeers {
@@ -45,8 +47,8 @@ pub trait SubcoinApi {
     /// # Arguments
     ///
     /// - `raw_tx`:  The hex string of the raw transaction.
-    #[method(name = "subcoin_sendRawTransaction", blocking)]
-    fn send_raw_transaction(&self, raw_tx: String) -> Result<(), Error>;
+    #[method(name = "subcoin_sendRawTransaction")]
+    async fn send_raw_transaction(&self, raw_tx: String) -> Result<SendTransactionResult, Error>;
 }
 
 /// This struct provides the Subcoin API.
@@ -120,9 +122,10 @@ where
         Ok(self.network_handle.status().await)
     }
 
-    fn send_raw_transaction(&self, raw_tx: String) -> Result<(), Error> {
-        self.network_handle
-            .send_transaction(deserialize_hex::<Transaction>(&raw_tx)?);
-        Ok(())
+    async fn send_raw_transaction(&self, raw_tx: String) -> Result<SendTransactionResult, Error> {
+        Ok(self
+            .network_handle
+            .send_transaction(deserialize_hex::<Transaction>(&raw_tx)?)
+            .await)
     }
 }

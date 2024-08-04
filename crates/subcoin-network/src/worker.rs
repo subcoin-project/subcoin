@@ -2,7 +2,10 @@ use crate::connection::{ConnectionInitiator, Direction, NewConnection};
 use crate::peer_manager::{Config, PeerManager, SlowPeer};
 use crate::sync::{ChainSync, LocatorRequest, SyncAction, SyncRequest};
 use crate::transaction_manager::TransactionManager;
-use crate::{Bandwidth, Error, Latency, NetworkStatus, NetworkWorkerMessage, PeerId, SyncStrategy};
+use crate::{
+    Bandwidth, Error, IncomingTransaction, Latency, NetworkStatus, NetworkWorkerMessage, PeerId,
+    SendTransactionResult, SyncStrategy,
+};
 use bitcoin::p2p::message::{NetworkMessage, MAX_INV_SIZE};
 use bitcoin::p2p::message_blockdata::{GetBlocksMessage, GetHeadersMessage, Inventory};
 use futures::stream::FusedStream;
@@ -198,8 +201,15 @@ where
             NetworkWorkerMessage::GetTransaction((txid, result_sender)) => {
                 let _ = result_sender.send(self.transaction_manager.get_transaction(&txid));
             }
-            NetworkWorkerMessage::SendTransaction(tx) => {
-                self.transaction_manager.add_transaction(tx);
+            NetworkWorkerMessage::SendTransaction((incoming_transaction, result_sender)) => {
+                let send_transaction_result = match self
+                    .transaction_manager
+                    .add_transaction(incoming_transaction)
+                {
+                    Ok(txid) => SendTransactionResult::Success(txid),
+                    Err(error_msg) => SendTransactionResult::Failure(error_msg),
+                };
+                let _ = result_sender.send(send_transaction_result);
             }
         }
     }
@@ -243,7 +253,16 @@ where
             }
             NetworkMessage::Tx(tx) => {
                 // TODO: check if the peer is allowed to send tx.
-                self.transaction_manager.add_transaction(tx);
+                let incoming_transaction = IncomingTransaction {
+                    txid: tx.compute_txid(),
+                    transaction: tx,
+                };
+                if let Err(err_msg) = self
+                    .transaction_manager
+                    .add_transaction(incoming_transaction)
+                {
+                    tracing::debug!("Failed to add transaction from network: {err_msg}");
+                }
                 Ok(SyncAction::None)
             }
             NetworkMessage::GetData(inv) => {

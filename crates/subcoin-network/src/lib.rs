@@ -218,6 +218,19 @@ impl Clone for Bandwidth {
     }
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum SendTransactionResult {
+    Success(Txid),
+    Failure(String),
+}
+
+/// An incoming transaction from RPC or network.
+#[derive(Debug)]
+pub(crate) struct IncomingTransaction {
+    pub(crate) txid: Txid,
+    pub(crate) transaction: Transaction,
+}
+
 /// Message to the network worker.
 #[derive(Debug)]
 enum NetworkWorkerMessage {
@@ -230,7 +243,7 @@ enum NetworkWorkerMessage {
     /// Retrieve the transaction.
     GetTransaction((Txid, oneshot::Sender<Option<Transaction>>)),
     /// Add transaction to the transaction manager.
-    SendTransaction(Transaction),
+    SendTransaction((IncomingTransaction, oneshot::Sender<SendTransactionResult>)),
 }
 
 /// A handle for interacting with the network worker.
@@ -287,15 +300,28 @@ impl NetworkHandle {
         receiver.await.ok().flatten()
     }
 
-    pub fn send_transaction(&self, tx: Transaction) {
-        let txid = tx.compute_txid();
+    pub async fn send_transaction(&self, transaction: Transaction) -> SendTransactionResult {
+        let (sender, receiver) = oneshot::channel();
+
+        let txid = transaction.compute_txid();
+        let incoming_transaction = IncomingTransaction { txid, transaction };
+
         if self
             .worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::SendTransaction(tx))
+            .unbounded_send(NetworkWorkerMessage::SendTransaction((
+                incoming_transaction,
+                sender,
+            )))
             .is_err()
         {
-            tracing::error!("Failed to send transaction ({txid}) to worker");
+            return SendTransactionResult::Failure(format!(
+                "Failed to send transaction ({txid}) to worker"
+            ));
         }
+
+        receiver
+            .await
+            .unwrap_or(SendTransactionResult::Failure("Internal error".to_string()))
     }
 
     /// Returns a flag indicating whether the node is actively performing a major sync.
