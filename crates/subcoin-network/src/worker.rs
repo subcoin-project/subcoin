@@ -177,7 +177,7 @@ where
         }
     }
 
-    fn process_worker_message(&self, worker_msg: NetworkWorkerMessage, bandwidth: &Bandwidth) {
+    fn process_worker_message(&mut self, worker_msg: NetworkWorkerMessage, bandwidth: &Bandwidth) {
         match worker_msg {
             NetworkWorkerMessage::NetworkStatus(result_sender) => {
                 let net_status = NetworkStatus {
@@ -194,6 +194,9 @@ where
             }
             NetworkWorkerMessage::InboundPeersCount(result_sender) => {
                 let _ = result_sender.send(self.peer_manager.inbound_peers_count());
+            }
+            NetworkWorkerMessage::SendRawTransaction(raw_tx) => {
+                self.transaction_manager.add_transaction(&raw_tx);
             }
         }
     }

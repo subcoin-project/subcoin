@@ -25,6 +25,10 @@ pub trait SubcoinApi {
     /// Get the sync peers.
     #[method(name = "subcoin_networkPeers")]
     async fn network_peers(&self) -> Result<NetworkPeers, Error>;
+
+    /// Get the sync peers.
+    #[method(name = "subcoin_sendTransaction", blocking)]
+    fn send_transaction(&self, raw_tx: Vec<u8>) -> Result<(), Error>;
 }
 
 /// This struct provides the Subcoin API.
@@ -86,5 +90,10 @@ where
             peer_best: if peer_best > 0 { Some(peer_best) } else { None },
             sync_peers,
         })
+    }
+
+    fn send_transaction(&self, raw_tx: Vec<u8>) -> Result<(), Error> {
+        self.network_handle.send_transaction(raw_tx);
+        Ok(())
     }
 }

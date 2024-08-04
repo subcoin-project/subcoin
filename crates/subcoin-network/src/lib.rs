@@ -227,6 +227,8 @@ enum NetworkWorkerMessage {
     SyncPeers(oneshot::Sender<Vec<PeerSync>>),
     /// Retrieve the number of inbound connected peers.
     InboundPeersCount(oneshot::Sender<usize>),
+    /// Add transaction to the transaction manager.
+    SendRawTransaction(Vec<u8>),
 }
 
 /// A handle for interacting with the network worker.
@@ -267,6 +269,17 @@ impl NetworkHandle {
         }
 
         receiver.await.unwrap_or_default()
+    }
+
+    pub fn send_transaction(&self, raw_tx: Vec<u8>) {
+        let tx_size = raw_tx.len();
+        if self
+            .worker_msg_sender
+            .unbounded_send(NetworkWorkerMessage::SendRawTransaction(raw_tx))
+            .is_err()
+        {
+            tracing::error!("Failed to send raw tx ({tx_size} bytes) to worker");
+        }
     }
 
     /// Returns a flag indicating whether the node is actively performing a major sync.
