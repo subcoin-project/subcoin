@@ -1,7 +1,5 @@
 use crate::PeerId;
 use bitcoin::consensus::deserialize;
-use bitcoin::p2p::message::NetworkMessage;
-use bitcoin::p2p::message_blockdata::Inventory;
 use bitcoin::{Transaction, Txid};
 use indexmap::map::Entry;
 use indexmap::IndexMap;
@@ -40,14 +38,17 @@ impl TransactionManager {
         }
     }
 
+    /// Broadcast known transaction IDs to the connected peers.
+    ///
+    /// If the timeout period has passed for a transaction ID, it is broadcasted again.
+    /// If the transaction has not been broadcasted, the transaction ID is broadcasted.
     pub fn on_tick<'a>(
         &mut self,
-        peers: impl Iterator<Item = &'a PeerId>,
+        connected_peers: impl Iterator<Item = &'a PeerId>,
     ) -> Vec<(PeerId, Vec<Txid>)> {
         // Remove timeout transactions.
 
-        // Broadcast transactions to peers.
-        peers
+        connected_peers
             .filter_map(|address| {
                 let mut to_advertise = vec![];
 
@@ -65,6 +66,12 @@ impl TransactionManager {
                 }
             })
             .collect()
+    }
+
+    pub fn get_transaction(&self, txid: &Txid) -> Option<Transaction> {
+        self.transactions
+            .get(txid)
+            .map(|tx_info| tx_info.transaction.clone())
     }
 
     pub fn add_transaction(&mut self, raw_tx: &[u8]) {

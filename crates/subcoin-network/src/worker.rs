@@ -391,7 +391,16 @@ where
             return Ok(SyncAction::Disconnect(from, Error::TooManyInventoryItems));
         }
 
-        // TODO: handle getdata tx
+        // Send transactions to the requesting node.
+        inv.iter().for_each(|inv| {
+            if let Inventory::Transaction(txid) = inv {
+                if let Some(transaction) = self.transaction_manager.get_transaction(&txid) {
+                    if let Err(err) = self.send(from, NetworkMessage::Tx(transaction)) {
+                        tracing::error!(?err, "Failed to send transaction {txid}");
+                    }
+                }
+            }
+        });
 
         Ok(self.chain_sync.on_inv(inv, from))
     }
