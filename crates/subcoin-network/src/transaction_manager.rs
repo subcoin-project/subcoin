@@ -4,7 +4,9 @@ use bitcoin::{Transaction, Txid};
 use indexmap::map::Entry;
 use indexmap::IndexMap;
 use std::collections::HashSet;
-use std::time::Instant;
+use std::time::{Duration, SystemTime};
+
+const TRANSACTION_TIMEOUT_DURATION_SECS: u64 = 10 * 60;
 
 #[derive(Debug)]
 struct TransactionInfo {
@@ -15,8 +17,18 @@ struct TransactionInfo {
     /// Note that having a peer in this set doesn't guarantee the the peer actually
     /// received the transaction.
     advertised: HashSet<PeerId>,
-    /// Time at which the transaction was added.
-    at: Instant,
+    /// How long the transaction should be stored.
+    ttl: SystemTime,
+}
+
+impl TransactionInfo {
+    fn new(transaction: Transaction) -> Self {
+        Self {
+            transaction,
+            advertised: HashSet::new(),
+            ttl: SystemTime::now() + Duration::from_secs(TRANSACTION_TIMEOUT_DURATION_SECS),
+        }
+    }
 }
 
 /// This struct manages the transactions received from the network.
@@ -30,8 +42,6 @@ impl TransactionManager {
     /// Maximum number of transactions the manager holds.
     const MAX_TRANSACTIONS: usize = 256;
 
-    const TRANSACTION_TIMEOUT_DURATION_SECS: u64 = 10 * 60;
-
     pub fn new() -> Self {
         Self {
             transactions: IndexMap::new(),
@@ -39,14 +49,20 @@ impl TransactionManager {
     }
 
     /// Broadcast known transaction IDs to the connected peers.
-    ///
-    /// If the timeout period has passed for a transaction ID, it is broadcasted again.
-    /// If the transaction has not been broadcasted, the transaction ID is broadcasted.
     pub fn on_tick<'a>(
         &mut self,
         connected_peers: impl Iterator<Item = &'a PeerId>,
     ) -> Vec<(PeerId, Vec<Txid>)> {
         // Remove timeout transactions.
+        let now = SystemTime::now();
+        self.transactions.retain(|txid, info| {
+            if info.ttl < now {
+                tracing::debug!("Removing timeout transaction {txid}");
+                false
+            } else {
+                true
+            }
+        });
 
         connected_peers
             .filter_map(|address| {
@@ -87,11 +103,7 @@ impl TransactionManager {
                     tracing::debug!("Tx {txid} already exists");
                 }
                 Entry::Vacant(entry) => {
-                    entry.insert(TransactionInfo {
-                        transaction,
-                        advertised: HashSet::new(),
-                        at: Instant::now(),
-                    });
+                    entry.insert(TransactionInfo::new(transaction));
                     tracing::debug!("Added new tx {txid}");
                 }
             }
