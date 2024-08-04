@@ -566,7 +566,8 @@ where
                 self.send(peer_id, NetworkMessage::Version(our_version))?;
 
                 if greatest_common_version >= WTXID_RELAY_VERSION {
-                    self.send(peer_id, NetworkMessage::WtxidRelay)?;
+                    // TODO: support wtxidrelay
+                    // self.send(peer_id, NetworkMessage::WtxidRelay)?;
                 }
 
                 // if greatest_common_version >= 70016 {

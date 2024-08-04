@@ -80,7 +80,7 @@ where
 {
     fn decode_raw_transaction(&self, raw_tx: String) -> Result<serde_json::Value, Error> {
         let transaction = deserialize_hex::<Transaction>(&raw_tx)?;
-        Ok(serde_json::to_value(&transaction)?)
+        Ok(serde_json::to_value(transaction)?)
     }
 
     async fn get_raw_transaction(&self, txid: Txid) -> Result<Option<String>, Error> {

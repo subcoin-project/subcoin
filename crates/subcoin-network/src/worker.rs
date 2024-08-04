@@ -247,7 +247,7 @@ where
                 Ok(SyncAction::None)
             }
             NetworkMessage::GetData(inv) => {
-                self.process_get_data(inv);
+                self.process_get_data(from, inv);
                 Ok(SyncAction::None)
             }
             NetworkMessage::GetBlocks(_) => {
@@ -398,31 +398,30 @@ where
             return Ok(SyncAction::Disconnect(from, Error::TooManyInventoryItems));
         }
 
-        // Send transactions to the requesting node.
-        inv.iter().for_each(|inv| {
-            if let Inventory::Transaction(txid) = inv {
-                if let Some(transaction) = self.transaction_manager.get_transaction(txid) {
-                    if let Err(err) = self.send(from, NetworkMessage::Tx(transaction)) {
-                        tracing::error!(?err, "Failed to send transaction {txid}");
-                    }
-                }
-            }
-        });
-
         Ok(self.chain_sync.on_inv(inv, from))
     }
 
-    fn process_get_data(&self, get_data_requests: Vec<Inventory>) {
+    fn process_get_data(&self, from: PeerId, get_data_requests: Vec<Inventory>) {
         // TODO: process tx as many as possible.
-
-        // TODO: process one BLOCK item per call, as Bitcore Core does.
-        for get_block_msg in get_data_requests.iter().filter(|inv| {
-            matches!(
-                inv,
-                Inventory::Block(_) | Inventory::CompactBlock(_) | Inventory::WitnessBlock(_)
-            )
-        }) {
-            self.process_get_block_data(get_block_msg);
+        for inv in get_data_requests {
+            match inv {
+                Inventory::Block(_) | Inventory::CompactBlock(_) | Inventory::WitnessBlock(_) => {
+                    // TODO: process one BLOCK item per call, as Bitcore Core does.
+                    self.process_get_block_data(&inv);
+                }
+                Inventory::Transaction(txid) => {
+                    tracing::debug!("Recv transaction request: {txid:?} from {from:?}");
+                    if let Some(transaction) = self.transaction_manager.get_transaction(&txid) {
+                        if let Err(err) = self.send(from, NetworkMessage::Tx(transaction)) {
+                            tracing::error!(?err, "Failed to send transaction {txid} to {from:?}");
+                        }
+                    }
+                }
+                Inventory::WTx(_)
+                | Inventory::WitnessTransaction(_)
+                | Inventory::Unknown { .. }
+                | Inventory::Error => {}
+            }
         }
     }
 
