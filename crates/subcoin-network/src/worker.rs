@@ -196,7 +196,7 @@ where
                 let _ = result_sender.send(self.peer_manager.inbound_peers_count());
             }
             NetworkWorkerMessage::SendRawTransaction(raw_tx) => {
-                self.transaction_manager.add_transaction(&raw_tx);
+                self.transaction_manager.add_raw_transaction(&raw_tx);
             }
         }
     }
@@ -239,7 +239,8 @@ where
                 Ok(SyncAction::None)
             }
             NetworkMessage::Tx(tx) => {
-                tracing::info!("======================== TODO processing {tx:?}");
+                // TODO: check if the peer is allowed to send tx.
+                self.transaction_manager.add_transaction(tx);
                 Ok(SyncAction::None)
             }
             NetworkMessage::GetData(inv) => {

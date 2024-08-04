@@ -90,22 +90,26 @@ impl TransactionManager {
             .map(|tx_info| tx_info.transaction.clone())
     }
 
-    pub fn add_transaction(&mut self, raw_tx: &[u8]) {
+    pub fn add_raw_transaction(&mut self, raw_tx: &[u8]) {
         if let Ok(transaction) = deserialize::<Transaction>(raw_tx) {
-            let txid = transaction.compute_txid();
+            self.add_transaction(transaction);
+        }
+    }
 
-            if self.transactions.len() == Self::MAX_TRANSACTIONS {
-                self.transactions.shift_remove_index(0);
+    pub fn add_transaction(&mut self, transaction: Transaction) {
+        let txid = transaction.compute_txid();
+
+        if self.transactions.len() == Self::MAX_TRANSACTIONS {
+            self.transactions.shift_remove_index(0);
+        }
+
+        match self.transactions.entry(txid) {
+            Entry::Occupied(_) => {
+                tracing::debug!("Tx {txid} already exists");
             }
-
-            match self.transactions.entry(txid) {
-                Entry::Occupied(_) => {
-                    tracing::debug!("Tx {txid} already exists");
-                }
-                Entry::Vacant(entry) => {
-                    entry.insert(TransactionInfo::new(transaction));
-                    tracing::debug!("Added new tx {txid}");
-                }
+            Entry::Vacant(entry) => {
+                entry.insert(TransactionInfo::new(transaction));
+                tracing::debug!("Added new tx {txid}");
             }
         }
     }

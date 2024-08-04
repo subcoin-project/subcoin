@@ -26,7 +26,7 @@ pub trait SubcoinApi {
     #[method(name = "subcoin_networkPeers")]
     async fn network_peers(&self) -> Result<NetworkPeers, Error>;
 
-    /// Get the sync peers.
+    /// Send the raw transaction to the network.
     #[method(name = "subcoin_sendTransaction", blocking)]
     fn send_transaction(&self, raw_tx: Vec<u8>) -> Result<(), Error>;
 }
