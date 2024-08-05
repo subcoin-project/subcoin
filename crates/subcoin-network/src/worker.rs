@@ -252,7 +252,7 @@ where
                 Ok(SyncAction::None)
             }
             NetworkMessage::Tx(tx) => {
-                // TODO: check if the peer is allowed to send tx.
+                // TODO: Check has relay permission.
                 let incoming_transaction = IncomingTransaction {
                     txid: tx.compute_txid(),
                     transaction: tx,
@@ -261,7 +261,7 @@ where
                     .transaction_manager
                     .add_transaction(incoming_transaction)
                 {
-                    tracing::debug!("Failed to add transaction from network: {err_msg}");
+                    tracing::debug!(?from, "Failed to add transaction: {err_msg}");
                 }
                 Ok(SyncAction::None)
             }
