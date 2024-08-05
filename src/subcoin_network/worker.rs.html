@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/worker.rs`."><title>worker.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-970bf1bf55bd1c15.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (fd8d6fbe5 2024-08-02)" data-channel="nightly" data-search-js="search-ef54e092fea9c776.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-6fcc09bb2cf2f6ca.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/worker.rs`."><title>worker.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-970bf1bf55bd1c15.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (64ebd39da 2024-08-03)" data-channel="nightly" data-search-js="search-ef54e092fea9c776.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-9345f17bf569ecba.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -395,11 +395,74 @@
 <a href="#395" id="395">395</a>
 <a href="#396" id="396">396</a>
 <a href="#397" id="397">397</a>
+<a href="#398" id="398">398</a>
+<a href="#399" id="399">399</a>
+<a href="#400" id="400">400</a>
+<a href="#401" id="401">401</a>
+<a href="#402" id="402">402</a>
+<a href="#403" id="403">403</a>
+<a href="#404" id="404">404</a>
+<a href="#405" id="405">405</a>
+<a href="#406" id="406">406</a>
+<a href="#407" id="407">407</a>
+<a href="#408" id="408">408</a>
+<a href="#409" id="409">409</a>
+<a href="#410" id="410">410</a>
+<a href="#411" id="411">411</a>
+<a href="#412" id="412">412</a>
+<a href="#413" id="413">413</a>
+<a href="#414" id="414">414</a>
+<a href="#415" id="415">415</a>
+<a href="#416" id="416">416</a>
+<a href="#417" id="417">417</a>
+<a href="#418" id="418">418</a>
+<a href="#419" id="419">419</a>
+<a href="#420" id="420">420</a>
+<a href="#421" id="421">421</a>
+<a href="#422" id="422">422</a>
+<a href="#423" id="423">423</a>
+<a href="#424" id="424">424</a>
+<a href="#425" id="425">425</a>
+<a href="#426" id="426">426</a>
+<a href="#427" id="427">427</a>
+<a href="#428" id="428">428</a>
+<a href="#429" id="429">429</a>
+<a href="#430" id="430">430</a>
+<a href="#431" id="431">431</a>
+<a href="#432" id="432">432</a>
+<a href="#433" id="433">433</a>
+<a href="#434" id="434">434</a>
+<a href="#435" id="435">435</a>
+<a href="#436" id="436">436</a>
+<a href="#437" id="437">437</a>
+<a href="#438" id="438">438</a>
+<a href="#439" id="439">439</a>
+<a href="#440" id="440">440</a>
+<a href="#441" id="441">441</a>
+<a href="#442" id="442">442</a>
+<a href="#443" id="443">443</a>
+<a href="#444" id="444">444</a>
+<a href="#445" id="445">445</a>
+<a href="#446" id="446">446</a>
+<a href="#447" id="447">447</a>
+<a href="#448" id="448">448</a>
+<a href="#449" id="449">449</a>
+<a href="#450" id="450">450</a>
+<a href="#451" id="451">451</a>
+<a href="#452" id="452">452</a>
+<a href="#453" id="453">453</a>
+<a href="#454" id="454">454</a>
+<a href="#455" id="455">455</a>
+<a href="#456" id="456">456</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::connection::{ConnectionInitiator, Direction, NewConnection};
 <span class="kw">use </span><span class="kw">crate</span>::peer_manager::{Config, PeerManager, SlowPeer};
 <span class="kw">use </span><span class="kw">crate</span>::sync::{ChainSync, LocatorRequest, SyncAction, SyncRequest};
-<span class="kw">use crate</span>::{Bandwidth, Error, Latency, NetworkStatus, NetworkWorkerMessage, PeerId, SyncStrategy};
-<span class="kw">use </span>bitcoin::p2p::message::NetworkMessage;
+<span class="kw">use </span><span class="kw">crate</span>::transaction_manager::TransactionManager;
+<span class="kw">use crate</span>::{
+    Bandwidth, Error, IncomingTransaction, Latency, NetworkStatus, NetworkWorkerMessage, PeerId,
+    SendTransactionResult, SyncStrategy,
+};
+<span class="kw">use </span>bitcoin::p2p::message::{NetworkMessage, MAX_INV_SIZE};
 <span class="kw">use </span>bitcoin::p2p::message_blockdata::{GetBlocksMessage, GetHeadersMessage, Inventory};
 <span class="kw">use </span>futures::stream::FusedStream;
 <span class="kw">use </span>futures::StreamExt;
@@ -441,6 +504,7 @@
     config: Config,
     network_event_receiver: UnboundedReceiver&lt;Event&gt;,
     peer_manager: PeerManager&lt;Block, Client&gt;,
+    transaction_manager: TransactionManager,
     chain_sync: ChainSync&lt;Block, Client&gt;,
 }
 
@@ -468,6 +532,7 @@
                 connection_initiator,
                 max_outbound_peers,
             ),
+            transaction_manager: TransactionManager::new(),
             chain_sync: ChainSync::new(client, import_queue, sync_strategy, is_major_syncing),
             config,
         }
@@ -512,42 +577,6 @@
         }
     }
 
-    <span class="kw">fn </span>perform_periodic_actions(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
-        <span class="kw">let </span>sync_action = <span class="self">self</span>.chain_sync.on_tick();
-        <span class="self">self</span>.do_sync_action(sync_action);
-        <span class="kw">if let </span><span class="prelude-val">Some</span>(SlowPeer {
-            peer_id,
-            peer_latency,
-        }) = <span class="self">self</span>.peer_manager.on_tick()
-        {
-            <span class="self">self</span>.peer_manager
-                .disconnect(peer_id, Error::SlowPeer(peer_latency));
-            <span class="self">self</span>.peer_manager.update_last_eviction();
-            <span class="self">self</span>.chain_sync.remove_peer(peer_id);
-        }
-    }
-
-    <span class="kw">fn </span>process_worker_message(<span class="kw-2">&amp;</span><span class="self">self</span>, worker_msg: NetworkWorkerMessage, bandwidth: <span class="kw-2">&amp;</span>Bandwidth) {
-        <span class="kw">match </span>worker_msg {
-            NetworkWorkerMessage::NetworkStatus(result_sender) =&gt; {
-                <span class="kw">let </span>net_status = NetworkStatus {
-                    num_connected_peers: <span class="self">self</span>.peer_manager.connect_peers_count(),
-                    total_bytes_inbound: bandwidth.total_bytes_inbound.load(Ordering::Relaxed),
-                    total_bytes_outbound: bandwidth.total_bytes_outbound.load(Ordering::Relaxed),
-                    sync_status: <span class="self">self</span>.chain_sync.sync_status(),
-                };
-                <span class="kw">let _ </span>= result_sender.send(net_status);
-            }
-            NetworkWorkerMessage::SyncPeers(result_sender) =&gt; {
-                <span class="kw">let </span>sync_peers = <span class="self">self</span>.chain_sync.peers.values().cloned().collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
-                <span class="kw">let _ </span>= result_sender.send(sync_peers);
-            }
-            NetworkWorkerMessage::InboundPeersCount(result_sender) =&gt; {
-                <span class="kw">let _ </span>= result_sender.send(<span class="self">self</span>.peer_manager.inbound_peers_count());
-            }
-        }
-    }
-
     <span class="kw">async fn </span>process_event(<span class="kw-2">&amp;mut </span><span class="self">self</span>, event: Event) {
         <span class="kw">match </span>event {
             Event::NewConnection(new_connection) =&gt; {
@@ -576,6 +605,67 @@
                         <span class="macro">tracing::error!</span>(<span class="question-mark">?</span>from, <span class="question-mark">?</span>err, <span class="string">"Failed to process peer message: {msg_cmd}"</span>);
                     }
                 }
+            }
+        }
+    }
+
+    <span class="kw">fn </span>perform_periodic_actions(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
+        <span class="kw">let </span>sync_action = <span class="self">self</span>.chain_sync.on_tick();
+        <span class="self">self</span>.do_sync_action(sync_action);
+
+        <span class="kw">if let </span><span class="prelude-val">Some</span>(SlowPeer {
+            peer_id,
+            peer_latency,
+        }) = <span class="self">self</span>.peer_manager.on_tick()
+        {
+            <span class="self">self</span>.peer_manager
+                .disconnect(peer_id, Error::SlowPeer(peer_latency));
+            <span class="self">self</span>.peer_manager.update_last_eviction();
+            <span class="self">self</span>.chain_sync.remove_peer(peer_id);
+        }
+
+        <span class="kw">for </span>(peer, txids) <span class="kw">in </span><span class="self">self
+            </span>.transaction_manager
+            .on_tick(<span class="self">self</span>.peer_manager.connected_peers())
+        {
+            <span class="macro">tracing::debug!</span>(<span class="string">"Broadcasting transaction IDs {txids:?} to {peer:?}"</span>);
+            <span class="kw">let </span>msg = NetworkMessage::Inv(txids.into_iter().map(Inventory::Transaction).collect());
+            <span class="kw">if let </span><span class="prelude-val">Err</span>(err) = <span class="self">self</span>.send(peer, msg) {
+                <span class="self">self</span>.peer_manager.disconnect(peer, err);
+            }
+        }
+    }
+
+    <span class="kw">fn </span>process_worker_message(<span class="kw-2">&amp;mut </span><span class="self">self</span>, worker_msg: NetworkWorkerMessage, bandwidth: <span class="kw-2">&amp;</span>Bandwidth) {
+        <span class="kw">match </span>worker_msg {
+            NetworkWorkerMessage::NetworkStatus(result_sender) =&gt; {
+                <span class="kw">let </span>net_status = NetworkStatus {
+                    num_connected_peers: <span class="self">self</span>.peer_manager.connected_peers_count(),
+                    total_bytes_inbound: bandwidth.total_bytes_inbound.load(Ordering::Relaxed),
+                    total_bytes_outbound: bandwidth.total_bytes_outbound.load(Ordering::Relaxed),
+                    sync_status: <span class="self">self</span>.chain_sync.sync_status(),
+                };
+                <span class="kw">let _ </span>= result_sender.send(net_status);
+            }
+            NetworkWorkerMessage::SyncPeers(result_sender) =&gt; {
+                <span class="kw">let </span>sync_peers = <span class="self">self</span>.chain_sync.peers.values().cloned().collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
+                <span class="kw">let _ </span>= result_sender.send(sync_peers);
+            }
+            NetworkWorkerMessage::InboundPeersCount(result_sender) =&gt; {
+                <span class="kw">let _ </span>= result_sender.send(<span class="self">self</span>.peer_manager.inbound_peers_count());
+            }
+            NetworkWorkerMessage::GetTransaction((txid, result_sender)) =&gt; {
+                <span class="kw">let _ </span>= result_sender.send(<span class="self">self</span>.transaction_manager.get_transaction(<span class="kw-2">&amp;</span>txid));
+            }
+            NetworkWorkerMessage::SendTransaction((incoming_transaction, result_sender)) =&gt; {
+                <span class="kw">let </span>send_transaction_result = <span class="kw">match </span><span class="self">self
+                    </span>.transaction_manager
+                    .add_transaction(incoming_transaction)
+                {
+                    <span class="prelude-val">Ok</span>(txid) =&gt; SendTransactionResult::Success(txid),
+                    <span class="prelude-val">Err</span>(error_msg) =&gt; SendTransactionResult::Failure(error_msg),
+                };
+                <span class="kw">let _ </span>= result_sender.send(send_transaction_result);
             }
         }
     }
@@ -617,12 +707,22 @@
                 <span class="self">self</span>.peer_manager.on_addr(from, addresses);
                 <span class="prelude-val">Ok</span>(SyncAction::None)
             }
-            NetworkMessage::Tx(_tx) =&gt; {
-                <span class="comment">// TODO: handle tx
-                </span><span class="prelude-val">Ok</span>(SyncAction::None)
+            NetworkMessage::Tx(tx) =&gt; {
+                <span class="comment">// TODO: Check has relay permission.
+                </span><span class="kw">let </span>incoming_transaction = IncomingTransaction {
+                    txid: tx.compute_txid(),
+                    transaction: tx,
+                };
+                <span class="kw">if let </span><span class="prelude-val">Err</span>(err_msg) = <span class="self">self
+                    </span>.transaction_manager
+                    .add_transaction(incoming_transaction)
+                {
+                    <span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>from, <span class="string">"Failed to add transaction: {err_msg}"</span>);
+                }
+                <span class="prelude-val">Ok</span>(SyncAction::None)
             }
             NetworkMessage::GetData(inv) =&gt; {
-                <span class="self">self</span>.process_get_data(inv);
+                <span class="self">self</span>.process_get_data(from, inv);
                 <span class="prelude-val">Ok</span>(SyncAction::None)
             }
             NetworkMessage::GetBlocks(<span class="kw">_</span>) =&gt; {
@@ -677,7 +777,7 @@
                 <span class="self">self</span>.send(from, NetworkMessage::FeeFilter(<span class="number">1000</span>))<span class="question-mark">?</span>;
                 <span class="prelude-val">Ok</span>(SyncAction::None)
             }
-            NetworkMessage::Inv(inv) =&gt; <span class="prelude-val">Ok</span>(<span class="self">self</span>.chain_sync.on_inv(inv, from)),
+            NetworkMessage::Inv(inv) =&gt; <span class="self">self</span>.process_inv(from, inv),
             NetworkMessage::Block(block) =&gt; <span class="prelude-val">Ok</span>(<span class="self">self</span>.chain_sync.on_block(block, from)),
             NetworkMessage::Headers(headers) =&gt; <span class="prelude-val">Ok</span>(<span class="self">self</span>.chain_sync.on_headers(headers, from)),
             NetworkMessage::MerkleBlock(<span class="kw">_</span>) =&gt; <span class="prelude-val">Ok</span>(SyncAction::None),
@@ -768,17 +868,35 @@
         }
     }
 
-    <span class="kw">fn </span>process_get_data(<span class="kw-2">&amp;</span><span class="self">self</span>, get_data_requests: Vec&lt;Inventory&gt;) {
-        <span class="comment">// TODO: process tx as many as possible.
+    <span class="kw">fn </span>process_inv(<span class="kw-2">&amp;mut </span><span class="self">self</span>, from: PeerId, inv: Vec&lt;Inventory&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;SyncAction, Error&gt; {
+        <span class="kw">if </span>inv.len() &gt; MAX_INV_SIZE {
+            <span class="kw">return </span><span class="prelude-val">Ok</span>(SyncAction::Disconnect(from, Error::TooManyInventoryItems));
+        }
 
-        // TODO: process one BLOCK item per call, as Bitcore Core does.
-        </span><span class="kw">for </span>get_block_msg <span class="kw">in </span>get_data_requests.iter().filter(|inv| {
-            <span class="macro">matches!</span>(
-                inv,
-                Inventory::Block(<span class="kw">_</span>) | Inventory::CompactBlock(<span class="kw">_</span>) | Inventory::WitnessBlock(<span class="kw">_</span>)
-            )
-        }) {
-            <span class="self">self</span>.process_get_block_data(get_block_msg);
+        <span class="prelude-val">Ok</span>(<span class="self">self</span>.chain_sync.on_inv(inv, from))
+    }
+
+    <span class="kw">fn </span>process_get_data(<span class="kw-2">&amp;</span><span class="self">self</span>, from: PeerId, get_data_requests: Vec&lt;Inventory&gt;) {
+        <span class="comment">// TODO: process tx as many as possible.
+        </span><span class="kw">for </span>inv <span class="kw">in </span>get_data_requests {
+            <span class="kw">match </span>inv {
+                Inventory::Block(<span class="kw">_</span>) | Inventory::CompactBlock(<span class="kw">_</span>) | Inventory::WitnessBlock(<span class="kw">_</span>) =&gt; {
+                    <span class="comment">// TODO: process one BLOCK item per call, as Bitcore Core does.
+                    </span><span class="self">self</span>.process_get_block_data(<span class="kw-2">&amp;</span>inv);
+                }
+                Inventory::Transaction(txid) =&gt; {
+                    <span class="macro">tracing::debug!</span>(<span class="string">"Recv transaction request: {txid:?} from {from:?}"</span>);
+                    <span class="kw">if let </span><span class="prelude-val">Some</span>(transaction) = <span class="self">self</span>.transaction_manager.get_transaction(<span class="kw-2">&amp;</span>txid) {
+                        <span class="kw">if let </span><span class="prelude-val">Err</span>(err) = <span class="self">self</span>.send(from, NetworkMessage::Tx(transaction)) {
+                            <span class="macro">tracing::error!</span>(<span class="question-mark">?</span>err, <span class="string">"Failed to send transaction {txid} to {from:?}"</span>);
+                        }
+                    }
+                }
+                Inventory::WTx(<span class="kw">_</span>)
+                | Inventory::WitnessTransaction(<span class="kw">_</span>)
+                | Inventory::Unknown { .. }
+                | Inventory::Error =&gt; {}
+            }
         }
     }
 

@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/lib.rs`."><title>lib.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-970bf1bf55bd1c15.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (fd8d6fbe5 2024-08-02)" data-channel="nightly" data-search-js="search-ef54e092fea9c776.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-6fcc09bb2cf2f6ca.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/lib.rs`."><title>lib.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-970bf1bf55bd1c15.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (64ebd39da 2024-08-03)" data-channel="nightly" data-search-js="search-ef54e092fea9c776.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-9345f17bf569ecba.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -456,6 +456,65 @@
 <a href="#456" id="456">456</a>
 <a href="#457" id="457">457</a>
 <a href="#458" id="458">458</a>
+<a href="#459" id="459">459</a>
+<a href="#460" id="460">460</a>
+<a href="#461" id="461">461</a>
+<a href="#462" id="462">462</a>
+<a href="#463" id="463">463</a>
+<a href="#464" id="464">464</a>
+<a href="#465" id="465">465</a>
+<a href="#466" id="466">466</a>
+<a href="#467" id="467">467</a>
+<a href="#468" id="468">468</a>
+<a href="#469" id="469">469</a>
+<a href="#470" id="470">470</a>
+<a href="#471" id="471">471</a>
+<a href="#472" id="472">472</a>
+<a href="#473" id="473">473</a>
+<a href="#474" id="474">474</a>
+<a href="#475" id="475">475</a>
+<a href="#476" id="476">476</a>
+<a href="#477" id="477">477</a>
+<a href="#478" id="478">478</a>
+<a href="#479" id="479">479</a>
+<a href="#480" id="480">480</a>
+<a href="#481" id="481">481</a>
+<a href="#482" id="482">482</a>
+<a href="#483" id="483">483</a>
+<a href="#484" id="484">484</a>
+<a href="#485" id="485">485</a>
+<a href="#486" id="486">486</a>
+<a href="#487" id="487">487</a>
+<a href="#488" id="488">488</a>
+<a href="#489" id="489">489</a>
+<a href="#490" id="490">490</a>
+<a href="#491" id="491">491</a>
+<a href="#492" id="492">492</a>
+<a href="#493" id="493">493</a>
+<a href="#494" id="494">494</a>
+<a href="#495" id="495">495</a>
+<a href="#496" id="496">496</a>
+<a href="#497" id="497">497</a>
+<a href="#498" id="498">498</a>
+<a href="#499" id="499">499</a>
+<a href="#500" id="500">500</a>
+<a href="#501" id="501">501</a>
+<a href="#502" id="502">502</a>
+<a href="#503" id="503">503</a>
+<a href="#504" id="504">504</a>
+<a href="#505" id="505">505</a>
+<a href="#506" id="506">506</a>
+<a href="#507" id="507">507</a>
+<a href="#508" id="508">508</a>
+<a href="#509" id="509">509</a>
+<a href="#510" id="510">510</a>
+<a href="#511" id="511">511</a>
+<a href="#512" id="512">512</a>
+<a href="#513" id="513">513</a>
+<a href="#514" id="514">514</a>
+<a href="#515" id="515">515</a>
+<a href="#516" id="516">516</a>
+<a href="#517" id="517">517</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # Bitcoin Network
 //!
 //! This crate facilitates communication with other nodes in the Bitcoin P2P network. It handles
@@ -493,12 +552,13 @@
 <span class="kw">mod </span>sync;
 <span class="attr">#[cfg(test)]
 </span><span class="kw">mod </span>tests;
+<span class="kw">mod </span>transaction_manager;
 <span class="kw">mod </span>worker;
 
 <span class="kw">use </span><span class="kw">crate</span>::connection::ConnectionInitiator;
 <span class="kw">use </span><span class="kw">crate</span>::worker::NetworkWorker;
 <span class="kw">use </span>bitcoin::p2p::ServiceFlags;
-<span class="kw">use </span>bitcoin::{BlockHash, Network <span class="kw">as </span>BitcoinNetwork};
+<span class="kw">use </span>bitcoin::{BlockHash, Network <span class="kw">as </span>BitcoinNetwork, Transaction, Txid};
 <span class="kw">use </span>peer_manager::HandshakeState;
 <span class="kw">use </span>sc_client_api::{AuxStore, HeaderBackend};
 <span class="kw">use </span>sc_consensus_nakamoto::BlockImportQueue;
@@ -523,6 +583,8 @@
 
 <span class="attr">#[derive(Debug, thiserror::Error)]
 </span><span class="kw">pub enum </span>Error {
+    <span class="attr">#[error(<span class="string">"Invalid bootnode address: {0}"</span>)]
+    </span>InvalidBootnode(String),
     <span class="attr">#[error(<span class="string">"Received 0 bytes, peer performed an orderly shutdown"</span>)]
     </span>PeerShutdown,
     <span class="attr">#[error(<span class="string">"Cannot communicate with the network event stream"</span>)]
@@ -533,6 +595,22 @@
     </span>ConnectionNotFound(PeerId),
     <span class="attr">#[error(<span class="string">"Connecting to the stream timed out"</span>)]
     </span>ConnectionTimeout,
+    <span class="attr">#[error(<span class="string">"Unexpected handshake state: {0:?}"</span>)]
+    </span>UnexpectedHandshakeState(Box&lt;HandshakeState&gt;),
+    <span class="attr">#[error(<span class="string">"Only IPv4 peers are supported"</span>)]
+    </span>Ipv4Only,
+    <span class="attr">#[error(<span class="string">"Peer is not a full node"</span>)]
+    </span>NotFullNode,
+    <span class="attr">#[error(<span class="string">"Peer is not a segwit node"</span>)]
+    </span>NotSegwitNode,
+    <span class="attr">#[error(<span class="string">"Peer's protocol version is too low"</span>)]
+    </span>ProtocolVersionTooLow,
+    <span class="attr">#[error(<span class="string">"Too many block entries in inv message"</span>)]
+    </span>TooManyBlockEntries,
+    <span class="attr">#[error(<span class="string">"Too many headers (&gt; 2000)"</span>)]
+    </span>TooManyHeaders,
+    <span class="attr">#[error(<span class="string">"Too many inventory items"</span>)]
+    </span>TooManyInventoryItems,
     <span class="attr">#[error(<span class="string">"Ping timeout"</span>)]
     </span>PingTimeout,
     <span class="attr">#[error(<span class="string">"Ping latency exceeds the threshold"</span>)]
@@ -541,28 +619,10 @@
     </span>SlowPeer(Latency),
     <span class="attr">#[error(<span class="string">"Unexpected pong message"</span>)]
     </span>UnexpectedPong,
-    <span class="attr">#[error(<span class="string">"Too many block entries in inv message"</span>)]
-    </span>TooManyBlockEntries,
-    <span class="attr">#[error(<span class="string">"Too many headers (&gt; 2000)"</span>)]
-    </span>TooManyHeaders,
-    <span class="attr">#[error(<span class="string">"Too many inventory items "</span>)]
-    </span>TooManyInventoryItems,
-    <span class="attr">#[error(<span class="string">"Peer is not a full node"</span>)]
-    </span>NotFullNode,
-    <span class="attr">#[error(<span class="string">"Peer is not a segwit node"</span>)]
-    </span>NotSegwitNode,
-    <span class="attr">#[error(<span class="string">"Peer's protocol version is too low"</span>)]
-    </span>ProtocolVersionTooLow,
     <span class="attr">#[error(<span class="string">"Invalid pong message: bad nonce"</span>)]
     </span>BadPong,
-    <span class="attr">#[error(<span class="string">"Invalid bootnode address: {0}"</span>)]
-    </span>InvalidBootnode(String),
     <span class="attr">#[error(<span class="string">"Received an unrequested block: {0:?}"</span>)]
     </span>UnrequestedBlock(BlockHash),
-    <span class="attr">#[error(<span class="string">"Unexpected handshake state: {0:?}"</span>)]
-    </span>UnexpectedHandshakeState(Box&lt;HandshakeState&gt;),
-    <span class="attr">#[error(<span class="string">"Only IPv4 peers are supported"</span>)]
-    </span>Ipv4Only,
     <span class="attr">#[error(<span class="string">"Other: {0}"</span>)]
     </span>Other(String),
     <span class="attr">#[error(transparent)]
@@ -635,6 +695,7 @@
 
 <span class="doccomment">/// Represents the sync status of node.
 </span><span class="attr">#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = <span class="string">"camelCase"</span>)]
 </span><span class="kw">pub enum </span>SyncStatus {
     <span class="doccomment">/// The node is idle and not currently major syncing.
     </span>Idle,
@@ -649,6 +710,7 @@
 
 <span class="doccomment">/// Represents the status of network.
 </span><span class="attr">#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = <span class="string">"camelCase"</span>)]
 </span><span class="kw">pub struct </span>NetworkStatus {
     <span class="doccomment">/// The number of peers currently connected to the node.
     </span><span class="kw">pub </span>num_connected_peers: usize,
@@ -675,6 +737,20 @@
     }
 }
 
+<span class="attr">#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = <span class="string">"camelCase"</span>)]
+</span><span class="kw">pub enum </span>SendTransactionResult {
+    Success(Txid),
+    Failure(String),
+}
+
+<span class="doccomment">/// An incoming transaction from RPC or network.
+</span><span class="attr">#[derive(Debug)]
+</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">struct </span>IncomingTransaction {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) txid: Txid,
+    <span class="kw">pub</span>(<span class="kw">crate</span>) transaction: Transaction,
+}
+
 <span class="doccomment">/// Message to the network worker.
 </span><span class="attr">#[derive(Debug)]
 </span><span class="kw">enum </span>NetworkWorkerMessage {
@@ -684,6 +760,10 @@
     </span>SyncPeers(oneshot::Sender&lt;Vec&lt;PeerSync&gt;&gt;),
     <span class="doccomment">/// Retrieve the number of inbound connected peers.
     </span>InboundPeersCount(oneshot::Sender&lt;usize&gt;),
+    <span class="doccomment">/// Retrieve the transaction.
+    </span>GetTransaction((Txid, oneshot::Sender&lt;<span class="prelude-ty">Option</span>&lt;Transaction&gt;&gt;)),
+    <span class="doccomment">/// Add transaction to the transaction manager.
+    </span>SendTransaction((IncomingTransaction, oneshot::Sender&lt;SendTransactionResult&gt;)),
 }
 
 <span class="doccomment">/// A handle for interacting with the network worker.
@@ -724,6 +804,44 @@
         }
 
         receiver.<span class="kw">await</span>.unwrap_or_default()
+    }
+
+    <span class="kw">pub async fn </span>get_transaction(<span class="kw-2">&amp;</span><span class="self">self</span>, txid: Txid) -&gt; <span class="prelude-ty">Option</span>&lt;Transaction&gt; {
+        <span class="kw">let </span>(sender, receiver) = oneshot::channel();
+
+        <span class="kw">if </span><span class="self">self
+            </span>.worker_msg_sender
+            .unbounded_send(NetworkWorkerMessage::GetTransaction((txid, sender)))
+            .is_err()
+        {
+            <span class="kw">return </span><span class="prelude-val">None</span>;
+        }
+
+        receiver.<span class="kw">await</span>.ok().flatten()
+    }
+
+    <span class="kw">pub async fn </span>send_transaction(<span class="kw-2">&amp;</span><span class="self">self</span>, transaction: Transaction) -&gt; SendTransactionResult {
+        <span class="kw">let </span>(sender, receiver) = oneshot::channel();
+
+        <span class="kw">let </span>txid = transaction.compute_txid();
+        <span class="kw">let </span>incoming_transaction = IncomingTransaction { txid, transaction };
+
+        <span class="kw">if </span><span class="self">self
+            </span>.worker_msg_sender
+            .unbounded_send(NetworkWorkerMessage::SendTransaction((
+                incoming_transaction,
+                sender,
+            )))
+            .is_err()
+        {
+            <span class="kw">return </span>SendTransactionResult::Failure(<span class="macro">format!</span>(
+                <span class="string">"Failed to send transaction ({txid}) to worker"
+            </span>));
+        }
+
+        receiver
+            .<span class="kw">await
+            </span>.unwrap_or(SendTransactionResult::Failure(<span class="string">"Internal error"</span>.to_string()))
     }
 
     <span class="doccomment">/// Returns a flag indicating whether the node is actively performing a major sync.

@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/peer_manager.rs`."><title>peer_manager.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-970bf1bf55bd1c15.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (fd8d6fbe5 2024-08-02)" data-channel="nightly" data-search-js="search-ef54e092fea9c776.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-6fcc09bb2cf2f6ca.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/peer_manager.rs`."><title>peer_manager.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-970bf1bf55bd1c15.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (64ebd39da 2024-08-03)" data-channel="nightly" data-search-js="search-ef54e092fea9c776.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-9345f17bf569ecba.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -692,6 +692,10 @@
 <a href="#692" id="692">692</a>
 <a href="#693" id="693">693</a>
 <a href="#694" id="694">694</a>
+<a href="#695" id="695">695</a>
+<a href="#696" id="696">696</a>
+<a href="#697" id="697">697</a>
+<a href="#698" id="698">698</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::address_book::AddressBook;
 <span class="kw">use </span><span class="kw">crate</span>::connection::{ConnectionInitiator, ConnectionWriter, Direction, NewConnection};
 <span class="kw">use crate</span>::{validate_outbound_services, Error, Latency, PeerId};
@@ -1019,31 +1023,29 @@
             }
             <span class="prelude-val">None
         </span>} <span class="kw">else if </span><span class="self">self</span>.last_eviction.elapsed() &gt; EVICTION_INTERVAL {
-            <span class="comment">// The set of outbound peers is full and the eviction interval elapsed,
+            <span class="comment">// Find the slowest peer.
+            //
+            // The set of outbound peers is full and the eviction interval elapsed,
             // try to evict the slowest peer for discovering potential better peers.
-            </span><span class="self">self</span>.find_slowest_peer()
+            </span><span class="self">self</span>.connected_peers
+                .iter()
+                .filter_map(|(peer_id, peer_info)| {
+                    <span class="kw">let </span>average_latency = peer_info.ping_latency.average();
+
+                    <span class="kw">if </span>average_latency &gt; SLOW_PEER_LATENCY {
+                        <span class="prelude-val">Some</span>((peer_id, average_latency))
+                    } <span class="kw">else </span>{
+                        <span class="prelude-val">None
+                    </span>}
+                })
+                .max_by_key(|(_peer_id, average_latency)| <span class="kw-2">*</span>average_latency)
+                .map(|(peer_id, peer_latency)| SlowPeer {
+                    peer_id: <span class="kw-2">*</span>peer_id,
+                    peer_latency,
+                })
         } <span class="kw">else </span>{
             <span class="prelude-val">None
         </span>}
-    }
-
-    <span class="kw">fn </span>find_slowest_peer(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;SlowPeer&gt; {
-        <span class="self">self</span>.connected_peers
-            .iter()
-            .filter_map(|(peer_id, peer_info)| {
-                <span class="kw">let </span>average_latency = peer_info.ping_latency.average();
-
-                <span class="kw">if </span>average_latency &gt; SLOW_PEER_LATENCY {
-                    <span class="prelude-val">Some</span>((peer_id, average_latency))
-                } <span class="kw">else </span>{
-                    <span class="prelude-val">None
-                </span>}
-            })
-            .max_by_key(|(_peer_id, average_latency)| <span class="kw-2">*</span>average_latency)
-            .map(|(peer_id, peer_latency)| SlowPeer {
-                peer_id: <span class="kw-2">*</span>peer_id,
-                peer_latency,
-            })
     }
 
     <span class="kw">fn </span>send_pings(<span class="kw-2">&amp;mut </span><span class="self">self</span>, should_pings: Vec&lt;PeerId&gt;) {
@@ -1119,8 +1121,13 @@
         <span class="self">self</span>.connected_peers.contains_key(<span class="kw-2">&amp;</span>peer_id)
     }
 
+    <span class="doccomment">/// Returns the list of connected peers.
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>connected_peers(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw">impl </span>Iterator&lt;Item = <span class="kw-2">&amp;</span>PeerId&gt; {
+        <span class="self">self</span>.connected_peers.keys()
+    }
+
     <span class="doccomment">/// Returns the number of connected peers.
-    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>connect_peers_count(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize {
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>connected_peers_count(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize {
         <span class="self">self</span>.connected_peers.len()
     }
 
@@ -1255,8 +1262,9 @@
                 <span class="self">self</span>.send(peer_id, NetworkMessage::Version(our_version))<span class="question-mark">?</span>;
 
                 <span class="kw">if </span>greatest_common_version &gt;= WTXID_RELAY_VERSION {
-                    <span class="self">self</span>.send(peer_id, NetworkMessage::WtxidRelay)<span class="question-mark">?</span>;
-                }
+                    <span class="comment">// TODO: support wtxidrelay
+                    // self.send(peer_id, NetworkMessage::WtxidRelay)?;
+                </span>}
 
                 <span class="comment">// if greatest_common_version &gt;= 70016 {
                 // self.send(peer_id, NetworkMessage::SendAddrV2)?;
