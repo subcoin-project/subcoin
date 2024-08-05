@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-node/src/cli/params.rs`."><title>params.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../../static.files/rustdoc-970bf1bf55bd1c15.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="subcoin_node" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (64ebd39da 2024-08-03)" data-channel="nightly" data-search-js="search-ef54e092fea9c776.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-9345f17bf569ecba.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-node/src/cli/params.rs`."><title>params.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../../static.files/rustdoc-d10b2a06af903387.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="subcoin_node" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (176e54520 2024-08-04)" data-channel="nightly" data-search-js="search-ef54e092fea9c776.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-9345f17bf569ecba.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -157,6 +157,8 @@
 <a href="#157" id="157">157</a>
 <a href="#158" id="158">158</a>
 <a href="#159" id="159">159</a>
+<a href="#160" id="160">160</a>
+<a href="#161" id="161">161</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>clap::Parser;
 <span class="kw">use </span>sc_consensus_nakamoto::{BlockExecutionStrategy, ExecutionBackend};
 <span class="kw">use </span>std::path::PathBuf;
@@ -165,22 +167,29 @@
 <span class="doccomment">/// Chain.
 ///
 /// Currently only Bitcoin is supported, more chains may be supported in the future.
-</span><span class="attr">#[derive(Clone, Copy, Default, Debug, clap::ValueEnum)]
+</span><span class="comment">// TODO: This clippy warning will be fixed once more chains are supported.
+</span><span class="attr">#[allow(clippy::enum_variant_names)]
+#[derive(Clone, Copy, Default, Debug, clap::ValueEnum)]
 </span><span class="kw">pub enum </span>Chain {
     <span class="doccomment">/// Bitcoin mainnet.
     </span><span class="attr">#[default]
-    </span>Bitcoin,
+    </span>BitcoinMainnet,
+    <span class="doccomment">/// Bitcoin testnet
+    </span>BitcoinTestnet,
+    <span class="doccomment">/// Bitcoin signet.
+    </span>BitcoinSignet,
 }
 
-<span class="doccomment">/// Bitcoin network type.
-</span><span class="attr">#[derive(Clone, Copy, Debug, clap::ValueEnum)]
-</span><span class="kw">pub enum </span>Network {
-    <span class="doccomment">/// Mainnet.
-    </span>Mainnet,
-    <span class="doccomment">/// Testnet.
-    </span>Testnet,
-    <span class="doccomment">/// Signet.
-    </span>Signet,
+<span class="kw">impl </span>Chain {
+    <span class="doccomment">/// Returns the value of `id` in `SubstrateCli::load_spec(id)`.
+    </span><span class="kw">fn </span>chain_spec_id(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str {
+        <span class="comment">// Convert to kebab-case for consistency in CLI.
+        </span><span class="kw">match </span><span class="self">self </span>{
+            <span class="self">Self</span>::BitcoinMainnet =&gt; <span class="string">"bitcoin-mainnet"</span>,
+            <span class="self">Self</span>::BitcoinTestnet =&gt; <span class="string">"bitcoin-testnet"</span>,
+            <span class="self">Self</span>::BitcoinSignet =&gt; <span class="string">"bitcoin-signet"</span>,
+        }
+    }
 }
 
 <span class="attr">#[derive(Debug, Clone, Parser)]
@@ -230,13 +239,9 @@
 
 <span class="attr">#[derive(Debug, Clone, Parser)]
 </span><span class="kw">pub struct </span>CommonParams {
-    <span class="doccomment">/// Specify the chain network.
-    </span><span class="attr">#[arg(long, value_name = <span class="string">"CHAIN"</span>, default_value = <span class="string">"bitcoin"</span>)]
+    <span class="doccomment">/// Specify the chain.
+    </span><span class="attr">#[arg(long, value_name = <span class="string">"CHAIN"</span>, default_value = <span class="string">"bitcoin-mainnet"</span>)]
     </span><span class="kw">pub </span>chain: Chain,
-
-    <span class="doccomment">/// Specify the chain network.
-    </span><span class="attr">#[arg(long, value_name = <span class="string">"NETWORK"</span>, default_value = <span class="string">"mainnet"</span>)]
-    </span><span class="kw">pub </span>network: Network,
 
     <span class="doccomment">/// Specify the block execution strategy.
     </span><span class="attr">#[clap(long, value_enum, default_value_t = BlockExecution::RuntimeDisk)]
@@ -275,7 +280,7 @@
     </span><span class="kw">pub fn </span>as_shared_params(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; sc_cli::SharedParams {
         <span class="comment">// TODO: expose more flags?
         </span>sc_cli::SharedParams {
-            chain: <span class="prelude-val">Some</span>(<span class="macro">format!</span>(<span class="string">"{:?}"</span>, <span class="self">self</span>.chain)),
+            chain: <span class="prelude-val">Some</span>(<span class="self">self</span>.chain.chain_spec_id().to_string()),
             dev: <span class="bool-val">false</span>,
             base_path: <span class="self">self</span>.base_path.clone(),
             log: <span class="self">self</span>.log.clone(),
@@ -287,13 +292,12 @@
         }
     }
 
-    <span class="doccomment">/// Determines the Bitcoin network type based on the current chain and network settings.
-    </span><span class="attr">#[allow(unused)]
+    <span class="doccomment">/// Determines the Bitcoin network type based on the current chain setting.
     </span><span class="kw">pub fn </span>bitcoin_network(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bitcoin::Network {
-        <span class="kw">match </span>(<span class="self">self</span>.chain, <span class="self">self</span>.network) {
-            (Chain::Bitcoin, Network::Mainnet) =&gt; bitcoin::Network::Bitcoin,
-            (Chain::Bitcoin, Network::Testnet) =&gt; bitcoin::Network::Testnet,
-            (Chain::Bitcoin, Network::Signet) =&gt; bitcoin::Network::Signet,
+        <span class="kw">match </span><span class="self">self</span>.chain {
+            Chain::BitcoinMainnet =&gt; bitcoin::Network::Bitcoin,
+            Chain::BitcoinTestnet =&gt; bitcoin::Network::Testnet,
+            Chain::BitcoinSignet =&gt; bitcoin::Network::Signet,
         }
     }
 
