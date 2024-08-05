@@ -6,22 +6,17 @@ use subcoin_network::PeerId;
 /// Chain.
 ///
 /// Currently only Bitcoin is supported, more chains may be supported in the future.
+// TODO: This clippy warning will be fixed once more chains are supported.
+#[allow(clippy::enum_variant_names)]
 #[derive(Clone, Copy, Default, Debug, clap::ValueEnum)]
 pub enum Chain {
     /// Bitcoin mainnet.
     #[default]
-    Bitcoin,
-}
-
-/// Bitcoin network type.
-#[derive(Clone, Copy, Debug, clap::ValueEnum)]
-pub enum Network {
-    /// Mainnet.
-    Mainnet,
-    /// Testnet.
-    Testnet,
-    /// Signet.
-    Signet,
+    BitcoinMainnet,
+    /// Bitcoin testnet
+    BitcoinTestnet,
+    /// Bitcoin signet.
+    BitcoinSignet,
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -71,13 +66,9 @@ pub enum BlockExecution {
 
 #[derive(Debug, Clone, Parser)]
 pub struct CommonParams {
-    /// Specify the chain network.
-    #[arg(long, value_name = "CHAIN", default_value = "bitcoin")]
+    /// Specify the chain.
+    #[arg(long, value_name = "CHAIN", default_value = "bitcoin-mainnet")]
     pub chain: Chain,
-
-    /// Specify the chain network.
-    #[arg(long, value_name = "NETWORK", default_value = "mainnet")]
-    pub network: Network,
 
     /// Specify the block execution strategy.
     #[clap(long, value_enum, default_value_t = BlockExecution::RuntimeDisk)]
@@ -128,13 +119,12 @@ impl CommonParams {
         }
     }
 
-    /// Determines the Bitcoin network type based on the current chain and network settings.
-    #[allow(unused)]
+    /// Determines the Bitcoin network type based on the current chain setting.
     pub fn bitcoin_network(&self) -> bitcoin::Network {
-        match (self.chain, self.network) {
-            (Chain::Bitcoin, Network::Mainnet) => bitcoin::Network::Bitcoin,
-            (Chain::Bitcoin, Network::Testnet) => bitcoin::Network::Testnet,
-            (Chain::Bitcoin, Network::Signet) => bitcoin::Network::Signet,
+        match self.chain {
+            Chain::BitcoinMainnet => bitcoin::Network::Bitcoin,
+            Chain::BitcoinTestnet => bitcoin::Network::Testnet,
+            Chain::BitcoinSignet => bitcoin::Network::Signet,
         }
     }
 

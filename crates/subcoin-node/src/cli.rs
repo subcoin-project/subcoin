@@ -29,6 +29,9 @@ pub enum Command {
     #[command(subcommand)]
     Blockchain(Blockchain),
 
+    /// Build a chain specification.
+    BuildSpec(sc_cli::BuildSpecCmd),
+
     /// Validate blocks.
     CheckBlock(Box<sc_cli::CheckBlockCmd>),
 
@@ -147,6 +150,10 @@ pub fn run() -> sc_cli::Result<()> {
                 })?;
                 Ok((cmd.run(client), task_manager))
             })
+        }
+        Command::BuildSpec(cmd) => {
+            let runner = SubstrateCli.create_runner(&cmd)?;
+            runner.sync_run(|config| cmd.run(config.chain_spec, config.network))
         }
         Command::CheckBlock(cmd) => {
             let runner = SubstrateCli.create_runner(&*cmd)?;
