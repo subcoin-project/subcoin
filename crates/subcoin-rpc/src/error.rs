@@ -1,3 +1,4 @@
+use bitcoin::consensus::encode::FromHexError;
 use jsonrpsee::types::error::ErrorObject;
 use jsonrpsee::types::ErrorObjectOwned;
 
@@ -15,6 +16,10 @@ pub enum Error {
     Header(subcoin_primitives::HeaderError),
     #[error(transparent)]
     Blockchain(#[from] sp_blockchain::Error),
+    #[error(transparent)]
+    DecodeHex(#[from] FromHexError),
+    #[error(transparent)]
+    SerdeJson(#[from] serde_json::Error),
     /// Client error.
     #[error("Client error: {0}")]
     Client(#[from] Box<dyn std::error::Error + Send + Sync>),

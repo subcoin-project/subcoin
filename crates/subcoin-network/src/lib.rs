@@ -35,12 +35,13 @@ mod peer_manager;
 mod sync;
 #[cfg(test)]
 mod tests;
+mod transaction_manager;
 mod worker;
 
 use crate::connection::ConnectionInitiator;
 use crate::worker::NetworkWorker;
 use bitcoin::p2p::ServiceFlags;
-use bitcoin::{BlockHash, Network as BitcoinNetwork};
+use bitcoin::{BlockHash, Network as BitcoinNetwork, Transaction, Txid};
 use peer_manager::HandshakeState;
 use sc_client_api::{AuxStore, HeaderBackend};
 use sc_consensus_nakamoto::BlockImportQueue;
@@ -65,6 +66,8 @@ pub type Latency = u128;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("Invalid bootnode address: {0}")]
+    InvalidBootnode(String),
     #[error("Received 0 bytes, peer performed an orderly shutdown")]
     PeerShutdown,
     #[error("Cannot communicate with the network event stream")]
@@ -75,6 +78,22 @@ pub enum Error {
     ConnectionNotFound(PeerId),
     #[error("Connecting to the stream timed out")]
     ConnectionTimeout,
+    #[error("Unexpected handshake state: {0:?}")]
+    UnexpectedHandshakeState(Box<HandshakeState>),
+    #[error("Only IPv4 peers are supported")]
+    Ipv4Only,
+    #[error("Peer is not a full node")]
+    NotFullNode,
+    #[error("Peer is not a segwit node")]
+    NotSegwitNode,
+    #[error("Peer's protocol version is too low")]
+    ProtocolVersionTooLow,
+    #[error("Too many block entries in inv message")]
+    TooManyBlockEntries,
+    #[error("Too many headers (> 2000)")]
+    TooManyHeaders,
+    #[error("Too many inventory items")]
+    TooManyInventoryItems,
     #[error("Ping timeout")]
     PingTimeout,
     #[error("Ping latency exceeds the threshold")]
@@ -83,28 +102,10 @@ pub enum Error {
     SlowPeer(Latency),
     #[error("Unexpected pong message")]
     UnexpectedPong,
-    #[error("Too many block entries in inv message")]
-    TooManyBlockEntries,
-    #[error("Too many headers (> 2000)")]
-    TooManyHeaders,
-    #[error("Too many inventory items ")]
-    TooManyInventoryItems,
-    #[error("Peer is not a full node")]
-    NotFullNode,
-    #[error("Peer is not a segwit node")]
-    NotSegwitNode,
-    #[error("Peer's protocol version is too low")]
-    ProtocolVersionTooLow,
     #[error("Invalid pong message: bad nonce")]
     BadPong,
-    #[error("Invalid bootnode address: {0}")]
-    InvalidBootnode(String),
     #[error("Received an unrequested block: {0:?}")]
     UnrequestedBlock(BlockHash),
-    #[error("Unexpected handshake state: {0:?}")]
-    UnexpectedHandshakeState(Box<HandshakeState>),
-    #[error("Only IPv4 peers are supported")]
-    Ipv4Only,
     #[error("Other: {0}")]
     Other(String),
     #[error(transparent)]
@@ -177,6 +178,7 @@ pub enum SyncStrategy {
 
 /// Represents the sync status of node.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum SyncStatus {
     /// The node is idle and not currently major syncing.
     Idle,
@@ -191,6 +193,7 @@ pub enum SyncStatus {
 
 /// Represents the status of network.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NetworkStatus {
     /// The number of peers currently connected to the node.
     pub num_connected_peers: usize,
@@ -217,6 +220,20 @@ impl Clone for Bandwidth {
     }
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SendTransactionResult {
+    Success(Txid),
+    Failure(String),
+}
+
+/// An incoming transaction from RPC or network.
+#[derive(Debug)]
+pub(crate) struct IncomingTransaction {
+    pub(crate) txid: Txid,
+    pub(crate) transaction: Transaction,
+}
+
 /// Message to the network worker.
 #[derive(Debug)]
 enum NetworkWorkerMessage {
@@ -226,6 +243,10 @@ enum NetworkWorkerMessage {
     SyncPeers(oneshot::Sender<Vec<PeerSync>>),
     /// Retrieve the number of inbound connected peers.
     InboundPeersCount(oneshot::Sender<usize>),
+    /// Retrieve the transaction.
+    GetTransaction((Txid, oneshot::Sender<Option<Transaction>>)),
+    /// Add transaction to the transaction manager.
+    SendTransaction((IncomingTransaction, oneshot::Sender<SendTransactionResult>)),
 }
 
 /// A handle for interacting with the network worker.
@@ -266,6 +287,44 @@ impl NetworkHandle {
         }
 
         receiver.await.unwrap_or_default()
+    }
+
+    pub async fn get_transaction(&self, txid: Txid) -> Option<Transaction> {
+        let (sender, receiver) = oneshot::channel();
+
+        if self
+            .worker_msg_sender
+            .unbounded_send(NetworkWorkerMessage::GetTransaction((txid, sender)))
+            .is_err()
+        {
+            return None;
+        }
+
+        receiver.await.ok().flatten()
+    }
+
+    pub async fn send_transaction(&self, transaction: Transaction) -> SendTransactionResult {
+        let (sender, receiver) = oneshot::channel();
+
+        let txid = transaction.compute_txid();
+        let incoming_transaction = IncomingTransaction { txid, transaction };
+
+        if self
+            .worker_msg_sender
+            .unbounded_send(NetworkWorkerMessage::SendTransaction((
+                incoming_transaction,
+                sender,
+            )))
+            .is_err()
+        {
+            return SendTransactionResult::Failure(format!(
+                "Failed to send transaction ({txid}) to worker"
+            ));
+        }
+
+        receiver
+            .await
+            .unwrap_or(SendTransactionResult::Failure("Internal error".to_string()))
     }
 
     /// Returns a flag indicating whether the node is actively performing a major sync.

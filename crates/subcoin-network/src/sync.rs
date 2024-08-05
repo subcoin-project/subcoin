@@ -20,8 +20,11 @@ use subcoin_primitives::ClientExt;
 // Do major sync when the current tip falls behind the network by 144 blocks (roughly one day).
 const MAJOR_SYNC_GAP: u32 = 144;
 
+const LATENCY_IMPROVEMENT_THRESHOLD: f64 = 1.2;
+
 /// The state of syncing between a Peer and ourselves.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum PeerSyncState {
     /// Available for sync requests.
     Available,
@@ -40,6 +43,7 @@ impl PeerSyncState {
 
 /// Ping letency of the peer.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum PeerLatency {
     Unknown,
     Average(Latency),
@@ -64,6 +68,7 @@ impl PartialOrd for PeerLatency {
 
 /// Contains all the data about a Peer that we are trying to sync with.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PeerSync {
     /// Peer id of this peer.
     pub peer_id: PeerId,
@@ -76,7 +81,7 @@ pub struct PeerSync {
     pub state: PeerSyncState,
 }
 
-/// Locator based sync request, for either Header or Block.
+/// Locator based sync request, for requesting either Headers or Blocks.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct LocatorRequest {
     pub locator_hashes: Vec<BlockHash>,
@@ -294,8 +299,6 @@ where
             if let (PeerLatency::Average(current_latency), PeerLatency::Average(best_latency)) =
                 (current_sync_peer.latency, best_sync_peer.latency)
             {
-                const LATENCY_IMPROVEMENT_THRESHOLD: f64 = 1.2;
-
                 // Update sync peer if the latency improvement is significant.
                 if current_latency as f64 / best_latency as f64 > LATENCY_IMPROVEMENT_THRESHOLD {
                     let peer_id = best_sync_peer.peer_id;

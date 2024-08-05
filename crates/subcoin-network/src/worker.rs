@@ -1,8 +1,12 @@
 use crate::connection::{ConnectionInitiator, Direction, NewConnection};
 use crate::peer_manager::{Config, PeerManager, SlowPeer};
 use crate::sync::{ChainSync, LocatorRequest, SyncAction, SyncRequest};
-use crate::{Bandwidth, Error, Latency, NetworkStatus, NetworkWorkerMessage, PeerId, SyncStrategy};
-use bitcoin::p2p::message::NetworkMessage;
+use crate::transaction_manager::TransactionManager;
+use crate::{
+    Bandwidth, Error, IncomingTransaction, Latency, NetworkStatus, NetworkWorkerMessage, PeerId,
+    SendTransactionResult, SyncStrategy,
+};
+use bitcoin::p2p::message::{NetworkMessage, MAX_INV_SIZE};
 use bitcoin::p2p::message_blockdata::{GetBlocksMessage, GetHeadersMessage, Inventory};
 use futures::stream::FusedStream;
 use futures::StreamExt;
@@ -44,6 +48,7 @@ pub struct NetworkWorker<Block, Client> {
     config: Config,
     network_event_receiver: UnboundedReceiver<Event>,
     peer_manager: PeerManager<Block, Client>,
+    transaction_manager: TransactionManager,
     chain_sync: ChainSync<Block, Client>,
 }
 
@@ -71,6 +76,7 @@ where
                 connection_initiator,
                 max_outbound_peers,
             ),
+            transaction_manager: TransactionManager::new(),
             chain_sync: ChainSync::new(client, import_queue, sync_strategy, is_major_syncing),
             config,
         }
@@ -115,42 +121,6 @@ where
         }
     }
 
-    fn perform_periodic_actions(&mut self) {
-        let sync_action = self.chain_sync.on_tick();
-        self.do_sync_action(sync_action);
-        if let Some(SlowPeer {
-            peer_id,
-            peer_latency,
-        }) = self.peer_manager.on_tick()
-        {
-            self.peer_manager
-                .disconnect(peer_id, Error::SlowPeer(peer_latency));
-            self.peer_manager.update_last_eviction();
-            self.chain_sync.remove_peer(peer_id);
-        }
-    }
-
-    fn process_worker_message(&self, worker_msg: NetworkWorkerMessage, bandwidth: &Bandwidth) {
-        match worker_msg {
-            NetworkWorkerMessage::NetworkStatus(result_sender) => {
-                let net_status = NetworkStatus {
-                    num_connected_peers: self.peer_manager.connect_peers_count(),
-                    total_bytes_inbound: bandwidth.total_bytes_inbound.load(Ordering::Relaxed),
-                    total_bytes_outbound: bandwidth.total_bytes_outbound.load(Ordering::Relaxed),
-                    sync_status: self.chain_sync.sync_status(),
-                };
-                let _ = result_sender.send(net_status);
-            }
-            NetworkWorkerMessage::SyncPeers(result_sender) => {
-                let sync_peers = self.chain_sync.peers.values().cloned().collect::<Vec<_>>();
-                let _ = result_sender.send(sync_peers);
-            }
-            NetworkWorkerMessage::InboundPeersCount(result_sender) => {
-                let _ = result_sender.send(self.peer_manager.inbound_peers_count());
-            }
-        }
-    }
-
     async fn process_event(&mut self, event: Event) {
         match event {
             Event::NewConnection(new_connection) => {
@@ -179,6 +149,67 @@ where
                         tracing::error!(?from, ?err, "Failed to process peer message: {msg_cmd}");
                     }
                 }
+            }
+        }
+    }
+
+    fn perform_periodic_actions(&mut self) {
+        let sync_action = self.chain_sync.on_tick();
+        self.do_sync_action(sync_action);
+
+        if let Some(SlowPeer {
+            peer_id,
+            peer_latency,
+        }) = self.peer_manager.on_tick()
+        {
+            self.peer_manager
+                .disconnect(peer_id, Error::SlowPeer(peer_latency));
+            self.peer_manager.update_last_eviction();
+            self.chain_sync.remove_peer(peer_id);
+        }
+
+        for (peer, txids) in self
+            .transaction_manager
+            .on_tick(self.peer_manager.connected_peers())
+        {
+            tracing::debug!("Broadcasting transaction IDs {txids:?} to {peer:?}");
+            let msg = NetworkMessage::Inv(txids.into_iter().map(Inventory::Transaction).collect());
+            if let Err(err) = self.send(peer, msg) {
+                self.peer_manager.disconnect(peer, err);
+            }
+        }
+    }
+
+    fn process_worker_message(&mut self, worker_msg: NetworkWorkerMessage, bandwidth: &Bandwidth) {
+        match worker_msg {
+            NetworkWorkerMessage::NetworkStatus(result_sender) => {
+                let net_status = NetworkStatus {
+                    num_connected_peers: self.peer_manager.connected_peers_count(),
+                    total_bytes_inbound: bandwidth.total_bytes_inbound.load(Ordering::Relaxed),
+                    total_bytes_outbound: bandwidth.total_bytes_outbound.load(Ordering::Relaxed),
+                    sync_status: self.chain_sync.sync_status(),
+                };
+                let _ = result_sender.send(net_status);
+            }
+            NetworkWorkerMessage::SyncPeers(result_sender) => {
+                let sync_peers = self.chain_sync.peers.values().cloned().collect::<Vec<_>>();
+                let _ = result_sender.send(sync_peers);
+            }
+            NetworkWorkerMessage::InboundPeersCount(result_sender) => {
+                let _ = result_sender.send(self.peer_manager.inbound_peers_count());
+            }
+            NetworkWorkerMessage::GetTransaction((txid, result_sender)) => {
+                let _ = result_sender.send(self.transaction_manager.get_transaction(&txid));
+            }
+            NetworkWorkerMessage::SendTransaction((incoming_transaction, result_sender)) => {
+                let send_transaction_result = match self
+                    .transaction_manager
+                    .add_transaction(incoming_transaction)
+                {
+                    Ok(txid) => SendTransactionResult::Success(txid),
+                    Err(error_msg) => SendTransactionResult::Failure(error_msg),
+                };
+                let _ = result_sender.send(send_transaction_result);
             }
         }
     }
@@ -220,12 +251,22 @@ where
                 self.peer_manager.on_addr(from, addresses);
                 Ok(SyncAction::None)
             }
-            NetworkMessage::Tx(_tx) => {
-                // TODO: handle tx
+            NetworkMessage::Tx(tx) => {
+                // TODO: Check has relay permission.
+                let incoming_transaction = IncomingTransaction {
+                    txid: tx.compute_txid(),
+                    transaction: tx,
+                };
+                if let Err(err_msg) = self
+                    .transaction_manager
+                    .add_transaction(incoming_transaction)
+                {
+                    tracing::debug!(?from, "Failed to add transaction: {err_msg}");
+                }
                 Ok(SyncAction::None)
             }
             NetworkMessage::GetData(inv) => {
-                self.process_get_data(inv);
+                self.process_get_data(from, inv);
                 Ok(SyncAction::None)
             }
             NetworkMessage::GetBlocks(_) => {
@@ -280,7 +321,7 @@ where
                 self.send(from, NetworkMessage::FeeFilter(1000))?;
                 Ok(SyncAction::None)
             }
-            NetworkMessage::Inv(inv) => Ok(self.chain_sync.on_inv(inv, from)),
+            NetworkMessage::Inv(inv) => self.process_inv(from, inv),
             NetworkMessage::Block(block) => Ok(self.chain_sync.on_block(block, from)),
             NetworkMessage::Headers(headers) => Ok(self.chain_sync.on_headers(headers, from)),
             NetworkMessage::MerkleBlock(_) => Ok(SyncAction::None),
@@ -371,17 +412,35 @@ where
         }
     }
 
-    fn process_get_data(&self, get_data_requests: Vec<Inventory>) {
-        // TODO: process tx as many as possible.
+    fn process_inv(&mut self, from: PeerId, inv: Vec<Inventory>) -> Result<SyncAction, Error> {
+        if inv.len() > MAX_INV_SIZE {
+            return Ok(SyncAction::Disconnect(from, Error::TooManyInventoryItems));
+        }
 
-        // TODO: process one BLOCK item per call, as Bitcore Core does.
-        for get_block_msg in get_data_requests.iter().filter(|inv| {
-            matches!(
-                inv,
-                Inventory::Block(_) | Inventory::CompactBlock(_) | Inventory::WitnessBlock(_)
-            )
-        }) {
-            self.process_get_block_data(get_block_msg);
+        Ok(self.chain_sync.on_inv(inv, from))
+    }
+
+    fn process_get_data(&self, from: PeerId, get_data_requests: Vec<Inventory>) {
+        // TODO: process tx as many as possible.
+        for inv in get_data_requests {
+            match inv {
+                Inventory::Block(_) | Inventory::CompactBlock(_) | Inventory::WitnessBlock(_) => {
+                    // TODO: process one BLOCK item per call, as Bitcore Core does.
+                    self.process_get_block_data(&inv);
+                }
+                Inventory::Transaction(txid) => {
+                    tracing::debug!("Recv transaction request: {txid:?} from {from:?}");
+                    if let Some(transaction) = self.transaction_manager.get_transaction(&txid) {
+                        if let Err(err) = self.send(from, NetworkMessage::Tx(transaction)) {
+                            tracing::error!(?err, "Failed to send transaction {txid} to {from:?}");
+                        }
+                    }
+                }
+                Inventory::WTx(_)
+                | Inventory::WitnessTransaction(_)
+                | Inventory::Unknown { .. }
+                | Inventory::Error => {}
+            }
         }
     }
 

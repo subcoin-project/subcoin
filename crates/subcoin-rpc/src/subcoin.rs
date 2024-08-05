@@ -1,13 +1,18 @@
 use crate::error::Error;
+use bitcoin::consensus::encode::{deserialize_hex, serialize_hex};
+use bitcoin::{Transaction, Txid};
 use jsonrpsee::proc_macros::rpc;
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 use serde::{Deserialize, Serialize};
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subcoin_network::{NetworkHandle, NetworkStatus, PeerSync, PeerSyncState};
+use subcoin_network::{
+    NetworkHandle, NetworkStatus, PeerSync, PeerSyncState, SendTransactionResult,
+};
 
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NetworkPeers {
     total: usize,
     available: usize,
@@ -18,6 +23,18 @@ pub struct NetworkPeers {
 
 #[rpc(client, server)]
 pub trait SubcoinApi {
+    /// Returns a JSON object representing the serialized, hex-encoded transaction.
+    ///
+    /// # Arguments
+    ///
+    /// - `raw_tx`: The transaction hex string.
+    #[method(name = "subcoin_decodeRawTransaction", blocking)]
+    fn decode_raw_transaction(&self, raw_tx: String) -> Result<serde_json::Value, Error>;
+
+    /// Returns the raw transaction data for given txid.
+    #[method(name = "subcoin_getRawTransaction")]
+    async fn get_raw_transaction(&self, txid: Txid) -> Result<Option<String>, Error>;
+
     /// Get overall network status.
     #[method(name = "subcoin_networkStatus")]
     async fn network_status(&self) -> Result<Option<NetworkStatus>, Error>;
@@ -25,6 +42,14 @@ pub trait SubcoinApi {
     /// Get the sync peers.
     #[method(name = "subcoin_networkPeers")]
     async fn network_peers(&self) -> Result<NetworkPeers, Error>;
+
+    /// Submits a raw transaction (serialized, hex-encoded) to local node and network.
+    ///
+    /// # Arguments
+    ///
+    /// - `raw_tx`:  The hex string of the raw transaction.
+    #[method(name = "subcoin_sendRawTransaction")]
+    async fn send_raw_transaction(&self, raw_tx: String) -> Result<SendTransactionResult, Error>;
 }
 
 /// This struct provides the Subcoin API.
@@ -56,8 +81,14 @@ where
     Block: BlockT + 'static,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + 'static,
 {
-    async fn network_status(&self) -> Result<Option<NetworkStatus>, Error> {
-        Ok(self.network_handle.status().await)
+    fn decode_raw_transaction(&self, raw_tx: String) -> Result<serde_json::Value, Error> {
+        let transaction = deserialize_hex::<Transaction>(&raw_tx)?;
+        Ok(serde_json::to_value(transaction)?)
+    }
+
+    async fn get_raw_transaction(&self, txid: Txid) -> Result<Option<String>, Error> {
+        let maybe_transaction = self.network_handle.get_transaction(txid).await;
+        Ok(maybe_transaction.as_ref().map(serialize_hex))
     }
 
     async fn network_peers(&self) -> Result<NetworkPeers, Error> {
@@ -86,5 +117,16 @@ where
             peer_best: if peer_best > 0 { Some(peer_best) } else { None },
             sync_peers,
         })
+    }
+
+    async fn network_status(&self) -> Result<Option<NetworkStatus>, Error> {
+        Ok(self.network_handle.status().await)
+    }
+
+    async fn send_raw_transaction(&self, raw_tx: String) -> Result<SendTransactionResult, Error> {
+        Ok(self
+            .network_handle
+            .send_transaction(deserialize_hex::<Transaction>(&raw_tx)?)
+            .await)
     }
 }

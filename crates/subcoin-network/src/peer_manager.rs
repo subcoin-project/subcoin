@@ -325,31 +325,29 @@ where
             }
             None
         } else if self.last_eviction.elapsed() > EVICTION_INTERVAL {
+            // Find the slowest peer.
+            //
             // The set of outbound peers is full and the eviction interval elapsed,
             // try to evict the slowest peer for discovering potential better peers.
-            self.find_slowest_peer()
+            self.connected_peers
+                .iter()
+                .filter_map(|(peer_id, peer_info)| {
+                    let average_latency = peer_info.ping_latency.average();
+
+                    if average_latency > SLOW_PEER_LATENCY {
+                        Some((peer_id, average_latency))
+                    } else {
+                        None
+                    }
+                })
+                .max_by_key(|(_peer_id, average_latency)| *average_latency)
+                .map(|(peer_id, peer_latency)| SlowPeer {
+                    peer_id: *peer_id,
+                    peer_latency,
+                })
         } else {
             None
         }
-    }
-
-    fn find_slowest_peer(&self) -> Option<SlowPeer> {
-        self.connected_peers
-            .iter()
-            .filter_map(|(peer_id, peer_info)| {
-                let average_latency = peer_info.ping_latency.average();
-
-                if average_latency > SLOW_PEER_LATENCY {
-                    Some((peer_id, average_latency))
-                } else {
-                    None
-                }
-            })
-            .max_by_key(|(_peer_id, average_latency)| *average_latency)
-            .map(|(peer_id, peer_latency)| SlowPeer {
-                peer_id: *peer_id,
-                peer_latency,
-            })
     }
 
     fn send_pings(&mut self, should_pings: Vec<PeerId>) {
@@ -425,8 +423,13 @@ where
         self.connected_peers.contains_key(&peer_id)
     }
 
+    /// Returns the list of connected peers.
+    pub(crate) fn connected_peers(&self) -> impl Iterator<Item = &PeerId> {
+        self.connected_peers.keys()
+    }
+
     /// Returns the number of connected peers.
-    pub(crate) fn connect_peers_count(&self) -> usize {
+    pub(crate) fn connected_peers_count(&self) -> usize {
         self.connected_peers.len()
     }
 
@@ -561,7 +564,8 @@ where
                 self.send(peer_id, NetworkMessage::Version(our_version))?;
 
                 if greatest_common_version >= WTXID_RELAY_VERSION {
-                    self.send(peer_id, NetworkMessage::WtxidRelay)?;
+                    // TODO: support wtxidrelay
+                    // self.send(peer_id, NetworkMessage::WtxidRelay)?;
                 }
 
                 // if greatest_common_version >= 70016 {
