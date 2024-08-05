@@ -1,3 +1,7 @@
+use subcoin_service::ChainSpec;
+
+const BITCOIN_MAINNET_CHAIN_SPEC: &str = include_str!("../res/chain-spec-raw-bitcoin-mainnet.json");
+
 /// Fake CLI for satisfying the Substrate CLI interface.
 ///
 /// Primarily for creating a Substrate runner.
@@ -29,13 +33,15 @@ impl sc_cli::SubstrateCli for SubstrateCli {
         2024
     }
 
-    fn load_spec(&self, _id: &str) -> Result<Box<dyn sc_service::ChainSpec>, String> {
-        // TODO: different chain spec for different bitcoin network.
-        // parse network from id
-        // The chain spec here does not impact the chain but only for showing the proper
-        // network type on explorer.
-        Ok(Box::new(subcoin_service::chain_spec::config(
-            bitcoin::Network::Bitcoin,
-        )?))
+    fn load_spec(&self, id: &str) -> Result<Box<dyn sc_service::ChainSpec>, String> {
+        let chain_spec = match id {
+            "bitcoin-mainnet" => ChainSpec::from_json_bytes(BITCOIN_MAINNET_CHAIN_SPEC.as_bytes())?,
+            "bitcoin-testnet" | "bitcoin-signet" => {
+                unimplemented!("Bitcoin testnet and signet are unsupported")
+            }
+            path => ChainSpec::from_json_file(std::path::PathBuf::from(path))?,
+        };
+
+        Ok(Box::new(chain_spec))
     }
 }
