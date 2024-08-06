@@ -13,10 +13,10 @@ fn props() -> Properties {
 
 pub fn config(network: bitcoin::Network) -> Result<ChainSpec, String> {
     let (name, id) = match network {
-        bitcoin::Network::Bitcoin => ("Bitcoin", "mainnet"),
-        bitcoin::Network::Testnet => ("Bitcoin Testnet", "testnet"),
-        bitcoin::Network::Signet => ("Bitcoin Signet", "signet"),
-        bitcoin::Network::Regtest => ("Bitcoin Regtest", "regtest"),
+        bitcoin::Network::Bitcoin => ("Bitcoin Mainnet", "bitcoin-mainnet"),
+        bitcoin::Network::Testnet => ("Bitcoin Testnet", "bitcoin-testnet"),
+        bitcoin::Network::Signet => ("Bitcoin Signet", "bitcoin-signet"),
+        bitcoin::Network::Regtest => ("Bitcoin Regtest", "bitcoin-regtest"),
         unknown_network => unreachable!("Unknown Bitcoin network: {unknown_network:?}"),
     };
     Ok(ChainSpec::builder(
