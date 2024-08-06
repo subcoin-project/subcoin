@@ -95,7 +95,7 @@ impl RunCmd {
     /// Start subcoin node.
     pub async fn start(
         self,
-        config: Configuration,
+        mut config: Configuration,
         run: Run,
         no_hardware_benchmarks: bool,
         storage_monitor: sc_storage_monitor::StorageMonitorParams,
@@ -111,7 +111,6 @@ impl RunCmd {
             backend,
             mut task_manager,
             block_executor,
-            system_rpc_tx,
             keystore_container,
             telemetry,
             ..
@@ -170,6 +169,34 @@ impl RunCmd {
             task_manager.keep_alive(bitcoin_network);
         }
 
+        let system_rpc_tx = match config.network.network_backend {
+            sc_network::config::NetworkBackendType::Libp2p => {
+                subcoin_service::start_substrate_network::<
+                    sc_network::NetworkWorker<
+                        subcoin_runtime::interface::OpaqueBlock,
+                        <subcoin_runtime::interface::OpaqueBlock as sp_runtime::traits::Block>::Hash,
+                    >,
+                >(
+                    &mut config,
+                    client.clone(),
+                    backend,
+                    &mut task_manager,
+                    keystore_container.keystore(),
+                    telemetry,
+                )?
+            }
+            sc_network::config::NetworkBackendType::Litep2p => {
+                subcoin_service::start_substrate_network::<sc_network::Litep2pNetworkBackend>(
+                    &mut config,
+                    client.clone(),
+                    backend,
+                    &mut task_manager,
+                    keystore_container.keystore(),
+                    telemetry,
+                )?
+            }
+        };
+
         // TODO: Bitcoin-compatible RPC
         // Start JSON-RPC server.
         let gen_rpc_module = |deny_unsafe: sc_rpc::DenyUnsafe| {
@@ -194,34 +221,6 @@ impl RunCmd {
 
         let rpc = sc_service::start_rpc_servers(&config, gen_rpc_module, None)?;
         task_manager.keep_alive((config.base_path.clone(), rpc));
-
-        match config.network.network_backend {
-            sc_network::config::NetworkBackendType::Libp2p => {
-                subcoin_service::start_substrate_network::<
-                    sc_network::NetworkWorker<
-                        subcoin_runtime::interface::OpaqueBlock,
-                        <subcoin_runtime::interface::OpaqueBlock as sp_runtime::traits::Block>::Hash,
-                    >,
-                >(
-                    config,
-                    client.clone(),
-                    backend,
-                    &mut task_manager,
-                    keystore_container.keystore(),
-                    telemetry,
-                )?;
-            }
-            sc_network::config::NetworkBackendType::Litep2p => {
-                subcoin_service::start_substrate_network::<sc_network::Litep2pNetworkBackend>(
-                    config,
-                    client.clone(),
-                    backend,
-                    &mut task_manager,
-                    keystore_container.keystore(),
-                    telemetry,
-                )?;
-            }
-        }
 
         if !no_finalizer {
             spawn_handle.spawn("finalizer", None, {

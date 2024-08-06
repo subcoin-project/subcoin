@@ -17,14 +17,13 @@ use sc_consensus::import_queue::BasicQueue;
 use sc_consensus::{BlockImportParams, Verifier};
 use sc_consensus_nakamoto::{BlockExecutionStrategy, BlockExecutor};
 use sc_executor::NativeElseWasmExecutor;
-use sc_network::PeerId;
 use sc_service::config::PrometheusConfig;
 use sc_service::error::Error as ServiceError;
 use sc_service::{
-    Configuration, KeystoreContainer, MetricsService, NativeExecutionDispatch, Role, TaskManager,
+    Configuration, KeystoreContainer, MetricsService, NativeExecutionDispatch, TaskManager,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker};
-use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
+use sc_utils::mpsc::TracingUnboundedSender;
 use sp_core::traits::SpawnNamed;
 use sp_core::Encode;
 use sp_keystore::KeystorePtr;
@@ -74,90 +73,6 @@ impl NativeExecutionDispatch for BitcoinExecutorDispatch {
     }
 }
 
-/// Builds a future that processes system RPC requests.
-///
-/// This is adapted from the upstream `build_system_rpc_future`.
-async fn build_system_rpc_future<Block, Client>(
-    role: Role,
-    client: Arc<Client>,
-    mut rpc_rx: TracingUnboundedReceiver<sc_rpc::system::Request<Block>>,
-    should_have_peers: bool,
-) where
-    Block: BlockT,
-    Client: HeaderBackend<Block> + Send + Sync + 'static,
-{
-    // Current best block at initialization, to report to the RPC layer.
-    let starting_block = client.info().best_number;
-
-    loop {
-        // Answer incoming RPC requests.
-        let Some(req) = rpc_rx.next().await else {
-            tracing::debug!(
-                "RPC requests stream has terminated, shutting down the system RPC future."
-            );
-            return;
-        };
-
-        match req {
-            sc_rpc::system::Request::Health(sender) => {
-                // TODO: Proper is_major_syncing
-                let _ = sender.send(sc_rpc::system::Health {
-                    peers: 0,
-                    is_syncing: false,
-                    should_have_peers,
-                });
-            }
-            sc_rpc::system::Request::LocalPeerId(sender) => {
-                // TODO: Proper local peer id.
-                let _ = sender.send(PeerId::random().to_base58());
-            }
-            sc_rpc::system::Request::LocalListenAddresses(sender) => {
-                // TODO: Proper addresses
-                let _ = sender.send(Vec::new());
-            }
-            sc_rpc::system::Request::Peers(sender) => {
-                // TODO: Proper peers
-                let _ = sender.send(Vec::new());
-            }
-            sc_rpc::system::Request::NetworkState(sender) => {
-                // TODO: Proper network state.
-                let _ = sender.send(serde_json::Value::Null);
-            }
-            sc_rpc::system::Request::NetworkAddReservedPeer(_peer_addr, _sender) => {
-                unreachable!("NetworkAddReservedPeer");
-            }
-            sc_rpc::system::Request::NetworkRemoveReservedPeer(_peer_id, _sender) => {
-                unreachable!("NetworkRemoveReservedPeer");
-            }
-            sc_rpc::system::Request::NetworkReservedPeers(sender) => {
-                let _ = sender.send(Vec::new());
-            }
-            sc_rpc::system::Request::NodeRoles(sender) => {
-                use sc_rpc::system::NodeRole;
-
-                let node_role = match role {
-                    Role::Authority { .. } => NodeRole::Authority,
-                    Role::Full => NodeRole::Full,
-                };
-
-                let _ = sender.send(vec![node_role]);
-            }
-            sc_rpc::system::Request::SyncState(sender) => {
-                use sc_rpc::system::SyncState;
-
-                let best_number = client.info().best_number;
-
-                // TODO: Proper highest_block
-                let _ = sender.send(SyncState {
-                    starting_block,
-                    current_block: best_number,
-                    highest_block: best_number,
-                });
-            }
-        }
-    }
-}
-
 pub struct CoinStorageKey;
 
 impl subcoin_primitives::CoinStorageKey for CoinStorageKey {
@@ -182,8 +97,6 @@ pub struct NodeComponents {
     pub task_manager: TaskManager,
     /// Block processor used in the block import pipeline.
     pub block_executor: Box<dyn BlockExecutor<Block>>,
-    /// TODO: useless, remove later?
-    pub system_rpc_tx: TracingUnboundedSender<sc_rpc::system::Request<Block>>,
     pub keystore_container: KeystoreContainer,
     pub telemetry: Option<Telemetry>,
 }
@@ -297,21 +210,6 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
         telemetry
     });
 
-    let has_bootnodes = false;
-
-    let spawner = task_manager.spawn_handle();
-    let (system_rpc_tx, system_rpc_rx) = tracing_unbounded("mpsc_system_rpc", 10_000);
-    spawner.spawn(
-        "system-rpc-handler",
-        Some("networking"),
-        build_system_rpc_future(
-            config.role.clone(),
-            client.clone(),
-            system_rpc_rx,
-            has_bootnodes,
-        ),
-    );
-
     let database_path = config.database.path().map(Path::to_path_buf);
     let maybe_hwbench = (!no_hardware_benchmarks)
         .then_some(database_path.as_ref().map(|db_path| {
@@ -356,7 +254,6 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
         executor,
         task_manager,
         block_executor,
-        system_rpc_tx,
         keystore_container,
         telemetry,
     })
@@ -364,13 +261,13 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
 
 /// Runs the Substrate networking.
 pub fn start_substrate_network<N>(
-    mut config: Configuration,
+    mut config: &mut Configuration,
     client: Arc<FullClient>,
     _backend: Arc<FullBackend>,
     task_manager: &mut TaskManager,
     _keystore: KeystorePtr,
     mut telemetry: Option<Telemetry>,
-) -> Result<(), ServiceError>
+) -> Result<TracingUnboundedSender<sc_rpc::system::Request<Block>>, ServiceError>
 where
     N: sc_network::NetworkBackend<Block, <Block as BlockT>::Hash>,
 {
@@ -464,15 +361,13 @@ where
             client.clone(),
             Arc::new(network),
             sync_service.clone(),
-            config.informant_output_format,
+            config.informant_output_format.clone(),
         ),
     );
 
-    task_manager.keep_alive(system_rpc_tx);
-
     network_starter.start_network();
 
-    Ok(())
+    Ok(system_rpc_tx)
 }
 
 /// Creates a future to finalize blocks with enough confirmations.
