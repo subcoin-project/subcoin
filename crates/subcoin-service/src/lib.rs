@@ -261,7 +261,7 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
 
 /// Runs the Substrate networking.
 pub fn start_substrate_network<N>(
-    mut config: &mut Configuration,
+    config: &mut Configuration,
     client: Arc<FullClient>,
     _backend: Arc<FullBackend>,
     task_manager: &mut TaskManager,
@@ -295,7 +295,7 @@ where
 
     let (network, system_rpc_tx, _tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
-            config: &config,
+            config,
             net_config,
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),
@@ -317,7 +317,7 @@ where
         .as_mut()
         .map(|telemetry| {
             sc_service::init_telemetry(
-                &mut config,
+                config,
                 network.clone(),
                 client.clone(),
                 telemetry,
@@ -330,7 +330,7 @@ where
     let metrics_service =
         if let Some(PrometheusConfig { port, registry }) = config.prometheus_config.clone() {
             // Set static metrics.
-            let metrics = MetricsService::with_prometheus(telemetry, &registry, &config)?;
+            let metrics = MetricsService::with_prometheus(telemetry, &registry, config)?;
             spawn_handle.spawn(
                 "prometheus-endpoint",
                 None,
