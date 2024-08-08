@@ -114,6 +114,7 @@ impl ImportBlocksCmd {
                 },
                 Arc::new(subcoin_service::CoinStorageKey),
                 block_executor,
+                None,
             );
 
         for index in from..=to {

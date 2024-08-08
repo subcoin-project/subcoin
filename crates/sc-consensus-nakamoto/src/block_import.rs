@@ -19,6 +19,7 @@
 //!     An enum representing the result of an import operation, with variants for different import outcomes.
 
 use crate::block_executor::{BlockExecutor, ExecuteBlockResult};
+use crate::metrics::Metrics;
 use crate::verification::{BlockVerification, BlockVerifier};
 use bitcoin::hashes::Hash;
 use bitcoin::{Block as BitcoinBlock, BlockHash, Network};
@@ -41,6 +42,7 @@ use subcoin_primitives::runtime::Subcoin;
 use subcoin_primitives::{
     substrate_header_digest, BackendExt, BitcoinTransactionAdapter, CoinStorageKey,
 };
+use substrate_prometheus_endpoint::Registry;
 
 pub(crate) fn clone_storage_changes<Block: BlockT>(
     c: &sp_state_machine::StorageChanges<HashingFor<Block>>,
@@ -129,6 +131,7 @@ pub struct BitcoinBlockImporter<Block, Client, BE, BI, TransactionAdapter> {
     config: ImportConfig,
     verifier: BlockVerifier<Block, Client, BE>,
     block_executor: Box<dyn BlockExecutor<Block>>,
+    metrics: Option<Metrics>,
     _phantom: PhantomData<TransactionAdapter>,
 }
 
@@ -150,12 +153,13 @@ where
     TransactionAdapter: BitcoinTransactionAdapter<Block>,
 {
     /// Constructs a new instance of [`BitcoinBlockImporter`].
-    pub fn new(
+    pub fn new<'a>(
         client: Arc<Client>,
         block_import: BI,
         config: ImportConfig,
         coin_storage_key: Arc<dyn CoinStorageKey>,
         block_executor: Box<dyn BlockExecutor<Block>>,
+        registry: Option<&'a Registry>,
     ) -> Self {
         let verifier = BlockVerifier::new(
             client.clone(),
@@ -164,6 +168,14 @@ where
             coin_storage_key,
             config.verify_script,
         );
+        let metrics = match registry {
+            Some(registry) => Metrics::register(registry)
+                .map_err(|err| {
+                    tracing::error!("Failed to registry metrics: {err:?}");
+                })
+                .ok(),
+            None => None,
+        };
         Self {
             client,
             inner: block_import,
@@ -171,6 +183,7 @@ where
             config,
             verifier,
             block_executor,
+            metrics,
             _phantom: Default::default(),
         }
     }
@@ -216,11 +229,17 @@ where
         Block::Hash,
         sp_state_machine::StorageChanges<HashingFor<Block>>,
     )> {
+        let timer = std::time::Instant::now();
         let ExecuteBlockResult {
             state_root,
             storage_changes,
             exec_info: _,
         } = self.block_executor.execute_block(parent_hash, block)?;
+
+        if let Some(metrics) = &self.metrics {
+            let duration = timer.elapsed().as_millis();
+            metrics.report_block_execution_time(duration);
+        }
 
         Ok((state_root, storage_changes))
     }

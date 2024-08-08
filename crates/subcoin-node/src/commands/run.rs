@@ -140,6 +140,7 @@ impl RunCmd {
                 },
                 Arc::new(subcoin_service::CoinStorageKey),
                 block_executor,
+                config.prometheus_registry(),
             );
 
         let import_queue = sc_consensus_nakamoto::bitcoin_import_queue(
