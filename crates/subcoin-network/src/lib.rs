@@ -50,7 +50,7 @@ use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnbound
 use serde::{Deserialize, Serialize};
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
-use std::net::{AddrParseError, SocketAddr, ToSocketAddrs};
+use std::net::{AddrParseError, SocketAddr};
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -501,13 +501,30 @@ where
             }
         });
 
-        for bootnode in params.bootnodes() {
-            connection_initiator.initiate_outbound_connection(
-                bootnode
-                    .to_socket_addrs()?
+        // Create a vector of futures for DNS lookups
+        let lookup_futures = params.bootnodes().into_iter().map(|bootnode| async move {
+            tokio::net::lookup_host(&bootnode).await.map(|mut addrs| {
+                addrs
                     .next()
-                    .ok_or_else(|| Error::InvalidBootnode(bootnode.to_string()))?,
-            );
+                    .ok_or_else(|| Error::InvalidBootnode(bootnode.to_string()))
+            })
+        });
+
+        // Await all futures concurrently
+        let lookup_results = futures::future::join_all(lookup_futures).await;
+
+        for result in lookup_results {
+            match result {
+                Ok(Ok(addr)) => {
+                    connection_initiator.initiate_outbound_connection(addr);
+                }
+                Ok(Err(e)) => {
+                    tracing::error!("Failed to resolve bootnode address: {e}");
+                }
+                Err(e) => {
+                    tracing::error!("Failed to perform bootnode DNS lookup: {e}");
+                }
+            }
         }
 
         network_worker.run(worker_msg_receiver, bandwidth).await;
