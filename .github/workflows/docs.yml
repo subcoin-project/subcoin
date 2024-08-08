@@ -20,6 +20,7 @@ env:
   CARGO_INCREMENTAL: 0
   CARGO_NET_RETRY: 10
   RUSTUP_MAX_RETRIES: 10
+  RUST_TOOLCHAIN: nightly-2024-08-01  # Define the toolchain date here
 
 jobs:
   docs:
@@ -31,7 +32,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-            toolchain: nightly
+            toolchain: ${{ env.RUST_TOOLCHAIN }}
             targets: wasm32-unknown-unknown
             components: rust-src
 
@@ -51,7 +52,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Build Rustdoc
-        run: cargo +nightly -Zgitoxide -Zgit doc --all --no-deps --lib
+        run: cargo +${{ env.RUST_TOOLCHAIN }} -Zgitoxide -Zgit doc --all --no-deps --lib
         env:
           RUSTDOCFLAGS: "-Z unstable-options --enable-index-page"
 
