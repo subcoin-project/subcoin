@@ -1,6 +1,6 @@
 <div align="center">
 
-![Subcoin logo](./docs/images/subcoin-high-resolution-logo-black.png)
+<p align="center"><a href="https://vuejs.org" target="_blank" rel="noopener noreferrer"><img width="400" src="./docs/images/subcoin-high-resolution-logo-black.png" alt="Vue logo"></a></p>
 
 [![Continuous integration](https://github.com/subcoin-project/subcoin/actions/workflows/ci.yml/badge.svg)](https://github.com/subcoin-project/subcoin/actions/workflows/ci.yml)
 [![Docs](https://github.com/subcoin-project/subcoin/actions/workflows/docs.yml/badge.svg)](https://github.com/subcoin-project/subcoin/actions/workflows/docs.yml)
