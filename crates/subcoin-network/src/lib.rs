@@ -30,6 +30,7 @@ mod address_book;
 mod block_downloader;
 mod checkpoint;
 mod connection;
+mod metrics;
 mod orphan_blocks_pool;
 mod peer_manager;
 mod sync;
@@ -53,6 +54,7 @@ use std::marker::PhantomData;
 use std::net::{AddrParseError, SocketAddr};
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::Arc;
+use substrate_prometheus_endpoint::Registry;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
@@ -377,6 +379,7 @@ pub struct Network<Block, Client> {
     worker_msg_sender: TracingUnboundedSender<NetworkWorkerMessage>,
     worker_msg_receiver: TracingUnboundedReceiver<NetworkWorkerMessage>,
     is_major_syncing: Arc<AtomicBool>,
+    registry: Option<Registry>,
     _phantom: PhantomData<Block>,
 }
 
@@ -391,6 +394,7 @@ where
         params: Params,
         import_queue: BlockImportQueue,
         spawn_handle: SpawnTaskHandle,
+        registry: Option<Registry>,
     ) -> (Self, NetworkHandle) {
         let (worker_msg_sender, worker_msg_receiver) = tracing_unbounded("network_worker_msg", 100);
 
@@ -404,6 +408,7 @@ where
             worker_msg_sender: worker_msg_sender.clone(),
             worker_msg_receiver,
             is_major_syncing: is_major_syncing.clone(),
+            registry,
             _phantom: Default::default(),
         };
 
@@ -428,6 +433,7 @@ where
             worker_msg_sender,
             worker_msg_receiver,
             is_major_syncing,
+            registry,
             _phantom,
         } = self;
 
@@ -454,15 +460,18 @@ where
             params.ipv4_only,
         );
 
-        let network_worker = NetworkWorker::new(worker::Params {
-            client: client.clone(),
-            network_event_receiver,
-            import_queue,
-            sync_strategy: params.sync_strategy,
-            is_major_syncing,
-            connection_initiator: connection_initiator.clone(),
-            max_outbound_peers: params.max_outbound_peers,
-        });
+        let network_worker = NetworkWorker::new(
+            worker::Params {
+                client: client.clone(),
+                network_event_receiver,
+                import_queue,
+                sync_strategy: params.sync_strategy,
+                is_major_syncing,
+                connection_initiator: connection_initiator.clone(),
+                max_outbound_peers: params.max_outbound_peers,
+            },
+            registry.as_ref(),
+        );
 
         spawn_handle.spawn("inbound-connection", None, {
             let local_addr = listener.local_addr()?;

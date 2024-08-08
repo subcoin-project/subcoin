@@ -1,4 +1,5 @@
 use crate::connection::{ConnectionInitiator, Direction, NewConnection};
+use crate::metrics::Metrics;
 use crate::peer_manager::{Config, PeerManager, SlowPeer};
 use crate::sync::{ChainSync, LocatorRequest, SyncAction, SyncRequest};
 use crate::transaction_manager::TransactionManager;
@@ -17,6 +18,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use substrate_prometheus_endpoint::Registry;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::MissedTickBehavior;
 
@@ -61,6 +63,7 @@ pub struct NetworkWorker<Block, Client> {
     peer_manager: PeerManager<Block, Client>,
     transaction_manager: TransactionManager,
     chain_sync: ChainSync<Block, Client>,
+    metrics: Option<Metrics>,
 }
 
 impl<Block, Client> NetworkWorker<Block, Client>
@@ -69,7 +72,7 @@ where
     Client: HeaderBackend<Block> + AuxStore,
 {
     /// Constructs a new instance of [`NetworkWorker`].
-    pub fn new(params: Params<Client>) -> Self {
+    pub fn new<'a>(params: Params<Client>, registry: Option<&'a Registry>) -> Self {
         let Params {
             client,
             network_event_receiver,
@@ -81,6 +84,14 @@ where
         } = params;
 
         let config = Config::new();
+
+        let metrics = match registry {
+            Some(registry) => Metrics::register(registry)
+                .map_err(|err| tracing::error!("Failed to register metrics: {err}"))
+                .ok(),
+            None => None,
+        };
+
         Self {
             network_event_receiver,
             peer_manager: PeerManager::new(
@@ -91,6 +102,7 @@ where
             ),
             transaction_manager: TransactionManager::new(),
             chain_sync: ChainSync::new(client, import_queue, sync_strategy, is_major_syncing),
+            metrics,
             config,
         }
     }
@@ -131,6 +143,10 @@ where
             }
 
             self.chain_sync.import_pending_blocks();
+
+            if let Some(metrics) = &self.metrics {
+                metrics.report_connected_peers(self.peer_manager.connected_peers_count());
+            }
         }
     }
 

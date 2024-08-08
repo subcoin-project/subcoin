@@ -152,6 +152,7 @@ impl RunCmd {
             run.subcoin_network_params(network),
             import_queue,
             spawn_handle.clone(),
+            config.prometheus_registry().cloned(),
         );
 
         // TODO: handle Substrate networking and Bitcoin networking properly.
