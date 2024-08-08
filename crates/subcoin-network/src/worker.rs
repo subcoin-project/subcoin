@@ -43,6 +43,17 @@ pub enum Event {
     },
 }
 
+/// Parameters for creating a [`NetworkWorker`].
+pub struct Params<Client> {
+    pub client: Arc<Client>,
+    pub network_event_receiver: UnboundedReceiver<Event>,
+    pub import_queue: BlockImportQueue,
+    pub sync_strategy: SyncStrategy,
+    pub is_major_syncing: Arc<AtomicBool>,
+    pub connection_initiator: ConnectionInitiator,
+    pub max_outbound_peers: usize,
+}
+
 /// Worker for processing the network events.
 pub struct NetworkWorker<Block, Client> {
     config: Config,
@@ -58,15 +69,17 @@ where
     Client: HeaderBackend<Block> + AuxStore,
 {
     /// Constructs a new instance of [`NetworkWorker`].
-    pub fn new(
-        client: Arc<Client>,
-        network_event_receiver: UnboundedReceiver<Event>,
-        import_queue: BlockImportQueue,
-        sync_strategy: SyncStrategy,
-        is_major_syncing: Arc<AtomicBool>,
-        connection_initiator: ConnectionInitiator,
-        max_outbound_peers: usize,
-    ) -> Self {
+    pub fn new(params: Params<Client>) -> Self {
+        let Params {
+            client,
+            network_event_receiver,
+            import_queue,
+            sync_strategy,
+            is_major_syncing,
+            connection_initiator,
+            max_outbound_peers,
+        } = params;
+
         let config = Config::new();
         Self {
             network_event_receiver,

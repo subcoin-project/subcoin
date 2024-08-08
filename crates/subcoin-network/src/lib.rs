@@ -454,15 +454,15 @@ where
             params.ipv4_only,
         );
 
-        let network_worker = NetworkWorker::new(
-            client.clone(),
+        let network_worker = NetworkWorker::new(worker::Params {
+            client: client.clone(),
             network_event_receiver,
             import_queue,
-            params.sync_strategy,
+            sync_strategy: params.sync_strategy,
             is_major_syncing,
-            connection_initiator.clone(),
-            params.max_outbound_peers,
-        );
+            connection_initiator: connection_initiator.clone(),
+            max_outbound_peers: params.max_outbound_peers,
+        });
 
         spawn_handle.spawn("inbound-connection", None, {
             let local_addr = listener.local_addr()?;
