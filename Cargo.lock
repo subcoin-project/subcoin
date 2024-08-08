@@ -9169,6 +9169,7 @@ dependencies = [
  "subcoin-service",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
+ "substrate-prometheus-endpoint",
  "tracing",
 ]
 

@@ -21,7 +21,7 @@ pub enum Chain {
 
 impl Chain {
     /// Returns the value of `id` in `SubstrateCli::load_spec(id)`.
-    fn chain_spec_id(&self) -> &'static str {
+    pub fn chain_spec_id(&self) -> &'static str {
         // Convert to kebab-case for consistency in CLI.
         match self {
             Self::BitcoinMainnet => "bitcoin-mainnet",

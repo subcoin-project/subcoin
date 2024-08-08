@@ -1,11 +1,14 @@
 use crate::cli::params::CommonParams;
 use crate::utils::Yield;
 use bitcoin_explorer::BitcoinDB;
-use sc_cli::{ImportParams, NodeKeyParams, SharedParams};
+use futures::FutureExt;
+use sc_cli::{ImportParams, NodeKeyParams, PrometheusParams, SharedParams};
 use sc_client_api::HeaderBackend;
 use sc_consensus_nakamoto::{
     BitcoinBlockImport, BitcoinBlockImporter, BlockVerification, ImportConfig,
 };
+use sc_service::config::PrometheusConfig;
+use sc_service::SpawnTaskHandle;
 use sp_runtime::traits::{Block as BlockT, CheckedDiv, NumberFor, Zero};
 use sp_runtime::Saturating;
 use std::path::{Path, PathBuf};
@@ -42,6 +45,10 @@ pub struct ImportBlocks {
 
     #[allow(missing_docs)]
     #[clap(flatten)]
+    pub prometheus_params: PrometheusParams,
+
+    #[allow(missing_docs)]
+    #[clap(flatten)]
     pub import_params: ImportParams,
 
     #[allow(missing_docs)]
@@ -73,12 +80,14 @@ impl ImportBlocksCmd {
     }
 
     /// Run the import-blocks command
-    pub async fn run(
+    pub async fn run<'a>(
         &self,
         client: Arc<FullClient>,
         block_executor: Box<dyn sc_consensus_nakamoto::BlockExecutor<OpaqueBlock>>,
         data_dir: PathBuf,
         verify_script: bool,
+        spawn_handle: SpawnTaskHandle,
+        maybe_prometheus_config: Option<PrometheusConfig>,
     ) -> sc_cli::Result<()> {
         let from = (client.info().best_number + 1) as usize;
 
@@ -114,8 +123,19 @@ impl ImportBlocksCmd {
                 },
                 Arc::new(subcoin_service::CoinStorageKey),
                 block_executor,
-                None,
+                maybe_prometheus_config
+                    .as_ref()
+                    .map(|config| config.registry.clone())
+                    .as_ref(),
             );
+
+        if let Some(PrometheusConfig { port, registry }) = maybe_prometheus_config {
+            spawn_handle.spawn(
+                "prometheus-endpoint",
+                None,
+                substrate_prometheus_endpoint::init_prometheus(port, registry).map(drop),
+            );
+        }
 
         for index in from..=to {
             let block = bitcoind_backend.block_at(index)?;

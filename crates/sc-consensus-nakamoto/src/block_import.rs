@@ -230,6 +230,7 @@ where
         sp_state_machine::StorageChanges<HashingFor<Block>>,
     )> {
         let timer = std::time::Instant::now();
+
         let ExecuteBlockResult {
             state_root,
             storage_changes,
