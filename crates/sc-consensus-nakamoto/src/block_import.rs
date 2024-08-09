@@ -232,6 +232,8 @@ where
     )> {
         let timer = std::time::Instant::now();
 
+        let transactions_count = block.extrinsics().len();
+
         let ExecuteBlockResult {
             state_root,
             storage_changes,
@@ -240,9 +242,15 @@ where
 
         if let Some(metrics) = &self.metrics {
             let block_number: u32 = block_number.saturated_into();
-            if block_number % 100 == 0 {
-                let duration = timer.elapsed().as_millis();
-                metrics.report_block_execution_time(block_number.saturated_into(), duration);
+            // Executing blocks before 200000 is pretty fast, but it becomes
+            // increasingly slower beyond this point.
+            if block_number > 200000 || block_number % 100 == 0 {
+                let execution_time = timer.elapsed().as_millis();
+                metrics.report_block_execution(
+                    block_number.saturated_into(),
+                    transactions_count,
+                    execution_time,
+                );
             }
         }
 
