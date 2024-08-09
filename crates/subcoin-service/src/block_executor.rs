@@ -339,7 +339,7 @@ mod tests {
             },
             Arc::new(CoinStorageKey),
             block_executor,
-            None
+            None,
         );
 
         let test_blocks = block_data();
