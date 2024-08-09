@@ -32,6 +32,10 @@ impl AddressBook {
         self.discovered_addresses.len() >= self.max_addresses
     }
 
+    pub fn available_addresses_count(&self) -> usize {
+        self.discovered_addresses.len()
+    }
+
     /// Pops a random address from the discovered addresses and marks it as active.
     pub fn pop(&mut self) -> Option<PeerId> {
         let maybe_peer = self.rng.choice(self.discovered_addresses.clone());

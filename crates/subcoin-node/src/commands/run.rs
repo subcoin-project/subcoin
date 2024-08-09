@@ -148,7 +148,7 @@ impl RunCmd {
             bitcoin_block_import,
         );
 
-        let (bitcoin_network, network_handle) = subcoin_network::Network::new(
+        let (subcoin_networking, subcoin_network_handle) = subcoin_network::Network::new(
             client.clone(),
             run.subcoin_network_params(network),
             import_queue,
@@ -162,13 +162,13 @@ impl RunCmd {
                 "subcoin-networking",
                 None,
                 async move {
-                    if let Err(err) = bitcoin_network.run().await {
-                        tracing::error!(?err, "Subcoin network worker exited");
+                    if let Err(err) = subcoin_networking.run().await {
+                        tracing::error!(?err, "Error occurred in subcoin networking");
                     }
                 },
             );
         } else {
-            task_manager.keep_alive(bitcoin_network);
+            task_manager.keep_alive(subcoin_networking);
         }
 
         let system_rpc_tx = match config.network.network_backend {
@@ -217,7 +217,7 @@ impl RunCmd {
                 task_manager.spawn_handle(),
                 system_rpc_tx,
                 deny_unsafe,
-                network_handle.clone(),
+                subcoin_network_handle.clone(),
             )
         };
 
@@ -231,7 +231,7 @@ impl RunCmd {
                     spawn_handle.clone(),
                     CONFIRMATION_DEPTH,
                     major_sync_confirmation_depth,
-                    network_handle.is_major_syncing(),
+                    subcoin_network_handle.is_major_syncing(),
                 )
             });
         }
@@ -240,7 +240,7 @@ impl RunCmd {
         spawn_handle.spawn(
             "subcoin-informant",
             None,
-            subcoin_informant::build(client.clone(), network_handle, Default::default()),
+            subcoin_informant::build(client.clone(), subcoin_network_handle, Default::default()),
         );
 
         Ok(task_manager)

@@ -99,6 +99,7 @@ where
                 config.clone(),
                 connection_initiator,
                 max_outbound_peers,
+                metrics.clone(),
             ),
             transaction_manager: TransactionManager::new(),
             chain_sync: ChainSync::new(client, import_queue, sync_strategy, is_major_syncing),
@@ -145,7 +146,14 @@ where
             self.chain_sync.import_pending_blocks();
 
             if let Some(metrics) = &self.metrics {
-                metrics.report_connected_peers(self.peer_manager.connected_peers_count());
+                metrics
+                    .bandwidth
+                    .with_label_values(&["in"])
+                    .set(bandwidth.total_bytes_inbound.load(Ordering::Relaxed));
+                metrics
+                    .bandwidth
+                    .with_label_values(&["out"])
+                    .set(bandwidth.total_bytes_outbound.load(Ordering::Relaxed));
             }
         }
     }
