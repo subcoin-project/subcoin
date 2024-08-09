@@ -233,6 +233,7 @@ where
         let timer = std::time::Instant::now();
 
         let transactions_count = block.extrinsics().len();
+        let block_size = block.encoded_size();
 
         let ExecuteBlockResult {
             state_root,
@@ -249,6 +250,7 @@ where
                 metrics.report_block_execution(
                     block_number.saturated_into(),
                     transactions_count,
+                    block_size,
                     execution_time,
                 );
             }
