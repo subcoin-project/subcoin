@@ -46,7 +46,7 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 5,
+        "h": 6,
         "w": 12,
         "x": 0,
         "y": 0
@@ -92,46 +92,11 @@
       "type": "stat"
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "aduaklqldw7pcb"
-      },
+      "datasource": {},
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
+            "mode": "thresholds"
           },
           "mappings": [],
           "thresholds": {
@@ -151,45 +116,48 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 15,
+        "h": 6,
         "w": 12,
         "x": 12,
         "y": 0
       },
-      "id": 6,
+      "id": 1,
       "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
         },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto"
       },
       "pluginVersion": "11.1.3",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "aduaklqldw7pcb"
+            "uid": "ddtp8y2eh8zr4a"
           },
           "disableTextWrap": false,
           "editorMode": "builder",
-          "expr": "substrate_unbounded_channel_len",
+          "expr": "subcoin_p2p_addresses",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "instant": false,
-          "legendFormat": "{{entity}}",
+          "legendFormat": "{{status}}",
           "range": true,
           "refId": "A",
           "useBackend": false
         }
       ],
-      "title": "Unbounded channels",
-      "type": "timeseries"
+      "title": "Addresses",
+      "type": "gauge"
     },
     {
       "datasource": {},
@@ -219,7 +187,7 @@
         "h": 5,
         "w": 4,
         "x": 0,
-        "y": 5
+        "y": 6
       },
       "id": 4,
       "options": {
@@ -290,7 +258,7 @@
         "h": 5,
         "w": 8,
         "x": 4,
-        "y": 5
+        "y": 6
       },
       "id": 3,
       "options": {
@@ -339,6 +307,103 @@
       "fieldConfig": {
         "defaults": {
           "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 15,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
+      "id": 6,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "11.1.3",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "aduaklqldw7pcb"
+          },
+          "disableTextWrap": false,
+          "editorMode": "builder",
+          "expr": "substrate_unbounded_channel_len",
+          "fullMetaSearch": false,
+          "includeNullMetadata": true,
+          "instant": false,
+          "legendFormat": "{{entity}}",
+          "range": true,
+          "refId": "A",
+          "useBackend": false
+        }
+      ],
+      "title": "Unbounded channels",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {},
+      "fieldConfig": {
+        "defaults": {
+          "color": {
             "mode": "thresholds"
           },
           "mappings": [],
@@ -362,7 +427,7 @@
         "h": 5,
         "w": 4,
         "x": 0,
-        "y": 10
+        "y": 11
       },
       "id": 7,
       "options": {
@@ -436,7 +501,7 @@
         "h": 5,
         "w": 8,
         "x": 4,
-        "y": 10
+        "y": 11
       },
       "id": 8,
       "options": {
@@ -527,7 +592,7 @@
         "h": 6,
         "w": 12,
         "x": 0,
-        "y": 15
+        "y": 16
       },
       "id": 5,
       "options": {
@@ -625,8 +690,8 @@
       "gridPos": {
         "h": 6,
         "w": 12,
-        "x": 12,
-        "y": 15
+        "x": 0,
+        "y": 22
       },
       "id": 9,
       "options": {
@@ -671,74 +736,6 @@
       ],
       "title": "Block transactions count",
       "type": "barchart"
-    },
-    {
-      "datasource": {},
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 12,
-        "x": 12,
-        "y": 21
-      },
-      "id": 1,
-      "options": {
-        "minVizHeight": 75,
-        "minVizWidth": 75,
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showThresholdLabels": false,
-        "showThresholdMarkers": true,
-        "sizing": "auto"
-      },
-      "pluginVersion": "11.1.3",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "ddtp8y2eh8zr4a"
-          },
-          "disableTextWrap": false,
-          "editorMode": "builder",
-          "expr": "subcoin_p2p_addresses",
-          "fullMetaSearch": false,
-          "includeNullMetadata": true,
-          "instant": false,
-          "legendFormat": "{{status}}",
-          "range": true,
-          "refId": "A",
-          "useBackend": false
-        }
-      ],
-      "title": "Addresses",
-      "type": "gauge"
     }
   ],
   "refresh": "5s",
@@ -758,6 +755,6 @@
   "timezone": "browser",
   "title": "Subcoin",
   "uid": "adu9ktriqlerke",
-  "version": 2,
+  "version": 3,
   "weekStart": ""
 }
