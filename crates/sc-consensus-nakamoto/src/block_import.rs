@@ -223,6 +223,7 @@ where
 
     fn execute_block_at(
         &self,
+        block_number: NumberFor<Block>,
         parent_hash: Block::Hash,
         block: Block,
     ) -> sp_blockchain::Result<(
@@ -238,8 +239,11 @@ where
         } = self.block_executor.execute_block(parent_hash, block)?;
 
         if let Some(metrics) = &self.metrics {
-            let duration = timer.elapsed().as_millis();
-            metrics.report_block_execution_time(duration);
+            let block_number: u32 = block_number.saturated_into();
+            if block_number % 100 == 0 {
+                let duration = timer.elapsed().as_millis();
+                metrics.report_block_execution_time(block_number.saturated_into(), duration);
+            }
         }
 
         Ok((state_root, storage_changes))
@@ -286,8 +290,11 @@ where
 
             let tx_count = extrinsics.len();
 
-            let (state_root, storage_changes) =
-                self.execute_block_at(parent_hash, Block::new(header.clone(), extrinsics.clone()))?;
+            let (state_root, storage_changes) = self.execute_block_at(
+                block_number,
+                parent_hash,
+                Block::new(header.clone(), extrinsics.clone()),
+            )?;
 
             let execution_time = now.elapsed().as_millis();
 
