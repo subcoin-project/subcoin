@@ -63,8 +63,8 @@ impl Run {
         subcoin_network::Params {
             network,
             listen_on: self.network_params.listen,
-            bootnodes: self.network_params.bootnode.clone(),
-            bootnode_only: self.network_params.bootnode_only,
+            seednodes: self.network_params.seednodes.clone(),
+            seednode_only: self.network_params.seednode_only,
             ipv4_only: self.network_params.ipv4_only,
             max_outbound_peers: self.network_params.max_outbound_peers,
             max_inbound_peers: self.network_params.max_inbound_peers,

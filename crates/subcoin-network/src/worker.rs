@@ -72,7 +72,7 @@ where
     Client: HeaderBackend<Block> + AuxStore,
 {
     /// Constructs a new instance of [`NetworkWorker`].
-    pub fn new<'a>(params: Params<Client>, registry: Option<&'a Registry>) -> Self {
+    pub fn new(params: Params<Client>, registry: Option<&Registry>) -> Self {
         let Params {
             client,
             network_event_receiver,

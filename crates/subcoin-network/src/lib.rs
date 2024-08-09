@@ -124,35 +124,6 @@ pub enum Error {
     BitcoinEncoding(#[from] bitcoin::consensus::encode::Error),
 }
 
-fn seednodes(network: BitcoinNetwork) -> Vec<&'static str> {
-    match network {
-        BitcoinNetwork::Bitcoin => {
-            vec![
-                "seed.bitcoin.sipa.be:8333",                        // Pieter Wuille
-                "dnsseed.bluematt.me:8333",                         // Matt Corallo
-                "dnsseed.bitcoin.dashjr-list-of-p2p-nodes.us:8333", // Luke Dashjr
-                "seed.bitcoinstats.com:8333",                       // Christian Decker
-                "seed.bitcoin.jonasschnelli.ch:8333",               // Jonas Schnelli
-                "seed.btc.petertodd.net:8333",                      // Peter Todd
-                "seed.bitcoin.sprovoost.nl:8333",                   // Sjors Provoost
-                "dnsseed.emzy.de:8333",                             // Stephan Oeste
-                "seed.bitcoin.wiz.biz:8333",                        // Jason Maurice
-                "seed.mainnet.achownodes.xyz:8333",                 // Ava Chow
-            ]
-        }
-        BitcoinNetwork::Testnet => {
-            vec![
-                "testnet-seed.bitcoin.jonasschnelli.ch:18333",
-                "seed.tbtc.petertodd.net:18333",
-                "seed.testnet.bitcoin.sprovoost.nl:18333",
-                "testnet-seed.bluematt.me:18333",
-                "testnet-seed.achownodes.xyz:18333",
-            ]
-        }
-        _ => Vec::new(),
-    }
-}
-
 // Ignore the peer if it is not full with witness enabled as we only want to
 // download from peers that can provide use full witness data for blocks.
 fn validate_outbound_services(services: ServiceFlags) -> Result<(), Error> {
@@ -342,9 +313,9 @@ pub struct Params {
     /// Specify the local listen address.
     pub listen_on: PeerId,
     /// List of seednodes.
-    pub bootnodes: Vec<String>,
-    /// Whether to connect to the bootnode only.
-    pub bootnode_only: bool,
+    pub seednodes: Vec<String>,
+    /// Whether to connect to the seednode only.
+    pub seednode_only: bool,
     /// Whether to accept the peer in ipv4 only.
     pub ipv4_only: bool,
     /// Maximum number of outbound peer connections.
@@ -355,18 +326,30 @@ pub struct Params {
     pub sync_strategy: SyncStrategy,
 }
 
-impl Params {
-    fn bootnodes(&self) -> Vec<String> {
-        if self.bootnode_only {
-            self.bootnodes.clone()
-        } else {
-            let mut nodes: Vec<String> = seednodes(self.network)
-                .into_iter()
-                .map(Into::into)
-                .collect();
-            nodes.extend_from_slice(&self.bootnodes);
-            nodes
+fn builtin_seednodes(network: BitcoinNetwork) -> &'static [&'static str] {
+    match network {
+        BitcoinNetwork::Bitcoin => {
+            &[
+                "seed.bitcoin.sipa.be:8333",                        // Pieter Wuille
+                "dnsseed.bluematt.me:8333",                         // Matt Corallo
+                "dnsseed.bitcoin.dashjr-list-of-p2p-nodes.us:8333", // Luke Dashjr
+                "seed.bitcoinstats.com:8333",                       // Christian Decker
+                "seed.bitcoin.jonasschnelli.ch:8333",               // Jonas Schnelli
+                "seed.btc.petertodd.net:8333",                      // Peter Todd
+                "seed.bitcoin.sprovoost.nl:8333",                   // Sjors Provoost
+                "dnsseed.emzy.de:8333",                             // Stephan Oeste
+                "seed.bitcoin.wiz.biz:8333",                        // Jason Maurice
+                "seed.mainnet.achownodes.xyz:8333",                 // Ava Chow
+            ]
         }
+        BitcoinNetwork::Testnet => &[
+            "testnet-seed.bitcoin.jonasschnelli.ch:18333",
+            "seed.tbtc.petertodd.net:18333",
+            "seed.testnet.bitcoin.sprovoost.nl:18333",
+            "testnet-seed.bluematt.me:18333",
+            "testnet-seed.achownodes.xyz:18333",
+        ],
+        _ => &[],
     }
 }
 
@@ -510,8 +493,21 @@ where
             }
         });
 
+        let Params {
+            seednode_only,
+            seednodes,
+            network,
+            ..
+        } = params;
+
+        let mut bootnodes = seednodes;
+
+        if !seednode_only {
+            bootnodes.extend(builtin_seednodes(network).iter().map(|s| s.to_string()));
+        }
+
         // Create a vector of futures for DNS lookups
-        let lookup_futures = params.bootnodes().into_iter().map(|bootnode| async move {
+        let lookup_futures = bootnodes.into_iter().map(|bootnode| async move {
             tokio::net::lookup_host(&bootnode).await.map(|mut addrs| {
                 addrs
                     .next()

@@ -153,13 +153,13 @@ where
     TransactionAdapter: BitcoinTransactionAdapter<Block>,
 {
     /// Constructs a new instance of [`BitcoinBlockImporter`].
-    pub fn new<'a>(
+    pub fn new(
         client: Arc<Client>,
         block_import: BI,
         config: ImportConfig,
         coin_storage_key: Arc<dyn CoinStorageKey>,
         block_executor: Box<dyn BlockExecutor<Block>>,
-        registry: Option<&'a Registry>,
+        registry: Option<&Registry>,
     ) -> Self {
         let verifier = BlockVerifier::new(
             client.clone(),
