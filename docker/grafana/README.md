@@ -18,7 +18,7 @@ docker-compose up -d
 
 Once the services are running, open Grafana by navigating to `http://localhost:3000` in your web browser. You can then import the dashboard.
 
-## No Data Troubleshooting
+## Troubleshooting No Data Issues
 
 > Get "http://localhost:9615/metrics": dial tcp 127.0.0.1:9615: connect: connection refused
 
