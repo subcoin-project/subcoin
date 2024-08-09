@@ -7021,6 +7021,7 @@ dependencies = [
  "sp-runtime",
  "sp-state-machine",
  "subcoin-primitives",
+ "substrate-prometheus-endpoint",
  "thiserror",
  "tracing",
 ]
@@ -9118,6 +9119,7 @@ dependencies = [
  "subcoin-primitives",
  "subcoin-service",
  "subcoin-test-service",
+ "substrate-prometheus-endpoint",
  "thiserror",
  "tokio",
  "tracing",
@@ -9167,6 +9169,7 @@ dependencies = [
  "subcoin-service",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
+ "substrate-prometheus-endpoint",
  "tracing",
 ]
 

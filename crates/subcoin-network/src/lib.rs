@@ -30,6 +30,7 @@ mod address_book;
 mod block_downloader;
 mod checkpoint;
 mod connection;
+mod metrics;
 mod orphan_blocks_pool;
 mod peer_manager;
 mod sync;
@@ -53,6 +54,7 @@ use std::marker::PhantomData;
 use std::net::{AddrParseError, SocketAddr};
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::Arc;
+use substrate_prometheus_endpoint::Registry;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
@@ -120,35 +122,6 @@ pub enum Error {
     BitcoinIO(#[from] bitcoin::io::Error),
     #[error(transparent)]
     BitcoinEncoding(#[from] bitcoin::consensus::encode::Error),
-}
-
-fn seednodes(network: BitcoinNetwork) -> Vec<&'static str> {
-    match network {
-        BitcoinNetwork::Bitcoin => {
-            vec![
-                "seed.bitcoin.sipa.be:8333",                        // Pieter Wuille
-                "dnsseed.bluematt.me:8333",                         // Matt Corallo
-                "dnsseed.bitcoin.dashjr-list-of-p2p-nodes.us:8333", // Luke Dashjr
-                "seed.bitcoinstats.com:8333",                       // Christian Decker
-                "seed.bitcoin.jonasschnelli.ch:8333",               // Jonas Schnelli
-                "seed.btc.petertodd.net:8333",                      // Peter Todd
-                "seed.bitcoin.sprovoost.nl:8333",                   // Sjors Provoost
-                "dnsseed.emzy.de:8333",                             // Stephan Oeste
-                "seed.bitcoin.wiz.biz:8333",                        // Jason Maurice
-                "seed.mainnet.achownodes.xyz:8333",                 // Ava Chow
-            ]
-        }
-        BitcoinNetwork::Testnet => {
-            vec![
-                "testnet-seed.bitcoin.jonasschnelli.ch:18333",
-                "seed.tbtc.petertodd.net:18333",
-                "seed.testnet.bitcoin.sprovoost.nl:18333",
-                "testnet-seed.bluematt.me:18333",
-                "testnet-seed.achownodes.xyz:18333",
-            ]
-        }
-        _ => Vec::new(),
-    }
 }
 
 // Ignore the peer if it is not full with witness enabled as we only want to
@@ -340,9 +313,9 @@ pub struct Params {
     /// Specify the local listen address.
     pub listen_on: PeerId,
     /// List of seednodes.
-    pub bootnodes: Vec<String>,
-    /// Whether to connect to the bootnode only.
-    pub bootnode_only: bool,
+    pub seednodes: Vec<String>,
+    /// Whether to connect to the seednode only.
+    pub seednode_only: bool,
     /// Whether to accept the peer in ipv4 only.
     pub ipv4_only: bool,
     /// Maximum number of outbound peer connections.
@@ -353,18 +326,30 @@ pub struct Params {
     pub sync_strategy: SyncStrategy,
 }
 
-impl Params {
-    fn bootnodes(&self) -> Vec<String> {
-        if self.bootnode_only {
-            self.bootnodes.clone()
-        } else {
-            let mut nodes: Vec<String> = seednodes(self.network)
-                .into_iter()
-                .map(Into::into)
-                .collect();
-            nodes.extend_from_slice(&self.bootnodes);
-            nodes
+fn builtin_seednodes(network: BitcoinNetwork) -> &'static [&'static str] {
+    match network {
+        BitcoinNetwork::Bitcoin => {
+            &[
+                "seed.bitcoin.sipa.be:8333",                        // Pieter Wuille
+                "dnsseed.bluematt.me:8333",                         // Matt Corallo
+                "dnsseed.bitcoin.dashjr-list-of-p2p-nodes.us:8333", // Luke Dashjr
+                "seed.bitcoinstats.com:8333",                       // Christian Decker
+                "seed.bitcoin.jonasschnelli.ch:8333",               // Jonas Schnelli
+                "seed.btc.petertodd.net:8333",                      // Peter Todd
+                "seed.bitcoin.sprovoost.nl:8333",                   // Sjors Provoost
+                "dnsseed.emzy.de:8333",                             // Stephan Oeste
+                "seed.bitcoin.wiz.biz:8333",                        // Jason Maurice
+                "seed.mainnet.achownodes.xyz:8333",                 // Ava Chow
+            ]
         }
+        BitcoinNetwork::Testnet => &[
+            "testnet-seed.bitcoin.jonasschnelli.ch:18333",
+            "seed.tbtc.petertodd.net:18333",
+            "seed.testnet.bitcoin.sprovoost.nl:18333",
+            "testnet-seed.bluematt.me:18333",
+            "testnet-seed.achownodes.xyz:18333",
+        ],
+        _ => &[],
     }
 }
 
@@ -377,6 +362,7 @@ pub struct Network<Block, Client> {
     worker_msg_sender: TracingUnboundedSender<NetworkWorkerMessage>,
     worker_msg_receiver: TracingUnboundedReceiver<NetworkWorkerMessage>,
     is_major_syncing: Arc<AtomicBool>,
+    registry: Option<Registry>,
     _phantom: PhantomData<Block>,
 }
 
@@ -391,6 +377,7 @@ where
         params: Params,
         import_queue: BlockImportQueue,
         spawn_handle: SpawnTaskHandle,
+        registry: Option<Registry>,
     ) -> (Self, NetworkHandle) {
         let (worker_msg_sender, worker_msg_receiver) = tracing_unbounded("network_worker_msg", 100);
 
@@ -404,6 +391,7 @@ where
             worker_msg_sender: worker_msg_sender.clone(),
             worker_msg_receiver,
             is_major_syncing: is_major_syncing.clone(),
+            registry,
             _phantom: Default::default(),
         };
 
@@ -428,6 +416,7 @@ where
             worker_msg_sender,
             worker_msg_receiver,
             is_major_syncing,
+            registry,
             _phantom,
         } = self;
 
@@ -455,13 +444,16 @@ where
         );
 
         let network_worker = NetworkWorker::new(
-            client.clone(),
-            network_event_receiver,
-            import_queue,
-            params.sync_strategy,
-            is_major_syncing,
-            connection_initiator.clone(),
-            params.max_outbound_peers,
+            worker::Params {
+                client: client.clone(),
+                network_event_receiver,
+                import_queue,
+                sync_strategy: params.sync_strategy,
+                is_major_syncing,
+                connection_initiator: connection_initiator.clone(),
+                max_outbound_peers: params.max_outbound_peers,
+            },
+            registry.as_ref(),
         );
 
         spawn_handle.spawn("inbound-connection", None, {
@@ -501,8 +493,21 @@ where
             }
         });
 
+        let Params {
+            seednode_only,
+            seednodes,
+            network,
+            ..
+        } = params;
+
+        let mut bootnodes = seednodes;
+
+        if !seednode_only {
+            bootnodes.extend(builtin_seednodes(network).iter().map(|s| s.to_string()));
+        }
+
         // Create a vector of futures for DNS lookups
-        let lookup_futures = params.bootnodes().into_iter().map(|bootnode| async move {
+        let lookup_futures = bootnodes.into_iter().map(|bootnode| async move {
             tokio::net::lookup_host(&bootnode).await.map(|mut addrs| {
                 addrs
                     .next()

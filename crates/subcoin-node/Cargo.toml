@@ -50,6 +50,7 @@ subcoin-rpc = { workspace = true }
 subcoin-runtime = { workspace = true }
 subcoin-service = { workspace = true }
 substrate-frame-rpc-system = { workspace = true }
+substrate-prometheus-endpoint = { workspace = true }
 tracing = { workspace = true }
 
 [build-dependencies]

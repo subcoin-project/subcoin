@@ -1,0 +1,11 @@
+# A scrape configuration containing exactly one endpoint to scrape:
+scrape_configs:
+  - job_name: "subcoin_node"
+
+    scrape_interval: 5s
+
+    static_configs:
+      # Notes:
+      # - Replace localhost as the public IP address if deployed on the cloud.
+      # - Change to `targets: ["host.docker.internal:9615"]` if running from Docker on macOS.
+      - targets: ["localhost:9615"]

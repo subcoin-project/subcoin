@@ -28,6 +28,7 @@ sp-consensus = { workspace = true }
 sp-core = { workspace = true }
 sp-runtime = { workspace = true }
 subcoin-primitives = { workspace = true }
+substrate-prometheus-endpoint = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }

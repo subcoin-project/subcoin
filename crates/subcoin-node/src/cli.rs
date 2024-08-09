@@ -96,6 +96,10 @@ pub fn run() -> sc_cli::Result<()> {
         Command::ImportBlocks(cmd) => {
             let block_execution_strategy = cmd.common_params.block_execution_strategy();
             let verify_script = cmd.common_params.verify_script;
+            let chain_spec_id = cmd.common_params.chain.chain_spec_id();
+            let maybe_prometheus_config = cmd
+                .prometheus_params
+                .prometheus_config(9615, chain_spec_id.to_string());
             let import_blocks_cmd = ImportBlocksCmd::new(&cmd);
             let runner = SubstrateCli.create_runner(&import_blocks_cmd)?;
             let data_dir = cmd.data_dir;
@@ -112,7 +116,8 @@ pub fn run() -> sc_cli::Result<()> {
                     no_hardware_benchmarks,
                     storage_monitor,
                 })?;
-                task_manager.spawn_handle().spawn("finalizer", None, {
+                let spawn_handle = task_manager.spawn_handle();
+                spawn_handle.spawn("finalizer", None, {
                     let client = client.clone();
                     let spawn_handle = task_manager.spawn_handle();
                     // Assume the chain is major syncing.
@@ -126,7 +131,14 @@ pub fn run() -> sc_cli::Result<()> {
                     )
                 });
                 Ok((
-                    import_blocks_cmd.run(client, block_executor, data_dir, verify_script),
+                    import_blocks_cmd.run(
+                        client,
+                        block_executor,
+                        data_dir,
+                        verify_script,
+                        spawn_handle,
+                        maybe_prometheus_config,
+                    ),
                     task_manager,
                 ))
             })

@@ -1,5 +1,6 @@
 use crate::address_book::AddressBook;
 use crate::connection::{ConnectionInitiator, ConnectionWriter, Direction, NewConnection};
+use crate::metrics::Metrics;
 use crate::{validate_outbound_services, Error, Latency, PeerId};
 use bitcoin::p2p::address::AddrV2Message;
 use bitcoin::p2p::message::NetworkMessage;
@@ -258,6 +259,7 @@ pub struct PeerManager<Block, Client> {
     /// Time at which the slowest peer was evicted.
     last_eviction: Instant,
     rng: fastrand::Rng,
+    metrics: Option<Metrics>,
     _phantom: PhantomData<Block>,
 }
 
@@ -272,6 +274,7 @@ where
         config: Config,
         connection_initiator: ConnectionInitiator,
         max_outbound_peers: usize,
+        metrics: Option<Metrics>,
     ) -> Self {
         Self {
             config,
@@ -284,6 +287,7 @@ where
             connection_initiator,
             last_eviction: Instant::now(),
             rng: fastrand::Rng::new(),
+            metrics,
             _phantom: Default::default(),
         }
     }
@@ -316,6 +320,22 @@ where
             .values()
             .filter(|peer_info| peer_info.direction.is_outbound())
             .count();
+
+        if let Some(metrics) = &self.metrics {
+            let inbound_peers_count = self.connected_peers.len() - outbound_peers_count;
+            metrics
+                .connected_peers
+                .with_label_values(&["inbound"])
+                .set(inbound_peers_count as u64);
+            metrics
+                .connected_peers
+                .with_label_values(&["outbound"])
+                .set(outbound_peers_count as u64);
+            metrics
+                .addresses
+                .with_label_values(&["available"])
+                .set(self.address_book.available_addresses_count() as u64);
+        }
 
         if outbound_peers_count < self.max_outbound_peers {
             if let Some(addr) = self.address_book.pop() {
@@ -380,6 +400,13 @@ where
     pub(crate) fn on_outbound_connection_failure(&mut self, addr: PeerId, err: Error) {
         tracing::trace!(?err, ?addr, "Failed to initiate outbound connection");
         self.address_book.note_failed_address(addr);
+
+        if let Some(metrics) = &self.metrics {
+            metrics
+                .addresses
+                .with_label_values(&["outbound_connection_failure"])
+                .inc();
+        }
     }
 
     /// Disconnect from a peer with given reason, do nothing if the peer is persistent.
@@ -394,6 +421,10 @@ where
         {
             tracing::debug!(?reason, ?peer_id, "💔 Disconnecting peer");
             disconnect_signal.store(true, Ordering::SeqCst);
+
+            if let Some(metrics) = &self.metrics {
+                metrics.addresses.with_label_values(&["disconnected"]).inc();
+            }
         }
 
         self.handshaking_peers.remove(&peer_id);
@@ -647,6 +678,13 @@ where
         let added = self.address_book.add_many(peer_id, addresses);
         if added > 0 {
             tracing::debug!("Added {added} addresses from {peer_id:?}");
+
+            if let Some(metrics) = &self.metrics {
+                metrics
+                    .addresses
+                    .with_label_values(&["discovered"])
+                    .add(added as u64);
+            }
         }
     }
 
@@ -654,6 +692,13 @@ where
         let added = self.address_book.add_many_v2(peer_id, addresses);
         if added > 0 {
             tracing::debug!("Added {added} addresses from {peer_id:?}");
+
+            if let Some(metrics) = &self.metrics {
+                metrics
+                    .addresses
+                    .with_label_values(&["discovered"])
+                    .add(added as u64);
+            }
         }
     }
 

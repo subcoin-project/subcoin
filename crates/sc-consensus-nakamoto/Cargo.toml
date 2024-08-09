@@ -25,6 +25,7 @@ sp-io = { workspace = true }
 sp-runtime = { workspace = true }
 sp-state-machine = { workspace = true }
 subcoin-primitives = { workspace = true }
+substrate-prometheus-endpoint = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 

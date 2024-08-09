@@ -21,7 +21,7 @@ pub enum Chain {
 
 impl Chain {
     /// Returns the value of `id` in `SubstrateCli::load_spec(id)`.
-    fn chain_spec_id(&self) -> &'static str {
+    pub fn chain_spec_id(&self) -> &'static str {
         // Convert to kebab-case for consistency in CLI.
         match self {
             Self::BitcoinMainnet => "bitcoin-mainnet",
@@ -31,17 +31,18 @@ impl Chain {
     }
 }
 
+/// Subcoin networking params.
 #[derive(Debug, Clone, Parser)]
 pub struct NetworkParams {
     /// Specify the remote peer address to connect.
-    #[clap(long, value_name = "BOOTNODE")]
-    pub bootnode: Vec<String>,
+    #[clap(long, value_name = "SEEDNODE")]
+    pub seednodes: Vec<String>,
 
-    /// Connect to the nodes specified by `--bootnode` only.
+    /// Connect to the nodes specified by `--seednode` only.
     ///
     /// Do not attempt to connect to the builtin seednodes.
     #[clap(long)]
-    pub bootnode_only: bool,
+    pub seednode_only: bool,
 
     /// Specify the local address and listen on it.
     #[clap(long, default_value = "127.0.0.1:8333")]
@@ -51,11 +52,11 @@ pub struct NetworkParams {
     #[clap(long)]
     pub ipv4_only: bool,
 
-    /// Specify the maximum number of inbound peers.
+    /// Specify the maximum number of inbound subcoin networking peers.
     #[clap(long, default_value = "100")]
     pub max_inbound_peers: usize,
 
-    /// Specify the maximum number of outbound peers.
+    /// Specify the maximum number of outbound subcoin networking peers.
     #[clap(long, default_value = "20")]
     pub max_outbound_peers: usize,
 }
