@@ -25,7 +25,8 @@ use tokio::time::MissedTickBehavior;
 /// Interval at which we perform time based maintenance
 const TICK_TIMEOUT: Duration = Duration::from_millis(1100);
 
-// Start with a higher threshold, e.g., 10 seconds.
+/// Threshold for peer latency in milliseconds, the default is 10 seconds.
+/// If a peer's latency exceeds this value, it will be considered a slow peer and may be evicted.
 const LATENCY_THRESHOLD: Latency = 10_000;
 
 /// Network event.
@@ -56,7 +57,7 @@ pub struct Params<Client> {
     pub max_outbound_peers: usize,
 }
 
-/// Worker for processing the network events.
+/// [`NetworkWorker`] is responsible for processing the network events.
 pub struct NetworkWorker<Block, Client> {
     config: Config,
     network_event_receiver: UnboundedReceiver<Event>,
@@ -108,7 +109,11 @@ where
         }
     }
 
-    // Process the network events endlessly.
+    /// The main loop for processing network events.
+    ///
+    /// This loop handles various tasks such as processing incoming network events,
+    /// syncing the blockchain, managing peers, and updating metrics. It runs indefinitely
+    /// until the network worker is stopped.
     pub(crate) async fn run(
         mut self,
         worker_msg_receiver: TracingUnboundedReceiver<NetworkWorkerMessage>,
@@ -133,13 +138,13 @@ where
                     };
                     self.process_event(event).await;
                 }
-                _ = tick_timeout.tick() => {
-                    self.perform_periodic_actions();
-                }
                 maybe_worker_msg = worker_msg_sink.next(), if !worker_msg_sink.is_terminated() => {
                     if let Some(worker_msg) = maybe_worker_msg {
                         self.process_worker_message(worker_msg, &bandwidth);
                     }
+                }
+                _ = tick_timeout.tick() => {
+                    self.perform_periodic_actions();
                 }
             }
 

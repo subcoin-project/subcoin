@@ -37,6 +37,9 @@ const SLOW_PEER_LATENCY: Latency = 5_000;
 /// when the peer set is full. This creates opportunities to connect with potentially better peers.
 const EVICTION_INTERVAL: Duration = Duration::from_secs(600);
 
+/// Timeout for the outbound peer to send their version, in seconds.
+const HANDSHAKE_TIMEOUT: i64 = 1;
+
 /// Peer configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -344,29 +347,38 @@ where
                 }
             }
             None
-        } else if self.last_eviction.elapsed() > EVICTION_INTERVAL {
-            // Find the slowest peer.
-            //
-            // The set of outbound peers is full and the eviction interval elapsed,
-            // try to evict the slowest peer for discovering potential better peers.
-            self.connected_peers
-                .iter()
-                .filter_map(|(peer_id, peer_info)| {
-                    let average_latency = peer_info.ping_latency.average();
-
-                    if average_latency > SLOW_PEER_LATENCY {
-                        Some((peer_id, average_latency))
-                    } else {
-                        None
-                    }
-                })
-                .max_by_key(|(_peer_id, average_latency)| *average_latency)
-                .map(|(peer_id, peer_latency)| SlowPeer {
-                    peer_id: *peer_id,
-                    peer_latency,
-                })
         } else {
-            None
+            // It's possible for the number of connected peers to temporarily exceed the
+            // `max_outbound_peers` limit if multiple connection attempts are in progress
+            // and succeed simultaneously. This isn't a significant issue, as the slowest
+            // peer can be evicted to enforce the limit.
+            //
+            // When the `max_inbound_peers` limit is reached, we still attempt to discover
+            // potentially better peers by evicting the slowest peer after the eviction
+            // interval has elapsed.
+            if self.max_outbound_peers > outbound_peers_count
+                || self.last_eviction.elapsed() > EVICTION_INTERVAL
+            {
+                // Find the slowest peer.
+                self.connected_peers
+                    .iter()
+                    .filter_map(|(peer_id, peer_info)| {
+                        let average_latency = peer_info.ping_latency.average();
+
+                        if average_latency > SLOW_PEER_LATENCY {
+                            Some((peer_id, average_latency))
+                        } else {
+                            None
+                        }
+                    })
+                    .max_by_key(|(_peer_id, average_latency)| *average_latency)
+                    .map(|(peer_id, peer_latency)| SlowPeer {
+                        peer_id: *peer_id,
+                        peer_latency,
+                    })
+            } else {
+                None
+            }
         }
     }
 
@@ -399,6 +411,7 @@ where
 
     pub(crate) fn on_outbound_connection_failure(&mut self, addr: PeerId, err: Error) {
         tracing::trace!(?err, ?addr, "Failed to initiate outbound connection");
+
         self.address_book.note_failed_address(addr);
 
         if let Some(metrics) = &self.metrics {
@@ -550,9 +563,6 @@ where
         direction: Direction,
         version_message: VersionMessage,
     ) -> Result<(), Error> {
-        // TODO: handshake timeout?
-        // a timeout for receiving the version message.
-
         let greatest_common_version = self.config.protocol_version.min(version_message.version);
 
         tracing::debug!(
@@ -618,8 +628,13 @@ where
                     .insert(peer_id, HandshakeState::VersionReceived(version_message))
                 {
                     Some(old) => {
-                        if !matches!(old, HandshakeState::VersionSent { .. }) {
+                        let HandshakeState::VersionSent { at } = old else {
                             return Err(Error::UnexpectedHandshakeState(Box::new(old)));
+                        };
+
+                        if Local::now().signed_duration_since(at).num_seconds() > HANDSHAKE_TIMEOUT
+                        {
+                            return Err(Error::HandshakeTimeout);
                         }
                     }
                     None => {
@@ -736,7 +751,7 @@ where
 
         let average_latency = peer_info.ping_latency.average();
 
-        tracing::debug!("Received pong from {peer_id} (Avg. Latency: {average_latency}ms)");
+        tracing::trace!("Received pong from {peer_id} (Avg. Latency: {average_latency}ms)");
 
         Ok(average_latency)
     }
