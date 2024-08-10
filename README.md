@@ -1,3 +1,5 @@
+# Subcoin
+
 <div align="center">
 
 <p align="center"><img width="400" src="./docs/images/subcoin-high-resolution-logo.png" alt="Subcoin logo"></p>
