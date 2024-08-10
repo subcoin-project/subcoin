@@ -38,6 +38,7 @@ use sp_runtime::traits::{
 use sp_runtime::{SaturatedConversion, Saturating};
 use std::marker::PhantomData;
 use std::sync::Arc;
+use std::time::Instant;
 use subcoin_primitives::runtime::Subcoin;
 use subcoin_primitives::{
     substrate_header_digest, BackendExt, BitcoinTransactionAdapter, CoinStorageKey,
@@ -132,6 +133,7 @@ pub struct BitcoinBlockImporter<Block, Client, BE, BI, TransactionAdapter> {
     verifier: BlockVerifier<Block, Client, BE>,
     block_executor: Box<dyn BlockExecutor<Block>>,
     metrics: Option<Metrics>,
+    last_block_execution_report: Instant,
     _phantom: PhantomData<TransactionAdapter>,
 }
 
@@ -184,6 +186,7 @@ where
             verifier,
             block_executor,
             metrics,
+            last_block_execution_report: Instant::now(),
             _phantom: Default::default(),
         }
     }
@@ -222,7 +225,7 @@ where
     }
 
     fn execute_block_at(
-        &self,
+        &mut self,
         block_number: NumberFor<Block>,
         parent_hash: Block::Hash,
         block: Block,
@@ -242,10 +245,15 @@ where
         } = self.block_executor.execute_block(parent_hash, block)?;
 
         if let Some(metrics) = &self.metrics {
-            let block_number: u32 = block_number.saturated_into();
-            // Executing blocks before 200000 is pretty fast, but it becomes
-            // increasingly slower beyond this point.
-            if block_number > 200000 || block_number % 100 == 0 {
+            const BLOCK_EXECUTION_REPORT_INTERVAL: u128 = 50;
+
+            // Executing blocks before 200000 is pretty fast, it becomes
+            // increasingly slower beyond this point, we only cares about
+            // the slow block executions.
+            if self.last_block_execution_report.elapsed().as_millis()
+                > BLOCK_EXECUTION_REPORT_INTERVAL
+            {
+                let block_number: u32 = block_number.saturated_into();
                 let execution_time = timer.elapsed().as_millis();
                 metrics.report_block_execution(
                     block_number.saturated_into(),
@@ -253,6 +261,7 @@ where
                     block_size,
                     execution_time,
                 );
+                self.last_block_execution_report = Instant::now();
             }
         }
 
