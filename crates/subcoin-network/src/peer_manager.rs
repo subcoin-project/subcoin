@@ -344,29 +344,38 @@ where
                 }
             }
             None
-        } else if self.last_eviction.elapsed() > EVICTION_INTERVAL {
-            // Find the slowest peer.
-            //
-            // The set of outbound peers is full and the eviction interval elapsed,
-            // try to evict the slowest peer for discovering potential better peers.
-            self.connected_peers
-                .iter()
-                .filter_map(|(peer_id, peer_info)| {
-                    let average_latency = peer_info.ping_latency.average();
-
-                    if average_latency > SLOW_PEER_LATENCY {
-                        Some((peer_id, average_latency))
-                    } else {
-                        None
-                    }
-                })
-                .max_by_key(|(_peer_id, average_latency)| *average_latency)
-                .map(|(peer_id, peer_latency)| SlowPeer {
-                    peer_id: *peer_id,
-                    peer_latency,
-                })
         } else {
-            None
+            // It's possible for the number of connected peers to temporarily exceed the
+            // `max_outbound_peers` limit if multiple connection attempts are in progress
+            // and succeed simultaneously. This isn't a significant issue, as the slowest
+            // peer can be evicted to enforce the limit.
+            //
+            // When the `max_inbound_peers` limit is reached, we still attempt to discover
+            // potentially better peers by evicting the slowest peer after the eviction
+            // interval has elapsed.
+            if self.max_outbound_peers > outbound_peers_count
+                || self.last_eviction.elapsed() > EVICTION_INTERVAL
+            {
+                // Find the slowest peer.
+                self.connected_peers
+                    .iter()
+                    .filter_map(|(peer_id, peer_info)| {
+                        let average_latency = peer_info.ping_latency.average();
+
+                        if average_latency > SLOW_PEER_LATENCY {
+                            Some((peer_id, average_latency))
+                        } else {
+                            None
+                        }
+                    })
+                    .max_by_key(|(_peer_id, average_latency)| *average_latency)
+                    .map(|(peer_id, peer_latency)| SlowPeer {
+                        peer_id: *peer_id,
+                        peer_latency,
+                    })
+            } else {
+                None
+            }
         }
     }
 
