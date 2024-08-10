@@ -159,6 +159,7 @@
 <a href="#159" id="159">159</a>
 <a href="#160" id="160">160</a>
 <a href="#161" id="161">161</a>
+<a href="#162" id="162">162</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>clap::Parser;
 <span class="kw">use </span>sc_consensus_nakamoto::{BlockExecutionStrategy, ExecutionBackend};
 <span class="kw">use </span>std::path::PathBuf;
@@ -182,7 +183,7 @@
 
 <span class="kw">impl </span>Chain {
     <span class="doccomment">/// Returns the value of `id` in `SubstrateCli::load_spec(id)`.
-    </span><span class="kw">fn </span>chain_spec_id(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str {
+    </span><span class="kw">pub fn </span>chain_spec_id(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str {
         <span class="comment">// Convert to kebab-case for consistency in CLI.
         </span><span class="kw">match </span><span class="self">self </span>{
             <span class="self">Self</span>::BitcoinMainnet =&gt; <span class="string">"bitcoin-mainnet"</span>,
@@ -192,17 +193,18 @@
     }
 }
 
-<span class="attr">#[derive(Debug, Clone, Parser)]
+<span class="doccomment">/// Subcoin networking params.
+</span><span class="attr">#[derive(Debug, Clone, Parser)]
 </span><span class="kw">pub struct </span>NetworkParams {
     <span class="doccomment">/// Specify the remote peer address to connect.
-    </span><span class="attr">#[clap(long, value_name = <span class="string">"BOOTNODE"</span>)]
-    </span><span class="kw">pub </span>bootnode: Vec&lt;String&gt;,
+    </span><span class="attr">#[clap(long, value_name = <span class="string">"SEEDNODE"</span>)]
+    </span><span class="kw">pub </span>seednodes: Vec&lt;String&gt;,
 
-    <span class="doccomment">/// Connect to the nodes specified by `--bootnode` only.
+    <span class="doccomment">/// Connect to the nodes specified by `--seednode` only.
     ///
     /// Do not attempt to connect to the builtin seednodes.
     </span><span class="attr">#[clap(long)]
-    </span><span class="kw">pub </span>bootnode_only: bool,
+    </span><span class="kw">pub </span>seednode_only: bool,
 
     <span class="doccomment">/// Specify the local address and listen on it.
     </span><span class="attr">#[clap(long, default_value = <span class="string">"127.0.0.1:8333"</span>)]
@@ -212,11 +214,11 @@
     </span><span class="attr">#[clap(long)]
     </span><span class="kw">pub </span>ipv4_only: bool,
 
-    <span class="doccomment">/// Specify the maximum number of inbound peers.
+    <span class="doccomment">/// Specify the maximum number of inbound subcoin networking peers.
     </span><span class="attr">#[clap(long, default_value = <span class="string">"100"</span>)]
     </span><span class="kw">pub </span>max_inbound_peers: usize,
 
-    <span class="doccomment">/// Specify the maximum number of outbound peers.
+    <span class="doccomment">/// Specify the maximum number of outbound subcoin networking peers.
     </span><span class="attr">#[clap(long, default_value = <span class="string">"20"</span>)]
     </span><span class="kw">pub </span>max_outbound_peers: usize,
 }

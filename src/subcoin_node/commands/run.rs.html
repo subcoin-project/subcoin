@@ -276,6 +276,8 @@
 <a href="#276" id="276">276</a>
 <a href="#277" id="277">277</a>
 <a href="#278" id="278">278</a>
+<a href="#279" id="279">279</a>
+<a href="#280" id="280">280</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::params::{CommonParams, NetworkParams};
 <span class="kw">use </span>clap::Parser;
 <span class="kw">use </span>sc_cli::{
@@ -341,8 +343,8 @@
         subcoin_network::Params {
             network,
             listen_on: <span class="self">self</span>.network_params.listen,
-            bootnodes: <span class="self">self</span>.network_params.bootnode.clone(),
-            bootnode_only: <span class="self">self</span>.network_params.bootnode_only,
+            seednodes: <span class="self">self</span>.network_params.seednodes.clone(),
+            seednode_only: <span class="self">self</span>.network_params.seednode_only,
             ipv4_only: <span class="self">self</span>.network_params.ipv4_only,
             max_outbound_peers: <span class="self">self</span>.network_params.max_outbound_peers,
             max_inbound_peers: <span class="self">self</span>.network_params.max_inbound_peers,
@@ -418,6 +420,7 @@
                 },
                 Arc::new(subcoin_service::CoinStorageKey),
                 block_executor,
+                config.prometheus_registry(),
             );
 
         <span class="kw">let </span>import_queue = sc_consensus_nakamoto::bitcoin_import_queue(
@@ -425,11 +428,12 @@
             bitcoin_block_import,
         );
 
-        <span class="kw">let </span>(bitcoin_network, network_handle) = subcoin_network::Network::new(
+        <span class="kw">let </span>(subcoin_networking, subcoin_network_handle) = subcoin_network::Network::new(
             client.clone(),
             run.subcoin_network_params(network),
             import_queue,
             spawn_handle.clone(),
+            config.prometheus_registry().cloned(),
         );
 
         <span class="comment">// TODO: handle Substrate networking and Bitcoin networking properly.
@@ -438,13 +442,13 @@
                 <span class="string">"subcoin-networking"</span>,
                 <span class="prelude-val">None</span>,
                 <span class="kw">async move </span>{
-                    <span class="kw">if let </span><span class="prelude-val">Err</span>(err) = bitcoin_network.run().<span class="kw">await </span>{
-                        <span class="macro">tracing::error!</span>(<span class="question-mark">?</span>err, <span class="string">"Subcoin network worker exited"</span>);
+                    <span class="kw">if let </span><span class="prelude-val">Err</span>(err) = subcoin_networking.run().<span class="kw">await </span>{
+                        <span class="macro">tracing::error!</span>(<span class="question-mark">?</span>err, <span class="string">"Error occurred in subcoin networking"</span>);
                     }
                 },
             );
         } <span class="kw">else </span>{
-            task_manager.keep_alive(bitcoin_network);
+            task_manager.keep_alive(subcoin_networking);
         }
 
         <span class="kw">let </span>system_rpc_tx = <span class="kw">match </span>config.network.network_backend {
@@ -493,7 +497,7 @@
                 task_manager.spawn_handle(),
                 system_rpc_tx,
                 deny_unsafe,
-                network_handle.clone(),
+                subcoin_network_handle.clone(),
             )
         };
 
@@ -507,7 +511,7 @@
                     spawn_handle.clone(),
                     CONFIRMATION_DEPTH,
                     major_sync_confirmation_depth,
-                    network_handle.is_major_syncing(),
+                    subcoin_network_handle.is_major_syncing(),
                 )
             });
         }
@@ -516,7 +520,7 @@
         </span>spawn_handle.spawn(
             <span class="string">"subcoin-informant"</span>,
             <span class="prelude-val">None</span>,
-            subcoin_informant::build(client.clone(), network_handle, Default::default()),
+            subcoin_informant::build(client.clone(), subcoin_network_handle, Default::default()),
         );
 
         <span class="prelude-val">Ok</span>(task_manager)

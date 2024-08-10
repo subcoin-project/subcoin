@@ -532,6 +532,11 @@
 <a href="#532" id="532">532</a>
 <a href="#533" id="533">533</a>
 <a href="#534" id="534">534</a>
+<a href="#535" id="535">535</a>
+<a href="#536" id="536">536</a>
+<a href="#537" id="537">537</a>
+<a href="#538" id="538">538</a>
+<a href="#539" id="539">539</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # Bitcoin Network
 //!
 //! This crate facilitates communication with other nodes in the Bitcoin P2P network. It handles
@@ -564,6 +569,7 @@
 <span class="kw">mod </span>block_downloader;
 <span class="kw">mod </span>checkpoint;
 <span class="kw">mod </span>connection;
+<span class="kw">mod </span>metrics;
 <span class="kw">mod </span>orphan_blocks_pool;
 <span class="kw">mod </span>peer_manager;
 <span class="kw">mod </span>sync;
@@ -587,6 +593,7 @@
 <span class="kw">use </span>std::net::{AddrParseError, SocketAddr};
 <span class="kw">use </span>std::sync::atomic::{AtomicBool, AtomicU64};
 <span class="kw">use </span>std::sync::Arc;
+<span class="kw">use </span>substrate_prometheus_endpoint::Registry;
 <span class="kw">use </span>tokio::net::TcpListener;
 <span class="kw">use </span>tokio::sync::oneshot;
 
@@ -654,35 +661,6 @@
     </span>BitcoinIO(<span class="attr">#[from] </span>bitcoin::io::Error),
     <span class="attr">#[error(transparent)]
     </span>BitcoinEncoding(<span class="attr">#[from] </span>bitcoin::consensus::encode::Error),
-}
-
-<span class="kw">fn </span>seednodes(network: BitcoinNetwork) -&gt; Vec&lt;<span class="kw-2">&amp;</span><span class="lifetime">'static </span>str&gt; {
-    <span class="kw">match </span>network {
-        BitcoinNetwork::Bitcoin =&gt; {
-            <span class="macro">vec!</span>[
-                <span class="string">"seed.bitcoin.sipa.be:8333"</span>,                        <span class="comment">// Pieter Wuille
-                </span><span class="string">"dnsseed.bluematt.me:8333"</span>,                         <span class="comment">// Matt Corallo
-                </span><span class="string">"dnsseed.bitcoin.dashjr-list-of-p2p-nodes.us:8333"</span>, <span class="comment">// Luke Dashjr
-                </span><span class="string">"seed.bitcoinstats.com:8333"</span>,                       <span class="comment">// Christian Decker
-                </span><span class="string">"seed.bitcoin.jonasschnelli.ch:8333"</span>,               <span class="comment">// Jonas Schnelli
-                </span><span class="string">"seed.btc.petertodd.net:8333"</span>,                      <span class="comment">// Peter Todd
-                </span><span class="string">"seed.bitcoin.sprovoost.nl:8333"</span>,                   <span class="comment">// Sjors Provoost
-                </span><span class="string">"dnsseed.emzy.de:8333"</span>,                             <span class="comment">// Stephan Oeste
-                </span><span class="string">"seed.bitcoin.wiz.biz:8333"</span>,                        <span class="comment">// Jason Maurice
-                </span><span class="string">"seed.mainnet.achownodes.xyz:8333"</span>,                 <span class="comment">// Ava Chow
-            </span>]
-        }
-        BitcoinNetwork::Testnet =&gt; {
-            <span class="macro">vec!</span>[
-                <span class="string">"testnet-seed.bitcoin.jonasschnelli.ch:18333"</span>,
-                <span class="string">"seed.tbtc.petertodd.net:18333"</span>,
-                <span class="string">"seed.testnet.bitcoin.sprovoost.nl:18333"</span>,
-                <span class="string">"testnet-seed.bluematt.me:18333"</span>,
-                <span class="string">"testnet-seed.achownodes.xyz:18333"</span>,
-            ]
-        }
-        <span class="kw">_ </span>=&gt; Vec::new(),
-    }
 }
 
 <span class="comment">// Ignore the peer if it is not full with witness enabled as we only want to
@@ -874,9 +852,9 @@
     <span class="doccomment">/// Specify the local listen address.
     </span><span class="kw">pub </span>listen_on: PeerId,
     <span class="doccomment">/// List of seednodes.
-    </span><span class="kw">pub </span>bootnodes: Vec&lt;String&gt;,
-    <span class="doccomment">/// Whether to connect to the bootnode only.
-    </span><span class="kw">pub </span>bootnode_only: bool,
+    </span><span class="kw">pub </span>seednodes: Vec&lt;String&gt;,
+    <span class="doccomment">/// Whether to connect to the seednode only.
+    </span><span class="kw">pub </span>seednode_only: bool,
     <span class="doccomment">/// Whether to accept the peer in ipv4 only.
     </span><span class="kw">pub </span>ipv4_only: bool,
     <span class="doccomment">/// Maximum number of outbound peer connections.
@@ -887,18 +865,30 @@
     </span><span class="kw">pub </span>sync_strategy: SyncStrategy,
 }
 
-<span class="kw">impl </span>Params {
-    <span class="kw">fn </span>bootnodes(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Vec&lt;String&gt; {
-        <span class="kw">if </span><span class="self">self</span>.bootnode_only {
-            <span class="self">self</span>.bootnodes.clone()
-        } <span class="kw">else </span>{
-            <span class="kw">let </span><span class="kw-2">mut </span>nodes: Vec&lt;String&gt; = seednodes(<span class="self">self</span>.network)
-                .into_iter()
-                .map(Into::into)
-                .collect();
-            nodes.extend_from_slice(<span class="kw-2">&amp;</span><span class="self">self</span>.bootnodes);
-            nodes
+<span class="kw">fn </span>builtin_seednodes(network: BitcoinNetwork) -&gt; <span class="kw-2">&amp;</span><span class="lifetime">'static </span>[<span class="kw-2">&amp;</span><span class="lifetime">'static </span>str] {
+    <span class="kw">match </span>network {
+        BitcoinNetwork::Bitcoin =&gt; {
+            <span class="kw-2">&amp;</span>[
+                <span class="string">"seed.bitcoin.sipa.be:8333"</span>,                        <span class="comment">// Pieter Wuille
+                </span><span class="string">"dnsseed.bluematt.me:8333"</span>,                         <span class="comment">// Matt Corallo
+                </span><span class="string">"dnsseed.bitcoin.dashjr-list-of-p2p-nodes.us:8333"</span>, <span class="comment">// Luke Dashjr
+                </span><span class="string">"seed.bitcoinstats.com:8333"</span>,                       <span class="comment">// Christian Decker
+                </span><span class="string">"seed.bitcoin.jonasschnelli.ch:8333"</span>,               <span class="comment">// Jonas Schnelli
+                </span><span class="string">"seed.btc.petertodd.net:8333"</span>,                      <span class="comment">// Peter Todd
+                </span><span class="string">"seed.bitcoin.sprovoost.nl:8333"</span>,                   <span class="comment">// Sjors Provoost
+                </span><span class="string">"dnsseed.emzy.de:8333"</span>,                             <span class="comment">// Stephan Oeste
+                </span><span class="string">"seed.bitcoin.wiz.biz:8333"</span>,                        <span class="comment">// Jason Maurice
+                </span><span class="string">"seed.mainnet.achownodes.xyz:8333"</span>,                 <span class="comment">// Ava Chow
+            </span>]
         }
+        BitcoinNetwork::Testnet =&gt; <span class="kw-2">&amp;</span>[
+            <span class="string">"testnet-seed.bitcoin.jonasschnelli.ch:18333"</span>,
+            <span class="string">"seed.tbtc.petertodd.net:18333"</span>,
+            <span class="string">"seed.testnet.bitcoin.sprovoost.nl:18333"</span>,
+            <span class="string">"testnet-seed.bluematt.me:18333"</span>,
+            <span class="string">"testnet-seed.achownodes.xyz:18333"</span>,
+        ],
+        <span class="kw">_ </span>=&gt; <span class="kw-2">&amp;</span>[],
     }
 }
 
@@ -911,6 +901,7 @@
     worker_msg_sender: TracingUnboundedSender&lt;NetworkWorkerMessage&gt;,
     worker_msg_receiver: TracingUnboundedReceiver&lt;NetworkWorkerMessage&gt;,
     is_major_syncing: Arc&lt;AtomicBool&gt;,
+    registry: <span class="prelude-ty">Option</span>&lt;Registry&gt;,
     _phantom: PhantomData&lt;Block&gt;,
 }
 
@@ -925,6 +916,7 @@
         params: Params,
         import_queue: BlockImportQueue,
         spawn_handle: SpawnTaskHandle,
+        registry: <span class="prelude-ty">Option</span>&lt;Registry&gt;,
     ) -&gt; (<span class="self">Self</span>, NetworkHandle) {
         <span class="kw">let </span>(worker_msg_sender, worker_msg_receiver) = tracing_unbounded(<span class="string">"network_worker_msg"</span>, <span class="number">100</span>);
 
@@ -938,6 +930,7 @@
             worker_msg_sender: worker_msg_sender.clone(),
             worker_msg_receiver,
             is_major_syncing: is_major_syncing.clone(),
+            registry,
             _phantom: Default::default(),
         };
 
@@ -962,6 +955,7 @@
             worker_msg_sender,
             worker_msg_receiver,
             is_major_syncing,
+            registry,
             _phantom,
         } = <span class="self">self</span>;
 
@@ -989,13 +983,16 @@
         );
 
         <span class="kw">let </span>network_worker = NetworkWorker::new(
-            client.clone(),
-            network_event_receiver,
-            import_queue,
-            params.sync_strategy,
-            is_major_syncing,
-            connection_initiator.clone(),
-            params.max_outbound_peers,
+            worker::Params {
+                client: client.clone(),
+                network_event_receiver,
+                import_queue,
+                sync_strategy: params.sync_strategy,
+                is_major_syncing,
+                connection_initiator: connection_initiator.clone(),
+                max_outbound_peers: params.max_outbound_peers,
+            },
+            registry.as_ref(),
         );
 
         spawn_handle.spawn(<span class="string">"inbound-connection"</span>, <span class="prelude-val">None</span>, {
@@ -1035,8 +1032,21 @@
             }
         });
 
+        <span class="kw">let </span>Params {
+            seednode_only,
+            seednodes,
+            network,
+            ..
+        } = params;
+
+        <span class="kw">let </span><span class="kw-2">mut </span>bootnodes = seednodes;
+
+        <span class="kw">if </span>!seednode_only {
+            bootnodes.extend(builtin_seednodes(network).iter().map(|s| s.to_string()));
+        }
+
         <span class="comment">// Create a vector of futures for DNS lookups
-        </span><span class="kw">let </span>lookup_futures = params.bootnodes().into_iter().map(|bootnode| <span class="kw">async move </span>{
+        </span><span class="kw">let </span>lookup_futures = bootnodes.into_iter().map(|bootnode| <span class="kw">async move </span>{
             tokio::net::lookup_host(<span class="kw-2">&amp;</span>bootnode).<span class="kw">await</span>.map(|<span class="kw-2">mut </span>addrs| {
                 addrs
                     .next()

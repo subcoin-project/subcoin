@@ -443,6 +443,52 @@
 <a href="#443" id="443">443</a>
 <a href="#444" id="444">444</a>
 <a href="#445" id="445">445</a>
+<a href="#446" id="446">446</a>
+<a href="#447" id="447">447</a>
+<a href="#448" id="448">448</a>
+<a href="#449" id="449">449</a>
+<a href="#450" id="450">450</a>
+<a href="#451" id="451">451</a>
+<a href="#452" id="452">452</a>
+<a href="#453" id="453">453</a>
+<a href="#454" id="454">454</a>
+<a href="#455" id="455">455</a>
+<a href="#456" id="456">456</a>
+<a href="#457" id="457">457</a>
+<a href="#458" id="458">458</a>
+<a href="#459" id="459">459</a>
+<a href="#460" id="460">460</a>
+<a href="#461" id="461">461</a>
+<a href="#462" id="462">462</a>
+<a href="#463" id="463">463</a>
+<a href="#464" id="464">464</a>
+<a href="#465" id="465">465</a>
+<a href="#466" id="466">466</a>
+<a href="#467" id="467">467</a>
+<a href="#468" id="468">468</a>
+<a href="#469" id="469">469</a>
+<a href="#470" id="470">470</a>
+<a href="#471" id="471">471</a>
+<a href="#472" id="472">472</a>
+<a href="#473" id="473">473</a>
+<a href="#474" id="474">474</a>
+<a href="#475" id="475">475</a>
+<a href="#476" id="476">476</a>
+<a href="#477" id="477">477</a>
+<a href="#478" id="478">478</a>
+<a href="#479" id="479">479</a>
+<a href="#480" id="480">480</a>
+<a href="#481" id="481">481</a>
+<a href="#482" id="482">482</a>
+<a href="#483" id="483">483</a>
+<a href="#484" id="484">484</a>
+<a href="#485" id="485">485</a>
+<a href="#486" id="486">486</a>
+<a href="#487" id="487">487</a>
+<a href="#488" id="488">488</a>
+<a href="#489" id="489">489</a>
+<a href="#490" id="490">490</a>
+<a href="#491" id="491">491</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! This module provides the implementation for importing Bitcoin blocks into Subcoin.
 //!
 //! Each Bitcoin block is converted into a Substrate block and imported into the database.
@@ -464,6 +510,7 @@
 //!     An enum representing the result of an import operation, with variants for different import outcomes.
 
 </span><span class="kw">use </span><span class="kw">crate</span>::block_executor::{BlockExecutor, ExecuteBlockResult};
+<span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
 <span class="kw">use </span><span class="kw">crate</span>::verification::{BlockVerification, BlockVerifier};
 <span class="kw">use </span>bitcoin::hashes::Hash;
 <span class="kw">use </span>bitcoin::{Block <span class="kw">as </span>BitcoinBlock, BlockHash, Network};
@@ -482,10 +529,12 @@
 <span class="kw">use </span>sp_runtime::{SaturatedConversion, Saturating};
 <span class="kw">use </span>std::marker::PhantomData;
 <span class="kw">use </span>std::sync::Arc;
+<span class="kw">use </span>std::time::Instant;
 <span class="kw">use </span>subcoin_primitives::runtime::Subcoin;
 <span class="kw">use </span>subcoin_primitives::{
     substrate_header_digest, BackendExt, BitcoinTransactionAdapter, CoinStorageKey,
 };
+<span class="kw">use </span>substrate_prometheus_endpoint::Registry;
 
 <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>clone_storage_changes&lt;Block: BlockT&gt;(
     c: <span class="kw-2">&amp;</span>sp_state_machine::StorageChanges&lt;HashingFor&lt;Block&gt;&gt;,
@@ -574,6 +623,8 @@
     config: ImportConfig,
     verifier: BlockVerifier&lt;Block, Client, BE&gt;,
     block_executor: Box&lt;<span class="kw">dyn </span>BlockExecutor&lt;Block&gt;&gt;,
+    metrics: <span class="prelude-ty">Option</span>&lt;Metrics&gt;,
+    last_block_execution_report: Instant,
     _phantom: PhantomData&lt;TransactionAdapter&gt;,
 }
 
@@ -601,6 +652,7 @@
         config: ImportConfig,
         coin_storage_key: Arc&lt;<span class="kw">dyn </span>CoinStorageKey&gt;,
         block_executor: Box&lt;<span class="kw">dyn </span>BlockExecutor&lt;Block&gt;&gt;,
+        registry: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>Registry&gt;,
     ) -&gt; <span class="self">Self </span>{
         <span class="kw">let </span>verifier = BlockVerifier::new(
             client.clone(),
@@ -609,6 +661,14 @@
             coin_storage_key,
             config.verify_script,
         );
+        <span class="kw">let </span>metrics = <span class="kw">match </span>registry {
+            <span class="prelude-val">Some</span>(registry) =&gt; Metrics::register(registry)
+                .map_err(|err| {
+                    <span class="macro">tracing::error!</span>(<span class="string">"Failed to registry metrics: {err:?}"</span>);
+                })
+                .ok(),
+            <span class="prelude-val">None </span>=&gt; <span class="prelude-val">None</span>,
+        };
         <span class="self">Self </span>{
             client,
             inner: block_import,
@@ -616,6 +676,8 @@
             config,
             verifier,
             block_executor,
+            metrics,
+            last_block_execution_report: Instant::now(),
             _phantom: Default::default(),
         }
     }
@@ -654,18 +716,45 @@
     }
 
     <span class="kw">fn </span>execute_block_at(
-        <span class="kw-2">&amp;</span><span class="self">self</span>,
+        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
+        block_number: NumberFor&lt;Block&gt;,
         parent_hash: Block::Hash,
         block: Block,
     ) -&gt; sp_blockchain::Result&lt;(
         Block::Hash,
         sp_state_machine::StorageChanges&lt;HashingFor&lt;Block&gt;&gt;,
     )&gt; {
+        <span class="kw">let </span>timer = std::time::Instant::now();
+
+        <span class="kw">let </span>transactions_count = block.extrinsics().len();
+        <span class="kw">let </span>block_size = block.encoded_size();
+
         <span class="kw">let </span>ExecuteBlockResult {
             state_root,
             storage_changes,
             exec_info: <span class="kw">_</span>,
         } = <span class="self">self</span>.block_executor.execute_block(parent_hash, block)<span class="question-mark">?</span>;
+
+        <span class="kw">if let </span><span class="prelude-val">Some</span>(metrics) = <span class="kw-2">&amp;</span><span class="self">self</span>.metrics {
+            <span class="kw">const </span>BLOCK_EXECUTION_REPORT_INTERVAL: u128 = <span class="number">50</span>;
+
+            <span class="comment">// Executing blocks before 200000 is pretty fast, it becomes
+            // increasingly slower beyond this point, we only cares about
+            // the slow block executions.
+            </span><span class="kw">if </span><span class="self">self</span>.last_block_execution_report.elapsed().as_millis()
+                &gt; BLOCK_EXECUTION_REPORT_INTERVAL
+            {
+                <span class="kw">let </span>block_number: u32 = block_number.saturated_into();
+                <span class="kw">let </span>execution_time = timer.elapsed().as_millis();
+                metrics.report_block_execution(
+                    block_number.saturated_into(),
+                    transactions_count,
+                    block_size,
+                    execution_time,
+                );
+                <span class="self">self</span>.last_block_execution_report = Instant::now();
+            }
+        }
 
         <span class="prelude-val">Ok</span>((state_root, storage_changes))
     }
@@ -711,8 +800,11 @@
 
             <span class="kw">let </span>tx_count = extrinsics.len();
 
-            <span class="kw">let </span>(state_root, storage_changes) =
-                <span class="self">self</span>.execute_block_at(parent_hash, Block::new(header.clone(), extrinsics.clone()))<span class="question-mark">?</span>;
+            <span class="kw">let </span>(state_root, storage_changes) = <span class="self">self</span>.execute_block_at(
+                block_number,
+                parent_hash,
+                Block::new(header.clone(), extrinsics.clone()),
+            )<span class="question-mark">?</span>;
 
             <span class="kw">let </span>execution_time = now.elapsed().as_millis();
 

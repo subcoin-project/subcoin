@@ -120,6 +120,10 @@
 <a href="#120" id="120">120</a>
 <a href="#121" id="121">121</a>
 <a href="#122" id="122">122</a>
+<a href="#123" id="123">123</a>
+<a href="#124" id="124">124</a>
+<a href="#125" id="125">125</a>
+<a href="#126" id="126">126</a>
 </pre></div><pre class="rust"><code><span class="kw">use crate</span>::{validate_outbound_services, PeerId};
 <span class="kw">use </span>bitcoin::p2p::address::{AddrV2, AddrV2Message, Address};
 <span class="kw">use </span>std::collections::HashSet;
@@ -152,6 +156,10 @@
     <span class="doccomment">/// Checks if the address book has reached the maximum number of addresses.
     </span><span class="kw">pub fn </span>has_max_addresses(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
         <span class="self">self</span>.discovered_addresses.len() &gt;= <span class="self">self</span>.max_addresses
+    }
+
+    <span class="kw">pub fn </span>available_addresses_count(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize {
+        <span class="self">self</span>.discovered_addresses.len()
     }
 
     <span class="doccomment">/// Pops a random address from the discovered addresses and marks it as active.

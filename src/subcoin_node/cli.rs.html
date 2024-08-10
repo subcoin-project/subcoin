@@ -269,6 +269,18 @@
 <a href="#269" id="269">269</a>
 <a href="#270" id="270">270</a>
 <a href="#271" id="271">271</a>
+<a href="#272" id="272">272</a>
+<a href="#273" id="273">273</a>
+<a href="#274" id="274">274</a>
+<a href="#275" id="275">275</a>
+<a href="#276" id="276">276</a>
+<a href="#277" id="277">277</a>
+<a href="#278" id="278">278</a>
+<a href="#279" id="279">279</a>
+<a href="#280" id="280">280</a>
+<a href="#281" id="281">281</a>
+<a href="#282" id="282">282</a>
+<a href="#283" id="283">283</a>
 </pre></div><pre class="rust"><code><span class="kw">pub mod </span>params;
 
 <span class="kw">use </span><span class="kw">crate</span>::commands::blockchain::{Blockchain, BlockchainCmd};
@@ -367,6 +379,10 @@
         Command::ImportBlocks(cmd) =&gt; {
             <span class="kw">let </span>block_execution_strategy = cmd.common_params.block_execution_strategy();
             <span class="kw">let </span>verify_script = cmd.common_params.verify_script;
+            <span class="kw">let </span>chain_spec_id = cmd.common_params.chain.chain_spec_id();
+            <span class="kw">let </span>maybe_prometheus_config = cmd
+                .prometheus_params
+                .prometheus_config(<span class="number">9615</span>, chain_spec_id.to_string());
             <span class="kw">let </span>import_blocks_cmd = ImportBlocksCmd::new(<span class="kw-2">&amp;</span>cmd);
             <span class="kw">let </span>runner = SubstrateCli.create_runner(<span class="kw-2">&amp;</span>import_blocks_cmd)<span class="question-mark">?</span>;
             <span class="kw">let </span>data_dir = cmd.data_dir;
@@ -383,7 +399,8 @@
                     no_hardware_benchmarks,
                     storage_monitor,
                 })<span class="question-mark">?</span>;
-                task_manager.spawn_handle().spawn(<span class="string">"finalizer"</span>, <span class="prelude-val">None</span>, {
+                <span class="kw">let </span>spawn_handle = task_manager.spawn_handle();
+                spawn_handle.spawn(<span class="string">"finalizer"</span>, <span class="prelude-val">None</span>, {
                     <span class="kw">let </span>client = client.clone();
                     <span class="kw">let </span>spawn_handle = task_manager.spawn_handle();
                     <span class="comment">// Assume the chain is major syncing.
@@ -397,7 +414,14 @@
                     )
                 });
                 <span class="prelude-val">Ok</span>((
-                    import_blocks_cmd.run(client, block_executor, data_dir, verify_script),
+                    import_blocks_cmd.run(
+                        client,
+                        block_executor,
+                        data_dir,
+                        verify_script,
+                        spawn_handle,
+                        maybe_prometheus_config,
+                    ),
                     task_manager,
                 ))
             })

@@ -386,6 +386,8 @@
 <a href="#386" id="386">386</a>
 <a href="#387" id="387">387</a>
 <a href="#388" id="388">388</a>
+<a href="#389" id="389">389</a>
+<a href="#390" id="390">390</a>
 </pre></div><pre class="rust"><code><span class="kw">use crate</span>::{
     initialize_genesis_block_hash_mapping, BitcoinExecutorDispatch, CoinStorageKey, FullBackend,
     FullClient, GenesisBlockBuilder, InMemoryBackend, InMemoryClient, TransactionAdapter,
@@ -665,6 +667,7 @@
             },
             Arc::new(CoinStorageKey),
             block_executor,
+            <span class="prelude-val">None</span>,
         );
 
         <span class="kw">let </span>test_blocks = block_data();
@@ -726,6 +729,7 @@
             },
             Arc::new(CoinStorageKey),
             block_executor,
+            <span class="prelude-val">None</span>,
         );
 
         <span class="kw">let </span>test_blocks = block_data();

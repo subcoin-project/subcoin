@@ -261,14 +261,38 @@
 <a href="#261" id="261">261</a>
 <a href="#262" id="262">262</a>
 <a href="#263" id="263">263</a>
+<a href="#264" id="264">264</a>
+<a href="#265" id="265">265</a>
+<a href="#266" id="266">266</a>
+<a href="#267" id="267">267</a>
+<a href="#268" id="268">268</a>
+<a href="#269" id="269">269</a>
+<a href="#270" id="270">270</a>
+<a href="#271" id="271">271</a>
+<a href="#272" id="272">272</a>
+<a href="#273" id="273">273</a>
+<a href="#274" id="274">274</a>
+<a href="#275" id="275">275</a>
+<a href="#276" id="276">276</a>
+<a href="#277" id="277">277</a>
+<a href="#278" id="278">278</a>
+<a href="#279" id="279">279</a>
+<a href="#280" id="280">280</a>
+<a href="#281" id="281">281</a>
+<a href="#282" id="282">282</a>
+<a href="#283" id="283">283</a>
+<a href="#284" id="284">284</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::params::CommonParams;
 <span class="kw">use </span><span class="kw">crate</span>::utils::Yield;
 <span class="kw">use </span>bitcoin_explorer::BitcoinDB;
-<span class="kw">use </span>sc_cli::{ImportParams, NodeKeyParams, SharedParams};
+<span class="kw">use </span>futures::FutureExt;
+<span class="kw">use </span>sc_cli::{ImportParams, NodeKeyParams, PrometheusParams, SharedParams};
 <span class="kw">use </span>sc_client_api::HeaderBackend;
 <span class="kw">use </span>sc_consensus_nakamoto::{
     BitcoinBlockImport, BitcoinBlockImporter, BlockVerification, ImportConfig,
 };
+<span class="kw">use </span>sc_service::config::PrometheusConfig;
+<span class="kw">use </span>sc_service::SpawnTaskHandle;
 <span class="kw">use </span>sp_runtime::traits::{Block <span class="kw">as </span>BlockT, CheckedDiv, NumberFor, Zero};
 <span class="kw">use </span>sp_runtime::Saturating;
 <span class="kw">use </span>std::path::{Path, PathBuf};
@@ -305,6 +329,10 @@
 
     <span class="attr">#[allow(missing_docs)]
     #[clap(flatten)]
+    </span><span class="kw">pub </span>prometheus_params: PrometheusParams,
+
+    <span class="attr">#[allow(missing_docs)]
+    #[clap(flatten)]
     </span><span class="kw">pub </span>import_params: ImportParams,
 
     <span class="attr">#[allow(missing_docs)]
@@ -336,12 +364,14 @@
     }
 
     <span class="doccomment">/// Run the import-blocks command
-    </span><span class="kw">pub async fn </span>run(
+    </span><span class="kw">pub async fn </span>run&lt;<span class="lifetime">'a</span>&gt;(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         client: Arc&lt;FullClient&gt;,
         block_executor: Box&lt;<span class="kw">dyn </span>sc_consensus_nakamoto::BlockExecutor&lt;OpaqueBlock&gt;&gt;,
         data_dir: PathBuf,
         verify_script: bool,
+        spawn_handle: SpawnTaskHandle,
+        maybe_prometheus_config: <span class="prelude-ty">Option</span>&lt;PrometheusConfig&gt;,
     ) -&gt; sc_cli::Result&lt;()&gt; {
         <span class="kw">let </span>from = (client.info().best_number + <span class="number">1</span>) <span class="kw">as </span>usize;
 
@@ -377,7 +407,19 @@
                 },
                 Arc::new(subcoin_service::CoinStorageKey),
                 block_executor,
+                maybe_prometheus_config
+                    .as_ref()
+                    .map(|config| config.registry.clone())
+                    .as_ref(),
             );
+
+        <span class="kw">if let </span><span class="prelude-val">Some</span>(PrometheusConfig { port, registry }) = maybe_prometheus_config {
+            spawn_handle.spawn(
+                <span class="string">"prometheus-endpoint"</span>,
+                <span class="prelude-val">None</span>,
+                substrate_prometheus_endpoint::init_prometheus(port, registry).map(drop),
+            );
+        }
 
         <span class="kw">for </span>index <span class="kw">in </span>from..=to {
             <span class="kw">let </span>block = bitcoind_backend.block_at(index)<span class="question-mark">?</span>;
