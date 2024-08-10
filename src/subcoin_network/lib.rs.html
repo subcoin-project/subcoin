@@ -537,6 +537,8 @@
 <a href="#537" id="537">537</a>
 <a href="#538" id="538">538</a>
 <a href="#539" id="539">539</a>
+<a href="#540" id="540">540</a>
+<a href="#541" id="541">541</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # Bitcoin Network
 //!
 //! This crate facilitates communication with other nodes in the Bitcoin P2P network. It handles
@@ -621,6 +623,8 @@
     </span>ConnectionTimeout,
     <span class="attr">#[error(<span class="string">"Unexpected handshake state: {0:?}"</span>)]
     </span>UnexpectedHandshakeState(Box&lt;HandshakeState&gt;),
+    <span class="attr">#[error(<span class="string">"Handshake timeout"</span>)]
+    </span>HandshakeTimeout,
     <span class="attr">#[error(<span class="string">"Only IPv4 peers are supported"</span>)]
     </span>Ipv4Only,
     <span class="attr">#[error(<span class="string">"Peer is not a full node"</span>)]

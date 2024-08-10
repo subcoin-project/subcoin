@@ -741,6 +741,21 @@
 <a href="#741" id="741">741</a>
 <a href="#742" id="742">742</a>
 <a href="#743" id="743">743</a>
+<a href="#744" id="744">744</a>
+<a href="#745" id="745">745</a>
+<a href="#746" id="746">746</a>
+<a href="#747" id="747">747</a>
+<a href="#748" id="748">748</a>
+<a href="#749" id="749">749</a>
+<a href="#750" id="750">750</a>
+<a href="#751" id="751">751</a>
+<a href="#752" id="752">752</a>
+<a href="#753" id="753">753</a>
+<a href="#754" id="754">754</a>
+<a href="#755" id="755">755</a>
+<a href="#756" id="756">756</a>
+<a href="#757" id="757">757</a>
+<a href="#758" id="758">758</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::address_book::AddressBook;
 <span class="kw">use </span><span class="kw">crate</span>::connection::{ConnectionInitiator, ConnectionWriter, Direction, NewConnection};
 <span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
@@ -779,6 +794,9 @@
 /// Periodically evict the slowest peer whose latency is above the threshold [`SLOW_PEER_LATENCY`]
 /// when the peer set is full. This creates opportunities to connect with potentially better peers.
 </span><span class="kw">const </span>EVICTION_INTERVAL: Duration = Duration::from_secs(<span class="number">600</span>);
+
+<span class="doccomment">/// Timeout for the outbound peer to send their version, in seconds.
+</span><span class="kw">const </span>HANDSHAKE_TIMEOUT: i64 = <span class="number">1</span>;
 
 <span class="doccomment">/// Peer configuration.
 </span><span class="attr">#[derive(Debug, Clone)]
@@ -1087,30 +1105,39 @@
                 }
             }
             <span class="prelude-val">None
-        </span>} <span class="kw">else if </span><span class="self">self</span>.last_eviction.elapsed() &gt; EVICTION_INTERVAL {
-            <span class="comment">// Find the slowest peer.
+        </span>} <span class="kw">else </span>{
+            <span class="comment">// It's possible for the number of connected peers to temporarily exceed the
+            // `max_outbound_peers` limit if multiple connection attempts are in progress
+            // and succeed simultaneously. This isn't a significant issue, as the slowest
+            // peer can be evicted to enforce the limit.
             //
-            // The set of outbound peers is full and the eviction interval elapsed,
-            // try to evict the slowest peer for discovering potential better peers.
-            </span><span class="self">self</span>.connected_peers
-                .iter()
-                .filter_map(|(peer_id, peer_info)| {
-                    <span class="kw">let </span>average_latency = peer_info.ping_latency.average();
+            // When the `max_inbound_peers` limit is reached, we still attempt to discover
+            // potentially better peers by evicting the slowest peer after the eviction
+            // interval has elapsed.
+            </span><span class="kw">if </span><span class="self">self</span>.max_outbound_peers &gt; outbound_peers_count
+                || <span class="self">self</span>.last_eviction.elapsed() &gt; EVICTION_INTERVAL
+            {
+                <span class="comment">// Find the slowest peer.
+                </span><span class="self">self</span>.connected_peers
+                    .iter()
+                    .filter_map(|(peer_id, peer_info)| {
+                        <span class="kw">let </span>average_latency = peer_info.ping_latency.average();
 
-                    <span class="kw">if </span>average_latency &gt; SLOW_PEER_LATENCY {
-                        <span class="prelude-val">Some</span>((peer_id, average_latency))
-                    } <span class="kw">else </span>{
-                        <span class="prelude-val">None
-                    </span>}
-                })
-                .max_by_key(|(_peer_id, average_latency)| <span class="kw-2">*</span>average_latency)
-                .map(|(peer_id, peer_latency)| SlowPeer {
-                    peer_id: <span class="kw-2">*</span>peer_id,
-                    peer_latency,
-                })
-        } <span class="kw">else </span>{
-            <span class="prelude-val">None
-        </span>}
+                        <span class="kw">if </span>average_latency &gt; SLOW_PEER_LATENCY {
+                            <span class="prelude-val">Some</span>((peer_id, average_latency))
+                        } <span class="kw">else </span>{
+                            <span class="prelude-val">None
+                        </span>}
+                    })
+                    .max_by_key(|(_peer_id, average_latency)| <span class="kw-2">*</span>average_latency)
+                    .map(|(peer_id, peer_latency)| SlowPeer {
+                        peer_id: <span class="kw-2">*</span>peer_id,
+                        peer_latency,
+                    })
+            } <span class="kw">else </span>{
+                <span class="prelude-val">None
+            </span>}
+        }
     }
 
     <span class="kw">fn </span>send_pings(<span class="kw-2">&amp;mut </span><span class="self">self</span>, should_pings: Vec&lt;PeerId&gt;) {
@@ -1142,6 +1169,7 @@
 
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>on_outbound_connection_failure(<span class="kw-2">&amp;mut </span><span class="self">self</span>, addr: PeerId, err: Error) {
         <span class="macro">tracing::trace!</span>(<span class="question-mark">?</span>err, <span class="question-mark">?</span>addr, <span class="string">"Failed to initiate outbound connection"</span>);
+
         <span class="self">self</span>.address_book.note_failed_address(addr);
 
         <span class="kw">if let </span><span class="prelude-val">Some</span>(metrics) = <span class="kw-2">&amp;</span><span class="self">self</span>.metrics {
@@ -1293,10 +1321,7 @@
         direction: Direction,
         version_message: VersionMessage,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
-        <span class="comment">// TODO: handshake timeout?
-        // a timeout for receiving the version message.
-
-        </span><span class="kw">let </span>greatest_common_version = <span class="self">self</span>.config.protocol_version.min(version_message.version);
+        <span class="kw">let </span>greatest_common_version = <span class="self">self</span>.config.protocol_version.min(version_message.version);
 
         <span class="macro">tracing::debug!</span>(
             version = version_message.version,
@@ -1361,8 +1386,13 @@
                     .insert(peer_id, HandshakeState::VersionReceived(version_message))
                 {
                     <span class="prelude-val">Some</span>(old) =&gt; {
-                        <span class="kw">if </span>!<span class="macro">matches!</span>(old, HandshakeState::VersionSent { .. }) {
+                        <span class="kw">let </span>HandshakeState::VersionSent { at } = old <span class="kw">else </span>{
                             <span class="kw">return </span><span class="prelude-val">Err</span>(Error::UnexpectedHandshakeState(Box::new(old)));
+                        };
+
+                        <span class="kw">if </span>Local::now().signed_duration_since(at).num_seconds() &gt; HANDSHAKE_TIMEOUT
+                        {
+                            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::HandshakeTimeout);
                         }
                     }
                     <span class="prelude-val">None </span>=&gt; {
@@ -1479,7 +1509,7 @@
 
         <span class="kw">let </span>average_latency = peer_info.ping_latency.average();
 
-        <span class="macro">tracing::debug!</span>(<span class="string">"Received pong from {peer_id} (Avg. Latency: {average_latency}ms)"</span>);
+        <span class="macro">tracing::trace!</span>(<span class="string">"Received pong from {peer_id} (Avg. Latency: {average_latency}ms)"</span>);
 
         <span class="prelude-val">Ok</span>(average_latency)
     }
