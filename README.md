@@ -1,6 +1,6 @@
 <div align="center">
 
-<p align="center"><img width="600" src="./docs/images/subcoin-high-resolution-logo.png" alt="Subcoin logo"></p>
+<p align="center"><img width="400" src="./docs/images/subcoin-high-resolution-logo.png" alt="Subcoin logo"></p>
 
 [![Continuous integration](https://github.com/subcoin-project/subcoin/actions/workflows/ci.yml/badge.svg)](https://github.com/subcoin-project/subcoin/actions/workflows/ci.yml)
 [![Docs](https://github.com/subcoin-project/subcoin/actions/workflows/docs.yml/badge.svg)](https://github.com/subcoin-project/subcoin/actions/workflows/docs.yml)
