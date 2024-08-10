@@ -1,4 +1,5 @@
 use crate::connection::{ConnectionInitiator, Direction, NewConnection};
+use crate::metrics::Metrics;
 use crate::peer_manager::{Config, PeerManager, SlowPeer};
 use crate::sync::{ChainSync, LocatorRequest, SyncAction, SyncRequest};
 use crate::transaction_manager::TransactionManager;
@@ -17,6 +18,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use substrate_prometheus_endpoint::Registry;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::MissedTickBehavior;
 
@@ -43,6 +45,17 @@ pub enum Event {
     },
 }
 
+/// Parameters for creating a [`NetworkWorker`].
+pub struct Params<Client> {
+    pub client: Arc<Client>,
+    pub network_event_receiver: UnboundedReceiver<Event>,
+    pub import_queue: BlockImportQueue,
+    pub sync_strategy: SyncStrategy,
+    pub is_major_syncing: Arc<AtomicBool>,
+    pub connection_initiator: ConnectionInitiator,
+    pub max_outbound_peers: usize,
+}
+
 /// Worker for processing the network events.
 pub struct NetworkWorker<Block, Client> {
     config: Config,
@@ -50,6 +63,7 @@ pub struct NetworkWorker<Block, Client> {
     peer_manager: PeerManager<Block, Client>,
     transaction_manager: TransactionManager,
     chain_sync: ChainSync<Block, Client>,
+    metrics: Option<Metrics>,
 }
 
 impl<Block, Client> NetworkWorker<Block, Client>
@@ -58,16 +72,26 @@ where
     Client: HeaderBackend<Block> + AuxStore,
 {
     /// Constructs a new instance of [`NetworkWorker`].
-    pub fn new(
-        client: Arc<Client>,
-        network_event_receiver: UnboundedReceiver<Event>,
-        import_queue: BlockImportQueue,
-        sync_strategy: SyncStrategy,
-        is_major_syncing: Arc<AtomicBool>,
-        connection_initiator: ConnectionInitiator,
-        max_outbound_peers: usize,
-    ) -> Self {
+    pub fn new(params: Params<Client>, registry: Option<&Registry>) -> Self {
+        let Params {
+            client,
+            network_event_receiver,
+            import_queue,
+            sync_strategy,
+            is_major_syncing,
+            connection_initiator,
+            max_outbound_peers,
+        } = params;
+
         let config = Config::new();
+
+        let metrics = match registry {
+            Some(registry) => Metrics::register(registry)
+                .map_err(|err| tracing::error!("Failed to register metrics: {err}"))
+                .ok(),
+            None => None,
+        };
+
         Self {
             network_event_receiver,
             peer_manager: PeerManager::new(
@@ -75,9 +99,11 @@ where
                 config.clone(),
                 connection_initiator,
                 max_outbound_peers,
+                metrics.clone(),
             ),
             transaction_manager: TransactionManager::new(),
             chain_sync: ChainSync::new(client, import_queue, sync_strategy, is_major_syncing),
+            metrics,
             config,
         }
     }
@@ -118,6 +144,17 @@ where
             }
 
             self.chain_sync.import_pending_blocks();
+
+            if let Some(metrics) = &self.metrics {
+                metrics
+                    .bandwidth
+                    .with_label_values(&["in"])
+                    .set(bandwidth.total_bytes_inbound.load(Ordering::Relaxed));
+                metrics
+                    .bandwidth
+                    .with_label_values(&["out"])
+                    .set(bandwidth.total_bytes_outbound.load(Ordering::Relaxed));
+            }
         }
     }
 

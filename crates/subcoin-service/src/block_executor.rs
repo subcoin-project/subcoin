@@ -277,6 +277,7 @@ mod tests {
             },
             Arc::new(CoinStorageKey),
             block_executor,
+            None,
         );
 
         let test_blocks = block_data();
@@ -338,6 +339,7 @@ mod tests {
             },
             Arc::new(CoinStorageKey),
             block_executor,
+            None,
         );
 
         let test_blocks = block_data();
