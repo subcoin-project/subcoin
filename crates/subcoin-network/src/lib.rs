@@ -82,6 +82,8 @@ pub enum Error {
     ConnectionTimeout,
     #[error("Unexpected handshake state: {0:?}")]
     UnexpectedHandshakeState(Box<HandshakeState>),
+    #[error("Handshake timeout")]
+    HandshakeTimeout,
     #[error("Only IPv4 peers are supported")]
     Ipv4Only,
     #[error("Peer is not a full node")]

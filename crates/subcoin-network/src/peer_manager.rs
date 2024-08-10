@@ -37,6 +37,9 @@ const SLOW_PEER_LATENCY: Latency = 5_000;
 /// when the peer set is full. This creates opportunities to connect with potentially better peers.
 const EVICTION_INTERVAL: Duration = Duration::from_secs(600);
 
+/// Timeout for the outbound peer to send their version, in seconds.
+const HANDSHAKE_TIMEOUT: i64 = 1;
+
 /// Peer configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -408,6 +411,7 @@ where
 
     pub(crate) fn on_outbound_connection_failure(&mut self, addr: PeerId, err: Error) {
         tracing::trace!(?err, ?addr, "Failed to initiate outbound connection");
+
         self.address_book.note_failed_address(addr);
 
         if let Some(metrics) = &self.metrics {
@@ -559,9 +563,6 @@ where
         direction: Direction,
         version_message: VersionMessage,
     ) -> Result<(), Error> {
-        // TODO: handshake timeout?
-        // a timeout for receiving the version message.
-
         let greatest_common_version = self.config.protocol_version.min(version_message.version);
 
         tracing::debug!(
@@ -627,8 +628,13 @@ where
                     .insert(peer_id, HandshakeState::VersionReceived(version_message))
                 {
                     Some(old) => {
-                        if !matches!(old, HandshakeState::VersionSent { .. }) {
+                        let HandshakeState::VersionSent { at } = old else {
                             return Err(Error::UnexpectedHandshakeState(Box::new(old)));
+                        };
+
+                        if Local::now().signed_duration_since(at).num_seconds() > HANDSHAKE_TIMEOUT
+                        {
+                            return Err(Error::HandshakeTimeout);
                         }
                     }
                     None => {
@@ -745,7 +751,7 @@ where
 
         let average_latency = peer_info.ping_latency.average();
 
-        tracing::debug!("Received pong from {peer_id} (Avg. Latency: {average_latency}ms)");
+        tracing::trace!("Received pong from {peer_id} (Avg. Latency: {average_latency}ms)");
 
         Ok(average_latency)
     }
