@@ -41,21 +41,28 @@ impl PeerSyncState {
     }
 }
 
-/// Ping letency of the peer.
+/// Letency of the peer.
+///
+/// The initial connection time is used as the baseline, the ping mechanism is
+/// used for more accurate latency estimate after the connection is established.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PeerLatency {
-    Unknown,
-    Average(Latency),
+    /// Connection latency.
+    ///
+    /// Only make sense for the outbound connection.
+    Connect(Latency),
+    /// Average ping latency.
+    Ping(Latency),
 }
 
 impl Ord for PeerLatency {
     fn cmp(&self, other: &Self) -> CmpOrdering {
         match (self, other) {
-            (Self::Unknown, Self::Unknown) => CmpOrdering::Equal,
-            (Self::Unknown, Self::Average(_)) => CmpOrdering::Less,
-            (Self::Average(_), Self::Unknown) => CmpOrdering::Greater,
-            (Self::Average(a), Self::Average(b)) => a.cmp(b),
+            (Self::Connect(a), Self::Connect(b)) => a.cmp(b),
+            (Self::Connect(_), Self::Ping(_)) => CmpOrdering::Less,
+            (Self::Ping(_), Self::Connect(_)) => CmpOrdering::Greater,
+            (Self::Ping(a), Self::Ping(b)) => a.cmp(b),
         }
     }
 }
@@ -266,9 +273,9 @@ where
         self.peers.remove(&peer_id);
     }
 
-    pub(super) fn set_peer_latency(&mut self, peer_id: PeerId, latency: Latency) {
+    pub(super) fn set_peer_latency(&mut self, peer_id: PeerId, avg_latency: Latency) {
         self.peers.entry(peer_id).and_modify(|peer| {
-            peer.latency = PeerLatency::Average(latency);
+            peer.latency = PeerLatency::Ping(avg_latency);
         });
     }
 
@@ -296,7 +303,7 @@ where
         };
 
         if let Some(current_sync_peer) = self.peers.get(&current_sync_peer_id) {
-            if let (PeerLatency::Average(current_latency), PeerLatency::Average(best_latency)) =
+            if let (PeerLatency::Ping(current_latency), PeerLatency::Ping(best_latency)) =
                 (current_sync_peer.latency, best_sync_peer.latency)
             {
                 // Update sync peer if the latency improvement is significant.
@@ -329,12 +336,13 @@ where
         let NewPeer {
             peer_id,
             best_number,
+            connect_latency,
         } = new_peer;
 
         let new_peer = PeerSync {
             peer_id,
             best_number,
-            latency: PeerLatency::Unknown,
+            latency: PeerLatency::Connect(connect_latency),
             state: PeerSyncState::Available,
         };
 

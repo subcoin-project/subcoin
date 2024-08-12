@@ -1,5 +1,5 @@
 use crate::worker::Event;
-use crate::{Bandwidth, Error, PeerId};
+use crate::{Bandwidth, Error, Latency, PeerId};
 use bitcoin::consensus::{encode, Decodable, Encodable};
 use bitcoin::p2p::message::{NetworkMessage, RawNetworkMessage, MAX_MSG_SIZE};
 use futures::FutureExt;
@@ -8,7 +8,7 @@ use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
@@ -33,10 +33,12 @@ pub enum Direction {
 }
 
 impl Direction {
+    /// Returns `true` if it's an inbound connection.
     pub fn is_inbound(&self) -> bool {
         matches!(self, Self::Inbound)
     }
 
+    /// Returns `true` if it's an outbound connection.
     pub fn is_outbound(&self) -> bool {
         matches!(self, Self::Outbound)
     }
@@ -45,10 +47,29 @@ impl Direction {
 /// An incoming peer connection.
 #[derive(Debug)]
 pub struct NewConnection {
+    /// The identifier of the connected peer.
     pub peer_addr: PeerId,
+    /// The local node's identifier associated with this connection.
     pub local_addr: PeerId,
+    /// The direction of the connection.
+    ///
+    /// Indicates whether the connection was initiated by the
+    /// local node (`Outbound`) or by the remote peer (`Inbound`).
     pub direction: Direction,
+    /// Time took to make the connection.
+    ///
+    /// Only make sense for the outbound connection.
+    pub connect_latency: Latency,
+    /// Channel for sending messages to the peer over this connection.
+    ///
+    /// This `ConnectionWriter` enables the local node to transmit data
+    /// and messages to the connected peer.
     pub writer: ConnectionWriter,
+    /// Signal to request disconnection of the connection.
+    ///
+    /// This `AtomicBool` is used to signal when the connection should
+    /// be terminated. When set to `true`, it indicates that the connection
+    /// should be gracefully disconnected.
     pub disconnect_signal: Arc<AtomicBool>,
 }
 
@@ -92,11 +113,13 @@ impl NetworkMessageDecoder {
     }
 }
 
+/// Handles the initiation of connections within the Bitcoin P2P network.
 #[derive(Clone)]
 pub struct ConnectionInitiator {
     network: bitcoin::Network,
     network_event_sender: UnboundedSender<Event>,
     spawn_handle: SpawnTaskHandle,
+    // Tracks the bandwidth usage of the initiated connections.
     bandwidth: Bandwidth,
     ipv4_only: bool,
 }
@@ -129,14 +152,20 @@ impl ConnectionInitiator {
 
             async move {
                 let outbound_connection_fut = async {
+                    let start_time = Instant::now();
                     let stream_result = tokio::time::timeout(
                         Duration::from_secs(Self::CONNECT_TIMEOUT),
                         TcpStream::connect(addr),
                     )
                     .await
                     .map_err(|_| Error::ConnectionTimeout)?;
+                    let connection_time = start_time.elapsed();
                     let stream = stream_result?;
-                    connection_initiator.initiate_new_connection(Direction::Outbound, stream)
+                    connection_initiator.initiate_new_connection(
+                        Direction::Outbound,
+                        stream,
+                        connection_time,
+                    )
                 };
 
                 if let Err(err) = outbound_connection_fut.await {
@@ -153,13 +182,14 @@ impl ConnectionInitiator {
 
     /// Makes a new inbound connection.
     pub fn initiate_inbound_connection(&self, stream: TcpStream) -> Result<(), Error> {
-        self.initiate_new_connection(Direction::Inbound, stream)
+        self.initiate_new_connection(Direction::Inbound, stream, Duration::ZERO)
     }
 
     fn initiate_new_connection(
         &self,
         direction: Direction,
         stream: TcpStream,
+        connection_time: Duration,
     ) -> Result<(), Error> {
         let peer_addr = stream.peer_addr()?;
 
@@ -169,7 +199,15 @@ impl ConnectionInitiator {
 
         let local_addr = stream.local_addr()?;
 
-        tracing::debug!(?peer_addr, ?local_addr, ?direction, "Opened new connection");
+        let connect_latency = connection_time.as_millis();
+
+        tracing::debug!(
+            ?peer_addr,
+            ?local_addr,
+            ?direction,
+            connect_latency,
+            "New connection"
+        );
 
         let (network_message_sender, network_message_receiver) = unbounded_channel();
 
@@ -180,6 +218,7 @@ impl ConnectionInitiator {
                 peer_addr,
                 local_addr,
                 direction,
+                connect_latency,
                 writer: network_message_sender,
                 disconnect_signal: disconnect_signal.clone(),
             }))

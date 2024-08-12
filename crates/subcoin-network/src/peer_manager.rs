@@ -89,6 +89,7 @@ impl Connection {
 pub struct NewPeer {
     pub peer_id: PeerId,
     pub best_number: u32,
+    pub connect_latency: Latency,
 }
 
 /// Handshake state.
@@ -256,6 +257,7 @@ pub struct PeerManager<Block, Client> {
     address_book: AddressBook,
     handshaking_peers: HashMap<PeerId, HandshakeState>,
     connections: HashMap<PeerId, Connection>,
+    connection_latencies: HashMap<PeerId, Latency>,
     connected_peers: HashMap<PeerId, PeerInfo>,
     max_outbound_peers: usize,
     connection_initiator: ConnectionInitiator,
@@ -285,6 +287,7 @@ where
             address_book: AddressBook::new(true, 2000),
             handshaking_peers: HashMap::new(),
             connections: HashMap::new(),
+            connection_latencies: HashMap::new(),
             connected_peers: HashMap::new(),
             max_outbound_peers,
             connection_initiator,
@@ -442,6 +445,7 @@ where
 
         self.handshaking_peers.remove(&peer_id);
         self.connected_peers.remove(&peer_id);
+        self.connection_latencies.remove(&peer_id);
     }
 
     /// Sets the prefer addrv2 flag for a peer.
@@ -491,13 +495,10 @@ where
             peer_addr,
             local_addr,
             direction,
+            connect_latency,
             writer,
             disconnect_signal,
         } = new_connection;
-
-        // TODO: validate connection
-        // ensure max_inbound_peers
-        // ensure max_outbound_peers
 
         let connection = Connection {
             local_addr,
@@ -553,6 +554,7 @@ where
         }
 
         self.connections.insert(peer_addr, connection);
+        self.connection_latencies.insert(peer_addr, connect_latency);
         self.handshaking_peers.insert(peer_addr, handshake_state);
     }
 
@@ -667,6 +669,10 @@ where
         let new_peer = NewPeer {
             peer_id,
             best_number: peer_info.best_height,
+            connect_latency: self
+                .connection_latencies
+                .remove(&peer_id)
+                .ok_or(Error::PeerNotFound(peer_id))?,
         };
 
         self.connected_peers.insert(peer_id, peer_info);
