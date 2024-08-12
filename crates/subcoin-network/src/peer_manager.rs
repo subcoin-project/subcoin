@@ -21,6 +21,9 @@ type LocalTime = DateTime<Local>;
 /// "wtxidrelay" command for wtxid-based relay starts with this version.
 const WTXID_RELAY_VERSION: u32 = 70016;
 
+/// Maximum number of available addresses in the address book.
+const MAX_AVAILABLE_ADDRESSES: usize = 2000;
+
 /// Peer-to-peer protocol version.
 pub const PROTOCOL_VERSION: u32 = 70016;
 
@@ -155,6 +158,7 @@ impl PingLatency {
 #[derive(Debug, Clone)]
 pub enum PingState {
     Idle {
+        /// Time at which the last pong was received.
         last_pong_at: Instant,
     },
     AwaitingPong {
@@ -284,7 +288,7 @@ where
         Self {
             config,
             client,
-            address_book: AddressBook::new(true, 2000),
+            address_book: AddressBook::new(true, MAX_AVAILABLE_ADDRESSES),
             handshaking_peers: HashMap::new(),
             connections: HashMap::new(),
             connection_latencies: HashMap::new(),
