@@ -93,15 +93,17 @@ where
             None => None,
         };
 
+        let peer_manager = PeerManager::new(
+            client.clone(),
+            config.clone(),
+            connection_initiator,
+            max_outbound_peers,
+            metrics.clone(),
+        );
+
         Self {
             network_event_receiver,
-            peer_manager: PeerManager::new(
-                client.clone(),
-                config.clone(),
-                connection_initiator,
-                max_outbound_peers,
-                metrics.clone(),
-            ),
+            peer_manager,
             transaction_manager: TransactionManager::new(),
             chain_sync: ChainSync::new(client, import_queue, sync_strategy, is_major_syncing),
             metrics,
@@ -184,6 +186,13 @@ where
                 let msg_cmd = payload.cmd();
 
                 tracing::trace!(?from, "Recv {msg_cmd}");
+
+                if let Some(metrics) = &self.metrics {
+                    metrics
+                        .messages_received
+                        .with_label_values(&[msg_cmd])
+                        .inc();
+                }
 
                 match self.process_network_message(from, direction, payload).await {
                     Ok(action) => self.do_sync_action(action),
@@ -329,14 +338,14 @@ where
             }
             NetworkMessage::Pong(nonce) => {
                 match self.peer_manager.on_pong(from, nonce) {
-                    Ok(latency) => {
+                    Ok(ping_latency) => {
                         // Disconnect the peer directly if the latency is higher than the threshold.
-                        if latency > LATENCY_THRESHOLD {
+                        if ping_latency > LATENCY_THRESHOLD {
                             self.peer_manager
                                 .disconnect(from, Error::PingLatencyTooHigh);
                             self.chain_sync.remove_peer(from);
                         } else {
-                            self.chain_sync.set_peer_latency(from, latency);
+                            self.chain_sync.set_peer_latency(from, ping_latency);
                             self.chain_sync.update_sync_peer_on_lower_latency();
                         }
                     }
@@ -493,6 +502,11 @@ where
     /// Send a network message to given peer.
     #[inline]
     fn send(&self, peer_id: PeerId, network_message: NetworkMessage) -> Result<(), Error> {
-        self.peer_manager.send(peer_id, network_message)
+        let msg_cmd = network_message.cmd();
+        self.peer_manager.send(peer_id, network_message)?;
+        if let Some(metrics) = &self.metrics {
+            metrics.messages_sent.with_label_values(&[msg_cmd]).inc();
+        }
+        Ok(())
     }
 }

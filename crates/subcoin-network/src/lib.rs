@@ -63,7 +63,7 @@ pub use crate::sync::{PeerLatency, PeerSync, PeerSyncState};
 /// Identifies a peer.
 pub type PeerId = SocketAddr;
 
-/// Peer's ping latency in milliseconds.
+/// Peer latency in milliseconds.
 pub type Latency = u128;
 
 #[derive(Debug, thiserror::Error)]
