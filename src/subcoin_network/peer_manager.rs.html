@@ -756,6 +756,16 @@
 <a href="#756" id="756">756</a>
 <a href="#757" id="757">757</a>
 <a href="#758" id="758">758</a>
+<a href="#759" id="759">759</a>
+<a href="#760" id="760">760</a>
+<a href="#761" id="761">761</a>
+<a href="#762" id="762">762</a>
+<a href="#763" id="763">763</a>
+<a href="#764" id="764">764</a>
+<a href="#765" id="765">765</a>
+<a href="#766" id="766">766</a>
+<a href="#767" id="767">767</a>
+<a href="#768" id="768">768</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::address_book::AddressBook;
 <span class="kw">use </span><span class="kw">crate</span>::connection::{ConnectionInitiator, ConnectionWriter, Direction, NewConnection};
 <span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
@@ -778,6 +788,9 @@
 
 <span class="doccomment">/// "wtxidrelay" command for wtxid-based relay starts with this version.
 </span><span class="kw">const </span>WTXID_RELAY_VERSION: u32 = <span class="number">70016</span>;
+
+<span class="doccomment">/// Maximum number of available addresses in the address book.
+</span><span class="kw">const </span>MAX_AVAILABLE_ADDRESSES: usize = <span class="number">2000</span>;
 
 <span class="doccomment">/// Peer-to-peer protocol version.
 </span><span class="kw">pub const </span>PROTOCOL_VERSION: u32 = <span class="number">70016</span>;
@@ -847,6 +860,7 @@
 </span><span class="kw">pub struct </span>NewPeer {
     <span class="kw">pub </span>peer_id: PeerId,
     <span class="kw">pub </span>best_number: u32,
+    <span class="kw">pub </span>connect_latency: Latency,
 }
 
 <span class="doccomment">/// Handshake state.
@@ -912,7 +926,8 @@
 <span class="attr">#[derive(Debug, Clone)]
 </span><span class="kw">pub enum </span>PingState {
     Idle {
-        last_pong_at: Instant,
+        <span class="doccomment">/// Time at which the last pong was received.
+        </span>last_pong_at: Instant,
     },
     AwaitingPong {
         <span class="doccomment">/// Time at which the last ping was sent.
@@ -1014,6 +1029,7 @@
     address_book: AddressBook,
     handshaking_peers: HashMap&lt;PeerId, HandshakeState&gt;,
     connections: HashMap&lt;PeerId, Connection&gt;,
+    connection_latencies: HashMap&lt;PeerId, Latency&gt;,
     connected_peers: HashMap&lt;PeerId, PeerInfo&gt;,
     max_outbound_peers: usize,
     connection_initiator: ConnectionInitiator,
@@ -1040,9 +1056,10 @@
         <span class="self">Self </span>{
             config,
             client,
-            address_book: AddressBook::new(<span class="bool-val">true</span>, <span class="number">2000</span>),
+            address_book: AddressBook::new(<span class="bool-val">true</span>, MAX_AVAILABLE_ADDRESSES),
             handshaking_peers: HashMap::new(),
             connections: HashMap::new(),
+            connection_latencies: HashMap::new(),
             connected_peers: HashMap::new(),
             max_outbound_peers,
             connection_initiator,
@@ -1200,6 +1217,7 @@
 
         <span class="self">self</span>.handshaking_peers.remove(<span class="kw-2">&amp;</span>peer_id);
         <span class="self">self</span>.connected_peers.remove(<span class="kw-2">&amp;</span>peer_id);
+        <span class="self">self</span>.connection_latencies.remove(<span class="kw-2">&amp;</span>peer_id);
     }
 
     <span class="doccomment">/// Sets the prefer addrv2 flag for a peer.
@@ -1249,15 +1267,12 @@
             peer_addr,
             local_addr,
             direction,
+            connect_latency,
             writer,
             disconnect_signal,
         } = new_connection;
 
-        <span class="comment">// TODO: validate connection
-        // ensure max_inbound_peers
-        // ensure max_outbound_peers
-
-        </span><span class="kw">let </span>connection = Connection {
+        <span class="kw">let </span>connection = Connection {
             local_addr,
             writer,
             disconnect_signal,
@@ -1311,6 +1326,7 @@
         }
 
         <span class="self">self</span>.connections.insert(peer_addr, connection);
+        <span class="self">self</span>.connection_latencies.insert(peer_addr, connect_latency);
         <span class="self">self</span>.handshaking_peers.insert(peer_addr, handshake_state);
     }
 
@@ -1425,6 +1441,10 @@
         <span class="kw">let </span>new_peer = NewPeer {
             peer_id,
             best_number: peer_info.best_height,
+            connect_latency: <span class="self">self
+                </span>.connection_latencies
+                .remove(<span class="kw-2">&amp;</span>peer_id)
+                .ok_or(Error::PeerNotFound(peer_id))<span class="question-mark">?</span>,
         };
 
         <span class="self">self</span>.connected_peers.insert(peer_id, peer_info);

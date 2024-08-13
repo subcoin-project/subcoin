@@ -387,8 +387,47 @@
 <a href="#387" id="387">387</a>
 <a href="#388" id="388">388</a>
 <a href="#389" id="389">389</a>
+<a href="#390" id="390">390</a>
+<a href="#391" id="391">391</a>
+<a href="#392" id="392">392</a>
+<a href="#393" id="393">393</a>
+<a href="#394" id="394">394</a>
+<a href="#395" id="395">395</a>
+<a href="#396" id="396">396</a>
+<a href="#397" id="397">397</a>
+<a href="#398" id="398">398</a>
+<a href="#399" id="399">399</a>
+<a href="#400" id="400">400</a>
+<a href="#401" id="401">401</a>
+<a href="#402" id="402">402</a>
+<a href="#403" id="403">403</a>
+<a href="#404" id="404">404</a>
+<a href="#405" id="405">405</a>
+<a href="#406" id="406">406</a>
+<a href="#407" id="407">407</a>
+<a href="#408" id="408">408</a>
+<a href="#409" id="409">409</a>
+<a href="#410" id="410">410</a>
+<a href="#411" id="411">411</a>
+<a href="#412" id="412">412</a>
+<a href="#413" id="413">413</a>
+<a href="#414" id="414">414</a>
+<a href="#415" id="415">415</a>
+<a href="#416" id="416">416</a>
+<a href="#417" id="417">417</a>
+<a href="#418" id="418">418</a>
+<a href="#419" id="419">419</a>
+<a href="#420" id="420">420</a>
+<a href="#421" id="421">421</a>
+<a href="#422" id="422">422</a>
+<a href="#423" id="423">423</a>
+<a href="#424" id="424">424</a>
+<a href="#425" id="425">425</a>
+<a href="#426" id="426">426</a>
+<a href="#427" id="427">427</a>
+<a href="#428" id="428">428</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::worker::Event;
-<span class="kw">use crate</span>::{Bandwidth, Error, PeerId};
+<span class="kw">use crate</span>::{Bandwidth, Error, Latency, PeerId};
 <span class="kw">use </span>bitcoin::consensus::{encode, Decodable, Encodable};
 <span class="kw">use </span>bitcoin::p2p::message::{NetworkMessage, RawNetworkMessage, MAX_MSG_SIZE};
 <span class="kw">use </span>futures::FutureExt;
@@ -397,7 +436,7 @@
 <span class="kw">use </span>std::fmt::Debug;
 <span class="kw">use </span>std::sync::atomic::{AtomicBool, Ordering};
 <span class="kw">use </span>std::sync::Arc;
-<span class="kw">use </span>std::time::Duration;
+<span class="kw">use </span>std::time::{Duration, Instant};
 <span class="kw">use </span>tokio::net::TcpStream;
 <span class="kw">use </span>tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
@@ -422,11 +461,13 @@
 }
 
 <span class="kw">impl </span>Direction {
-    <span class="kw">pub fn </span>is_inbound(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+    <span class="doccomment">/// Returns `true` if it's an inbound connection.
+    </span><span class="kw">pub fn </span>is_inbound(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
         <span class="macro">matches!</span>(<span class="self">self</span>, <span class="self">Self</span>::Inbound)
     }
 
-    <span class="kw">pub fn </span>is_outbound(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+    <span class="doccomment">/// Returns `true` if it's an outbound connection.
+    </span><span class="kw">pub fn </span>is_outbound(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
         <span class="macro">matches!</span>(<span class="self">self</span>, <span class="self">Self</span>::Outbound)
     }
 }
@@ -434,11 +475,30 @@
 <span class="doccomment">/// An incoming peer connection.
 </span><span class="attr">#[derive(Debug)]
 </span><span class="kw">pub struct </span>NewConnection {
-    <span class="kw">pub </span>peer_addr: PeerId,
-    <span class="kw">pub </span>local_addr: PeerId,
-    <span class="kw">pub </span>direction: Direction,
-    <span class="kw">pub </span>writer: ConnectionWriter,
-    <span class="kw">pub </span>disconnect_signal: Arc&lt;AtomicBool&gt;,
+    <span class="doccomment">/// The identifier of the connected peer.
+    </span><span class="kw">pub </span>peer_addr: PeerId,
+    <span class="doccomment">/// The local node's identifier associated with this connection.
+    </span><span class="kw">pub </span>local_addr: PeerId,
+    <span class="doccomment">/// The direction of the connection.
+    ///
+    /// Indicates whether the connection was initiated by the
+    /// local node (`Outbound`) or by the remote peer (`Inbound`).
+    </span><span class="kw">pub </span>direction: Direction,
+    <span class="doccomment">/// Time took to make the connection.
+    ///
+    /// Only make sense for the outbound connection.
+    </span><span class="kw">pub </span>connect_latency: Latency,
+    <span class="doccomment">/// Channel for sending messages to the peer over this connection.
+    ///
+    /// This `ConnectionWriter` enables the local node to transmit data
+    /// and messages to the connected peer.
+    </span><span class="kw">pub </span>writer: ConnectionWriter,
+    <span class="doccomment">/// Signal to request disconnection of the connection.
+    ///
+    /// This `AtomicBool` is used to signal when the connection should
+    /// be terminated. When set to `true`, it indicates that the connection
+    /// should be gracefully disconnected.
+    </span><span class="kw">pub </span>disconnect_signal: Arc&lt;AtomicBool&gt;,
 }
 
 <span class="doccomment">/// Message stream decoder.
@@ -481,12 +541,14 @@
     }
 }
 
-<span class="attr">#[derive(Clone)]
+<span class="doccomment">/// Handles the initiation of connections within the Bitcoin P2P network.
+</span><span class="attr">#[derive(Clone)]
 </span><span class="kw">pub struct </span>ConnectionInitiator {
     network: bitcoin::Network,
     network_event_sender: UnboundedSender&lt;Event&gt;,
     spawn_handle: SpawnTaskHandle,
-    bandwidth: Bandwidth,
+    <span class="comment">// Tracks the bandwidth usage of the initiated connections.
+    </span>bandwidth: Bandwidth,
     ipv4_only: bool,
 }
 
@@ -518,14 +580,20 @@
 
             <span class="kw">async move </span>{
                 <span class="kw">let </span>outbound_connection_fut = <span class="kw">async </span>{
+                    <span class="kw">let </span>start_time = Instant::now();
                     <span class="kw">let </span>stream_result = tokio::time::timeout(
                         Duration::from_secs(<span class="self">Self</span>::CONNECT_TIMEOUT),
                         TcpStream::connect(addr),
                     )
                     .<span class="kw">await
                     </span>.map_err(|<span class="kw">_</span>| Error::ConnectionTimeout)<span class="question-mark">?</span>;
+                    <span class="kw">let </span>connection_time = start_time.elapsed();
                     <span class="kw">let </span>stream = stream_result<span class="question-mark">?</span>;
-                    connection_initiator.initiate_new_connection(Direction::Outbound, stream)
+                    connection_initiator.initiate_new_connection(
+                        Direction::Outbound,
+                        stream,
+                        connection_time,
+                    )
                 };
 
                 <span class="kw">if let </span><span class="prelude-val">Err</span>(err) = outbound_connection_fut.<span class="kw">await </span>{
@@ -542,13 +610,14 @@
 
     <span class="doccomment">/// Makes a new inbound connection.
     </span><span class="kw">pub fn </span>initiate_inbound_connection(<span class="kw-2">&amp;</span><span class="self">self</span>, stream: TcpStream) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
-        <span class="self">self</span>.initiate_new_connection(Direction::Inbound, stream)
+        <span class="self">self</span>.initiate_new_connection(Direction::Inbound, stream, Duration::ZERO)
     }
 
     <span class="kw">fn </span>initiate_new_connection(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         direction: Direction,
         stream: TcpStream,
+        connection_time: Duration,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
         <span class="kw">let </span>peer_addr = stream.peer_addr()<span class="question-mark">?</span>;
 
@@ -558,7 +627,15 @@
 
         <span class="kw">let </span>local_addr = stream.local_addr()<span class="question-mark">?</span>;
 
-        <span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>peer_addr, <span class="question-mark">?</span>local_addr, <span class="question-mark">?</span>direction, <span class="string">"Opened new connection"</span>);
+        <span class="kw">let </span>connect_latency = connection_time.as_millis();
+
+        <span class="macro">tracing::debug!</span>(
+            <span class="question-mark">?</span>peer_addr,
+            <span class="question-mark">?</span>local_addr,
+            <span class="question-mark">?</span>direction,
+            connect_latency,
+            <span class="string">"New connection"
+        </span>);
 
         <span class="kw">let </span>(network_message_sender, network_message_receiver) = unbounded_channel();
 
@@ -569,6 +646,7 @@
                 peer_addr,
                 local_addr,
                 direction,
+                connect_latency,
                 writer: network_message_sender,
                 disconnect_signal: disconnect_signal.clone(),
             }))

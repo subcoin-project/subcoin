@@ -513,6 +513,14 @@
 <a href="#513" id="513">513</a>
 <a href="#514" id="514">514</a>
 <a href="#515" id="515">515</a>
+<a href="#516" id="516">516</a>
+<a href="#517" id="517">517</a>
+<a href="#518" id="518">518</a>
+<a href="#519" id="519">519</a>
+<a href="#520" id="520">520</a>
+<a href="#521" id="521">521</a>
+<a href="#522" id="522">522</a>
+<a href="#523" id="523">523</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::block_downloader::{BlocksFirstDownloader, HeadersFirstDownloader};
 <span class="kw">use </span><span class="kw">crate</span>::peer_manager::NewPeer;
 <span class="kw">use crate</span>::{Error, Latency, PeerId, SyncStatus, SyncStrategy};
@@ -556,21 +564,28 @@
     }
 }
 
-<span class="doccomment">/// Ping letency of the peer.
+<span class="doccomment">/// Letency of the peer.
+///
+/// The initial connection time is used as the baseline, the ping mechanism is
+/// used for more accurate latency estimate after the connection is established.
 </span><span class="attr">#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = <span class="string">"camelCase"</span>)]
 </span><span class="kw">pub enum </span>PeerLatency {
-    Unknown,
-    Average(Latency),
+    <span class="doccomment">/// Connection latency.
+    ///
+    /// Only make sense for the outbound connection.
+    </span>Connect(Latency),
+    <span class="doccomment">/// Average ping latency.
+    </span>Ping(Latency),
 }
 
 <span class="kw">impl </span>Ord <span class="kw">for </span>PeerLatency {
     <span class="kw">fn </span>cmp(<span class="kw-2">&amp;</span><span class="self">self</span>, other: <span class="kw-2">&amp;</span><span class="self">Self</span>) -&gt; CmpOrdering {
         <span class="kw">match </span>(<span class="self">self</span>, other) {
-            (<span class="self">Self</span>::Unknown, <span class="self">Self</span>::Unknown) =&gt; CmpOrdering::Equal,
-            (<span class="self">Self</span>::Unknown, <span class="self">Self</span>::Average(<span class="kw">_</span>)) =&gt; CmpOrdering::Less,
-            (<span class="self">Self</span>::Average(<span class="kw">_</span>), <span class="self">Self</span>::Unknown) =&gt; CmpOrdering::Greater,
-            (<span class="self">Self</span>::Average(a), <span class="self">Self</span>::Average(b)) =&gt; a.cmp(b),
+            (<span class="self">Self</span>::Connect(a), <span class="self">Self</span>::Connect(b)) =&gt; a.cmp(b),
+            (<span class="self">Self</span>::Connect(<span class="kw">_</span>), <span class="self">Self</span>::Ping(<span class="kw">_</span>)) =&gt; CmpOrdering::Less,
+            (<span class="self">Self</span>::Ping(<span class="kw">_</span>), <span class="self">Self</span>::Connect(<span class="kw">_</span>)) =&gt; CmpOrdering::Greater,
+            (<span class="self">Self</span>::Ping(a), <span class="self">Self</span>::Ping(b)) =&gt; a.cmp(b),
         }
     }
 }
@@ -781,9 +796,9 @@
         </span><span class="self">self</span>.peers.remove(<span class="kw-2">&amp;</span>peer_id);
     }
 
-    <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>set_peer_latency(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_id: PeerId, latency: Latency) {
+    <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>set_peer_latency(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_id: PeerId, avg_latency: Latency) {
         <span class="self">self</span>.peers.entry(peer_id).and_modify(|peer| {
-            peer.latency = PeerLatency::Average(latency);
+            peer.latency = PeerLatency::Ping(avg_latency);
         });
     }
 
@@ -811,7 +826,7 @@
         };
 
         <span class="kw">if let </span><span class="prelude-val">Some</span>(current_sync_peer) = <span class="self">self</span>.peers.get(<span class="kw-2">&amp;</span>current_sync_peer_id) {
-            <span class="kw">if let </span>(PeerLatency::Average(current_latency), PeerLatency::Average(best_latency)) =
+            <span class="kw">if let </span>(PeerLatency::Ping(current_latency), PeerLatency::Ping(best_latency)) =
                 (current_sync_peer.latency, best_sync_peer.latency)
             {
                 <span class="comment">// Update sync peer if the latency improvement is significant.
@@ -844,12 +859,13 @@
         <span class="kw">let </span>NewPeer {
             peer_id,
             best_number,
+            connect_latency,
         } = new_peer;
 
         <span class="kw">let </span>new_peer = PeerSync {
             peer_id,
             best_number,
-            latency: PeerLatency::Unknown,
+            latency: PeerLatency::Connect(connect_latency),
             state: PeerSyncState::Available,
         };
 
