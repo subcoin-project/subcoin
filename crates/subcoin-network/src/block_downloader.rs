@@ -142,7 +142,7 @@ impl BlockDownloadManager {
         let max_queued_blocks = match best_number {
             0..=100_000 => 8192,
             100_001..=200_000 => 4096,
-            200_001..=300_000 => 1024,
+            200_001..=300_000 => 2048,
             _ => 512,
         };
 

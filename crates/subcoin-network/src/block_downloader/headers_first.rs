@@ -307,10 +307,7 @@ where
                 "Cannot find the parent of the first header in headers, disconnecting"
             );
             self.download_state = DownloadState::Disconnecting;
-            return SyncAction::Disconnect(
-                self.peer_id,
-                Error::Other("Cannot find the parent of the first header".to_string()),
-            );
+            return SyncAction::Disconnect(self.peer_id, Error::ParentOfFirstHeaderEntryNotFound);
         };
 
         for header in headers {
@@ -358,7 +355,6 @@ where
 
         let best_number = self.client.best_number();
 
-        let downloaded_headers = self.downloaded_headers.len();
         let missing_blocks =
             self.downloaded_headers
                 .iter()
@@ -387,7 +383,7 @@ where
                 best_number,
                 best_queued_number = self.download_manager.best_queued_number,
                 requested_blocks_count = get_data_msg.len(),
-                downloaded_headers,
+                downloaded_headers = self.downloaded_headers.len(),
                 "Headers from {start} to {end} downloaded, requesting blocks",
             );
 
@@ -420,7 +416,7 @@ where
             tracing::debug!(
                 best_number,
                 best_queued_number = self.download_manager.best_queued_number,
-                downloaded_headers,
+                downloaded_headers = self.downloaded_headers.len(),
                 "Headers downloaded, requesting {} blocks in batches (1/{total_batches})",
                 get_data_msg.len(),
             );

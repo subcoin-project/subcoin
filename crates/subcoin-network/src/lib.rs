@@ -110,6 +110,8 @@ pub enum Error {
     BadPong,
     #[error("Received an unrequested block: {0:?}")]
     UnrequestedBlock(BlockHash),
+    #[error("Cannot find the parent of the first header in headers message")]
+    ParentOfFirstHeaderEntryNotFound,
     #[error("Other: {0}")]
     Other(String),
     #[error(transparent)]
