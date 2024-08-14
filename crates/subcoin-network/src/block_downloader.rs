@@ -11,6 +11,9 @@ use sc_consensus_nakamoto::ImportManyBlocksResult;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
+/// Interval for logging when the block import queue is too busy.
+const BUSY_QUEUE_LOG_INTERVAL: Duration = Duration::from_secs(5);
+
 /// Manages queued blocks.
 #[derive(Default, Debug, Clone)]
 pub(crate) struct QueuedBlocks {
@@ -75,6 +78,10 @@ pub(crate) struct BlockDownloadManager {
     /// Orphan blocks
     orphan_blocks_pool: OrphanBlocksPool,
     /// Last time at which the block was received or imported.
+    ///
+    /// This is updated whenever a block is received from the network or
+    /// when the results of processed blocks are notified. It helps track
+    /// the most recent activity related to block processing.
     last_progress_time: Instant,
     /// Whether there are too many blocks in the queue.
     import_queue_is_overloaded: bool,
@@ -97,12 +104,14 @@ impl BlockDownloadManager {
         }
     }
 
+    // Determine if the downloader is stalled based on the time elapsed since the last progress.
     fn is_stalled(&self) -> bool {
-        // The downloader is considered as stalled if no progress for some time.
+        // The timeout (in seconds) is extended when the chain exceeds a certain size, as block
+        // execution times increase significantly with chain growth.
         let stall_timeout = if self.best_queued_number > 300_000 {
-            120
+            120 // Extended timeout for larger chains
         } else {
-            60
+            60 // Standard timeout for smaller chains
         };
 
         self.last_progress_time.elapsed().as_secs() > stall_timeout
@@ -140,11 +149,9 @@ impl BlockDownloadManager {
         let import_queue_is_overloaded = self.best_queued_number - best_number > max_queued_blocks;
 
         if import_queue_is_overloaded {
-            const INTERVAL: Duration = Duration::from_secs(5);
-
             if self
                 .last_overloaded_queue_log_time
-                .map(|last_time| last_time.elapsed() > INTERVAL)
+                .map(|last_time| last_time.elapsed() > BUSY_QUEUE_LOG_INTERVAL)
                 .unwrap_or(true)
             {
                 tracing::debug!(
