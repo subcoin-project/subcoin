@@ -149,17 +149,21 @@ async fn gettxoutsetinfo(
 
         let coin = Coin::decode(&mut value.as_slice())
             .expect("Coin read from DB must be decoded successfully; qed");
+
         txouts += 1;
         total_amount += coin.amount;
         // https://github.com/bitcoin/bitcoin/blob/33af14e31b9fa436029a2bb8c2b11de8feb32f86/src/kernel/coinstats.cpp#L40
         bogosize += 50 + coin.script_pubkey.len();
 
-        state_size += key.len();
-        state_size += value.len();
+        state_size += key.len() + value.len();
         script_pubkey_size += coin.script_pubkey.len();
 
         if verbose && last_update.elapsed() > INTERVAL {
-            println!("Progress: Unspent Transaction Outputs: {txouts}, State Size: {state_size} bytes, ScriptPubkey Size: {script_pubkey_size} bytes, Coin ScriptPubkey Length: {} bytes", coin.script_pubkey.len());
+            println!(
+                "Progress: Unspent Transaction Outputs: {txouts}, State Size: {state_size} bytes, \
+                ScriptPubkey Size: {script_pubkey_size} bytes, Coin ScriptPubkey Length: {} bytes",
+                coin.script_pubkey.len()
+            );
             last_update = Instant::now();
         }
 
