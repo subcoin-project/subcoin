@@ -447,7 +447,7 @@ where
             }
         }
 
-        self.address_book.mark_disconnected();
+        self.address_book.mark_disconnected(&peer_id);
         self.handshaking_peers.remove(&peer_id);
         self.connected_peers.remove(&peer_id);
         self.connection_latencies.remove(&peer_id);

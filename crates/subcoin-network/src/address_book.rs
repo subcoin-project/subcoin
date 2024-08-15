@@ -57,8 +57,8 @@ impl AddressBook {
         self.failed_addresses.insert(peer_addr);
     }
 
-    pub fn mark_disconnected(&mut self, peer_addr: PeerId) {
-        self.active_addresses.remove(&peer_addr);
+    pub fn mark_disconnected(&mut self, peer_addr: &PeerId) {
+        self.active_addresses.remove(peer_addr);
     }
 
     /// Adds multiple addresses (`Address`) to the address book.

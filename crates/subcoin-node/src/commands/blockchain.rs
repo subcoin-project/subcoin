@@ -20,6 +20,9 @@ pub enum Blockchain {
         #[clap(long)]
         height: Option<u32>,
 
+        #[clap(short, long)]
+        verbose: bool,
+
         #[allow(missing_docs)]
         #[clap(flatten)]
         common_params: CommonParams,
@@ -43,6 +46,7 @@ pub enum BlockchainCmd {
         height: Option<u32>,
         shared_params: SharedParams,
         import_params: ImportParams,
+        verbose: bool,
     },
 }
 
@@ -54,10 +58,12 @@ impl BlockchainCmd {
                 height,
                 common_params,
                 import_params,
+                verbose,
             } => Self::GetTxOutSetInfo {
                 height,
                 shared_params: common_params.as_shared_params(),
                 import_params,
+                verbose,
             },
         }
     }
@@ -70,7 +76,9 @@ impl BlockchainCmd {
 
     pub async fn run(self, client: Arc<FullClient>) -> sc_cli::Result<()> {
         match self {
-            Self::GetTxOutSetInfo { height, .. } => gettxoutsetinfo(&client, height).await,
+            Self::GetTxOutSetInfo {
+                height, verbose, ..
+            } => gettxoutsetinfo(&client, height, verbose).await,
         }
     }
 }
@@ -91,7 +99,11 @@ impl sc_cli::CliConfiguration for BlockchainCmd {
     }
 }
 
-async fn gettxoutsetinfo(client: &Arc<FullClient>, height: Option<u32>) -> sc_cli::Result<()> {
+async fn gettxoutsetinfo(
+    client: &Arc<FullClient>,
+    height: Option<u32>,
+    verbose: bool,
+) -> sc_cli::Result<()> {
     const FINAL_PREFIX_LEN: usize = 32;
 
     let storage_prefix = subcoin_service::CoinStorageKey.storage_prefix();
@@ -146,8 +158,8 @@ async fn gettxoutsetinfo(client: &Arc<FullClient>, height: Option<u32>) -> sc_cl
         state_size += value.len();
         script_pubkey_size += coin.script_pubkey.len();
 
-        if last_update.elapsed() > INTERVAL {
-            println!("txouts: {txouts}, state_size: {state_size} bytes, script_pubkey_size: {script_pubkey_size} bytes, coin_pubkey_len: {} bytes", coin.script_pubkey.len());
+        if verbose && last_update.elapsed() > INTERVAL {
+            println!("Progress: Unspent Transaction Outputs: {txouts}, State Size: {state_size} bytes, ScriptPubkey Size: {script_pubkey_size} bytes, Coin ScriptPubkey Length: {} bytes", coin.script_pubkey.len());
             last_update = Instant::now();
         }
 
