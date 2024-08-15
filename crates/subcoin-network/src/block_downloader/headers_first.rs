@@ -15,6 +15,9 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use subcoin_primitives::{BackendExt, BlockLocatorProvider, ClientExt, IndexedBlock};
 
+// https://developer.bitcoin.org/reference/p2p_networking.html#headers
+const MAX_HEADERS_SIZE: usize = 2000;
+
 /// Represents the range of blocks to be downloaded during the headers-first sync.
 ///
 /// # Note
@@ -269,9 +272,6 @@ where
     //
     // `headers` are expected to contain at most 2000 entries, in ascending order. [b1, b2, b3, ..., b2000].
     pub(crate) fn on_headers(&mut self, headers: Vec<BitcoinHeader>, from: PeerId) -> SyncAction {
-        // https://developer.bitcoin.org/reference/p2p_networking.html#headers
-        const MAX_HEADERS_SIZE: usize = 2000;
-
         if headers.len() > MAX_HEADERS_SIZE {
             return SyncAction::Disconnect(from, Error::TooManyHeaders);
         }
@@ -313,10 +313,7 @@ where
         for header in headers {
             if header.prev_blockhash != prev_hash {
                 self.download_state = DownloadState::Disconnecting;
-                return SyncAction::Disconnect(
-                    self.peer_id,
-                    Error::Other("Invalid headers: not in ascending order".to_string()),
-                );
+                return SyncAction::Disconnect(self.peer_id, Error::HeadersNotInAscendingOrder);
             }
 
             // TODO: Verify header?
@@ -339,7 +336,7 @@ where
         if final_block_number == target_block_number {
             self.start_block_download(start, end)
         } else {
-            tracing::debug!("📄 Downloading headers ({final_block_number}/{target_block_number})");
+            tracing::debug!("📄 Downloaded headers ({final_block_number}/{target_block_number})");
 
             SyncAction::Request(SyncRequest::Headers(LocatorRequest {
                 locator_hashes: vec![prev_hash],
@@ -498,7 +495,7 @@ where
                             tracing::debug!(
                                 best_number = self.client.best_number(),
                                 best_queued_number = self.download_manager.best_queued_number,
-                                "📦 Downloading {} blocks in batches ({}/{})",
+                                "📦 Downloaded {} blocks in batches ({}/{})",
                                 next_batch.len(),
                                 *downloaded_batch + 1,
                                 *downloaded_batch + 1 + waiting.len()
@@ -597,7 +594,7 @@ fn prepare_ordered_block_data_request(
         .map(|block_hash| {
             let block_number = downloaded_headers
                 .get(&block_hash)
-                .expect("Header must exist before downloading blocks in headers-first sync; qed");
+                .expect("Header must exist before downloading blocks in headers-first mode; qed");
             (block_number, block_hash)
         })
         .collect::<Vec<_>>();

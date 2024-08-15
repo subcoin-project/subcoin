@@ -94,8 +94,10 @@ pub enum Error {
     ProtocolVersionTooLow,
     #[error("Too many block entries in inv message")]
     TooManyBlockEntries,
-    #[error("Too many headers (> 2000)")]
+    #[error("Too many entries (> 2000) in headers message")]
     TooManyHeaders,
+    #[error("Entries in headers message are not in ascending order")]
+    HeadersNotInAscendingOrder,
     #[error("Too many inventory items")]
     TooManyInventoryItems,
     #[error("Ping timeout")]

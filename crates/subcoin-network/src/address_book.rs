@@ -38,14 +38,12 @@ impl AddressBook {
 
     /// Pops a random address from the discovered addresses and marks it as active.
     pub fn pop(&mut self) -> Option<PeerId> {
-        let maybe_peer = self.rng.choice(self.discovered_addresses.clone());
-
-        if let Some(peer) = maybe_peer {
+        if let Some(peer) = self.rng.choice(self.discovered_addresses.iter()).copied() {
             self.discovered_addresses.remove(&peer);
             self.active_addresses.insert(peer);
+            return Some(peer);
         }
-
-        maybe_peer
+        None
     }
 
     pub fn note_failed_address(&mut self, peer_addr: PeerId) {
