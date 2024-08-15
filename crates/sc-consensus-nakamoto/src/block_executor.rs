@@ -14,18 +14,28 @@ use subcoin_primitives::{BitcoinTransactionAdapter, CoinStorageKey};
 /// A simply way to track the overall execution info for optimization purpose.
 #[derive(Debug, Default)]
 pub struct ExecutionInfo {
+    /// Number of transactions in the block.
+    pub transactions_count: usize,
     /// Time taken by `runtime_api.execute_block` in nanoseconds.
-    pub execute_block: u128,
+    pub execute_block_time: u128,
     /// Time taken by `client.state_at` in nanoseconds.
-    pub fetch_state: u128,
+    pub fetch_state_time: u128,
     /// Time taken by `runtime_api.into_storage_changes` in nanoseconds.
-    pub into_storage_changes: u128,
+    pub into_storage_changes_time: u128,
 }
 
 impl ExecutionInfo {
+    /// Constructs a new instance of [`ExecutionInfo`] with given transactions count.
+    pub fn new(transactions_count: usize) -> Self {
+        Self {
+            transactions_count,
+            ..Default::default()
+        }
+    }
+
     /// Returns the total execution time in nanoseconds.
     pub fn total(&self) -> u128 {
-        self.execute_block + self.fetch_state + self.into_storage_changes
+        self.execute_block_time + self.fetch_state_time + self.into_storage_changes_time
     }
 }
 
@@ -194,21 +204,21 @@ where
         let mut runtime_api = self.client.runtime_api();
         runtime_api.set_call_context(CallContext::Onchain);
 
-        let mut exec_info = ExecutionInfo::default();
+        let mut exec_info = ExecutionInfo::new(block.extrinsics().len());
 
         let now = std::time::Instant::now();
         runtime_api.execute_block_without_state_root_check(parent_hash, block)?;
-        exec_info.execute_block = now.elapsed().as_nanos();
+        exec_info.execute_block_time = now.elapsed().as_nanos();
 
         let now = std::time::Instant::now();
         let state = self.client.state_at(parent_hash)?;
-        exec_info.fetch_state = now.elapsed().as_nanos();
+        exec_info.fetch_state_time = now.elapsed().as_nanos();
 
         let now = std::time::Instant::now();
         let storage_changes = runtime_api
             .into_storage_changes(&state, parent_hash)
             .map_err(sp_blockchain::Error::StorageChanges)?;
-        exec_info.into_storage_changes = now.elapsed().as_nanos();
+        exec_info.into_storage_changes_time = now.elapsed().as_nanos();
 
         let state_root = storage_changes.transaction_storage_root;
 
@@ -411,7 +421,7 @@ where
 
         let (header, extrinsics) = block.deconstruct();
 
-        let mut exec_info = ExecutionInfo::default();
+        let mut exec_info = ExecutionInfo::new(extrinsics.len());
 
         let now = std::time::Instant::now();
 
@@ -450,17 +460,17 @@ where
 
         tracing::debug!("off_runtime({:?}): {exec_details:?}", self.client_context);
 
-        exec_info.execute_block = now.elapsed().as_nanos();
+        exec_info.execute_block_time = now.elapsed().as_nanos();
 
         let now = std::time::Instant::now();
         let state = self.client.state_at(parent_hash)?;
-        exec_info.fetch_state = now.elapsed().as_nanos();
+        exec_info.fetch_state_time = now.elapsed().as_nanos();
 
         let now = std::time::Instant::now();
         let storage_changes = runtime_api
             .into_storage_changes(&state, parent_hash)
             .map_err(sp_blockchain::Error::StorageChanges)?;
-        exec_info.into_storage_changes = now.elapsed().as_nanos();
+        exec_info.into_storage_changes_time = now.elapsed().as_nanos();
 
         tracing::debug!(
             "off_runtime({:?}): {exec_info:?}, total: {}",

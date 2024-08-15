@@ -6,11 +6,17 @@ use std::net::IpAddr;
 /// Manages the addresses discovered in the network.
 #[derive(Debug)]
 pub struct AddressBook {
+    /// Addresses available for establishing new connections.
     discovered_addresses: HashSet<PeerId>,
+    /// Peers that currently have an active connection or are being communicated with.
     active_addresses: HashSet<PeerId>,
+    /// Addresses that failed to establish a connection.
     failed_addresses: HashSet<PeerId>,
+    /// Indicates whether only IPv4 addresses should be stored.
     ipv4_only: bool,
+    /// Maximum number of discovered addresses.
     max_addresses: usize,
+    /// Random number generator for selecting peers.
     rng: fastrand::Rng,
 }
 
@@ -38,19 +44,21 @@ impl AddressBook {
 
     /// Pops a random address from the discovered addresses and marks it as active.
     pub fn pop(&mut self) -> Option<PeerId> {
-        let maybe_peer = self.rng.choice(self.discovered_addresses.clone());
-
-        if let Some(peer) = maybe_peer {
+        if let Some(peer) = self.rng.choice(self.discovered_addresses.iter()).copied() {
             self.discovered_addresses.remove(&peer);
             self.active_addresses.insert(peer);
+            return Some(peer);
         }
-
-        maybe_peer
+        None
     }
 
     pub fn note_failed_address(&mut self, peer_addr: PeerId) {
         self.active_addresses.remove(&peer_addr);
         self.failed_addresses.insert(peer_addr);
+    }
+
+    pub fn mark_disconnected(&mut self, peer_addr: &PeerId) {
+        self.active_addresses.remove(peer_addr);
     }
 
     /// Adds multiple addresses (`Address`) to the address book.

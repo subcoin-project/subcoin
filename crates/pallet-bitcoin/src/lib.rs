@@ -49,9 +49,10 @@ impl Txid {
         Self(H256::from(d))
     }
 
+    /// Converts the runtime [`Txid`] to a `bitcoin::Txid`.
     pub fn into_bitcoin_txid(self) -> bitcoin::Txid {
         bitcoin::consensus::Decodable::consensus_decode(&mut self.encode().as_slice())
-            .expect("txid must be encoded correctly; qed")
+            .expect("Decode must succeed as txid was ensured to be encoded correctly; qed")
     }
 }
 
@@ -98,6 +99,7 @@ pub mod pallet {
 
     #[pallet::call(weight(<T as Config>::WeightInfo))]
     impl<T: Config> Pallet<T> {
+        /// An internal unsigned extrinsic for including a Bitcoin transaction into the block.
         #[pallet::call_index(0)]
         #[pallet::weight(Weight::zero())]
         pub fn transact(origin: OriginFor<T>, btc_tx: Vec<u8>) -> DispatchResult {
@@ -183,6 +185,7 @@ pub fn coin_storage_key<T: Config>(bitcoin_txid: bitcoin::Txid, index: Vout) -> 
     Coins::<T>::storage_double_map_final_key(txid, index)
 }
 
+/// Returns the final storage prefix for the storage item `Coins`.
 pub fn coin_storage_prefix<T: Config>() -> [u8; 32] {
     use frame_support::StoragePrefixedMap;
 
