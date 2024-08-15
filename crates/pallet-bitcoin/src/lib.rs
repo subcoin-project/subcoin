@@ -99,7 +99,7 @@ pub mod pallet {
 
     #[pallet::call(weight(<T as Config>::WeightInfo))]
     impl<T: Config> Pallet<T> {
-        /// Unsigned extrinsic for including the transaction.
+        /// An internal unsigned extrinsic for including a Bitcoin transaction into the block.
         #[pallet::call_index(0)]
         #[pallet::weight(Weight::zero())]
         pub fn transact(origin: OriginFor<T>, btc_tx: Vec<u8>) -> DispatchResult {
