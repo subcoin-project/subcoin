@@ -90,7 +90,7 @@ impl sc_cli::CliConfiguration for BlockchainCmd {
 
     fn import_params(&self) -> Option<&ImportParams> {
         match self {
-            Self::GetTxOutSetInfo { import_params, .. } => Some(&import_params),
+            Self::GetTxOutSetInfo { import_params, .. } => Some(import_params),
         }
     }
 

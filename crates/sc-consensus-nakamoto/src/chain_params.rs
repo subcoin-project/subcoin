@@ -2,6 +2,7 @@ use bitcoin::consensus::Params;
 use bitcoin::{BlockHash, Network};
 use std::collections::HashMap;
 
+/// bip-0113 defines the median of the last 11 blocks instead of the block's timestamp for lock-time calculations.
 pub const MEDIAN_TIME_SPAN: usize = 11;
 
 /// Extended [`Params`].
@@ -13,6 +14,11 @@ pub struct ChainParams {
     pub csv_height: u32,
     /// Block height at which Segwit becomes active.
     pub segwit_height: u32,
+    /// A map of block hashes to script verification flag exceptions.
+    ///
+    /// This allows for certain blocks to have specific script verification flags, overriding
+    /// the default rules. For example, exceptions may be made for blocks that activated
+    /// BIP16 (P2SH) or Taproot under special conditions.
     pub script_flag_exceptions: HashMap<BlockHash, u32>,
 }
 

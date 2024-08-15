@@ -4,7 +4,6 @@ use crate::{Error, Latency, PeerId, SyncStatus, SyncStrategy};
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::p2p::message_blockdata::Inventory;
 use bitcoin::{Block as BitcoinBlock, BlockHash};
-use futures::StreamExt;
 use sc_client_api::{AuxStore, HeaderBackend};
 use sc_consensus_nakamoto::{BlockImportQueue, ImportBlocks, ImportManyBlocksResult};
 use serde::{Deserialize, Serialize};
@@ -200,10 +199,7 @@ where
     }
 
     pub(super) async fn wait_for_block_import_results(&mut self) -> ImportManyBlocksResult {
-        self.import_queue
-            .import_result_receiver
-            .select_next_some()
-            .await
+        self.import_queue.block_import_results().await
     }
 
     /// Attempts to restart the sync due to the stalled peer.

@@ -34,6 +34,7 @@ pub enum Error {
     PreviousOutputNull,
 }
 
+/// Checks whether the transaction is final at the given height and block time.
 pub fn is_final(tx: &Transaction, height: u32, block_time: u32) -> bool {
     if tx.lock_time == LockTime::ZERO {
         return true;
@@ -107,6 +108,7 @@ pub fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
     Ok(())
 }
 
+/// Counts the sigops for this transaction using legacy counting.
 pub fn get_legacy_sig_op_count(tx: &Transaction) -> usize {
     tx.input
         .iter()

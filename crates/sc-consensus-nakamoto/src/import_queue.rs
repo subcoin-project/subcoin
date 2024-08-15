@@ -15,27 +15,34 @@ use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::traits::Block as BlockT;
 use std::pin::Pin;
 
+/// Represents a batch of Bitcoin blocks that are to be imported.
 #[derive(Debug, Clone)]
 pub struct ImportBlocks {
+    /// The source from which the blocks were obtained.
     pub origin: BlockOrigin,
+    /// A vector containing the Bitcoin blocks to be imported.
     pub blocks: Vec<BitcoinBlock>,
 }
 
 /// Import queue for processing Bitcoin blocks.
 #[derive(Debug)]
 pub struct BlockImportQueue {
-    pub block_import_sender: TracingUnboundedSender<ImportBlocks>,
-    pub import_result_receiver: TracingUnboundedReceiver<ImportManyBlocksResult>,
+    block_import_sender: TracingUnboundedSender<ImportBlocks>,
+    import_result_receiver: TracingUnboundedReceiver<ImportManyBlocksResult>,
 }
 
 impl BlockImportQueue {
-    /// Send blocks to the actual worker of import queue.
+    /// Sends a batch of blocks to the worker of import queue for processing.
     pub fn import_blocks(&self, incoming_blocks: ImportBlocks) {
         let _ = self.block_import_sender.unbounded_send(incoming_blocks);
     }
 
-    pub async fn next_import_results(&mut self) -> Option<ImportManyBlocksResult> {
-        self.import_result_receiver.next().await
+    /// Retrieves the results of the block import operations.
+    ///
+    /// This asynchronous function waits for and returns the results of the block import process.
+    /// It consumes the next available result from the import queue.
+    pub async fn block_import_results(&mut self) -> ImportManyBlocksResult {
+        self.import_result_receiver.select_next_some().await
     }
 }
 
@@ -90,6 +97,7 @@ where
     }
 }
 
+/// A dummy verifier that verifies nothing against the block.
 pub struct VerifyNothing;
 
 #[async_trait::async_trait]
