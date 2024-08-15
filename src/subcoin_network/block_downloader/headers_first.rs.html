@@ -613,13 +613,6 @@
 <a href="#613" id="613">613</a>
 <a href="#614" id="614">614</a>
 <a href="#615" id="615">615</a>
-<a href="#616" id="616">616</a>
-<a href="#617" id="617">617</a>
-<a href="#618" id="618">618</a>
-<a href="#619" id="619">619</a>
-<a href="#620" id="620">620</a>
-<a href="#621" id="621">621</a>
-<a href="#622" id="622">622</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::block_downloader::BlockDownloadManager;
 <span class="kw">use </span><span class="kw">crate</span>::sync::{LocatorRequest, SyncAction, SyncRequest};
 <span class="kw">use crate</span>::{Error, PeerId, SyncStatus};
@@ -636,6 +629,9 @@
 <span class="kw">use </span>std::net::IpAddr;
 <span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>subcoin_primitives::{BackendExt, BlockLocatorProvider, ClientExt, IndexedBlock};
+
+<span class="comment">// https://developer.bitcoin.org/reference/p2p_networking.html#headers
+</span><span class="kw">const </span>MAX_HEADERS_SIZE: usize = <span class="number">2000</span>;
 
 <span class="doccomment">/// Represents the range of blocks to be downloaded during the headers-first sync.
 ///
@@ -891,9 +887,6 @@
     //
     // `headers` are expected to contain at most 2000 entries, in ascending order. [b1, b2, b3, ..., b2000].
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>on_headers(<span class="kw-2">&amp;mut </span><span class="self">self</span>, headers: Vec&lt;BitcoinHeader&gt;, from: PeerId) -&gt; SyncAction {
-        <span class="comment">// https://developer.bitcoin.org/reference/p2p_networking.html#headers
-        </span><span class="kw">const </span>MAX_HEADERS_SIZE: usize = <span class="number">2000</span>;
-
         <span class="kw">if </span>headers.len() &gt; MAX_HEADERS_SIZE {
             <span class="kw">return </span>SyncAction::Disconnect(from, Error::TooManyHeaders);
         }
@@ -929,19 +922,13 @@
                 <span class="string">"Cannot find the parent of the first header in headers, disconnecting"
             </span>);
             <span class="self">self</span>.download_state = DownloadState::Disconnecting;
-            <span class="kw">return </span>SyncAction::Disconnect(
-                <span class="self">self</span>.peer_id,
-                Error::Other(<span class="string">"Cannot find the parent of the first header"</span>.to_string()),
-            );
+            <span class="kw">return </span>SyncAction::Disconnect(<span class="self">self</span>.peer_id, Error::ParentOfFirstHeaderEntryNotFound);
         };
 
         <span class="kw">for </span>header <span class="kw">in </span>headers {
             <span class="kw">if </span>header.prev_blockhash != prev_hash {
                 <span class="self">self</span>.download_state = DownloadState::Disconnecting;
-                <span class="kw">return </span>SyncAction::Disconnect(
-                    <span class="self">self</span>.peer_id,
-                    Error::Other(<span class="string">"Invalid headers: not in ascending order"</span>.to_string()),
-                );
+                <span class="kw">return </span>SyncAction::Disconnect(<span class="self">self</span>.peer_id, Error::HeadersNotInAscendingOrder);
             }
 
             <span class="comment">// TODO: Verify header?
@@ -964,7 +951,7 @@
         <span class="kw">if </span>final_block_number == target_block_number {
             <span class="self">self</span>.start_block_download(start, end)
         } <span class="kw">else </span>{
-            <span class="macro">tracing::debug!</span>(<span class="string">"📄 Downloading headers ({final_block_number}/{target_block_number})"</span>);
+            <span class="macro">tracing::debug!</span>(<span class="string">"📄 Downloaded headers ({final_block_number}/{target_block_number})"</span>);
 
             SyncAction::Request(SyncRequest::Headers(LocatorRequest {
                 locator_hashes: <span class="macro">vec!</span>[prev_hash],
@@ -980,7 +967,6 @@
 
         </span><span class="kw">let </span>best_number = <span class="self">self</span>.client.best_number();
 
-        <span class="kw">let </span>downloaded_headers = <span class="self">self</span>.downloaded_headers.len();
         <span class="kw">let </span>missing_blocks =
             <span class="self">self</span>.downloaded_headers
                 .iter()
@@ -1009,7 +995,7 @@
                 best_number,
                 best_queued_number = <span class="self">self</span>.download_manager.best_queued_number,
                 requested_blocks_count = get_data_msg.len(),
-                downloaded_headers,
+                downloaded_headers = <span class="self">self</span>.downloaded_headers.len(),
                 <span class="string">"Headers from {start} to {end} downloaded, requesting blocks"</span>,
             );
 
@@ -1042,7 +1028,7 @@
             <span class="macro">tracing::debug!</span>(
                 best_number,
                 best_queued_number = <span class="self">self</span>.download_manager.best_queued_number,
-                downloaded_headers,
+                downloaded_headers = <span class="self">self</span>.downloaded_headers.len(),
                 <span class="string">"Headers downloaded, requesting {} blocks in batches (1/{total_batches})"</span>,
                 get_data_msg.len(),
             );
@@ -1124,7 +1110,7 @@
                             <span class="macro">tracing::debug!</span>(
                                 best_number = <span class="self">self</span>.client.best_number(),
                                 best_queued_number = <span class="self">self</span>.download_manager.best_queued_number,
-                                <span class="string">"📦 Downloading {} blocks in batches ({}/{})"</span>,
+                                <span class="string">"📦 Downloaded {} blocks in batches ({}/{})"</span>,
                                 next_batch.len(),
                                 <span class="kw-2">*</span>downloaded_batch + <span class="number">1</span>,
                                 <span class="kw-2">*</span>downloaded_batch + <span class="number">1 </span>+ waiting.len()
@@ -1223,7 +1209,7 @@
         .map(|block_hash| {
             <span class="kw">let </span>block_number = downloaded_headers
                 .get(<span class="kw-2">&amp;</span>block_hash)
-                .expect(<span class="string">"Header must exist before downloading blocks in headers-first sync; qed"</span>);
+                .expect(<span class="string">"Header must exist before downloading blocks in headers-first mode; qed"</span>);
             (block_number, block_hash)
         })
         .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();

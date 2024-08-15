@@ -124,6 +124,14 @@
 <a href="#124" id="124">124</a>
 <a href="#125" id="125">125</a>
 <a href="#126" id="126">126</a>
+<a href="#127" id="127">127</a>
+<a href="#128" id="128">128</a>
+<a href="#129" id="129">129</a>
+<a href="#130" id="130">130</a>
+<a href="#131" id="131">131</a>
+<a href="#132" id="132">132</a>
+<a href="#133" id="133">133</a>
+<a href="#134" id="134">134</a>
 </pre></div><pre class="rust"><code><span class="kw">use crate</span>::{validate_outbound_services, PeerId};
 <span class="kw">use </span>bitcoin::p2p::address::{AddrV2, AddrV2Message, Address};
 <span class="kw">use </span>std::collections::HashSet;
@@ -132,12 +140,18 @@
 <span class="doccomment">/// Manages the addresses discovered in the network.
 </span><span class="attr">#[derive(Debug)]
 </span><span class="kw">pub struct </span>AddressBook {
-    discovered_addresses: HashSet&lt;PeerId&gt;,
-    active_addresses: HashSet&lt;PeerId&gt;,
-    failed_addresses: HashSet&lt;PeerId&gt;,
-    ipv4_only: bool,
-    max_addresses: usize,
-    rng: fastrand::Rng,
+    <span class="doccomment">/// Addresses available for establishing new connections.
+    </span>discovered_addresses: HashSet&lt;PeerId&gt;,
+    <span class="doccomment">/// Peers that currently have an active connection or are being communicated with.
+    </span>active_addresses: HashSet&lt;PeerId&gt;,
+    <span class="doccomment">/// Addresses that failed to establish a connection.
+    </span>failed_addresses: HashSet&lt;PeerId&gt;,
+    <span class="doccomment">/// Indicates whether only IPv4 addresses should be stored.
+    </span>ipv4_only: bool,
+    <span class="doccomment">/// Maximum number of discovered addresses.
+    </span>max_addresses: usize,
+    <span class="doccomment">/// Random number generator for selecting peers.
+    </span>rng: fastrand::Rng,
 }
 
 <span class="kw">impl </span>AddressBook {
@@ -164,19 +178,21 @@
 
     <span class="doccomment">/// Pops a random address from the discovered addresses and marks it as active.
     </span><span class="kw">pub fn </span>pop(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;PeerId&gt; {
-        <span class="kw">let </span>maybe_peer = <span class="self">self</span>.rng.choice(<span class="self">self</span>.discovered_addresses.clone());
-
-        <span class="kw">if let </span><span class="prelude-val">Some</span>(peer) = maybe_peer {
+        <span class="kw">if let </span><span class="prelude-val">Some</span>(peer) = <span class="self">self</span>.rng.choice(<span class="self">self</span>.discovered_addresses.iter()).copied() {
             <span class="self">self</span>.discovered_addresses.remove(<span class="kw-2">&amp;</span>peer);
             <span class="self">self</span>.active_addresses.insert(peer);
+            <span class="kw">return </span><span class="prelude-val">Some</span>(peer);
         }
-
-        maybe_peer
-    }
+        <span class="prelude-val">None
+    </span>}
 
     <span class="kw">pub fn </span>note_failed_address(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_addr: PeerId) {
         <span class="self">self</span>.active_addresses.remove(<span class="kw-2">&amp;</span>peer_addr);
         <span class="self">self</span>.failed_addresses.insert(peer_addr);
+    }
+
+    <span class="kw">pub fn </span>mark_disconnected(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_addr: <span class="kw-2">&amp;</span>PeerId) {
+        <span class="self">self</span>.active_addresses.remove(peer_addr);
     }
 
     <span class="doccomment">/// Adds multiple addresses (`Address`) to the address book.

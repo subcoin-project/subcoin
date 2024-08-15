@@ -766,6 +766,7 @@
 <a href="#766" id="766">766</a>
 <a href="#767" id="767">767</a>
 <a href="#768" id="768">768</a>
+<a href="#769" id="769">769</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::address_book::AddressBook;
 <span class="kw">use </span><span class="kw">crate</span>::connection::{ConnectionInitiator, ConnectionWriter, Direction, NewConnection};
 <span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
@@ -1215,6 +1216,7 @@
             }
         }
 
+        <span class="self">self</span>.address_book.mark_disconnected(<span class="kw-2">&amp;</span>peer_id);
         <span class="self">self</span>.handshaking_peers.remove(<span class="kw-2">&amp;</span>peer_id);
         <span class="self">self</span>.connected_peers.remove(<span class="kw-2">&amp;</span>peer_id);
         <span class="self">self</span>.connection_latencies.remove(<span class="kw-2">&amp;</span>peer_id);

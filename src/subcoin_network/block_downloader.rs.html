@@ -273,6 +273,12 @@
 <a href="#273" id="273">273</a>
 <a href="#274" id="274">274</a>
 <a href="#275" id="275">275</a>
+<a href="#276" id="276">276</a>
+<a href="#277" id="277">277</a>
+<a href="#278" id="278">278</a>
+<a href="#279" id="279">279</a>
+<a href="#280" id="280">280</a>
+<a href="#281" id="281">281</a>
 </pre></div><pre class="rust"><code><span class="kw">mod </span>blocks_first;
 <span class="kw">mod </span>headers_first;
 
@@ -285,6 +291,9 @@
 <span class="kw">use </span>sc_consensus_nakamoto::ImportManyBlocksResult;
 <span class="kw">use </span>std::collections::{HashMap, HashSet};
 <span class="kw">use </span>std::time::{Duration, Instant};
+
+<span class="doccomment">/// Interval for logging when the block import queue is too busy.
+</span><span class="kw">const </span>BUSY_QUEUE_LOG_INTERVAL: Duration = Duration::from_secs(<span class="number">5</span>);
 
 <span class="doccomment">/// Manages queued blocks.
 </span><span class="attr">#[derive(Default, Debug, Clone)]
@@ -350,6 +359,10 @@
     <span class="doccomment">/// Orphan blocks
     </span>orphan_blocks_pool: OrphanBlocksPool,
     <span class="doccomment">/// Last time at which the block was received or imported.
+    ///
+    /// This is updated whenever a block is received from the network or
+    /// when the results of processed blocks are notified. It helps track
+    /// the most recent activity related to block processing.
     </span>last_progress_time: Instant,
     <span class="doccomment">/// Whether there are too many blocks in the queue.
     </span>import_queue_is_overloaded: bool,
@@ -372,12 +385,14 @@
         }
     }
 
-    <span class="kw">fn </span>is_stalled(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
-        <span class="comment">// The downloader is considered as stalled if no progress for some time.
+    <span class="comment">// Determine if the downloader is stalled based on the time elapsed since the last progress.
+    </span><span class="kw">fn </span>is_stalled(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+        <span class="comment">// The timeout (in seconds) is extended when the chain exceeds a certain size, as block
+        // execution times increase significantly with chain growth.
         </span><span class="kw">let </span>stall_timeout = <span class="kw">if </span><span class="self">self</span>.best_queued_number &gt; <span class="number">300_000 </span>{
-            <span class="number">120
+            <span class="number">120 </span><span class="comment">// Extended timeout for larger chains
         </span>} <span class="kw">else </span>{
-            <span class="number">60
+            <span class="number">60 </span><span class="comment">// Standard timeout for smaller chains
         </span>};
 
         <span class="self">self</span>.last_progress_time.elapsed().as_secs() &gt; stall_timeout
@@ -408,27 +423,24 @@
         </span><span class="kw">let </span>max_queued_blocks = <span class="kw">match </span>best_number {
             <span class="number">0</span>..=<span class="number">100_000 </span>=&gt; <span class="number">8192</span>,
             <span class="number">100_001</span>..=<span class="number">200_000 </span>=&gt; <span class="number">4096</span>,
-            <span class="number">200_001</span>..=<span class="number">300_000 </span>=&gt; <span class="number">1024</span>,
+            <span class="number">200_001</span>..=<span class="number">300_000 </span>=&gt; <span class="number">2048</span>,
             <span class="kw">_ </span>=&gt; <span class="number">512</span>,
         };
 
         <span class="kw">let </span>import_queue_is_overloaded = <span class="self">self</span>.best_queued_number - best_number &gt; max_queued_blocks;
 
-        <span class="kw">if </span>import_queue_is_overloaded {
-            <span class="kw">const </span>INTERVAL: Duration = Duration::from_secs(<span class="number">5</span>);
-
-            <span class="kw">if </span><span class="self">self
+        <span class="kw">if </span>import_queue_is_overloaded
+            &amp;&amp; <span class="self">self
                 </span>.last_overloaded_queue_log_time
-                .map(|last_time| last_time.elapsed() &gt; INTERVAL)
+                .map(|last_time| last_time.elapsed() &gt; BUSY_QUEUE_LOG_INTERVAL)
                 .unwrap_or(<span class="bool-val">true</span>)
-            {
-                <span class="macro">tracing::debug!</span>(
-                    best_number,
-                    best_queued_number = <span class="self">self</span>.best_queued_number,
-                    <span class="string">"⏸️ Pausing download: too many blocks in the queue"</span>,
-                );
-                <span class="self">self</span>.last_overloaded_queue_log_time.replace(Instant::now());
-            }
+        {
+            <span class="macro">tracing::debug!</span>(
+                best_number,
+                best_queued_number = <span class="self">self</span>.best_queued_number,
+                <span class="string">"⏸️ Pausing download: too many blocks in the queue"</span>,
+            );
+            <span class="self">self</span>.last_overloaded_queue_log_time.replace(Instant::now());
         }
 
         <span class="self">self</span>.import_queue_is_overloaded = import_queue_is_overloaded;

@@ -241,6 +241,14 @@
 <a href="#241" id="241">241</a>
 <a href="#242" id="242">242</a>
 <a href="#243" id="243">243</a>
+<a href="#244" id="244">244</a>
+<a href="#245" id="245">245</a>
+<a href="#246" id="246">246</a>
+<a href="#247" id="247">247</a>
+<a href="#248" id="248">248</a>
+<a href="#249" id="249">249</a>
+<a href="#250" id="250">250</a>
+<a href="#251" id="251">251</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! This module defines the [`BlockImportQueue`] struct, which separates the block download
 //! and import processes. The queue operates in a distinct blocking task, receiving blocks
 //! downloaded from the Bitcoin P2P network by subcoin-network and importing them into
@@ -258,27 +266,34 @@
 <span class="kw">use </span>sp_runtime::traits::Block <span class="kw">as </span>BlockT;
 <span class="kw">use </span>std::pin::Pin;
 
-<span class="attr">#[derive(Debug, Clone)]
+<span class="doccomment">/// Represents a batch of Bitcoin blocks that are to be imported.
+</span><span class="attr">#[derive(Debug, Clone)]
 </span><span class="kw">pub struct </span>ImportBlocks {
-    <span class="kw">pub </span>origin: BlockOrigin,
-    <span class="kw">pub </span>blocks: Vec&lt;BitcoinBlock&gt;,
+    <span class="doccomment">/// The source from which the blocks were obtained.
+    </span><span class="kw">pub </span>origin: BlockOrigin,
+    <span class="doccomment">/// A vector containing the Bitcoin blocks to be imported.
+    </span><span class="kw">pub </span>blocks: Vec&lt;BitcoinBlock&gt;,
 }
 
 <span class="doccomment">/// Import queue for processing Bitcoin blocks.
 </span><span class="attr">#[derive(Debug)]
 </span><span class="kw">pub struct </span>BlockImportQueue {
-    <span class="kw">pub </span>block_import_sender: TracingUnboundedSender&lt;ImportBlocks&gt;,
-    <span class="kw">pub </span>import_result_receiver: TracingUnboundedReceiver&lt;ImportManyBlocksResult&gt;,
+    block_import_sender: TracingUnboundedSender&lt;ImportBlocks&gt;,
+    import_result_receiver: TracingUnboundedReceiver&lt;ImportManyBlocksResult&gt;,
 }
 
 <span class="kw">impl </span>BlockImportQueue {
-    <span class="doccomment">/// Send blocks to the actual worker of import queue.
+    <span class="doccomment">/// Sends a batch of blocks to the worker of import queue for processing.
     </span><span class="kw">pub fn </span>import_blocks(<span class="kw-2">&amp;</span><span class="self">self</span>, incoming_blocks: ImportBlocks) {
         <span class="kw">let _ </span>= <span class="self">self</span>.block_import_sender.unbounded_send(incoming_blocks);
     }
 
-    <span class="kw">pub async fn </span>next_import_results(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;ImportManyBlocksResult&gt; {
-        <span class="self">self</span>.import_result_receiver.next().<span class="kw">await
+    <span class="doccomment">/// Retrieves the results of the block import operations.
+    ///
+    /// This asynchronous function waits for and returns the results of the block import process.
+    /// It consumes the next available result from the import queue.
+    </span><span class="kw">pub async fn </span>block_import_results(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; ImportManyBlocksResult {
+        <span class="self">self</span>.import_result_receiver.select_next_some().<span class="kw">await
     </span>}
 }
 
@@ -333,7 +348,8 @@
     }
 }
 
-<span class="kw">pub struct </span>VerifyNothing;
+<span class="doccomment">/// A dummy verifier that verifies nothing against the block.
+</span><span class="kw">pub struct </span>VerifyNothing;
 
 <span class="attr">#[async_trait::async_trait]
 </span><span class="kw">impl</span>&lt;Block: BlockT&gt; sc_consensus::Verifier&lt;Block&gt; <span class="kw">for </span>VerifyNothing {

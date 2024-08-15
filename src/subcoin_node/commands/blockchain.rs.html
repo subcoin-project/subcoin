@@ -133,6 +133,53 @@
 <a href="#133" id="133">133</a>
 <a href="#134" id="134">134</a>
 <a href="#135" id="135">135</a>
+<a href="#136" id="136">136</a>
+<a href="#137" id="137">137</a>
+<a href="#138" id="138">138</a>
+<a href="#139" id="139">139</a>
+<a href="#140" id="140">140</a>
+<a href="#141" id="141">141</a>
+<a href="#142" id="142">142</a>
+<a href="#143" id="143">143</a>
+<a href="#144" id="144">144</a>
+<a href="#145" id="145">145</a>
+<a href="#146" id="146">146</a>
+<a href="#147" id="147">147</a>
+<a href="#148" id="148">148</a>
+<a href="#149" id="149">149</a>
+<a href="#150" id="150">150</a>
+<a href="#151" id="151">151</a>
+<a href="#152" id="152">152</a>
+<a href="#153" id="153">153</a>
+<a href="#154" id="154">154</a>
+<a href="#155" id="155">155</a>
+<a href="#156" id="156">156</a>
+<a href="#157" id="157">157</a>
+<a href="#158" id="158">158</a>
+<a href="#159" id="159">159</a>
+<a href="#160" id="160">160</a>
+<a href="#161" id="161">161</a>
+<a href="#162" id="162">162</a>
+<a href="#163" id="163">163</a>
+<a href="#164" id="164">164</a>
+<a href="#165" id="165">165</a>
+<a href="#166" id="166">166</a>
+<a href="#167" id="167">167</a>
+<a href="#168" id="168">168</a>
+<a href="#169" id="169">169</a>
+<a href="#170" id="170">170</a>
+<a href="#171" id="171">171</a>
+<a href="#172" id="172">172</a>
+<a href="#173" id="173">173</a>
+<a href="#174" id="174">174</a>
+<a href="#175" id="175">175</a>
+<a href="#176" id="176">176</a>
+<a href="#177" id="177">177</a>
+<a href="#178" id="178">178</a>
+<a href="#179" id="179">179</a>
+<a href="#180" id="180">180</a>
+<a href="#181" id="181">181</a>
+<a href="#182" id="182">182</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::params::CommonParams;
 <span class="kw">use </span><span class="kw">crate</span>::utils::Yield;
 <span class="kw">use </span>sc_cli::{ImportParams, NodeKeyParams, SharedParams};
@@ -141,6 +188,7 @@
 <span class="kw">use </span>sp_core::storage::StorageKey;
 <span class="kw">use </span>sp_core::Decode;
 <span class="kw">use </span>std::sync::Arc;
+<span class="kw">use </span>std::time::{Duration, Instant};
 <span class="kw">use </span>subcoin_primitives::runtime::Coin;
 <span class="kw">use </span>subcoin_primitives::{BackendExt, CoinStorageKey};
 <span class="kw">use </span>subcoin_service::FullClient;
@@ -154,9 +202,16 @@
         <span class="attr">#[clap(long)]
         </span>height: <span class="prelude-ty">Option</span>&lt;u32&gt;,
 
+        <span class="attr">#[clap(short, long)]
+        </span>verbose: bool,
+
         <span class="attr">#[allow(missing_docs)]
         #[clap(flatten)]
         </span>common_params: CommonParams,
+
+        <span class="attr">#[allow(missing_docs)]
+        #[clap(flatten)]
+        </span>import_params: ImportParams,
     },
 }
 
@@ -172,6 +227,8 @@
     GetTxOutSetInfo {
         height: <span class="prelude-ty">Option</span>&lt;u32&gt;,
         shared_params: SharedParams,
+        import_params: ImportParams,
+        verbose: bool,
     },
 }
 
@@ -182,9 +239,13 @@
             Blockchain::GetTxOutSetInfo {
                 height,
                 common_params,
+                import_params,
+                verbose,
             } =&gt; <span class="self">Self</span>::GetTxOutSetInfo {
                 height,
                 shared_params: common_params.as_shared_params(),
+                import_params,
+                verbose,
             },
         }
     }
@@ -197,7 +258,9 @@
 
     <span class="kw">pub async fn </span>run(<span class="self">self</span>, client: Arc&lt;FullClient&gt;) -&gt; sc_cli::Result&lt;()&gt; {
         <span class="kw">match </span><span class="self">self </span>{
-            <span class="self">Self</span>::GetTxOutSetInfo { height, .. } =&gt; gettxoutsetinfo(<span class="kw-2">&amp;</span>client, height).<span class="kw">await</span>,
+            <span class="self">Self</span>::GetTxOutSetInfo {
+                height, verbose, ..
+            } =&gt; gettxoutsetinfo(<span class="kw-2">&amp;</span>client, height, verbose).<span class="kw">await</span>,
         }
     }
 }
@@ -208,15 +271,21 @@
     }
 
     <span class="kw">fn </span>import_params(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>ImportParams&gt; {
-        <span class="prelude-val">None
-    </span>}
+        <span class="kw">match </span><span class="self">self </span>{
+            <span class="self">Self</span>::GetTxOutSetInfo { import_params, .. } =&gt; <span class="prelude-val">Some</span>(import_params),
+        }
+    }
 
     <span class="kw">fn </span>node_key_params(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>NodeKeyParams&gt; {
         <span class="prelude-val">None
     </span>}
 }
 
-<span class="kw">async fn </span>gettxoutsetinfo(client: <span class="kw-2">&amp;</span>Arc&lt;FullClient&gt;, height: <span class="prelude-ty">Option</span>&lt;u32&gt;) -&gt; sc_cli::Result&lt;()&gt; {
+<span class="kw">async fn </span>gettxoutsetinfo(
+    client: <span class="kw-2">&amp;</span>Arc&lt;FullClient&gt;,
+    height: <span class="prelude-ty">Option</span>&lt;u32&gt;,
+    verbose: bool,
+) -&gt; sc_cli::Result&lt;()&gt; {
     <span class="kw">const </span>FINAL_PREFIX_LEN: usize = <span class="number">32</span>;
 
     <span class="kw">let </span>storage_prefix = subcoin_service::CoinStorageKey.storage_prefix();
@@ -227,44 +296,69 @@
         .storage_pairs(block_hash, <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>storage_key), <span class="prelude-val">None</span>)<span class="question-mark">?
         </span>.map(|(key, data)| (key.<span class="number">0</span>, data.<span class="number">0</span>));
 
-    <span class="kw">let </span><span class="kw-2">mut </span>txouts = <span class="number">0</span>;
-    <span class="kw">let </span><span class="kw-2">mut </span>bogosize = <span class="number">0</span>;
-    <span class="kw">let </span><span class="kw-2">mut </span>total_amount = <span class="number">0</span>;
-
     <span class="kw">let </span>genesis_txid: bitcoin::Txid =
         <span class="string">"4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"
             </span>.parse()
             .expect(<span class="string">"Genesis txid must be correct; qed"</span>);
+
+    <span class="kw">const </span>INTERVAL: Duration = Duration::from_secs(<span class="number">5</span>);
+
+    <span class="kw">let </span>bitcoin_block_hash = client
+        .block_hash(block_number)
+        .expect(<span class="string">"Bitcoin block hash missing"</span>);
+
+    <span class="macro">println!</span>(<span class="string">"Fetching state info at block_number: #{block_number}, {bitcoin_block_hash}"</span>);
+
+    <span class="kw">let </span><span class="kw-2">mut </span>txouts = <span class="number">0</span>;
+    <span class="kw">let </span><span class="kw-2">mut </span>bogosize = <span class="number">0</span>;
+    <span class="kw">let </span><span class="kw-2">mut </span>total_amount = <span class="number">0</span>;
+
+    <span class="kw">let </span><span class="kw-2">mut </span>state_size = <span class="number">0</span>;
+    <span class="kw">let </span><span class="kw-2">mut </span>script_pubkey_size = <span class="number">0</span>;
+
+    <span class="kw">let </span><span class="kw-2">mut </span>last_update = Instant::now();
 
     <span class="kw">for </span>(key, value) <span class="kw">in </span>pairs_iter {
         <span class="kw">let </span>(txid, _vout) =
             &lt;(pallet_bitcoin::Txid, u32)&gt;::decode(<span class="kw-2">&amp;mut &amp;</span>key.as_slice()[FINAL_PREFIX_LEN..])
                 .expect(<span class="string">"Key type must be correct; qed"</span>);
         <span class="kw">let </span>txid = txid.into_bitcoin_txid();
+
         <span class="comment">// output in genesis tx is excluded in gettxoutsetinfo.
         </span><span class="kw">if </span>txid == genesis_txid {
             <span class="kw">continue</span>;
         }
+
         <span class="kw">let </span>coin = Coin::decode(<span class="kw-2">&amp;mut </span>value.as_slice())
             .expect(<span class="string">"Coin read from DB must be decoded successfully; qed"</span>);
+
         txouts += <span class="number">1</span>;
         total_amount += coin.amount;
         <span class="comment">// https://github.com/bitcoin/bitcoin/blob/33af14e31b9fa436029a2bb8c2b11de8feb32f86/src/kernel/coinstats.cpp#L40
         </span>bogosize += <span class="number">50 </span>+ coin.script_pubkey.len();
 
+        state_size += key.len() + value.len();
+        script_pubkey_size += coin.script_pubkey.len();
+
+        <span class="kw">if </span>verbose &amp;&amp; last_update.elapsed() &gt; INTERVAL {
+            <span class="macro">println!</span>(
+                <span class="string">"Progress: Unspent Transaction Outputs: {txouts}, State Size: {state_size} bytes, \
+                ScriptPubkey Size: {script_pubkey_size} bytes, Coin ScriptPubkey Length: {} bytes"</span>,
+                coin.script_pubkey.len()
+            );
+            last_update = Instant::now();
+        }
+
         <span class="comment">// Yield here allows to make the process interruptible by ctrl_c.
         </span>Yield::new().<span class="kw">await</span>;
     }
 
-    <span class="kw">let </span>bitcoin_block_hash = client
-        .block_hash(block_number)
-        .expect(<span class="string">"Bitcoin block hash missing"</span>);
-
-    <span class="macro">println!</span>(<span class="string">"block_number: {block_number}"</span>);
-    <span class="macro">println!</span>(<span class="string">"block_hash: {bitcoin_block_hash}"</span>);
+    <span class="macro">println!</span>(<span class="string">"===================="</span>);
     <span class="macro">println!</span>(<span class="string">"txouts: {txouts}"</span>);
     <span class="macro">println!</span>(<span class="string">"bogosize: {bogosize}"</span>);
     <span class="macro">println!</span>(<span class="string">"total_amount: {:.8}"</span>, total_amount <span class="kw">as </span>f64 / <span class="number">100_000_000.0</span>);
+    <span class="macro">println!</span>(<span class="string">"state_size: {state_size} bytes"</span>);
+    <span class="macro">println!</span>(<span class="string">"script_pubkey_size: {script_pubkey_size} bytes"</span>);
 
     <span class="prelude-val">Ok</span>(())
 }

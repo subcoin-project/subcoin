@@ -751,6 +751,16 @@
 <a href="#751" id="751">751</a>
 <a href="#752" id="752">752</a>
 <a href="#753" id="753">753</a>
+<a href="#754" id="754">754</a>
+<a href="#755" id="755">755</a>
+<a href="#756" id="756">756</a>
+<a href="#757" id="757">757</a>
+<a href="#758" id="758">758</a>
+<a href="#759" id="759">759</a>
+<a href="#760" id="760">760</a>
+<a href="#761" id="761">761</a>
+<a href="#762" id="762">762</a>
+<a href="#763" id="763">763</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>async_trait::async_trait;
 <span class="kw">use </span>bitcoin::OutPoint;
 <span class="kw">use </span>sc_client_api::{AuxStore, Backend, BlockBackend, HeaderBackend, StorageProvider};
@@ -767,18 +777,28 @@
 <span class="doccomment">/// A simply way to track the overall execution info for optimization purpose.
 </span><span class="attr">#[derive(Debug, Default)]
 </span><span class="kw">pub struct </span>ExecutionInfo {
+    <span class="doccomment">/// Number of transactions in the block.
+    </span><span class="kw">pub </span>transactions_count: usize,
     <span class="doccomment">/// Time taken by `runtime_api.execute_block` in nanoseconds.
-    </span><span class="kw">pub </span>execute_block: u128,
+    </span><span class="kw">pub </span>execute_block_time: u128,
     <span class="doccomment">/// Time taken by `client.state_at` in nanoseconds.
-    </span><span class="kw">pub </span>fetch_state: u128,
+    </span><span class="kw">pub </span>fetch_state_time: u128,
     <span class="doccomment">/// Time taken by `runtime_api.into_storage_changes` in nanoseconds.
-    </span><span class="kw">pub </span>into_storage_changes: u128,
+    </span><span class="kw">pub </span>into_storage_changes_time: u128,
 }
 
 <span class="kw">impl </span>ExecutionInfo {
+    <span class="doccomment">/// Constructs a new instance of [`ExecutionInfo`] with given transactions count.
+    </span><span class="kw">pub fn </span>new(transactions_count: usize) -&gt; <span class="self">Self </span>{
+        <span class="self">Self </span>{
+            transactions_count,
+            ..Default::default()
+        }
+    }
+
     <span class="doccomment">/// Returns the total execution time in nanoseconds.
     </span><span class="kw">pub fn </span>total(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; u128 {
-        <span class="self">self</span>.execute_block + <span class="self">self</span>.fetch_state + <span class="self">self</span>.into_storage_changes
+        <span class="self">self</span>.execute_block_time + <span class="self">self</span>.fetch_state_time + <span class="self">self</span>.into_storage_changes_time
     }
 }
 
@@ -947,21 +967,21 @@
         <span class="kw">let </span><span class="kw-2">mut </span>runtime_api = <span class="self">self</span>.client.runtime_api();
         runtime_api.set_call_context(CallContext::Onchain);
 
-        <span class="kw">let </span><span class="kw-2">mut </span>exec_info = ExecutionInfo::default();
+        <span class="kw">let </span><span class="kw-2">mut </span>exec_info = ExecutionInfo::new(block.extrinsics().len());
 
         <span class="kw">let </span>now = std::time::Instant::now();
         runtime_api.execute_block_without_state_root_check(parent_hash, block)<span class="question-mark">?</span>;
-        exec_info.execute_block = now.elapsed().as_nanos();
+        exec_info.execute_block_time = now.elapsed().as_nanos();
 
         <span class="kw">let </span>now = std::time::Instant::now();
         <span class="kw">let </span>state = <span class="self">self</span>.client.state_at(parent_hash)<span class="question-mark">?</span>;
-        exec_info.fetch_state = now.elapsed().as_nanos();
+        exec_info.fetch_state_time = now.elapsed().as_nanos();
 
         <span class="kw">let </span>now = std::time::Instant::now();
         <span class="kw">let </span>storage_changes = runtime_api
             .into_storage_changes(<span class="kw-2">&amp;</span>state, parent_hash)
             .map_err(sp_blockchain::Error::StorageChanges)<span class="question-mark">?</span>;
-        exec_info.into_storage_changes = now.elapsed().as_nanos();
+        exec_info.into_storage_changes_time = now.elapsed().as_nanos();
 
         <span class="kw">let </span>state_root = storage_changes.transaction_storage_root;
 
@@ -1164,7 +1184,7 @@
 
         <span class="kw">let </span>(header, extrinsics) = block.deconstruct();
 
-        <span class="kw">let </span><span class="kw-2">mut </span>exec_info = ExecutionInfo::default();
+        <span class="kw">let </span><span class="kw-2">mut </span>exec_info = ExecutionInfo::new(extrinsics.len());
 
         <span class="kw">let </span>now = std::time::Instant::now();
 
@@ -1203,17 +1223,17 @@
 
         <span class="macro">tracing::debug!</span>(<span class="string">"off_runtime({:?}): {exec_details:?}"</span>, <span class="self">self</span>.client_context);
 
-        exec_info.execute_block = now.elapsed().as_nanos();
+        exec_info.execute_block_time = now.elapsed().as_nanos();
 
         <span class="kw">let </span>now = std::time::Instant::now();
         <span class="kw">let </span>state = <span class="self">self</span>.client.state_at(parent_hash)<span class="question-mark">?</span>;
-        exec_info.fetch_state = now.elapsed().as_nanos();
+        exec_info.fetch_state_time = now.elapsed().as_nanos();
 
         <span class="kw">let </span>now = std::time::Instant::now();
         <span class="kw">let </span>storage_changes = runtime_api
             .into_storage_changes(<span class="kw-2">&amp;</span>state, parent_hash)
             .map_err(sp_blockchain::Error::StorageChanges)<span class="question-mark">?</span>;
-        exec_info.into_storage_changes = now.elapsed().as_nanos();
+        exec_info.into_storage_changes_time = now.elapsed().as_nanos();
 
         <span class="macro">tracing::debug!</span>(
             <span class="string">"off_runtime({:?}): {exec_info:?}, total: {}"</span>,

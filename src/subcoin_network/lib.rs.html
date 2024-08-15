@@ -539,6 +539,10 @@
 <a href="#539" id="539">539</a>
 <a href="#540" id="540">540</a>
 <a href="#541" id="541">541</a>
+<a href="#542" id="542">542</a>
+<a href="#543" id="543">543</a>
+<a href="#544" id="544">544</a>
+<a href="#545" id="545">545</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # Bitcoin Network
 //!
 //! This crate facilitates communication with other nodes in the Bitcoin P2P network. It handles
@@ -635,8 +639,10 @@
     </span>ProtocolVersionTooLow,
     <span class="attr">#[error(<span class="string">"Too many block entries in inv message"</span>)]
     </span>TooManyBlockEntries,
-    <span class="attr">#[error(<span class="string">"Too many headers (&gt; 2000)"</span>)]
+    <span class="attr">#[error(<span class="string">"Too many entries (&gt; 2000) in headers message"</span>)]
     </span>TooManyHeaders,
+    <span class="attr">#[error(<span class="string">"Entries in headers message are not in ascending order"</span>)]
+    </span>HeadersNotInAscendingOrder,
     <span class="attr">#[error(<span class="string">"Too many inventory items"</span>)]
     </span>TooManyInventoryItems,
     <span class="attr">#[error(<span class="string">"Ping timeout"</span>)]
@@ -651,6 +657,8 @@
     </span>BadPong,
     <span class="attr">#[error(<span class="string">"Received an unrequested block: {0:?}"</span>)]
     </span>UnrequestedBlock(BlockHash),
+    <span class="attr">#[error(<span class="string">"Cannot find the parent of the first header in headers message"</span>)]
+    </span>ParentOfFirstHeaderEntryNotFound,
     <span class="attr">#[error(<span class="string">"Other: {0}"</span>)]
     </span>Other(String),
     <span class="attr">#[error(transparent)]

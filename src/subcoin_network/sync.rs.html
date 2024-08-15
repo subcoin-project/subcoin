@@ -517,17 +517,12 @@
 <a href="#517" id="517">517</a>
 <a href="#518" id="518">518</a>
 <a href="#519" id="519">519</a>
-<a href="#520" id="520">520</a>
-<a href="#521" id="521">521</a>
-<a href="#522" id="522">522</a>
-<a href="#523" id="523">523</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::block_downloader::{BlocksFirstDownloader, HeadersFirstDownloader};
 <span class="kw">use </span><span class="kw">crate</span>::peer_manager::NewPeer;
 <span class="kw">use crate</span>::{Error, Latency, PeerId, SyncStatus, SyncStrategy};
 <span class="kw">use </span>bitcoin::blockdata::block::Header <span class="kw">as </span>BitcoinHeader;
 <span class="kw">use </span>bitcoin::p2p::message_blockdata::Inventory;
 <span class="kw">use </span>bitcoin::{Block <span class="kw">as </span>BitcoinBlock, BlockHash};
-<span class="kw">use </span>futures::StreamExt;
 <span class="kw">use </span>sc_client_api::{AuxStore, HeaderBackend};
 <span class="kw">use </span>sc_consensus_nakamoto::{BlockImportQueue, ImportBlocks, ImportManyBlocksResult};
 <span class="kw">use </span>serde::{Deserialize, Serialize};
@@ -723,10 +718,7 @@
     }
 
     <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">async fn </span>wait_for_block_import_results(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; ImportManyBlocksResult {
-        <span class="self">self</span>.import_queue
-            .import_result_receiver
-            .select_next_some()
-            .<span class="kw">await
+        <span class="self">self</span>.import_queue.block_import_results().<span class="kw">await
     </span>}
 
     <span class="doccomment">/// Attempts to restart the sync due to the stalled peer.

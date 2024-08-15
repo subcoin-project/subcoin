@@ -117,6 +117,8 @@
 <a href="#117" id="117">117</a>
 <a href="#118" id="118">118</a>
 <a href="#119" id="119">119</a>
+<a href="#120" id="120">120</a>
+<a href="#121" id="121">121</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">super</span>::MAX_BLOCK_WEIGHT;
 <span class="kw">use </span>bitcoin::absolute::{LockTime, LOCK_TIME_THRESHOLD};
 <span class="kw">use </span>bitcoin::blockdata::weight::WITNESS_SCALE_FACTOR;
@@ -153,7 +155,8 @@
     </span>PreviousOutputNull,
 }
 
-<span class="kw">pub fn </span>is_final(tx: <span class="kw-2">&amp;</span>Transaction, height: u32, block_time: u32) -&gt; bool {
+<span class="doccomment">/// Checks whether the transaction is final at the given height and block time.
+</span><span class="kw">pub fn </span>is_final(tx: <span class="kw-2">&amp;</span>Transaction, height: u32, block_time: u32) -&gt; bool {
     <span class="kw">if </span>tx.lock_time == LockTime::ZERO {
         <span class="kw">return </span><span class="bool-val">true</span>;
     }
@@ -226,7 +229,8 @@
     <span class="prelude-val">Ok</span>(())
 }
 
-<span class="kw">pub fn </span>get_legacy_sig_op_count(tx: <span class="kw-2">&amp;</span>Transaction) -&gt; usize {
+<span class="doccomment">/// Counts the sigops for this transaction using legacy counting.
+</span><span class="kw">pub fn </span>get_legacy_sig_op_count(tx: <span class="kw-2">&amp;</span>Transaction) -&gt; usize {
     tx.input
         .iter()
         .map(|txin| txin.script_sig.count_sigops_legacy())

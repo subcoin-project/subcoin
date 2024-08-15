@@ -74,11 +74,18 @@
 <a href="#74" id="74">74</a>
 <a href="#75" id="75">75</a>
 <a href="#76" id="76">76</a>
+<a href="#77" id="77">77</a>
+<a href="#78" id="78">78</a>
+<a href="#79" id="79">79</a>
+<a href="#80" id="80">80</a>
+<a href="#81" id="81">81</a>
+<a href="#82" id="82">82</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>bitcoin::consensus::Params;
 <span class="kw">use </span>bitcoin::{BlockHash, Network};
 <span class="kw">use </span>std::collections::HashMap;
 
-<span class="kw">pub const </span>MEDIAN_TIME_SPAN: usize = <span class="number">11</span>;
+<span class="doccomment">/// bip-0113 defines the median of the last 11 blocks instead of the block's timestamp for lock-time calculations.
+</span><span class="kw">pub const </span>MEDIAN_TIME_SPAN: usize = <span class="number">11</span>;
 
 <span class="doccomment">/// Extended [`Params`].
 </span><span class="attr">#[derive(Debug, Clone)]
@@ -89,7 +96,12 @@
     </span><span class="kw">pub </span>csv_height: u32,
     <span class="doccomment">/// Block height at which Segwit becomes active.
     </span><span class="kw">pub </span>segwit_height: u32,
-    <span class="kw">pub </span>script_flag_exceptions: HashMap&lt;BlockHash, u32&gt;,
+    <span class="doccomment">/// A map of block hashes to script verification flag exceptions.
+    ///
+    /// This allows for certain blocks to have specific script verification flags, overriding
+    /// the default rules. For example, exceptions may be made for blocks that activated
+    /// BIP16 (P2SH) or Taproot under special conditions.
+    </span><span class="kw">pub </span>script_flag_exceptions: HashMap&lt;BlockHash, u32&gt;,
 }
 
 <span class="kw">impl </span>ChainParams {
