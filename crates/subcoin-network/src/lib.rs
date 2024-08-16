@@ -8,11 +8,11 @@
 //! This crate offers two strategies for the initial block download:
 //!
 //! - **Blocks-First**: Downloads the full block data sequentially starting from the last known
-//! block until it's fully synced with the network, in batches. This is primarily for the testing
-//! purpose.
+//!     block until it's fully synced with the network, in batches. This is primarily for the testing
+//!     purpose.
 //!
 //! - **Headers-First**: First downloads the block headers and then proceeds to the full block data
-//! based on the checkpoints.
+//!     based on the checkpoints.
 //!
 //! However, due to the nature of Subcoin, building a Bitcoin SPV node solely by syncing Bitcoin headers
 //! from the network is not possible, in that Subcoin requires full block data to derive the corresponding
