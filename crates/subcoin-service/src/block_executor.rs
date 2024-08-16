@@ -291,57 +291,6 @@ mod tests {
         client.header(client.info().best_hash).unwrap().unwrap()
     }
 
-    async fn run_with_off_runtime_in_memory_executor(config: &Configuration, up_to: u32) -> Header {
-        let NodeComponents {
-            block_executor,
-            client,
-            ..
-        } = new_node(SubcoinConfiguration {
-            network: bitcoin::Network::Bitcoin,
-            block_execution_strategy: BlockExecutionStrategy::off_runtime_in_memory(),
-            config,
-            no_hardware_benchmarks: true,
-            storage_monitor: Default::default(),
-        })
-        .expect("Failed to create node");
-
-        let mut bitcoin_block_import = BitcoinBlockImporter::<_, _, _, _, TransactionAdapter>::new(
-            client.clone(),
-            client.clone(),
-            ImportConfig {
-                network: bitcoin::Network::Bitcoin,
-                block_verification: BlockVerification::None,
-                execute_block: true,
-                verify_script: true,
-            },
-            Arc::new(CoinStorageKey),
-            block_executor,
-            None,
-        );
-
-        let test_blocks = block_data();
-        for block_number in 1..=up_to {
-            let block = test_blocks[block_number as usize].clone();
-            let import_status = bitcoin_block_import.import_block(block).await.unwrap();
-            assert!(matches!(import_status, ImportStatus::Imported { .. }));
-        }
-
-        client.header(client.info().best_hash).unwrap().unwrap()
-    }
-
-    #[tokio::test]
-    async fn test_off_runtime_in_memory_executor() {
-        sp_tracing::try_init_simple();
-
-        let runtime_handle = Handle::current();
-
-        let network = bitcoin::Network::Bitcoin;
-
-        let config = subcoin_test_service::test_configuration(runtime_handle);
-
-        run_with_off_runtime_in_memory_executor(&config, 3).await;
-    }
-
     #[tokio::test]
     async fn off_runtime_in_memory_executor_should_produce_same_result_as_runtime_disk_executor() {
         sp_tracing::try_init_simple();
