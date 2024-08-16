@@ -891,13 +891,13 @@
 /// There are two kinds of clients for executing the block:
 ///
 /// 1) Client using the disk backend. This is the default behaviour in Substrate. The state
-/// is maintained in the disk backend and pruned according to the parameters provided on startup.
+///    is maintained in the disk backend and pruned according to the parameters provided on startup.
 ///
 /// 2) Client using the in memory backend. This is specifically designated for fast block execution
-/// in the initial full sync stage, the in memory backend keeps the entire latest chain state in
-/// the memory for executing blocks, the previous states are not stored. The block executor using
-/// the in memory backend needs to import the block within the executor to update the in memory
-/// chain state.
+///    in the initial full sync stage, the in memory backend keeps the entire latest chain state in
+///    the memory for executing blocks, the previous states are not stored. The block executor using
+///    the in memory backend needs to import the block within the executor to update the in memory
+///    chain state.
 </span><span class="kw">pub enum </span>ClientContext&lt;BI&gt; {
     Disk,
     InMemory(BI),

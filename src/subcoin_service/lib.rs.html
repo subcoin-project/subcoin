@@ -523,10 +523,6 @@
 <a href="#523" id="523">523</a>
 <a href="#524" id="524">524</a>
 <a href="#525" id="525">525</a>
-<a href="#526" id="526">526</a>
-<a href="#527" id="527">527</a>
-<a href="#528" id="528">528</a>
-<a href="#529" id="529">529</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! Subcoin service implementation. Specialized wrapper over substrate service.
 
 </span><span class="attr">#![allow(deprecated)]
@@ -800,10 +796,11 @@
 <span class="kw">where
     </span>N: sc_network::NetworkBackend&lt;Block, &lt;Block <span class="kw">as </span>BlockT&gt;::Hash&gt;,
 {
-    <span class="kw">let </span>net_config =
-        sc_network::config::FullNetworkConfiguration::&lt;Block, &lt;Block <span class="kw">as </span>BlockT&gt;::Hash, N&gt;::new(
-            <span class="kw-2">&amp;</span>config.network,
-        );
+    <span class="kw">let </span>net_config = sc_network::config::FullNetworkConfiguration::&lt;
+        Block,
+        &lt;Block <span class="kw">as </span>BlockT&gt;::Hash,
+        N,
+    &gt;::new(<span class="kw-2">&amp;</span>config.network, config.prometheus_registry().cloned());
     <span class="kw">let </span>metrics = N::register_notification_metrics(config.prometheus_registry());
 
     <span class="kw">let </span>transaction_pool = sc_transaction_pool::BasicPool::new_full(
@@ -886,12 +883,7 @@
     spawn_handle.spawn(
         <span class="string">"substrate-informant"</span>,
         <span class="prelude-val">None</span>,
-        sc_informant::build(
-            client.clone(),
-            Arc::new(network),
-            sync_service.clone(),
-            config.informant_output_format.clone(),
-        ),
+        sc_informant::build(client.clone(), Arc::new(network), sync_service.clone()),
     );
 
     network_starter.start_network();

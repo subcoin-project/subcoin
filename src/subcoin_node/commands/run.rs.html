@@ -520,7 +520,7 @@
         </span>spawn_handle.spawn(
             <span class="string">"subcoin-informant"</span>,
             <span class="prelude-val">None</span>,
-            subcoin_informant::build(client.clone(), subcoin_network_handle, Default::default()),
+            subcoin_informant::build(client.clone(), subcoin_network_handle),
         );
 
         <span class="prelude-val">Ok</span>(task_manager)

@@ -388,6 +388,7 @@
 <a href="#388" id="388">388</a>
 <a href="#389" id="389">389</a>
 <a href="#390" id="390">390</a>
+<a href="#391" id="391">391</a>
 </pre></div><pre class="rust"><code><span class="kw">use crate</span>::{
     initialize_genesis_block_hash_mapping, BitcoinExecutorDispatch, CoinStorageKey, FullBackend,
     FullClient, GenesisBlockBuilder, InMemoryBackend, InMemoryClient, TransactionAdapter,
@@ -454,7 +455,8 @@
 
         <span class="kw">let </span>now = std::time::Instant::now();
 
-        <span class="kw">let </span>top = client
+        <span class="comment">// This might take long when the chain state is huge.
+        </span><span class="kw">let </span>top = client
             .storage_pairs(info.best_hash, <span class="prelude-val">None</span>, <span class="prelude-val">None</span>)<span class="question-mark">?
             </span>.map(|(key, data)| (key.<span class="number">0</span>, data.<span class="number">0</span>))
             .collect::&lt;BTreeMap&lt;<span class="kw">_</span>, <span class="kw">_</span>&gt;&gt;();

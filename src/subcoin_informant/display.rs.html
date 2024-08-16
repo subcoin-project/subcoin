@@ -213,9 +213,6 @@
 <a href="#213" id="213">213</a>
 <a href="#214" id="214">214</a>
 <a href="#215" id="215">215</a>
-<a href="#216" id="216">216</a>
-<a href="#217" id="217">217</a>
-<a href="#218" id="218">218</a>
 </pre></div><pre class="rust"><code><span class="comment">// This file is part of Substrate.
 
 // Copyright (C) Parity Technologies (UK) Ltd.
@@ -234,10 +231,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see &lt;https://www.gnu.org/licenses/&gt;.
 
-</span><span class="kw">use crate</span>::{ClientInfoExt, OutputFormat};
-<span class="kw">use </span>ansi_term::Colour;
+</span><span class="kw">use </span><span class="kw">crate</span>::ClientInfoExt;
 <span class="kw">use </span>bitcoin::hashes::Hash;
 <span class="kw">use </span>bitcoin::BlockHash;
+<span class="kw">use </span>console::style;
 <span class="kw">use </span>sp_runtime::traits::{Block <span class="kw">as </span>BlockT, CheckedDiv, NumberFor, Saturating, Zero};
 <span class="kw">use </span>std::fmt::{<span class="self">self</span>, Display};
 <span class="kw">use </span>std::time::Instant;
@@ -282,19 +279,16 @@
     </span>last_total_bytes_inbound: u64,
     <span class="doccomment">/// The last seen total of bytes sent.
     </span>last_total_bytes_outbound: u64,
-    <span class="doccomment">/// The format to print output in.
-    </span>format: OutputFormat,
 }
 
 <span class="kw">impl</span>&lt;B: BlockT&gt; InformantDisplay&lt;B&gt; {
     <span class="doccomment">/// Builds a new informant display system.
-    </span><span class="kw">pub fn </span>new(format: OutputFormat) -&gt; InformantDisplay&lt;B&gt; {
+    </span><span class="kw">pub fn </span>new() -&gt; InformantDisplay&lt;B&gt; {
         InformantDisplay {
             last_number: <span class="prelude-val">None</span>,
             last_update: Instant::now(),
             last_total_bytes_inbound: <span class="number">0</span>,
             last_total_bytes_outbound: <span class="number">0</span>,
-            format,
         }
     }
 
@@ -343,13 +337,13 @@
 
         <span class="macro">tracing::info!</span>(
             target: <span class="string">"subcoin"</span>,
-            <span class="string">"{level} {}{target} ({} peers), best: #{} ({best_bitcoin_hash},{best_hash}), finalized #{} ({finalized_bitcoin_hash},{finalized_hash}), {} {}"</span>,
-            <span class="self">self</span>.format.print_with_color(Colour::White.bold(), status),
-            <span class="self">self</span>.format.print_with_color(Colour::White.bold(), num_connected_peers),
-            <span class="self">self</span>.format.print_with_color(Colour::White.bold(), best_number),
-            <span class="self">self</span>.format.print_with_color(Colour::White.bold(), finalized_number),
-            <span class="self">self</span>.format.print_with_color(Colour::Green, <span class="macro">format!</span>(<span class="string">"⬇ {}"</span>, TransferRateFormat(avg_bytes_per_sec_inbound))),
-            <span class="self">self</span>.format.print_with_color(Colour::Red, <span class="macro">format!</span>(<span class="string">"⬆ {}"</span>, TransferRateFormat(avg_bytes_per_sec_outbound))),
+            <span class="string">"{level} {}{target} ({} peers), best: #{} ({best_bitcoin_hash},{best_hash}), finalized #{} ({finalized_bitcoin_hash},{finalized_hash}), ⬇ {} ⬆ {}"</span>,
+            style(status).white().bold(),
+            style(num_connected_peers).white().bold(),
+            style(best_number).white().bold(),
+            style(finalized_number).white().bold(),
+            style(TransferRateFormat(avg_bytes_per_sec_inbound)).green(),
+            style(TransferRateFormat(avg_bytes_per_sec_outbound)).red(),
         )
     }
 }
