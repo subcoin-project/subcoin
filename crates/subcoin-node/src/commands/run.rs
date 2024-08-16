@@ -240,7 +240,7 @@ impl RunCmd {
         spawn_handle.spawn(
             "subcoin-informant",
             None,
-            subcoin_informant::build(client.clone(), subcoin_network_handle, Default::default()),
+            subcoin_informant::build(client.clone(), subcoin_network_handle),
         );
 
         Ok(task_manager)

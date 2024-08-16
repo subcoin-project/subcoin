@@ -332,6 +332,7 @@ impl<Block: BlockT> Blockchain<Block> {
                 None => storage.aux.remove(&k),
             };
         }
+        println!("[write_aux] after {:?}", storage.aux);
     }
 }
 
@@ -770,11 +771,16 @@ impl<Block: BlockT> backend::Backend<Block> for Backend<Block> {
                     .apply_transaction(*header.state_root(), state);
             }
 
+            println!("=============== [commit_operation] hash: {hash:?}, header: {header:?}, justification: {justification:?}, body: {body:?}");
             self.blockchain
                 .insert(hash, header, justification, body, pending_block.state)?;
         }
 
         if !operation.aux.is_empty() {
+            println!(
+                "=============== [commit_operation] aux: {:?}",
+                operation.aux
+            );
             self.blockchain.write_aux(operation.aux);
         }
 

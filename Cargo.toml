@@ -27,7 +27,6 @@ members = [
 default-members = ["crates/subcoin-node"]
 
 [workspace.dependencies]
-ansi_term = "0.12.1"
 async-trait = "0.1"
 bitcoin = { git = "https://github.com/liuchengxu/rust-bitcoin", branch = "0.32.x-subcoin", default-features = false }
 bitcoinconsensus = "0.105.0+25.1"
@@ -35,6 +34,7 @@ bitcoin-explorer = { git = "https://github.com/liuchengxu/Rusty-Bitcoin-Explorer
 chrono = "0.4.37"
 clap = { version = "4", features = ["derive"] }
 codec = { package = "parity-scale-codec", version = "3.0.0", default-features = false }
+console = "0.15.8"
 fastrand = "2.0.2"
 futures = "0.3"
 futures-timer = "3.0.1"
