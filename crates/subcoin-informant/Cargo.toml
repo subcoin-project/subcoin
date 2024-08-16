@@ -7,8 +7,8 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-ansi_term = { workspace = true }
 bitcoin = { workspace = true }
+console = { workspace = true }
 futures = { workspace = true }
 futures-timer = { workspace = true }
 sc-client-api = { workspace = true }

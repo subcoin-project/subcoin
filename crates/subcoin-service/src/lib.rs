@@ -271,10 +271,11 @@ pub fn start_substrate_network<N>(
 where
     N: sc_network::NetworkBackend<Block, <Block as BlockT>::Hash>,
 {
-    let net_config =
-        sc_network::config::FullNetworkConfiguration::<Block, <Block as BlockT>::Hash, N>::new(
-            &config.network,
-        );
+    let net_config = sc_network::config::FullNetworkConfiguration::<
+        Block,
+        <Block as BlockT>::Hash,
+        N,
+    >::new(&config.network, config.prometheus_registry().cloned());
     let metrics = N::register_notification_metrics(config.prometheus_registry());
 
     let transaction_pool = sc_transaction_pool::BasicPool::new_full(
@@ -357,12 +358,7 @@ where
     spawn_handle.spawn(
         "substrate-informant",
         None,
-        sc_informant::build(
-            client.clone(),
-            Arc::new(network),
-            sync_service.clone(),
-            config.informant_output_format.clone(),
-        ),
+        sc_informant::build(client.clone(), Arc::new(network), sync_service.clone()),
     );
 
     network_starter.start_network();

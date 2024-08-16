@@ -64,6 +64,7 @@ fn new_in_memory_backend(
 
         let now = std::time::Instant::now();
 
+        // This might take long when the chain state is huge.
         let top = client
             .storage_pairs(info.best_hash, None, None)?
             .map(|(key, data)| (key.0, data.0))

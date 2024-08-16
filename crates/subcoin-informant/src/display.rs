@@ -16,10 +16,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::{ClientInfoExt, OutputFormat};
-use ansi_term::Colour;
+use crate::ClientInfoExt;
 use bitcoin::hashes::Hash;
 use bitcoin::BlockHash;
+use console::style;
 use sp_runtime::traits::{Block as BlockT, CheckedDiv, NumberFor, Saturating, Zero};
 use std::fmt::{self, Display};
 use std::time::Instant;
@@ -64,19 +64,16 @@ pub struct InformantDisplay<B: BlockT> {
     last_total_bytes_inbound: u64,
     /// The last seen total of bytes sent.
     last_total_bytes_outbound: u64,
-    /// The format to print output in.
-    format: OutputFormat,
 }
 
 impl<B: BlockT> InformantDisplay<B> {
     /// Builds a new informant display system.
-    pub fn new(format: OutputFormat) -> InformantDisplay<B> {
+    pub fn new() -> InformantDisplay<B> {
         InformantDisplay {
             last_number: None,
             last_update: Instant::now(),
             last_total_bytes_inbound: 0,
             last_total_bytes_outbound: 0,
-            format,
         }
     }
 
@@ -125,13 +122,13 @@ impl<B: BlockT> InformantDisplay<B> {
 
         tracing::info!(
             target: "subcoin",
-            "{level} {}{target} ({} peers), best: #{} ({best_bitcoin_hash},{best_hash}), finalized #{} ({finalized_bitcoin_hash},{finalized_hash}), {} {}",
-            self.format.print_with_color(Colour::White.bold(), status),
-            self.format.print_with_color(Colour::White.bold(), num_connected_peers),
-            self.format.print_with_color(Colour::White.bold(), best_number),
-            self.format.print_with_color(Colour::White.bold(), finalized_number),
-            self.format.print_with_color(Colour::Green, format!("⬇ {}", TransferRateFormat(avg_bytes_per_sec_inbound))),
-            self.format.print_with_color(Colour::Red, format!("⬆ {}", TransferRateFormat(avg_bytes_per_sec_outbound))),
+            "{level} {}{target} ({} peers), best: #{} ({best_bitcoin_hash},{best_hash}), finalized #{} ({finalized_bitcoin_hash},{finalized_hash}), ⬇ {} ⬆ {}",
+            style(status).white().bold(),
+            style(num_connected_peers).white().bold(),
+            style(best_number).white().bold(),
+            style(finalized_number).white().bold(),
+            style(TransferRateFormat(avg_bytes_per_sec_inbound)).green(),
+            style(TransferRateFormat(avg_bytes_per_sec_outbound)).red(),
         )
     }
 }
