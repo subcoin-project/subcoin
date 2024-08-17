@@ -5,7 +5,7 @@ use sc_cli::{
     SharedParams,
 };
 use sc_client_api::UsageProvider;
-use sc_consensus_nakamoto::{BitcoinBlockImporter, BlockVerification, ImportConfig};
+use sc_consensus_nakamoto::BitcoinBlockImporter;
 use sc_service::{Configuration, TaskManager};
 use std::sync::Arc;
 use subcoin_network::SyncStrategy;
@@ -17,10 +17,6 @@ pub struct Run {
     /// Specify the major sync strategy.
     #[clap(long, default_value = "headers-first")]
     pub sync_strategy: SyncStrategy,
-
-    /// Specify the block verification level.
-    #[clap(long, default_value = "full")]
-    pub block_verification: BlockVerification,
 
     /// Specify the confirmation depth during the major sync.
     ///
@@ -102,7 +98,7 @@ impl RunCmd {
     ) -> sc_cli::Result<TaskManager> {
         let block_execution_strategy = run.common_params.block_execution_strategy();
         let network = run.common_params.bitcoin_network();
-        let verify_script = run.common_params.verify_script;
+        let import_config = run.common_params.import_config();
         let no_finalizer = run.no_finalizer;
         let major_sync_confirmation_depth = run.major_sync_confirmation_depth;
 
@@ -132,12 +128,7 @@ impl RunCmd {
             BitcoinBlockImporter::<_, _, _, _, subcoin_service::TransactionAdapter>::new(
                 client.clone(),
                 client.clone(),
-                ImportConfig {
-                    network,
-                    block_verification: run.block_verification,
-                    execute_block: true,
-                    verify_script,
-                },
+                import_config,
                 Arc::new(subcoin_service::CoinStorageKey),
                 block_executor,
                 config.prometheus_registry(),
