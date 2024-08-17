@@ -120,7 +120,7 @@ pub enum Error {
     #[error(transparent)]
     Header(#[from] HeaderError),
     #[error(transparent)]
-    BitcoinConsensus(#[from] bitcoin::consensus::validation::BitcoinconsensusError),
+    BitcoinConsensus(#[from] bitcoinconsensus::Error),
     #[error(transparent)]
     Bip34(#[from] Bip34Error),
     #[error("Bitcoin codec: {0:?}")]
@@ -402,13 +402,18 @@ where
                 }
 
                 if self.verify_script {
-                    bitcoin::consensus::validation::verify_script_with_flags(
-                        &spent_output.script_pubkey,
-                        input_index,
-                        spent_output.value,
+                    let script_verify_result = bitcoinconsensus::verify_with_flags(
+                        spent_output.script_pubkey.as_bytes(),
+                        spent_output.value.to_sat(),
                         spending_transaction,
+                        input_index,
                         flags,
-                    )?;
+                    );
+
+                    match script_verify_result {
+                        Ok(()) | Err(bitcoinconsensus::Error::ERR_SCRIPT) => {}
+                        Err(script_error) => return Err(script_error.into()),
+                    }
                 }
 
                 spent_utxos.insert(coin);

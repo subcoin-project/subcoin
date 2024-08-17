@@ -462,7 +462,7 @@ where
         // Consensus-level Bitcoin block verification.
         self.verifier
             .verify_block(block_number, &block)
-            .map_err(|err| import_err(err.to_string()))?;
+            .map_err(|err| import_err(format!("{err:?}")))?;
 
         let (block_import_params, maybe_import_params_for_block_executor) = self
             .prepare_substrate_block_import(block, substrate_parent_block)
