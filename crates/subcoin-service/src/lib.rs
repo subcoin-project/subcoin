@@ -27,6 +27,7 @@ use sc_utils::mpsc::TracingUnboundedSender;
 use sp_core::traits::SpawnNamed;
 use sp_core::Encode;
 use sp_keystore::KeystorePtr;
+use sp_runtime::traits::Header as HeaderT;
 use sp_runtime::traits::{Block as BlockT, CheckedSub};
 use std::ops::Deref;
 use std::path::Path;
@@ -287,7 +288,7 @@ where
     );
 
     let import_queue = BasicQueue::new(
-        ImportQueueVerifier,
+        SubstrateImportQueueVerifier,
         Box::new(client.clone()),
         None,
         &task_manager.spawn_essential_handle(),
@@ -490,7 +491,7 @@ pub fn new_partial(config: &Configuration) -> Result<PartialComponents, ServiceE
     );
 
     let import_queue = BasicQueue::new(
-        ImportQueueVerifier,
+        SubstrateImportQueueVerifier,
         Box::new(client.clone()),
         None,
         &task_manager.spawn_essential_handle(),
@@ -509,17 +510,33 @@ pub fn new_partial(config: &Configuration) -> Result<PartialComponents, ServiceE
     })
 }
 
-/// Verifier used by the import queue.
-pub struct ImportQueueVerifier;
+/// Verifier used by the Substrate import queue.
+///
+/// Verifies the blocks received from the Substrate networking.
+pub struct SubstrateImportQueueVerifier;
 
 #[async_trait::async_trait]
-impl<Block: BlockT> Verifier<Block> for ImportQueueVerifier {
+impl<Block: BlockT> Verifier<Block> for SubstrateImportQueueVerifier {
     async fn verify(
         &self,
-        mut block: BlockImportParams<Block>,
+        mut block_import_params: BlockImportParams<Block>,
     ) -> Result<BlockImportParams<Block>, String> {
-        // TODO: PowVerifier
-        block.fork_choice = Some(sc_consensus::ForkChoiceStrategy::LongestChain);
-        Ok(block)
+        // TODO: Verify header.
+
+        block_import_params.fork_choice = Some(sc_consensus::ForkChoiceStrategy::LongestChain);
+
+        let bitcoin_block_hash =
+            subcoin_primitives::extract_bitcoin_block_hash::<Block>(&block_import_params.header)
+                .map_err(|err| format!("Failed to extract bitcoin block hash: {err:?}"))?;
+
+        let substrate_block_hash = block_import_params.header.hash();
+
+        sc_consensus_nakamoto::insert_bitcoin_block_hash_mapping::<Block>(
+            &mut block_import_params,
+            bitcoin_block_hash,
+            substrate_block_hash,
+        );
+
+        Ok(block_import_params)
     }
 }
