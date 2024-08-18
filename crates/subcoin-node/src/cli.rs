@@ -133,6 +133,7 @@ pub fn run() -> sc_cli::Result<()> {
                         CONFIRMATION_DEPTH,
                         100,
                         is_major_syncing,
+                        None,
                     )
                 });
                 Ok((

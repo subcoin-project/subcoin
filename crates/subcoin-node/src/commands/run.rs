@@ -162,7 +162,7 @@ impl RunCmd {
             task_manager.keep_alive(subcoin_networking);
         }
 
-        let system_rpc_tx = match config.network.network_backend {
+        let (system_rpc_tx, substrate_sync_service) = match config.network.network_backend {
             sc_network::config::NetworkBackendType::Libp2p => {
                 subcoin_service::start_substrate_network::<
                     sc_network::NetworkWorker<
@@ -223,6 +223,7 @@ impl RunCmd {
                     CONFIRMATION_DEPTH,
                     major_sync_confirmation_depth,
                     subcoin_network_handle.is_major_syncing(),
+                    Some(substrate_sync_service),
                 )
             });
         }

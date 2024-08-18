@@ -17,6 +17,7 @@ use sc_consensus::import_queue::BasicQueue;
 use sc_consensus::{BlockImportParams, Verifier};
 use sc_consensus_nakamoto::{BlockExecutionStrategy, BlockExecutor};
 use sc_executor::NativeElseWasmExecutor;
+use sc_network_sync::SyncingService;
 use sc_service::config::PrometheusConfig;
 use sc_service::error::Error as ServiceError;
 use sc_service::{
@@ -24,6 +25,7 @@ use sc_service::{
 };
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sc_utils::mpsc::TracingUnboundedSender;
+use sp_consensus::SyncOracle;
 use sp_core::traits::SpawnNamed;
 use sp_core::Encode;
 use sp_keystore::KeystorePtr;
@@ -267,7 +269,13 @@ pub fn start_substrate_network<N>(
     task_manager: &mut TaskManager,
     _keystore: KeystorePtr,
     mut telemetry: Option<Telemetry>,
-) -> Result<TracingUnboundedSender<sc_rpc::system::Request<Block>>, ServiceError>
+) -> Result<
+    (
+        TracingUnboundedSender<sc_rpc::system::Request<Block>>,
+        Arc<SyncingService<Block>>,
+    ),
+    ServiceError,
+>
 where
     N: sc_network::NetworkBackend<Block, <Block as BlockT>::Hash>,
 {
@@ -363,7 +371,7 @@ where
 
     network_starter.start_network();
 
-    Ok(system_rpc_tx)
+    Ok((system_rpc_tx, sync_service))
 }
 
 /// Creates a future to finalize blocks with enough confirmations.
@@ -374,13 +382,16 @@ pub async fn finalize_confirmed_blocks<Block, Client, Backend>(
     spawn_handle: impl SpawnNamed,
     confirmation_depth: u32,
     major_sync_confirmation_depth: u32,
-    is_major_syncing: Arc<AtomicBool>,
+    subcoin_networking_is_major_syncing: Arc<AtomicBool>,
+    substrate_sync_service: Option<Arc<SyncingService<Block>>>,
 ) where
     Block: BlockT + 'static,
     Client: HeaderBackend<Block> + Finalizer<Block, Backend> + BlockchainEvents<Block> + 'static,
     Backend: sc_client_api::backend::Backend<Block> + 'static,
 {
-    let mut block_import_stream = client.import_notification_stream();
+    // Use `every_import_notification_stream()` so that we can receive the notifications even when
+    // major syncing.
+    let mut block_import_stream = client.every_import_notification_stream();
 
     while let Some(notification) = block_import_stream.next().await {
         let block_number = client
@@ -400,10 +411,18 @@ pub async fn finalize_confirmed_blocks<Block, Client, Backend>(
             continue;
         }
 
-        if is_major_syncing.load(Ordering::SeqCst) {
-            // During major sync, finalize every 10th block to avoid race conditions:
+        if subcoin_networking_is_major_syncing.load(Ordering::Relaxed) {
+            // During major sync, finalize every `major_sync_confirmation_depth` block to avoid race conditions:
             // >Safety violation: attempted to revert finalized block...
             if confirmed_block_number < finalized_number + major_sync_confirmation_depth.into() {
+                continue;
+            }
+        }
+
+        if let Some(sync_service) = substrate_sync_service.as_ref() {
+            if sync_service.is_major_syncing()
+                && sync_service.num_queued_blocks().await.unwrap_or(0) > 0
+            {
                 continue;
             }
         }
@@ -415,15 +434,24 @@ pub async fn finalize_confirmed_blocks<Block, Client, Backend>(
             .expect("Confirmed block must be available; qed");
 
         let client = client.clone();
-        let is_major_syncing = is_major_syncing.clone();
+        let subcoin_networking_is_major_syncing = subcoin_networking_is_major_syncing.clone();
+        let substrate_sync_service = substrate_sync_service.clone();
 
         spawn_handle.spawn(
             "finalize-block",
             None,
             Box::pin(async move {
+                if confirmed_block_number <= client.info().finalized_number {
+                    return;
+                }
+
                 match client.finalize_block(block_to_finalize, None, true) {
                     Ok(()) => {
-                        if !is_major_syncing.load(Ordering::Relaxed) {
+                        let is_major_syncing = subcoin_networking_is_major_syncing.load(Ordering::Relaxed)
+                            || substrate_sync_service
+                                .map(|sync_service| sync_service.is_major_syncing())
+                                .unwrap_or(false);
+                        if !is_major_syncing {
                             tracing::info!("✅ Successfully finalized block: {block_to_finalize}");
                         }
                     }
