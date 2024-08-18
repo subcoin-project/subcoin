@@ -445,6 +445,7 @@ where
             best_peer.best_number,
         );
 
+        tracing::debug!("Headers-first sync is complete, continuing with blocks-first sync");
         self.update_syncing_state(Syncing::BlocksFirstSync(blocks_first_downloader));
 
         Some(blocks_sync_request)

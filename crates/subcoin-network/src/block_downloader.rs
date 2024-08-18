@@ -146,7 +146,9 @@ impl BlockDownloadManager {
             _ => 512,
         };
 
-        let import_queue_is_overloaded = self.best_queued_number - best_number > max_queued_blocks;
+        let queued_blocks = self.best_queued_number - best_number;
+
+        let import_queue_is_overloaded = queued_blocks > max_queued_blocks;
 
         if import_queue_is_overloaded
             && self
@@ -157,7 +159,7 @@ impl BlockDownloadManager {
             tracing::debug!(
                 best_number,
                 best_queued_number = self.best_queued_number,
-                "⏸️ Pausing download: too many blocks in the queue",
+                "⏸️ Pausing download: too many blocks ({queued_blocks}) in the queue",
             );
             self.last_overloaded_queue_log_time.replace(Instant::now());
         }
