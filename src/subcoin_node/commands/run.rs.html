@@ -270,14 +270,6 @@
 <a href="#270" id="270">270</a>
 <a href="#271" id="271">271</a>
 <a href="#272" id="272">272</a>
-<a href="#273" id="273">273</a>
-<a href="#274" id="274">274</a>
-<a href="#275" id="275">275</a>
-<a href="#276" id="276">276</a>
-<a href="#277" id="277">277</a>
-<a href="#278" id="278">278</a>
-<a href="#279" id="279">279</a>
-<a href="#280" id="280">280</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::params::{CommonParams, NetworkParams};
 <span class="kw">use </span>clap::Parser;
 <span class="kw">use </span>sc_cli::{
@@ -285,7 +277,7 @@
     SharedParams,
 };
 <span class="kw">use </span>sc_client_api::UsageProvider;
-<span class="kw">use </span>sc_consensus_nakamoto::{BitcoinBlockImporter, BlockVerification, ImportConfig};
+<span class="kw">use </span>sc_consensus_nakamoto::BitcoinBlockImporter;
 <span class="kw">use </span>sc_service::{Configuration, TaskManager};
 <span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>subcoin_network::SyncStrategy;
@@ -297,10 +289,6 @@
     <span class="doccomment">/// Specify the major sync strategy.
     </span><span class="attr">#[clap(long, default_value = <span class="string">"headers-first"</span>)]
     </span><span class="kw">pub </span>sync_strategy: SyncStrategy,
-
-    <span class="doccomment">/// Specify the block verification level.
-    </span><span class="attr">#[clap(long, default_value = <span class="string">"full"</span>)]
-    </span><span class="kw">pub </span>block_verification: BlockVerification,
 
     <span class="doccomment">/// Specify the confirmation depth during the major sync.
     ///
@@ -382,7 +370,7 @@
     ) -&gt; sc_cli::Result&lt;TaskManager&gt; {
         <span class="kw">let </span>block_execution_strategy = run.common_params.block_execution_strategy();
         <span class="kw">let </span>network = run.common_params.bitcoin_network();
-        <span class="kw">let </span>verify_script = run.common_params.verify_script;
+        <span class="kw">let </span>import_config = run.common_params.import_config();
         <span class="kw">let </span>no_finalizer = run.no_finalizer;
         <span class="kw">let </span>major_sync_confirmation_depth = run.major_sync_confirmation_depth;
 
@@ -412,12 +400,7 @@
             BitcoinBlockImporter::&lt;<span class="kw">_</span>, <span class="kw">_</span>, <span class="kw">_</span>, <span class="kw">_</span>, subcoin_service::TransactionAdapter&gt;::new(
                 client.clone(),
                 client.clone(),
-                ImportConfig {
-                    network,
-                    block_verification: run.block_verification,
-                    execute_block: <span class="bool-val">true</span>,
-                    verify_script,
-                },
+                import_config,
                 Arc::new(subcoin_service::CoinStorageKey),
                 block_executor,
                 config.prometheus_registry(),
@@ -451,7 +434,7 @@
             task_manager.keep_alive(subcoin_networking);
         }
 
-        <span class="kw">let </span>system_rpc_tx = <span class="kw">match </span>config.network.network_backend {
+        <span class="kw">let </span>(system_rpc_tx, substrate_sync_service) = <span class="kw">match </span>config.network.network_backend {
             sc_network::config::NetworkBackendType::Libp2p =&gt; {
                 subcoin_service::start_substrate_network::&lt;
                     sc_network::NetworkWorker&lt;
@@ -512,6 +495,7 @@
                     CONFIRMATION_DEPTH,
                     major_sync_confirmation_depth,
                     subcoin_network_handle.is_major_syncing(),
+                    <span class="prelude-val">Some</span>(substrate_sync_service),
                 )
             });
         }

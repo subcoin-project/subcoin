@@ -30,6 +30,9 @@
 <a href="#30" id="30">30</a>
 <a href="#31" id="31">31</a>
 <a href="#32" id="32">32</a>
+<a href="#33" id="33">33</a>
+<a href="#34" id="34">34</a>
+<a href="#35" id="35">35</a>
 </pre></div><pre class="rust"><code><span class="kw">mod </span>block_executor;
 <span class="kw">mod </span>block_import;
 <span class="kw">mod </span>chain_params;
@@ -41,7 +44,10 @@
     BenchmarkAllExecutor, BenchmarkRuntimeBlockExecutor, BlockExecutionStrategy, BlockExecutor,
     ClientContext, ExecutionBackend, OffRuntimeBlockExecutor, RuntimeBlockExecutor,
 };
-<span class="kw">pub use </span>block_import::{BitcoinBlockImport, BitcoinBlockImporter, ImportConfig, ImportStatus};
+<span class="kw">pub use </span>block_import::{
+    insert_bitcoin_block_hash_mapping, BitcoinBlockImport, BitcoinBlockImporter, ImportConfig,
+    ImportStatus,
+};
 <span class="kw">pub use </span>import_queue::{
     bitcoin_import_queue, BlockImportQueue, ImportBlocks, ImportManyBlocksResult,
 };

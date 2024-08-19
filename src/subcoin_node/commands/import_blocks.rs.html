@@ -273,24 +273,13 @@
 <a href="#273" id="273">273</a>
 <a href="#274" id="274">274</a>
 <a href="#275" id="275">275</a>
-<a href="#276" id="276">276</a>
-<a href="#277" id="277">277</a>
-<a href="#278" id="278">278</a>
-<a href="#279" id="279">279</a>
-<a href="#280" id="280">280</a>
-<a href="#281" id="281">281</a>
-<a href="#282" id="282">282</a>
-<a href="#283" id="283">283</a>
-<a href="#284" id="284">284</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::params::CommonParams;
 <span class="kw">use </span><span class="kw">crate</span>::utils::Yield;
 <span class="kw">use </span>bitcoin_explorer::BitcoinDB;
 <span class="kw">use </span>futures::FutureExt;
 <span class="kw">use </span>sc_cli::{ImportParams, NodeKeyParams, PrometheusParams, SharedParams};
 <span class="kw">use </span>sc_client_api::HeaderBackend;
-<span class="kw">use </span>sc_consensus_nakamoto::{
-    BitcoinBlockImport, BitcoinBlockImporter, BlockVerification, ImportConfig,
-};
+<span class="kw">use </span>sc_consensus_nakamoto::{BitcoinBlockImport, BitcoinBlockImporter, ImportConfig};
 <span class="kw">use </span>sc_service::config::PrometheusConfig;
 <span class="kw">use </span>sc_service::SpawnTaskHandle;
 <span class="kw">use </span>sp_runtime::traits::{Block <span class="kw">as </span>BlockT, CheckedDiv, NumberFor, Zero};
@@ -346,7 +335,6 @@
     import_params: ImportParams,
     block_count: <span class="prelude-ty">Option</span>&lt;usize&gt;,
     to: <span class="prelude-ty">Option</span>&lt;usize&gt;,
-    execute_block: bool,
 }
 
 <span class="kw">impl </span>ImportBlocksCmd {
@@ -359,7 +347,6 @@
             import_params,
             block_count: cmd.block_count,
             to: cmd.end_block,
-            execute_block: cmd.execute_transactions,
         }
     }
 
@@ -369,7 +356,7 @@
         client: Arc&lt;FullClient&gt;,
         block_executor: Box&lt;<span class="kw">dyn </span>sc_consensus_nakamoto::BlockExecutor&lt;OpaqueBlock&gt;&gt;,
         data_dir: PathBuf,
-        verify_script: bool,
+        import_config: ImportConfig,
         spawn_handle: SpawnTaskHandle,
         maybe_prometheus_config: <span class="prelude-ty">Option</span>&lt;PrometheusConfig&gt;,
     ) -&gt; sc_cli::Result&lt;()&gt; {
@@ -399,12 +386,7 @@
             BitcoinBlockImporter::&lt;<span class="kw">_</span>, <span class="kw">_</span>, <span class="kw">_</span>, <span class="kw">_</span>, subcoin_service::TransactionAdapter&gt;::new(
                 client.clone(),
                 client.clone(),
-                ImportConfig {
-                    network: bitcoin::Network::Bitcoin,
-                    block_verification: BlockVerification::None,
-                    execute_block: <span class="self">self</span>.execute_block,
-                    verify_script,
-                },
+                import_config,
                 Arc::new(subcoin_service::CoinStorageKey),
                 block_executor,
                 maybe_prometheus_config

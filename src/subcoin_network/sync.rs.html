@@ -517,6 +517,7 @@
 <a href="#517" id="517">517</a>
 <a href="#518" id="518">518</a>
 <a href="#519" id="519">519</a>
+<a href="#520" id="520">520</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::block_downloader::{BlocksFirstDownloader, HeadersFirstDownloader};
 <span class="kw">use </span><span class="kw">crate</span>::peer_manager::NewPeer;
 <span class="kw">use crate</span>::{Error, Latency, PeerId, SyncStatus, SyncStrategy};
@@ -964,6 +965,7 @@
             best_peer.best_number,
         );
 
+        <span class="macro">tracing::debug!</span>(<span class="string">"Headers-first sync is complete, continuing with blocks-first sync"</span>);
         <span class="self">self</span>.update_syncing_state(Syncing::BlocksFirstSync(blocks_first_downloader));
 
         <span class="prelude-val">Some</span>(blocks_sync_request)

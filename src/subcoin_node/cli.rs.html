@@ -281,6 +281,12 @@
 <a href="#281" id="281">281</a>
 <a href="#282" id="282">282</a>
 <a href="#283" id="283">283</a>
+<a href="#284" id="284">284</a>
+<a href="#285" id="285">285</a>
+<a href="#286" id="286">286</a>
+<a href="#287" id="287">287</a>
+<a href="#288" id="288">288</a>
+<a href="#289" id="289">289</a>
 </pre></div><pre class="rust"><code><span class="kw">pub mod </span>params;
 
 <span class="kw">use </span><span class="kw">crate</span>::commands::blockchain::{Blockchain, BlockchainCmd};
@@ -292,6 +298,7 @@
 <span class="kw">use </span>frame_benchmarking_cli::{BenchmarkCmd, SUBSTRATE_REFERENCE_HARDWARE};
 <span class="kw">use </span>sc_cli::SubstrateCli <span class="kw">as </span>SubstrateCliT;
 <span class="kw">use </span>sc_client_api::UsageProvider;
+<span class="kw">use </span>sc_consensus_nakamoto::ImportConfig;
 <span class="kw">use </span>sc_service::PartialComponents;
 <span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>subcoin_primitives::CONFIRMATION_DEPTH;
@@ -378,7 +385,11 @@
         }
         Command::ImportBlocks(cmd) =&gt; {
             <span class="kw">let </span>block_execution_strategy = cmd.common_params.block_execution_strategy();
-            <span class="kw">let </span>verify_script = cmd.common_params.verify_script;
+            <span class="kw">let </span>bitcoin_network = cmd.common_params.bitcoin_network();
+            <span class="kw">let </span>import_config = ImportConfig {
+                execute_block: cmd.execute_transactions,
+                ..cmd.common_params.import_config()
+            };
             <span class="kw">let </span>chain_spec_id = cmd.common_params.chain.chain_spec_id();
             <span class="kw">let </span>maybe_prometheus_config = cmd
                 .prometheus_params
@@ -393,7 +404,7 @@
                     block_executor,
                     ..
                 } = subcoin_service::new_node(subcoin_service::SubcoinConfiguration {
-                    network: bitcoin::Network::Bitcoin,
+                    network: bitcoin_network,
                     config: <span class="kw-2">&amp;</span>config,
                     block_execution_strategy,
                     no_hardware_benchmarks,
@@ -411,6 +422,7 @@
                         CONFIRMATION_DEPTH,
                         <span class="number">100</span>,
                         is_major_syncing,
+                        <span class="prelude-val">None</span>,
                     )
                 });
                 <span class="prelude-val">Ok</span>((
@@ -418,7 +430,7 @@
                         client,
                         block_executor,
                         data_dir,
-                        verify_script,
+                        import_config,
                         spawn_handle,
                         maybe_prometheus_config,
                     ),

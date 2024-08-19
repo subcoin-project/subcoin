@@ -606,6 +606,11 @@
 <a href="#606" id="606">606</a>
 <a href="#607" id="607">607</a>
 <a href="#608" id="608">608</a>
+<a href="#609" id="609">609</a>
+<a href="#610" id="610">610</a>
+<a href="#611" id="611">611</a>
+<a href="#612" id="612">612</a>
+<a href="#613" id="613">613</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! This module provides block verification functionalities based on Bitcoin's consensus rules.
 //! The primary code reference for these consensus rules is Bitcoin Core.
 //!
@@ -728,7 +733,7 @@
     </span><span class="attr">#[error(transparent)]
     </span>Header(<span class="attr">#[from] </span>HeaderError),
     <span class="attr">#[error(transparent)]
-    </span>BitcoinConsensus(<span class="attr">#[from] </span>bitcoin::consensus::validation::BitcoinconsensusError),
+    </span>BitcoinConsensus(<span class="attr">#[from] </span>bitcoinconsensus::Error),
     <span class="attr">#[error(transparent)]
     </span>Bip34(<span class="attr">#[from] </span>Bip34Error),
     <span class="attr">#[error(<span class="string">"Bitcoin codec: {0:?}"</span>)]
@@ -1010,13 +1015,18 @@
                 }
 
                 <span class="kw">if </span><span class="self">self</span>.verify_script {
-                    bitcoin::consensus::validation::verify_script_with_flags(
-                        <span class="kw-2">&amp;</span>spent_output.script_pubkey,
-                        input_index,
-                        spent_output.value,
+                    <span class="kw">let </span>script_verify_result = bitcoinconsensus::verify_with_flags(
+                        spent_output.script_pubkey.as_bytes(),
+                        spent_output.value.to_sat(),
                         spending_transaction,
+                        input_index,
                         flags,
-                    )<span class="question-mark">?</span>;
+                    );
+
+                    <span class="kw">match </span>script_verify_result {
+                        <span class="prelude-val">Ok</span>(()) | <span class="prelude-val">Err</span>(bitcoinconsensus::Error::ERR_SCRIPT) =&gt; {}
+                        <span class="prelude-val">Err</span>(script_error) =&gt; <span class="kw">return </span><span class="prelude-val">Err</span>(script_error.into()),
+                    }
                 }
 
                 spent_utxos.insert(coin);

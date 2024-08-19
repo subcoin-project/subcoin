@@ -523,6 +523,49 @@
 <a href="#523" id="523">523</a>
 <a href="#524" id="524">524</a>
 <a href="#525" id="525">525</a>
+<a href="#526" id="526">526</a>
+<a href="#527" id="527">527</a>
+<a href="#528" id="528">528</a>
+<a href="#529" id="529">529</a>
+<a href="#530" id="530">530</a>
+<a href="#531" id="531">531</a>
+<a href="#532" id="532">532</a>
+<a href="#533" id="533">533</a>
+<a href="#534" id="534">534</a>
+<a href="#535" id="535">535</a>
+<a href="#536" id="536">536</a>
+<a href="#537" id="537">537</a>
+<a href="#538" id="538">538</a>
+<a href="#539" id="539">539</a>
+<a href="#540" id="540">540</a>
+<a href="#541" id="541">541</a>
+<a href="#542" id="542">542</a>
+<a href="#543" id="543">543</a>
+<a href="#544" id="544">544</a>
+<a href="#545" id="545">545</a>
+<a href="#546" id="546">546</a>
+<a href="#547" id="547">547</a>
+<a href="#548" id="548">548</a>
+<a href="#549" id="549">549</a>
+<a href="#550" id="550">550</a>
+<a href="#551" id="551">551</a>
+<a href="#552" id="552">552</a>
+<a href="#553" id="553">553</a>
+<a href="#554" id="554">554</a>
+<a href="#555" id="555">555</a>
+<a href="#556" id="556">556</a>
+<a href="#557" id="557">557</a>
+<a href="#558" id="558">558</a>
+<a href="#559" id="559">559</a>
+<a href="#560" id="560">560</a>
+<a href="#561" id="561">561</a>
+<a href="#562" id="562">562</a>
+<a href="#563" id="563">563</a>
+<a href="#564" id="564">564</a>
+<a href="#565" id="565">565</a>
+<a href="#566" id="566">566</a>
+<a href="#567" id="567">567</a>
+<a href="#568" id="568">568</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! Subcoin service implementation. Specialized wrapper over substrate service.
 
 </span><span class="attr">#![allow(deprecated)]
@@ -542,6 +585,7 @@
 <span class="kw">use </span>sc_consensus::{BlockImportParams, Verifier};
 <span class="kw">use </span>sc_consensus_nakamoto::{BlockExecutionStrategy, BlockExecutor};
 <span class="kw">use </span>sc_executor::NativeElseWasmExecutor;
+<span class="kw">use </span>sc_network_sync::SyncingService;
 <span class="kw">use </span>sc_service::config::PrometheusConfig;
 <span class="kw">use </span>sc_service::error::Error <span class="kw">as </span>ServiceError;
 <span class="kw">use </span>sc_service::{
@@ -549,10 +593,11 @@
 };
 <span class="kw">use </span>sc_telemetry::{Telemetry, TelemetryWorker};
 <span class="kw">use </span>sc_utils::mpsc::TracingUnboundedSender;
+<span class="kw">use </span>sp_consensus::SyncOracle;
 <span class="kw">use </span>sp_core::traits::SpawnNamed;
 <span class="kw">use </span>sp_core::Encode;
 <span class="kw">use </span>sp_keystore::KeystorePtr;
-<span class="kw">use </span>sp_runtime::traits::{Block <span class="kw">as </span>BlockT, CheckedSub};
+<span class="kw">use </span>sp_runtime::traits::{Block <span class="kw">as </span>BlockT, CheckedSub, Header <span class="kw">as </span>HeaderT};
 <span class="kw">use </span>std::ops::Deref;
 <span class="kw">use </span>std::path::Path;
 <span class="kw">use </span>std::sync::atomic::{AtomicBool, Ordering};
@@ -784,6 +829,11 @@
     })
 }
 
+<span class="kw">type </span>SubstrateNetworkingParts = (
+    TracingUnboundedSender&lt;sc_rpc::system::Request&lt;Block&gt;&gt;,
+    Arc&lt;SyncingService&lt;Block&gt;&gt;,
+);
+
 <span class="doccomment">/// Runs the Substrate networking.
 </span><span class="kw">pub fn </span>start_substrate_network&lt;N&gt;(
     config: <span class="kw-2">&amp;mut </span>Configuration,
@@ -792,7 +842,7 @@
     task_manager: <span class="kw-2">&amp;mut </span>TaskManager,
     _keystore: KeystorePtr,
     <span class="kw-2">mut </span>telemetry: <span class="prelude-ty">Option</span>&lt;Telemetry&gt;,
-) -&gt; <span class="prelude-ty">Result</span>&lt;TracingUnboundedSender&lt;sc_rpc::system::Request&lt;Block&gt;&gt;, ServiceError&gt;
+) -&gt; <span class="prelude-ty">Result</span>&lt;SubstrateNetworkingParts, ServiceError&gt;
 <span class="kw">where
     </span>N: sc_network::NetworkBackend&lt;Block, &lt;Block <span class="kw">as </span>BlockT&gt;::Hash&gt;,
 {
@@ -812,7 +862,7 @@
     );
 
     <span class="kw">let </span>import_queue = BasicQueue::new(
-        ImportQueueVerifier,
+        SubstrateImportQueueVerifier,
         Box::new(client.clone()),
         <span class="prelude-val">None</span>,
         <span class="kw-2">&amp;</span>task_manager.spawn_essential_handle(),
@@ -888,7 +938,7 @@
 
     network_starter.start_network();
 
-    <span class="prelude-val">Ok</span>(system_rpc_tx)
+    <span class="prelude-val">Ok</span>((system_rpc_tx, sync_service))
 }
 
 <span class="doccomment">/// Creates a future to finalize blocks with enough confirmations.
@@ -899,13 +949,16 @@
     spawn_handle: <span class="kw">impl </span>SpawnNamed,
     confirmation_depth: u32,
     major_sync_confirmation_depth: u32,
-    is_major_syncing: Arc&lt;AtomicBool&gt;,
+    subcoin_networking_is_major_syncing: Arc&lt;AtomicBool&gt;,
+    substrate_sync_service: <span class="prelude-ty">Option</span>&lt;Arc&lt;SyncingService&lt;Block&gt;&gt;&gt;,
 ) <span class="kw">where
     </span>Block: BlockT + <span class="lifetime">'static</span>,
     Client: HeaderBackend&lt;Block&gt; + Finalizer&lt;Block, Backend&gt; + BlockchainEvents&lt;Block&gt; + <span class="lifetime">'static</span>,
     Backend: sc_client_api::backend::Backend&lt;Block&gt; + <span class="lifetime">'static</span>,
 {
-    <span class="kw">let </span><span class="kw-2">mut </span>block_import_stream = client.import_notification_stream();
+    <span class="comment">// Use `every_import_notification_stream()` so that we can receive the notifications even when
+    // major syncing.
+    </span><span class="kw">let </span><span class="kw-2">mut </span>block_import_stream = client.every_import_notification_stream();
 
     <span class="kw">while let </span><span class="prelude-val">Some</span>(notification) = block_import_stream.next().<span class="kw">await </span>{
         <span class="kw">let </span>block_number = client
@@ -925,10 +978,18 @@
             <span class="kw">continue</span>;
         }
 
-        <span class="kw">if </span>is_major_syncing.load(Ordering::SeqCst) {
-            <span class="comment">// During major sync, finalize every 10th block to avoid race conditions:
+        <span class="kw">if </span>subcoin_networking_is_major_syncing.load(Ordering::Relaxed) {
+            <span class="comment">// During major sync, finalize every `major_sync_confirmation_depth` block to avoid race conditions:
             // &gt;Safety violation: attempted to revert finalized block...
             </span><span class="kw">if </span>confirmed_block_number &lt; finalized_number + major_sync_confirmation_depth.into() {
+                <span class="kw">continue</span>;
+            }
+        }
+
+        <span class="kw">if let </span><span class="prelude-val">Some</span>(sync_service) = substrate_sync_service.as_ref() {
+            <span class="kw">if </span>sync_service.is_major_syncing()
+                &amp;&amp; sync_service.num_queued_blocks().<span class="kw">await</span>.unwrap_or(<span class="number">0</span>) &gt; <span class="number">0
+            </span>{
                 <span class="kw">continue</span>;
             }
         }
@@ -940,15 +1001,24 @@
             .expect(<span class="string">"Confirmed block must be available; qed"</span>);
 
         <span class="kw">let </span>client = client.clone();
-        <span class="kw">let </span>is_major_syncing = is_major_syncing.clone();
+        <span class="kw">let </span>subcoin_networking_is_major_syncing = subcoin_networking_is_major_syncing.clone();
+        <span class="kw">let </span>substrate_sync_service = substrate_sync_service.clone();
 
         spawn_handle.spawn(
             <span class="string">"finalize-block"</span>,
             <span class="prelude-val">None</span>,
             Box::pin(<span class="kw">async move </span>{
+                <span class="kw">if </span>confirmed_block_number &lt;= client.info().finalized_number {
+                    <span class="kw">return</span>;
+                }
+
                 <span class="kw">match </span>client.finalize_block(block_to_finalize, <span class="prelude-val">None</span>, <span class="bool-val">true</span>) {
                     <span class="prelude-val">Ok</span>(()) =&gt; {
-                        <span class="kw">if </span>!is_major_syncing.load(Ordering::Relaxed) {
+                        <span class="kw">let </span>is_major_syncing = subcoin_networking_is_major_syncing.load(Ordering::Relaxed)
+                            || substrate_sync_service
+                                .map(|sync_service| sync_service.is_major_syncing())
+                                .unwrap_or(<span class="bool-val">false</span>);
+                        <span class="kw">if </span>!is_major_syncing {
                             <span class="macro">tracing::info!</span>(<span class="string">"✅ Successfully finalized block: {block_to_finalize}"</span>);
                         }
                     }
@@ -1015,7 +1085,7 @@
     );
 
     <span class="kw">let </span>import_queue = BasicQueue::new(
-        ImportQueueVerifier,
+        SubstrateImportQueueVerifier,
         Box::new(client.clone()),
         <span class="prelude-val">None</span>,
         <span class="kw-2">&amp;</span>task_manager.spawn_essential_handle(),
@@ -1034,18 +1104,34 @@
     })
 }
 
-<span class="doccomment">/// Verifier used by the import queue.
-</span><span class="kw">pub struct </span>ImportQueueVerifier;
+<span class="doccomment">/// Verifier used by the Substrate import queue.
+///
+/// Verifies the blocks received from the Substrate networking.
+</span><span class="kw">pub struct </span>SubstrateImportQueueVerifier;
 
 <span class="attr">#[async_trait::async_trait]
-</span><span class="kw">impl</span>&lt;Block: BlockT&gt; Verifier&lt;Block&gt; <span class="kw">for </span>ImportQueueVerifier {
+</span><span class="kw">impl</span>&lt;Block: BlockT&gt; Verifier&lt;Block&gt; <span class="kw">for </span>SubstrateImportQueueVerifier {
     <span class="kw">async fn </span>verify(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
-        <span class="kw-2">mut </span>block: BlockImportParams&lt;Block&gt;,
+        <span class="kw-2">mut </span>block_import_params: BlockImportParams&lt;Block&gt;,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;BlockImportParams&lt;Block&gt;, String&gt; {
-        <span class="comment">// TODO: PowVerifier
-        </span>block.fork_choice = <span class="prelude-val">Some</span>(sc_consensus::ForkChoiceStrategy::LongestChain);
-        <span class="prelude-val">Ok</span>(block)
+        <span class="comment">// TODO: Verify header.
+
+        </span>block_import_params.fork_choice = <span class="prelude-val">Some</span>(sc_consensus::ForkChoiceStrategy::LongestChain);
+
+        <span class="kw">let </span>bitcoin_block_hash =
+            subcoin_primitives::extract_bitcoin_block_hash::&lt;Block&gt;(<span class="kw-2">&amp;</span>block_import_params.header)
+                .map_err(|err| <span class="macro">format!</span>(<span class="string">"Failed to extract bitcoin block hash: {err:?}"</span>))<span class="question-mark">?</span>;
+
+        <span class="kw">let </span>substrate_block_hash = block_import_params.header.hash();
+
+        sc_consensus_nakamoto::insert_bitcoin_block_hash_mapping::&lt;Block&gt;(
+            <span class="kw-2">&amp;mut </span>block_import_params,
+            bitcoin_block_hash,
+            substrate_block_hash,
+        );
+
+        <span class="prelude-val">Ok</span>(block_import_params)
     }
 }
 </code></pre></div></section></main></body></html>

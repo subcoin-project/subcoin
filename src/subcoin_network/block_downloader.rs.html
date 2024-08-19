@@ -279,6 +279,8 @@
 <a href="#279" id="279">279</a>
 <a href="#280" id="280">280</a>
 <a href="#281" id="281">281</a>
+<a href="#282" id="282">282</a>
+<a href="#283" id="283">283</a>
 </pre></div><pre class="rust"><code><span class="kw">mod </span>blocks_first;
 <span class="kw">mod </span>headers_first;
 
@@ -427,7 +429,9 @@
             <span class="kw">_ </span>=&gt; <span class="number">512</span>,
         };
 
-        <span class="kw">let </span>import_queue_is_overloaded = <span class="self">self</span>.best_queued_number - best_number &gt; max_queued_blocks;
+        <span class="kw">let </span>queued_blocks = <span class="self">self</span>.best_queued_number - best_number;
+
+        <span class="kw">let </span>import_queue_is_overloaded = queued_blocks &gt; max_queued_blocks;
 
         <span class="kw">if </span>import_queue_is_overloaded
             &amp;&amp; <span class="self">self
@@ -438,7 +442,7 @@
             <span class="macro">tracing::debug!</span>(
                 best_number,
                 best_queued_number = <span class="self">self</span>.best_queued_number,
-                <span class="string">"⏸️ Pausing download: too many blocks in the queue"</span>,
+                <span class="string">"⏸️ Pausing download: too many blocks ({queued_blocks}) in the queue"</span>,
             );
             <span class="self">self</span>.last_overloaded_queue_log_time.replace(Instant::now());
         }
