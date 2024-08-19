@@ -17,6 +17,7 @@ use sc_consensus::import_queue::BasicQueue;
 use sc_consensus::{BlockImportParams, Verifier};
 use sc_consensus_nakamoto::{BlockExecutionStrategy, BlockExecutor};
 use sc_executor::NativeElseWasmExecutor;
+use sc_network_sync::SyncingService;
 use sc_service::config::PrometheusConfig;
 use sc_service::error::Error as ServiceError;
 use sc_service::{
@@ -24,10 +25,11 @@ use sc_service::{
 };
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sc_utils::mpsc::TracingUnboundedSender;
+use sp_consensus::SyncOracle;
 use sp_core::traits::SpawnNamed;
 use sp_core::Encode;
 use sp_keystore::KeystorePtr;
-use sp_runtime::traits::{Block as BlockT, CheckedSub};
+use sp_runtime::traits::{Block as BlockT, CheckedSub, Header as HeaderT};
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -259,6 +261,11 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
     })
 }
 
+type SubstrateNetworkingParts = (
+    TracingUnboundedSender<sc_rpc::system::Request<Block>>,
+    Arc<SyncingService<Block>>,
+);
+
 /// Runs the Substrate networking.
 pub fn start_substrate_network<N>(
     config: &mut Configuration,
@@ -267,7 +274,7 @@ pub fn start_substrate_network<N>(
     task_manager: &mut TaskManager,
     _keystore: KeystorePtr,
     mut telemetry: Option<Telemetry>,
-) -> Result<TracingUnboundedSender<sc_rpc::system::Request<Block>>, ServiceError>
+) -> Result<SubstrateNetworkingParts, ServiceError>
 where
     N: sc_network::NetworkBackend<Block, <Block as BlockT>::Hash>,
 {
@@ -287,7 +294,7 @@ where
     );
 
     let import_queue = BasicQueue::new(
-        ImportQueueVerifier,
+        SubstrateImportQueueVerifier,
         Box::new(client.clone()),
         None,
         &task_manager.spawn_essential_handle(),
@@ -363,7 +370,7 @@ where
 
     network_starter.start_network();
 
-    Ok(system_rpc_tx)
+    Ok((system_rpc_tx, sync_service))
 }
 
 /// Creates a future to finalize blocks with enough confirmations.
@@ -374,13 +381,16 @@ pub async fn finalize_confirmed_blocks<Block, Client, Backend>(
     spawn_handle: impl SpawnNamed,
     confirmation_depth: u32,
     major_sync_confirmation_depth: u32,
-    is_major_syncing: Arc<AtomicBool>,
+    subcoin_networking_is_major_syncing: Arc<AtomicBool>,
+    substrate_sync_service: Option<Arc<SyncingService<Block>>>,
 ) where
     Block: BlockT + 'static,
     Client: HeaderBackend<Block> + Finalizer<Block, Backend> + BlockchainEvents<Block> + 'static,
     Backend: sc_client_api::backend::Backend<Block> + 'static,
 {
-    let mut block_import_stream = client.import_notification_stream();
+    // Use `every_import_notification_stream()` so that we can receive the notifications even when
+    // major syncing.
+    let mut block_import_stream = client.every_import_notification_stream();
 
     while let Some(notification) = block_import_stream.next().await {
         let block_number = client
@@ -400,10 +410,18 @@ pub async fn finalize_confirmed_blocks<Block, Client, Backend>(
             continue;
         }
 
-        if is_major_syncing.load(Ordering::SeqCst) {
-            // During major sync, finalize every 10th block to avoid race conditions:
+        if subcoin_networking_is_major_syncing.load(Ordering::Relaxed) {
+            // During major sync, finalize every `major_sync_confirmation_depth` block to avoid race conditions:
             // >Safety violation: attempted to revert finalized block...
             if confirmed_block_number < finalized_number + major_sync_confirmation_depth.into() {
+                continue;
+            }
+        }
+
+        if let Some(sync_service) = substrate_sync_service.as_ref() {
+            if sync_service.is_major_syncing()
+                && sync_service.num_queued_blocks().await.unwrap_or(0) > 0
+            {
                 continue;
             }
         }
@@ -415,15 +433,24 @@ pub async fn finalize_confirmed_blocks<Block, Client, Backend>(
             .expect("Confirmed block must be available; qed");
 
         let client = client.clone();
-        let is_major_syncing = is_major_syncing.clone();
+        let subcoin_networking_is_major_syncing = subcoin_networking_is_major_syncing.clone();
+        let substrate_sync_service = substrate_sync_service.clone();
 
         spawn_handle.spawn(
             "finalize-block",
             None,
             Box::pin(async move {
+                if confirmed_block_number <= client.info().finalized_number {
+                    return;
+                }
+
                 match client.finalize_block(block_to_finalize, None, true) {
                     Ok(()) => {
-                        if !is_major_syncing.load(Ordering::Relaxed) {
+                        let is_major_syncing = subcoin_networking_is_major_syncing.load(Ordering::Relaxed)
+                            || substrate_sync_service
+                                .map(|sync_service| sync_service.is_major_syncing())
+                                .unwrap_or(false);
+                        if !is_major_syncing {
                             tracing::info!("✅ Successfully finalized block: {block_to_finalize}");
                         }
                     }
@@ -490,7 +517,7 @@ pub fn new_partial(config: &Configuration) -> Result<PartialComponents, ServiceE
     );
 
     let import_queue = BasicQueue::new(
-        ImportQueueVerifier,
+        SubstrateImportQueueVerifier,
         Box::new(client.clone()),
         None,
         &task_manager.spawn_essential_handle(),
@@ -509,17 +536,33 @@ pub fn new_partial(config: &Configuration) -> Result<PartialComponents, ServiceE
     })
 }
 
-/// Verifier used by the import queue.
-pub struct ImportQueueVerifier;
+/// Verifier used by the Substrate import queue.
+///
+/// Verifies the blocks received from the Substrate networking.
+pub struct SubstrateImportQueueVerifier;
 
 #[async_trait::async_trait]
-impl<Block: BlockT> Verifier<Block> for ImportQueueVerifier {
+impl<Block: BlockT> Verifier<Block> for SubstrateImportQueueVerifier {
     async fn verify(
         &self,
-        mut block: BlockImportParams<Block>,
+        mut block_import_params: BlockImportParams<Block>,
     ) -> Result<BlockImportParams<Block>, String> {
-        // TODO: PowVerifier
-        block.fork_choice = Some(sc_consensus::ForkChoiceStrategy::LongestChain);
-        Ok(block)
+        // TODO: Verify header.
+
+        block_import_params.fork_choice = Some(sc_consensus::ForkChoiceStrategy::LongestChain);
+
+        let bitcoin_block_hash =
+            subcoin_primitives::extract_bitcoin_block_hash::<Block>(&block_import_params.header)
+                .map_err(|err| format!("Failed to extract bitcoin block hash: {err:?}"))?;
+
+        let substrate_block_hash = block_import_params.header.hash();
+
+        sc_consensus_nakamoto::insert_bitcoin_block_hash_mapping::<Block>(
+            &mut block_import_params,
+            bitcoin_block_hash,
+            substrate_block_hash,
+        );
+
+        Ok(block_import_params)
     }
 }

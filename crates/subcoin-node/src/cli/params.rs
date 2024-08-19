@@ -1,5 +1,7 @@
 use clap::Parser;
-use sc_consensus_nakamoto::{BlockExecutionStrategy, ExecutionBackend};
+use sc_consensus_nakamoto::{
+    BlockExecutionStrategy, BlockVerification, ExecutionBackend, ImportConfig,
+};
 use std::path::PathBuf;
 use subcoin_network::PeerId;
 
@@ -87,6 +89,10 @@ pub struct CommonParams {
     #[clap(long, value_enum, default_value_t = BlockExecution::RuntimeDisk)]
     pub block_execution: BlockExecution,
 
+    /// Specify the block verification level.
+    #[clap(long, default_value = "full")]
+    pub block_verification: BlockVerification,
+
     /// Whether to verify the TxIn scripts during the block verification.
     #[clap(long, default_value_t = true)]
     pub verify_script: bool,
@@ -138,6 +144,15 @@ impl CommonParams {
             Chain::BitcoinMainnet => bitcoin::Network::Bitcoin,
             Chain::BitcoinTestnet => bitcoin::Network::Testnet,
             Chain::BitcoinSignet => bitcoin::Network::Signet,
+        }
+    }
+
+    pub fn import_config(&self) -> ImportConfig {
+        ImportConfig {
+            network: self.bitcoin_network(),
+            block_verification: self.block_verification,
+            execute_block: true,
+            verify_script: self.verify_script,
         }
     }
 

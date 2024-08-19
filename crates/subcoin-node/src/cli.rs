@@ -9,6 +9,7 @@ use clap::Parser;
 use frame_benchmarking_cli::{BenchmarkCmd, SUBSTRATE_REFERENCE_HARDWARE};
 use sc_cli::SubstrateCli as SubstrateCliT;
 use sc_client_api::UsageProvider;
+use sc_consensus_nakamoto::ImportConfig;
 use sc_service::PartialComponents;
 use std::sync::Arc;
 use subcoin_primitives::CONFIRMATION_DEPTH;
@@ -95,7 +96,11 @@ pub fn run() -> sc_cli::Result<()> {
         }
         Command::ImportBlocks(cmd) => {
             let block_execution_strategy = cmd.common_params.block_execution_strategy();
-            let verify_script = cmd.common_params.verify_script;
+            let bitcoin_network = cmd.common_params.bitcoin_network();
+            let import_config = ImportConfig {
+                execute_block: cmd.execute_transactions,
+                ..cmd.common_params.import_config()
+            };
             let chain_spec_id = cmd.common_params.chain.chain_spec_id();
             let maybe_prometheus_config = cmd
                 .prometheus_params
@@ -110,7 +115,7 @@ pub fn run() -> sc_cli::Result<()> {
                     block_executor,
                     ..
                 } = subcoin_service::new_node(subcoin_service::SubcoinConfiguration {
-                    network: bitcoin::Network::Bitcoin,
+                    network: bitcoin_network,
                     config: &config,
                     block_execution_strategy,
                     no_hardware_benchmarks,
@@ -128,6 +133,7 @@ pub fn run() -> sc_cli::Result<()> {
                         CONFIRMATION_DEPTH,
                         100,
                         is_major_syncing,
+                        None,
                     )
                 });
                 Ok((
@@ -135,7 +141,7 @@ pub fn run() -> sc_cli::Result<()> {
                         client,
                         block_executor,
                         data_dir,
-                        verify_script,
+                        import_config,
                         spawn_handle,
                         maybe_prometheus_config,
                     ),

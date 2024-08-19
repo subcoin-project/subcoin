@@ -4,9 +4,7 @@ use bitcoin_explorer::BitcoinDB;
 use futures::FutureExt;
 use sc_cli::{ImportParams, NodeKeyParams, PrometheusParams, SharedParams};
 use sc_client_api::HeaderBackend;
-use sc_consensus_nakamoto::{
-    BitcoinBlockImport, BitcoinBlockImporter, BlockVerification, ImportConfig,
-};
+use sc_consensus_nakamoto::{BitcoinBlockImport, BitcoinBlockImporter, ImportConfig};
 use sc_service::config::PrometheusConfig;
 use sc_service::SpawnTaskHandle;
 use sp_runtime::traits::{Block as BlockT, CheckedDiv, NumberFor, Zero};
@@ -62,7 +60,6 @@ pub struct ImportBlocksCmd {
     import_params: ImportParams,
     block_count: Option<usize>,
     to: Option<usize>,
-    execute_block: bool,
 }
 
 impl ImportBlocksCmd {
@@ -75,7 +72,6 @@ impl ImportBlocksCmd {
             import_params,
             block_count: cmd.block_count,
             to: cmd.end_block,
-            execute_block: cmd.execute_transactions,
         }
     }
 
@@ -85,7 +81,7 @@ impl ImportBlocksCmd {
         client: Arc<FullClient>,
         block_executor: Box<dyn sc_consensus_nakamoto::BlockExecutor<OpaqueBlock>>,
         data_dir: PathBuf,
-        verify_script: bool,
+        import_config: ImportConfig,
         spawn_handle: SpawnTaskHandle,
         maybe_prometheus_config: Option<PrometheusConfig>,
     ) -> sc_cli::Result<()> {
@@ -115,12 +111,7 @@ impl ImportBlocksCmd {
             BitcoinBlockImporter::<_, _, _, _, subcoin_service::TransactionAdapter>::new(
                 client.clone(),
                 client.clone(),
-                ImportConfig {
-                    network: bitcoin::Network::Bitcoin,
-                    block_verification: BlockVerification::None,
-                    execute_block: self.execute_block,
-                    verify_script,
-                },
+                import_config,
                 Arc::new(subcoin_service::CoinStorageKey),
                 block_executor,
                 maybe_prometheus_config

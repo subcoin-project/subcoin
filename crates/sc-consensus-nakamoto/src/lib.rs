@@ -9,7 +9,10 @@ pub use block_executor::{
     BenchmarkAllExecutor, BenchmarkRuntimeBlockExecutor, BlockExecutionStrategy, BlockExecutor,
     ClientContext, ExecutionBackend, OffRuntimeBlockExecutor, RuntimeBlockExecutor,
 };
-pub use block_import::{BitcoinBlockImport, BitcoinBlockImporter, ImportConfig, ImportStatus};
+pub use block_import::{
+    insert_bitcoin_block_hash_mapping, BitcoinBlockImport, BitcoinBlockImporter, ImportConfig,
+    ImportStatus,
+};
 pub use import_queue::{
     bitcoin_import_queue, BlockImportQueue, ImportBlocks, ImportManyBlocksResult,
 };

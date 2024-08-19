@@ -8,7 +8,7 @@ license.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
-bitcoin = { workspace = true }
+bitcoin = { workspace = true, features = ["serde"] }
 chrono = { workspace = true }
 clap = { workspace = true, optional = true }
 fastrand = { workspace = true }

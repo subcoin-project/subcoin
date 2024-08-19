@@ -351,11 +351,11 @@ where
         block_import_params.fork_choice = Some(ForkChoiceStrategy::LongestChain);
         block_import_params.state_action = state_action;
 
-        // Track the mapping of Bitcoin block hash to the Substrate block hash in aux-db.
-        block_import_params.auxiliary = vec![(
-            bitcoin_block_hash.to_byte_array().to_vec(),
-            Some(substrate_block_hash.encode()),
-        )];
+        insert_bitcoin_block_hash_mapping(
+            &mut block_import_params,
+            bitcoin_block_hash,
+            substrate_block_hash,
+        );
 
         let import_params_for_block_executor = maybe_changes.map(|changes| {
             clone_block_import_params(&block_import_params, StateAction::ApplyChanges(changes))
@@ -363,6 +363,20 @@ where
 
         Ok((block_import_params, import_params_for_block_executor))
     }
+}
+
+/// Inserts a mapping between a Bitcoin block hash and a Substrate block hash into the auxiliary
+/// data of the `block_import_params`. This mapping will be stored in the aux-db during the subcoin
+/// block import or substrate block verification process.
+pub fn insert_bitcoin_block_hash_mapping<Block: BlockT>(
+    block_import_params: &mut BlockImportParams<Block>,
+    bitcoin_block_hash: BlockHash,
+    substrate_block_hash: Block::Hash,
+) {
+    block_import_params.auxiliary = vec![(
+        bitcoin_block_hash.to_byte_array().to_vec(),
+        Some(substrate_block_hash.encode()),
+    )];
 }
 
 /// Result of the operation of importing a Bitcoin block.
@@ -462,7 +476,7 @@ where
         // Consensus-level Bitcoin block verification.
         self.verifier
             .verify_block(block_number, &block)
-            .map_err(|err| import_err(err.to_string()))?;
+            .map_err(|err| import_err(format!("{err:?}")))?;
 
         let (block_import_params, maybe_import_params_for_block_executor) = self
             .prepare_substrate_block_import(block, substrate_parent_block)

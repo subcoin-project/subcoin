@@ -21,6 +21,7 @@ sc-executor = { workspace = true }
 sc-fast-sync-backend = { workspace = true }
 sc-informant = { workspace = true }
 sc-network = { workspace = true }
+sc-network-sync = { workspace = true }
 sc-rpc = { workspace = true }
 sc-rpc-api = { workspace = true }
 # `test-helpers` for the exposed Client type.
@@ -35,6 +36,7 @@ serde_json = { workspace = true }
 sp-api = { workspace = true }
 sp-blockchain = { workspace = true }
 sp-block-builder = { workspace = true }
+sp-consensus = { workspace = true }
 sp-core = { workspace = true }
 sp-keystore = { workspace = true }
 sp-runtime = { workspace = true }

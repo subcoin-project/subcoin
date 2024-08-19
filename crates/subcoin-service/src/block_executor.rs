@@ -244,11 +244,13 @@ pub(super) fn new_block_executor(
 mod tests {
     use super::*;
     use crate::{new_node, NodeComponents, SubcoinConfiguration};
+    use bitcoin::consensus::Encodable;
     use sc_consensus_nakamoto::{
         BitcoinBlockImport, BitcoinBlockImporter, BlockVerification, ImportConfig, ImportStatus,
     };
     use sc_service::config::DatabaseSource;
     use sc_service::BasePath;
+    use sp_core::Encode;
     use subcoin_runtime::Header;
     use subcoin_test_service::block_data;
     use tokio::runtime::Handle;
@@ -289,6 +291,53 @@ mod tests {
         }
 
         client.header(client.info().best_hash).unwrap().unwrap()
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn inspect_substrate_header_size() {
+        let runtime_handle = Handle::current();
+        let config = subcoin_test_service::test_configuration(runtime_handle);
+        let NodeComponents { client, .. } = new_node(SubcoinConfiguration {
+            network: bitcoin::Network::Bitcoin,
+            block_execution_strategy: BlockExecutionStrategy::runtime_disk(),
+            config: &config,
+            no_hardware_benchmarks: true,
+            storage_monitor: Default::default(),
+        })
+        .expect("Failed to create node");
+
+        let substrate_genesis_header = client.header(client.info().genesis_hash).unwrap().unwrap();
+        let bitcoin_genesis_header =
+            bitcoin::constants::genesis_block(bitcoin::Network::Bitcoin).header;
+
+        let encoded_substrate_header = substrate_genesis_header.encode();
+        let mut encoded_bitcoin_header = Vec::new();
+        bitcoin_genesis_header
+            .consensus_encode(&mut encoded_bitcoin_header)
+            .unwrap();
+
+        println!(
+            "encoded_substrate_header: {} bytes",
+            encoded_substrate_header.len()
+        );
+        println!(
+            "parent_hash: {}, number: {}, state_root: {}, extrinsics_root: {}, digest: {}",
+            substrate_genesis_header.parent_hash().encode().len(),
+            substrate_genesis_header.number().encode().len(),
+            substrate_genesis_header.state_root().encode().len(),
+            substrate_genesis_header.extrinsics_root().encode().len(),
+            substrate_genesis_header.digest().encode().len(),
+        );
+
+        for d in substrate_genesis_header.digest().logs.iter() {
+            println!("digest item: {}", d.encode().len());
+        }
+
+        println!(
+            "encoded_bitcoin_header: {} bytes",
+            encoded_bitcoin_header.len()
+        );
     }
 
     #[tokio::test]
