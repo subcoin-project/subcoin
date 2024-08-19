@@ -261,6 +261,11 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
     })
 }
 
+type SubstrateNetworkingParts = (
+    TracingUnboundedSender<sc_rpc::system::Request<Block>>,
+    Arc<SyncingService<Block>>,
+);
+
 /// Runs the Substrate networking.
 pub fn start_substrate_network<N>(
     config: &mut Configuration,
@@ -269,13 +274,7 @@ pub fn start_substrate_network<N>(
     task_manager: &mut TaskManager,
     _keystore: KeystorePtr,
     mut telemetry: Option<Telemetry>,
-) -> Result<
-    (
-        TracingUnboundedSender<sc_rpc::system::Request<Block>>,
-        Arc<SyncingService<Block>>,
-    ),
-    ServiceError,
->
+) -> Result<SubstrateNetworkingParts, ServiceError>
 where
     N: sc_network::NetworkBackend<Block, <Block as BlockT>::Hash>,
 {
