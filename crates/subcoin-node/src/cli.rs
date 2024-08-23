@@ -181,7 +181,7 @@ pub fn run() -> sc_cli::Result<()> {
                     task_manager,
                     import_queue,
                     ..
-                } = subcoin_service::new_partial(&config)?;
+                } = subcoin_service::new_partial(&config, bitcoin::Network::Bitcoin)?;
                 Ok((cmd.run(client, import_queue), task_manager))
             })
         }
@@ -192,7 +192,7 @@ pub fn run() -> sc_cli::Result<()> {
                     client,
                     task_manager,
                     ..
-                } = subcoin_service::new_partial(&config)?;
+                } = subcoin_service::new_partial(&config, bitcoin::Network::Bitcoin)?;
                 Ok((cmd.run(client, config.database), task_manager))
             })
         }
@@ -203,7 +203,7 @@ pub fn run() -> sc_cli::Result<()> {
                     client,
                     task_manager,
                     ..
-                } = subcoin_service::new_partial(&config)?;
+                } = subcoin_service::new_partial(&config, bitcoin::Network::Bitcoin)?;
 
                 let run_cmd = async move {
                     tracing::info!("Exporting raw state...");
@@ -235,7 +235,7 @@ pub fn run() -> sc_cli::Result<()> {
                     task_manager,
                     backend,
                     ..
-                } = subcoin_service::new_partial(&config)?;
+                } = subcoin_service::new_partial(&config, bitcoin::Network::Bitcoin)?;
                 Ok((cmd.run(client, backend, None), task_manager))
             })
         }
@@ -251,7 +251,7 @@ pub fn run() -> sc_cli::Result<()> {
                     }
                     BenchmarkCmd::Block(cmd) => {
                         let PartialComponents { client, .. } =
-                            subcoin_service::new_partial(&config)?;
+                            subcoin_service::new_partial(&config, bitcoin::Network::Bitcoin)?;
                         cmd.run(client)
                     }
                     #[cfg(not(feature = "runtime-benchmarks"))]
@@ -263,7 +263,7 @@ pub fn run() -> sc_cli::Result<()> {
                     BenchmarkCmd::Storage(cmd) => {
                         let PartialComponents {
                             client, backend, ..
-                        } = subcoin_service::new_partial(&config)?;
+                        } = subcoin_service::new_partial(&config, bitcoin::Network::Bitcoin)?;
                         let db = backend.expose_db();
                         let storage = backend.expose_storage();
 

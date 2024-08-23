@@ -71,7 +71,7 @@ where
     ///     - The time must be greater than the median time of the last 11 blocks.
     ///
     /// <https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L4146>
-    pub fn verify_header(&self, header: &BitcoinHeader) -> Result<u32, Error> {
+    pub fn verify(&self, header: &BitcoinHeader) -> Result<u32, Error> {
         let prev_block_hash = header.prev_blockhash;
 
         let prev_block_header = self.client.block_header(prev_block_hash).ok_or(

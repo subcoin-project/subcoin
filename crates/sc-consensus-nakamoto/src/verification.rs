@@ -189,7 +189,7 @@ where
     ) -> Result<(), Error> {
         match self.block_verification {
             BlockVerification::Full => {
-                let lock_time_cutoff = self.header_verifier.verify_header(&block.header)?;
+                let lock_time_cutoff = self.header_verifier.verify(&block.header)?;
 
                 if block_number >= self.chain_params.segwit_height
                     && !block.check_witness_commitment()
@@ -205,7 +205,7 @@ where
                 self.verify_transactions(block_number, block, txids, lock_time_cutoff)?;
             }
             BlockVerification::HeaderOnly => {
-                self.header_verifier.verify_header(&block.header)?;
+                self.header_verifier.verify(&block.header)?;
             }
             BlockVerification::None => {}
         }
