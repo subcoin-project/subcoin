@@ -216,7 +216,7 @@ impl RunCmd {
 
         if !no_finalizer {
             spawn_handle.spawn("finalizer", None, {
-                subcoin_service::finalize_confirmed_blocks(
+                subcoin_service::SubcoinFinalizer::new(
                     client.clone(),
                     spawn_handle.clone(),
                     CONFIRMATION_DEPTH,
@@ -224,6 +224,7 @@ impl RunCmd {
                     subcoin_network_handle.is_major_syncing(),
                     Some(substrate_sync_service),
                 )
+                .run()
             });
         }
 

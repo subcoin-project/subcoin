@@ -4,15 +4,16 @@
 
 mod block_executor;
 pub mod chain_spec;
+mod finalizer;
 mod genesis_block_builder;
 mod transaction_adapter;
 
 use bitcoin::hashes::Hash;
 use block_executor::{new_block_executor, new_in_memory_client};
 use frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE;
-use futures::{FutureExt, StreamExt};
+use futures::FutureExt;
 use genesis_block_builder::GenesisBlockBuilder;
-use sc_client_api::{AuxStore, BlockchainEvents, Finalizer, HeaderBackend};
+use sc_client_api::{AuxStore, HeaderBackend};
 use sc_consensus::import_queue::BasicQueue;
 use sc_consensus::{BlockImportParams, Verifier};
 use sc_consensus_nakamoto::{BlockExecutionStrategy, BlockExecutor, ChainParams, HeaderVerifier};
@@ -25,17 +26,15 @@ use sc_service::{
 };
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sc_utils::mpsc::TracingUnboundedSender;
-use sp_consensus::SyncOracle;
-use sp_core::traits::SpawnNamed;
 use sp_core::Encode;
-use sp_runtime::traits::{Block as BlockT, CheckedSub, Header as HeaderT};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::ops::Deref;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use subcoin_runtime::interface::OpaqueBlock as Block;
 use subcoin_runtime::RuntimeApi;
 
+pub use finalizer::SubcoinFinalizer;
 pub use transaction_adapter::TransactionAdapter;
 
 /// This is a specialization of the general Substrate ChainSpec type.
@@ -370,108 +369,6 @@ where
     network_starter.start_network();
 
     Ok((system_rpc_tx, sync_service))
-}
-
-/// Creates a future to finalize blocks with enough confirmations.
-///
-/// The future needs to be spawned in the background.
-pub async fn finalize_confirmed_blocks<Block, Client, Backend>(
-    client: Arc<Client>,
-    spawn_handle: impl SpawnNamed,
-    confirmation_depth: u32,
-    major_sync_confirmation_depth: u32,
-    subcoin_networking_is_major_syncing: Arc<AtomicBool>,
-    substrate_sync_service: Option<Arc<SyncingService<Block>>>,
-) where
-    Block: BlockT + 'static,
-    Client: HeaderBackend<Block> + Finalizer<Block, Backend> + BlockchainEvents<Block> + 'static,
-    Backend: sc_client_api::backend::Backend<Block> + 'static,
-{
-    // Use `every_import_notification_stream()` so that we can receive the notifications even when
-    // the Substrate network is major syncing.
-    let mut block_import_stream = client.every_import_notification_stream();
-
-    while let Some(notification) = block_import_stream.next().await {
-        let block_number = client
-            .number(notification.hash)
-            .ok()
-            .flatten()
-            .expect("Imported block must be available; qed");
-
-        let Some(confirmed_block_number) = block_number.checked_sub(&confirmation_depth.into())
-        else {
-            continue;
-        };
-
-        let finalized_number = client.info().finalized_number;
-
-        if confirmed_block_number <= finalized_number {
-            continue;
-        }
-
-        if subcoin_networking_is_major_syncing.load(Ordering::Relaxed) {
-            // During the major sync of Subcoin networking, we choose to finalize every `major_sync_confirmation_depth`
-            // block to avoid race conditions:
-            // >Safety violation: attempted to revert finalized block...
-            if confirmed_block_number < finalized_number + major_sync_confirmation_depth.into() {
-                continue;
-            }
-        }
-
-        if let Some(sync_service) = substrate_sync_service.as_ref() {
-            // State sync relies on the finalized block notification to progress
-            // Substrate chain sync component relies on the finalized block notification to
-            // initiate the state sync, do not attempt to finalize the block when the queued blocks
-            // are not empty, so that the state sync can be started when the last finalized block
-            // notification is sent.
-            if sync_service.is_major_syncing()
-                && sync_service.num_queued_blocks().await.unwrap_or(0) > 0
-            {
-                continue;
-            }
-        }
-
-        let block_to_finalize = client
-            .hash(confirmed_block_number)
-            .ok()
-            .flatten()
-            .expect("Confirmed block must be available; qed");
-
-        let client = client.clone();
-        let subcoin_networking_is_major_syncing = subcoin_networking_is_major_syncing.clone();
-        let substrate_sync_service = substrate_sync_service.clone();
-
-        spawn_handle.spawn(
-            "finalize-block",
-            None,
-            Box::pin(async move {
-                if confirmed_block_number <= client.info().finalized_number {
-                    return;
-                }
-
-                match client.finalize_block(block_to_finalize, None, true) {
-                    Ok(()) => {
-                        let is_major_syncing = subcoin_networking_is_major_syncing.load(Ordering::Relaxed)
-                            || substrate_sync_service
-                                .map(|sync_service| sync_service.is_major_syncing())
-                                .unwrap_or(false);
-
-                        // Only print the log when not major syncing to not clutter the logs.
-                        if !is_major_syncing {
-                            tracing::info!("✅ Successfully finalized block: {block_to_finalize}");
-                        }
-                    }
-                    Err(err) => {
-                        tracing::warn!(
-                            ?err,
-                            ?finalized_number,
-                            "Failed to finalize block #{confirmed_block_number},{block_to_finalize}",
-                        );
-                    }
-                }
-            }),
-        );
-    }
 }
 
 type PartialComponents = sc_service::PartialComponents<
