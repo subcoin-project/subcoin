@@ -381,7 +381,7 @@ where
                 best_queued_number = self.download_manager.best_queued_number,
                 requested_blocks_count = get_data_msg.len(),
                 downloaded_headers = self.downloaded_headers.len(),
-                "Headers from {start} to {end} downloaded, requesting blocks",
+                "Downloaded headers from {start} to {end}, requesting blocks",
             );
 
             self.download_state =
@@ -397,7 +397,14 @@ where
                 .collect::<VecDeque<HashSet<_>>>();
 
             let total_batches = batches.len();
-            let initial_batch = batches.pop_front().expect("Batch must not be empty; qed");
+
+            let Some(initial_batch) = batches.pop_front() else {
+                tracing::warn!(
+                    ?total_batches,
+                    "Download batches is empty, failed to start new block download"
+                );
+                return SyncAction::None;
+            };
 
             let get_data_msg =
                 prepare_ordered_block_data_request(initial_batch.clone(), &self.downloaded_headers);

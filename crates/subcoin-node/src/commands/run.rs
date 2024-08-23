@@ -97,7 +97,7 @@ impl RunCmd {
         storage_monitor: sc_storage_monitor::StorageMonitorParams,
     ) -> sc_cli::Result<TaskManager> {
         let block_execution_strategy = run.common_params.block_execution_strategy();
-        let network = run.common_params.bitcoin_network();
+        let bitcoin_network = run.common_params.bitcoin_network();
         let import_config = run.common_params.import_config();
         let no_finalizer = run.no_finalizer;
         let major_sync_confirmation_depth = run.major_sync_confirmation_depth;
@@ -107,11 +107,10 @@ impl RunCmd {
             backend,
             mut task_manager,
             block_executor,
-            keystore_container,
             telemetry,
             ..
         } = subcoin_service::new_node(subcoin_service::SubcoinConfiguration {
-            network,
+            network: bitcoin_network,
             config: &config,
             block_execution_strategy,
             no_hardware_benchmarks,
@@ -141,7 +140,7 @@ impl RunCmd {
 
         let (subcoin_networking, subcoin_network_handle) = subcoin_network::Network::new(
             client.clone(),
-            run.subcoin_network_params(network),
+            run.subcoin_network_params(bitcoin_network),
             import_queue,
             spawn_handle.clone(),
             config.prometheus_registry().cloned(),
@@ -174,7 +173,7 @@ impl RunCmd {
                     client.clone(),
                     backend,
                     &mut task_manager,
-                    keystore_container.keystore(),
+                    bitcoin_network,
                     telemetry,
                 )?
             }
@@ -184,7 +183,7 @@ impl RunCmd {
                     client.clone(),
                     backend,
                     &mut task_manager,
-                    keystore_container.keystore(),
+                    bitcoin_network,
                     telemetry,
                 )?
             }
