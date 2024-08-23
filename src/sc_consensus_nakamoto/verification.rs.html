@@ -802,7 +802,7 @@
     ) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
         <span class="kw">match </span><span class="self">self</span>.block_verification {
             BlockVerification::Full =&gt; {
-                <span class="kw">let </span>lock_time_cutoff = <span class="self">self</span>.header_verifier.verify_header(<span class="kw-2">&amp;</span>block.header)<span class="question-mark">?</span>;
+                <span class="kw">let </span>lock_time_cutoff = <span class="self">self</span>.header_verifier.verify(<span class="kw-2">&amp;</span>block.header)<span class="question-mark">?</span>;
 
                 <span class="kw">if </span>block_number &gt;= <span class="self">self</span>.chain_params.segwit_height
                     &amp;&amp; !block.check_witness_commitment()
@@ -818,7 +818,7 @@
                 <span class="self">self</span>.verify_transactions(block_number, block, txids, lock_time_cutoff)<span class="question-mark">?</span>;
             }
             BlockVerification::HeaderOnly =&gt; {
-                <span class="self">self</span>.header_verifier.verify_header(<span class="kw-2">&amp;</span>block.header)<span class="question-mark">?</span>;
+                <span class="self">self</span>.header_verifier.verify(<span class="kw-2">&amp;</span>block.header)<span class="question-mark">?</span>;
             }
             BlockVerification::None =&gt; {}
         }

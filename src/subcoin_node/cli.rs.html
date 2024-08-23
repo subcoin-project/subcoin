@@ -470,7 +470,7 @@
                     task_manager,
                     import_queue,
                     ..
-                } = subcoin_service::new_partial(<span class="kw-2">&amp;</span>config)<span class="question-mark">?</span>;
+                } = subcoin_service::new_partial(<span class="kw-2">&amp;</span>config, bitcoin::Network::Bitcoin)<span class="question-mark">?</span>;
                 <span class="prelude-val">Ok</span>((cmd.run(client, import_queue), task_manager))
             })
         }
@@ -481,7 +481,7 @@
                     client,
                     task_manager,
                     ..
-                } = subcoin_service::new_partial(<span class="kw-2">&amp;</span>config)<span class="question-mark">?</span>;
+                } = subcoin_service::new_partial(<span class="kw-2">&amp;</span>config, bitcoin::Network::Bitcoin)<span class="question-mark">?</span>;
                 <span class="prelude-val">Ok</span>((cmd.run(client, config.database), task_manager))
             })
         }
@@ -492,7 +492,7 @@
                     client,
                     task_manager,
                     ..
-                } = subcoin_service::new_partial(<span class="kw-2">&amp;</span>config)<span class="question-mark">?</span>;
+                } = subcoin_service::new_partial(<span class="kw-2">&amp;</span>config, bitcoin::Network::Bitcoin)<span class="question-mark">?</span>;
 
                 <span class="kw">let </span>run_cmd = <span class="kw">async move </span>{
                     <span class="macro">tracing::info!</span>(<span class="string">"Exporting raw state..."</span>);
@@ -524,7 +524,7 @@
                     task_manager,
                     backend,
                     ..
-                } = subcoin_service::new_partial(<span class="kw-2">&amp;</span>config)<span class="question-mark">?</span>;
+                } = subcoin_service::new_partial(<span class="kw-2">&amp;</span>config, bitcoin::Network::Bitcoin)<span class="question-mark">?</span>;
                 <span class="prelude-val">Ok</span>((cmd.run(client, backend, <span class="prelude-val">None</span>), task_manager))
             })
         }
@@ -540,7 +540,7 @@
                     }
                     BenchmarkCmd::Block(cmd) =&gt; {
                         <span class="kw">let </span>PartialComponents { client, .. } =
-                            subcoin_service::new_partial(<span class="kw-2">&amp;</span>config)<span class="question-mark">?</span>;
+                            subcoin_service::new_partial(<span class="kw-2">&amp;</span>config, bitcoin::Network::Bitcoin)<span class="question-mark">?</span>;
                         cmd.run(client)
                     }
                     <span class="attr">#[cfg(not(feature = <span class="string">"runtime-benchmarks"</span>))]
@@ -552,7 +552,7 @@
                     </span>BenchmarkCmd::Storage(cmd) =&gt; {
                         <span class="kw">let </span>PartialComponents {
                             client, backend, ..
-                        } = subcoin_service::new_partial(<span class="kw-2">&amp;</span>config)<span class="question-mark">?</span>;
+                        } = subcoin_service::new_partial(<span class="kw-2">&amp;</span>config, bitcoin::Network::Bitcoin)<span class="question-mark">?</span>;
                         <span class="kw">let </span>db = backend.expose_db();
                         <span class="kw">let </span>storage = backend.expose_storage();
 

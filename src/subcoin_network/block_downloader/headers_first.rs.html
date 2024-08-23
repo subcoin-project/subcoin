@@ -613,6 +613,13 @@
 <a href="#613" id="613">613</a>
 <a href="#614" id="614">614</a>
 <a href="#615" id="615">615</a>
+<a href="#616" id="616">616</a>
+<a href="#617" id="617">617</a>
+<a href="#618" id="618">618</a>
+<a href="#619" id="619">619</a>
+<a href="#620" id="620">620</a>
+<a href="#621" id="621">621</a>
+<a href="#622" id="622">622</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::block_downloader::BlockDownloadManager;
 <span class="kw">use </span><span class="kw">crate</span>::sync::{LocatorRequest, SyncAction, SyncRequest};
 <span class="kw">use crate</span>::{Error, PeerId, SyncStatus};
@@ -996,7 +1003,7 @@
                 best_queued_number = <span class="self">self</span>.download_manager.best_queued_number,
                 requested_blocks_count = get_data_msg.len(),
                 downloaded_headers = <span class="self">self</span>.downloaded_headers.len(),
-                <span class="string">"Headers from {start} to {end} downloaded, requesting blocks"</span>,
+                <span class="string">"Downloaded headers from {start} to {end}, requesting blocks"</span>,
             );
 
             <span class="self">self</span>.download_state =
@@ -1012,7 +1019,14 @@
                 .collect::&lt;VecDeque&lt;HashSet&lt;<span class="kw">_</span>&gt;&gt;&gt;();
 
             <span class="kw">let </span>total_batches = batches.len();
-            <span class="kw">let </span>initial_batch = batches.pop_front().expect(<span class="string">"Batch must not be empty; qed"</span>);
+
+            <span class="kw">let </span><span class="prelude-val">Some</span>(initial_batch) = batches.pop_front() <span class="kw">else </span>{
+                <span class="macro">tracing::warn!</span>(
+                    <span class="question-mark">?</span>total_batches,
+                    <span class="string">"Download batches is empty, failed to start new block download"
+                </span>);
+                <span class="kw">return </span>SyncAction::None;
+            };
 
             <span class="kw">let </span>get_data_msg =
                 prepare_ordered_block_data_request(initial_batch.clone(), <span class="kw-2">&amp;</span><span class="self">self</span>.downloaded_headers);

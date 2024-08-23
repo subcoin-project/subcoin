@@ -269,7 +269,6 @@
 <a href="#269" id="269">269</a>
 <a href="#270" id="270">270</a>
 <a href="#271" id="271">271</a>
-<a href="#272" id="272">272</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::params::{CommonParams, NetworkParams};
 <span class="kw">use </span>clap::Parser;
 <span class="kw">use </span>sc_cli::{
@@ -369,7 +368,7 @@
         storage_monitor: sc_storage_monitor::StorageMonitorParams,
     ) -&gt; sc_cli::Result&lt;TaskManager&gt; {
         <span class="kw">let </span>block_execution_strategy = run.common_params.block_execution_strategy();
-        <span class="kw">let </span>network = run.common_params.bitcoin_network();
+        <span class="kw">let </span>bitcoin_network = run.common_params.bitcoin_network();
         <span class="kw">let </span>import_config = run.common_params.import_config();
         <span class="kw">let </span>no_finalizer = run.no_finalizer;
         <span class="kw">let </span>major_sync_confirmation_depth = run.major_sync_confirmation_depth;
@@ -379,11 +378,10 @@
             backend,
             <span class="kw-2">mut </span>task_manager,
             block_executor,
-            keystore_container,
             telemetry,
             ..
         } = subcoin_service::new_node(subcoin_service::SubcoinConfiguration {
-            network,
+            network: bitcoin_network,
             config: <span class="kw-2">&amp;</span>config,
             block_execution_strategy,
             no_hardware_benchmarks,
@@ -413,7 +411,7 @@
 
         <span class="kw">let </span>(subcoin_networking, subcoin_network_handle) = subcoin_network::Network::new(
             client.clone(),
-            run.subcoin_network_params(network),
+            run.subcoin_network_params(bitcoin_network),
             import_queue,
             spawn_handle.clone(),
             config.prometheus_registry().cloned(),
@@ -446,7 +444,7 @@
                     client.clone(),
                     backend,
                     <span class="kw-2">&amp;mut </span>task_manager,
-                    keystore_container.keystore(),
+                    bitcoin_network,
                     telemetry,
                 )<span class="question-mark">?
             </span>}
@@ -456,7 +454,7 @@
                     client.clone(),
                     backend,
                     <span class="kw-2">&amp;mut </span>task_manager,
-                    keystore_container.keystore(),
+                    bitcoin_network,
                     telemetry,
                 )<span class="question-mark">?
             </span>}

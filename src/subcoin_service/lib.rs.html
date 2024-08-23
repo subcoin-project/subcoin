@@ -566,6 +566,39 @@
 <a href="#566" id="566">566</a>
 <a href="#567" id="567">567</a>
 <a href="#568" id="568">568</a>
+<a href="#569" id="569">569</a>
+<a href="#570" id="570">570</a>
+<a href="#571" id="571">571</a>
+<a href="#572" id="572">572</a>
+<a href="#573" id="573">573</a>
+<a href="#574" id="574">574</a>
+<a href="#575" id="575">575</a>
+<a href="#576" id="576">576</a>
+<a href="#577" id="577">577</a>
+<a href="#578" id="578">578</a>
+<a href="#579" id="579">579</a>
+<a href="#580" id="580">580</a>
+<a href="#581" id="581">581</a>
+<a href="#582" id="582">582</a>
+<a href="#583" id="583">583</a>
+<a href="#584" id="584">584</a>
+<a href="#585" id="585">585</a>
+<a href="#586" id="586">586</a>
+<a href="#587" id="587">587</a>
+<a href="#588" id="588">588</a>
+<a href="#589" id="589">589</a>
+<a href="#590" id="590">590</a>
+<a href="#591" id="591">591</a>
+<a href="#592" id="592">592</a>
+<a href="#593" id="593">593</a>
+<a href="#594" id="594">594</a>
+<a href="#595" id="595">595</a>
+<a href="#596" id="596">596</a>
+<a href="#597" id="597">597</a>
+<a href="#598" id="598">598</a>
+<a href="#599" id="599">599</a>
+<a href="#600" id="600">600</a>
+<a href="#601" id="601">601</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! Subcoin service implementation. Specialized wrapper over substrate service.
 
 </span><span class="attr">#![allow(deprecated)]
@@ -583,7 +616,7 @@
 <span class="kw">use </span>sc_client_api::{AuxStore, BlockchainEvents, Finalizer, HeaderBackend};
 <span class="kw">use </span>sc_consensus::import_queue::BasicQueue;
 <span class="kw">use </span>sc_consensus::{BlockImportParams, Verifier};
-<span class="kw">use </span>sc_consensus_nakamoto::{BlockExecutionStrategy, BlockExecutor};
+<span class="kw">use </span>sc_consensus_nakamoto::{BlockExecutionStrategy, BlockExecutor, ChainParams, HeaderVerifier};
 <span class="kw">use </span>sc_executor::NativeElseWasmExecutor;
 <span class="kw">use </span>sc_network_sync::SyncingService;
 <span class="kw">use </span>sc_service::config::PrometheusConfig;
@@ -596,7 +629,6 @@
 <span class="kw">use </span>sp_consensus::SyncOracle;
 <span class="kw">use </span>sp_core::traits::SpawnNamed;
 <span class="kw">use </span>sp_core::Encode;
-<span class="kw">use </span>sp_keystore::KeystorePtr;
 <span class="kw">use </span>sp_runtime::traits::{Block <span class="kw">as </span>BlockT, CheckedSub, Header <span class="kw">as </span>HeaderT};
 <span class="kw">use </span>std::ops::Deref;
 <span class="kw">use </span>std::path::Path;
@@ -840,7 +872,7 @@
     client: Arc&lt;FullClient&gt;,
     _backend: Arc&lt;FullBackend&gt;,
     task_manager: <span class="kw-2">&amp;mut </span>TaskManager,
-    _keystore: KeystorePtr,
+    bitcoin_network: bitcoin::Network,
     <span class="kw-2">mut </span>telemetry: <span class="prelude-ty">Option</span>&lt;Telemetry&gt;,
 ) -&gt; <span class="prelude-ty">Result</span>&lt;SubstrateNetworkingParts, ServiceError&gt;
 <span class="kw">where
@@ -862,7 +894,7 @@
     );
 
     <span class="kw">let </span>import_queue = BasicQueue::new(
-        SubstrateImportQueueVerifier,
+        SubstrateImportQueueVerifier::new(client.clone(), bitcoin_network),
         Box::new(client.clone()),
         <span class="prelude-val">None</span>,
         <span class="kw-2">&amp;</span>task_manager.spawn_essential_handle(),
@@ -957,7 +989,7 @@
     Backend: sc_client_api::backend::Backend&lt;Block&gt; + <span class="lifetime">'static</span>,
 {
     <span class="comment">// Use `every_import_notification_stream()` so that we can receive the notifications even when
-    // major syncing.
+    // the Substrate network is major syncing.
     </span><span class="kw">let </span><span class="kw-2">mut </span>block_import_stream = client.every_import_notification_stream();
 
     <span class="kw">while let </span><span class="prelude-val">Some</span>(notification) = block_import_stream.next().<span class="kw">await </span>{
@@ -965,7 +997,7 @@
             .number(notification.hash)
             .ok()
             .flatten()
-            .expect(<span class="string">"Imported Block must be available; qed"</span>);
+            .expect(<span class="string">"Imported block must be available; qed"</span>);
 
         <span class="kw">let </span><span class="prelude-val">Some</span>(confirmed_block_number) = block_number.checked_sub(<span class="kw-2">&amp;</span>confirmation_depth.into())
         <span class="kw">else </span>{
@@ -979,7 +1011,8 @@
         }
 
         <span class="kw">if </span>subcoin_networking_is_major_syncing.load(Ordering::Relaxed) {
-            <span class="comment">// During major sync, finalize every `major_sync_confirmation_depth` block to avoid race conditions:
+            <span class="comment">// During the major sync of Subcoin networking, we choose to finalize every `major_sync_confirmation_depth`
+            // block to avoid race conditions:
             // &gt;Safety violation: attempted to revert finalized block...
             </span><span class="kw">if </span>confirmed_block_number &lt; finalized_number + major_sync_confirmation_depth.into() {
                 <span class="kw">continue</span>;
@@ -987,7 +1020,12 @@
         }
 
         <span class="kw">if let </span><span class="prelude-val">Some</span>(sync_service) = substrate_sync_service.as_ref() {
-            <span class="kw">if </span>sync_service.is_major_syncing()
+            <span class="comment">// State sync relies on the finalized block notification to progress
+            // Substrate chain sync component relies on the finalized block notification to
+            // initiate the state sync, do not attempt to finalize the block when the queued blocks
+            // are not empty, so that the state sync can be started when the last finalized block
+            // notification is sent.
+            </span><span class="kw">if </span>sync_service.is_major_syncing()
                 &amp;&amp; sync_service.num_queued_blocks().<span class="kw">await</span>.unwrap_or(<span class="number">0</span>) &gt; <span class="number">0
             </span>{
                 <span class="kw">continue</span>;
@@ -1018,7 +1056,9 @@
                             || substrate_sync_service
                                 .map(|sync_service| sync_service.is_major_syncing())
                                 .unwrap_or(<span class="bool-val">false</span>);
-                        <span class="kw">if </span>!is_major_syncing {
+
+                        <span class="comment">// Only print the log when not major syncing to not clutter the logs.
+                        </span><span class="kw">if </span>!is_major_syncing {
                             <span class="macro">tracing::info!</span>(<span class="string">"✅ Successfully finalized block: {block_to_finalize}"</span>);
                         }
                     }
@@ -1045,7 +1085,10 @@
 &gt;;
 
 <span class="doccomment">/// Creates a partial node, for the chain ops commands.
-</span><span class="kw">pub fn </span>new_partial(config: <span class="kw-2">&amp;</span>Configuration) -&gt; <span class="prelude-ty">Result</span>&lt;PartialComponents, ServiceError&gt; {
+</span><span class="kw">pub fn </span>new_partial(
+    config: <span class="kw-2">&amp;</span>Configuration,
+    bitcoin_network: bitcoin::Network,
+) -&gt; <span class="prelude-ty">Result</span>&lt;PartialComponents, ServiceError&gt; {
     <span class="kw">let </span>telemetry = config
         .telemetry_endpoints
         .clone()
@@ -1085,7 +1128,7 @@
     );
 
     <span class="kw">let </span>import_queue = BasicQueue::new(
-        SubstrateImportQueueVerifier,
+        SubstrateImportQueueVerifier::new(client.clone(), bitcoin_network),
         Box::new(client.clone()),
         <span class="prelude-val">None</span>,
         <span class="kw-2">&amp;</span>task_manager.spawn_essential_handle(),
@@ -1107,23 +1150,46 @@
 <span class="doccomment">/// Verifier used by the Substrate import queue.
 ///
 /// Verifies the blocks received from the Substrate networking.
-</span><span class="kw">pub struct </span>SubstrateImportQueueVerifier;
+</span><span class="kw">pub struct </span>SubstrateImportQueueVerifier&lt;Block, Client&gt; {
+    btc_header_verifier: HeaderVerifier&lt;Block, Client&gt;,
+}
+
+<span class="kw">impl</span>&lt;Block, Client&gt; SubstrateImportQueueVerifier&lt;Block, Client&gt; {
+    <span class="doccomment">/// Constructs a new instance of [`SubstrateImportQueueVerifier`].
+    </span><span class="kw">pub fn </span>new(client: Arc&lt;Client&gt;, network: bitcoin::Network) -&gt; <span class="self">Self </span>{
+        <span class="self">Self </span>{
+            btc_header_verifier: HeaderVerifier::new(client, ChainParams::new(network)),
+        }
+    }
+}
 
 <span class="attr">#[async_trait::async_trait]
-</span><span class="kw">impl</span>&lt;Block: BlockT&gt; Verifier&lt;Block&gt; <span class="kw">for </span>SubstrateImportQueueVerifier {
+</span><span class="kw">impl</span>&lt;Block, Client&gt; Verifier&lt;Block&gt; <span class="kw">for </span>SubstrateImportQueueVerifier&lt;Block, Client&gt;
+<span class="kw">where
+    </span>Block: BlockT,
+    Client: HeaderBackend&lt;Block&gt; + AuxStore,
+{
     <span class="kw">async fn </span>verify(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         <span class="kw-2">mut </span>block_import_params: BlockImportParams&lt;Block&gt;,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;BlockImportParams&lt;Block&gt;, String&gt; {
-        <span class="comment">// TODO: Verify header.
+        <span class="kw">let </span>substrate_header = <span class="kw-2">&amp;</span>block_import_params.header;
 
-        </span>block_import_params.fork_choice = <span class="prelude-val">Some</span>(sc_consensus::ForkChoiceStrategy::LongestChain);
+        <span class="kw">let </span>btc_header =
+            subcoin_primitives::extract_bitcoin_block_header::&lt;Block&gt;(substrate_header)
+                .map_err(|err| <span class="macro">format!</span>(<span class="string">"Failed to extract bitcoin header: {err:?}"</span>))<span class="question-mark">?</span>;
+
+        <span class="self">self</span>.btc_header_verifier
+            .verify(<span class="kw-2">&amp;</span>btc_header)
+            .map_err(|err| <span class="macro">format!</span>(<span class="string">"Invalid header: {err:?}"</span>))<span class="question-mark">?</span>;
+
+        block_import_params.fork_choice = <span class="prelude-val">Some</span>(sc_consensus::ForkChoiceStrategy::LongestChain);
 
         <span class="kw">let </span>bitcoin_block_hash =
-            subcoin_primitives::extract_bitcoin_block_hash::&lt;Block&gt;(<span class="kw-2">&amp;</span>block_import_params.header)
+            subcoin_primitives::extract_bitcoin_block_hash::&lt;Block&gt;(substrate_header)
                 .map_err(|err| <span class="macro">format!</span>(<span class="string">"Failed to extract bitcoin block hash: {err:?}"</span>))<span class="question-mark">?</span>;
 
-        <span class="kw">let </span>substrate_block_hash = block_import_params.header.hash();
+        <span class="kw">let </span>substrate_block_hash = substrate_header.hash();
 
         sc_consensus_nakamoto::insert_bitcoin_block_hash_mapping::&lt;Block&gt;(
             <span class="kw-2">&amp;mut </span>block_import_params,
