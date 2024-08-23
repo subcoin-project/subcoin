@@ -399,7 +399,10 @@ where
             let total_batches = batches.len();
 
             let Some(initial_batch) = batches.pop_front() else {
-                tracing::warn!(?total_batches, "Download batches is empty, failed to start new block download");
+                tracing::warn!(
+                    ?total_batches,
+                    "Download batches is empty, failed to start new block download"
+                );
                 return SyncAction::None;
             };
 
