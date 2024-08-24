@@ -130,29 +130,6 @@ impl RunCmd {
             bitcoin_block_import,
         );
 
-        let (subcoin_networking, subcoin_network_handle) = subcoin_network::Network::new(
-            client.clone(),
-            run.subcoin_network_params(bitcoin_network),
-            import_queue,
-            spawn_handle.clone(),
-            config.prometheus_registry().cloned(),
-        );
-
-        // TODO: handle Substrate networking and Bitcoin networking properly.
-        if !run.disable_subcoin_networking {
-            task_manager.spawn_essential_handle().spawn_blocking(
-                "subcoin-networking",
-                None,
-                async move {
-                    if let Err(err) = subcoin_networking.run().await {
-                        tracing::error!(?err, "Error occurred in subcoin networking");
-                    }
-                },
-            );
-        } else {
-            task_manager.keep_alive(subcoin_networking);
-        }
-
         let (system_rpc_tx, substrate_sync_service) = match config.network.network_backend {
             sc_network::config::NetworkBackendType::Libp2p => {
                 subcoin_service::start_substrate_network::<
@@ -180,6 +157,29 @@ impl RunCmd {
                 )?
             }
         };
+
+        let (subcoin_networking, subcoin_network_handle) = subcoin_network::Network::new(
+            client.clone(),
+            run.subcoin_network_params(bitcoin_network),
+            import_queue,
+            spawn_handle.clone(),
+            config.prometheus_registry().cloned(),
+        );
+
+        // TODO: handle Substrate networking and Bitcoin networking properly.
+        if !run.disable_subcoin_networking {
+            task_manager.spawn_essential_handle().spawn_blocking(
+                "subcoin-networking",
+                None,
+                async move {
+                    if let Err(err) = subcoin_networking.run().await {
+                        tracing::error!(?err, "Error occurred in subcoin networking");
+                    }
+                },
+            );
+        } else {
+            task_manager.keep_alive(subcoin_networking);
+        }
 
         // TODO: Bitcoin-compatible RPC
         // Start JSON-RPC server.
