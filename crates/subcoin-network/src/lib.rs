@@ -451,6 +451,12 @@ where
             params.ipv4_only,
         );
 
+        let enable_block_sync = !params.substrate_fast_sync_enabled;
+
+        if !enable_block_sync {
+            tracing::info!("Subcoin block sync is disabled until Substrate fast sync is complete");
+        }
+
         let network_worker = NetworkWorker::new(
             worker::Params {
                 client: client.clone(),
@@ -460,7 +466,7 @@ where
                 is_major_syncing,
                 connection_initiator: connection_initiator.clone(),
                 max_outbound_peers: params.max_outbound_peers,
-                enable_block_sync: !params.substrate_fast_sync_enabled,
+                enable_block_sync,
             },
             registry.as_ref(),
         );

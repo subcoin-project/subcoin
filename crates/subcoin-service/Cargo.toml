@@ -44,6 +44,7 @@ sp-runtime = { workspace = true }
 sp-state-machine = { workspace = true }
 sp-storage = { workspace = true }
 sp-trie = { workspace = true }
+subcoin-network = { workspace = true }
 subcoin-primitives = { workspace = true }
 subcoin-runtime = { workspace = true }
 substrate-frame-rpc-system = { workspace = true }

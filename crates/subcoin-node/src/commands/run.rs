@@ -163,9 +163,13 @@ impl RunCmd {
             }
         };
 
+        let subcoin_network_params = run.subcoin_network_params(bitcoin_network);
+
+        let substrate_fast_sync_enabled = subcoin_network_params.substrate_fast_sync_enabled;
+
         let (subcoin_networking, subcoin_network_handle) = subcoin_network::Network::new(
             client.clone(),
-            run.subcoin_network_params(bitcoin_network),
+            subcoin_network_params,
             import_queue,
             spawn_handle.clone(),
             config.prometheus_registry().cloned(),
@@ -182,6 +186,17 @@ impl RunCmd {
                     }
                 },
             );
+
+            if substrate_fast_sync_enabled {
+                task_manager.spawn_handle().spawn(
+                    "substrate-fast-sync-watcher",
+                    None,
+                    subcoin_service::watch_substrate_fast_sync(
+                        subcoin_network_handle.clone(),
+                        substrate_sync_service.clone(),
+                    ),
+                );
+            }
         } else {
             task_manager.keep_alive(subcoin_networking);
         }
