@@ -518,6 +518,22 @@
 <a href="#518" id="518">518</a>
 <a href="#519" id="519">519</a>
 <a href="#520" id="520">520</a>
+<a href="#521" id="521">521</a>
+<a href="#522" id="522">522</a>
+<a href="#523" id="523">523</a>
+<a href="#524" id="524">524</a>
+<a href="#525" id="525">525</a>
+<a href="#526" id="526">526</a>
+<a href="#527" id="527">527</a>
+<a href="#528" id="528">528</a>
+<a href="#529" id="529">529</a>
+<a href="#530" id="530">530</a>
+<a href="#531" id="531">531</a>
+<a href="#532" id="532">532</a>
+<a href="#533" id="533">533</a>
+<a href="#534" id="534">534</a>
+<a href="#535" id="535">535</a>
+<a href="#536" id="536">536</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::block_downloader::{BlocksFirstDownloader, HeadersFirstDownloader};
 <span class="kw">use </span><span class="kw">crate</span>::peer_manager::NewPeer;
 <span class="kw">use crate</span>::{Error, Latency, PeerId, SyncStatus, SyncStrategy};
@@ -672,9 +688,14 @@
     syncing: Syncing&lt;Block, Client&gt;,
     <span class="doccomment">/// Handle of the import queue.
     </span>import_queue: BlockImportQueue,
-    sync_strategy: SyncStrategy,
-    is_major_syncing: Arc&lt;AtomicBool&gt;,
-    rng: fastrand::Rng,
+    <span class="doccomment">/// Block syncing strategy.
+    </span>sync_strategy: SyncStrategy,
+    <span class="doccomment">/// Are we in major syncing?
+    </span>is_major_syncing: Arc&lt;AtomicBool&gt;,
+    <span class="doccomment">/// Whether to sync blocks from Bitcoin network.
+    </span>enable_block_sync: bool,
+    <span class="doccomment">/// Randomness generator.
+    </span>rng: fastrand::Rng,
     _phantom: PhantomData&lt;Block&gt;,
 }
 
@@ -689,6 +710,7 @@
         import_queue: BlockImportQueue,
         sync_strategy: SyncStrategy,
         is_major_syncing: Arc&lt;AtomicBool&gt;,
+        enable_block_sync: bool,
     ) -&gt; <span class="self">Self </span>{
         <span class="self">Self </span>{
             client,
@@ -697,6 +719,7 @@
             syncing: Syncing::Idle,
             sync_strategy,
             is_major_syncing,
+            enable_block_sync,
             rng: fastrand::Rng::new(),
             _phantom: Default::default(),
         }
@@ -864,6 +887,15 @@
 
         <span class="self">self</span>.peers.insert(peer_id, new_peer);
 
+        <span class="kw">if </span><span class="self">self</span>.enable_block_sync {
+            <span class="self">self</span>.attempt_sync_start()
+        } <span class="kw">else </span>{
+            SyncAction::None
+        }
+    }
+
+    <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>start_block_sync(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; SyncAction {
+        <span class="self">self</span>.enable_block_sync = <span class="bool-val">true</span>;
         <span class="self">self</span>.attempt_sync_start()
     }
 

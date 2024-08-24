@@ -147,22 +147,81 @@
 <a href="#147" id="147">147</a>
 <a href="#148" id="148">148</a>
 <a href="#149" id="149">149</a>
+<a href="#150" id="150">150</a>
+<a href="#151" id="151">151</a>
+<a href="#152" id="152">152</a>
+<a href="#153" id="153">153</a>
+<a href="#154" id="154">154</a>
+<a href="#155" id="155">155</a>
+<a href="#156" id="156">156</a>
+<a href="#157" id="157">157</a>
+<a href="#158" id="158">158</a>
+<a href="#159" id="159">159</a>
+<a href="#160" id="160">160</a>
+<a href="#161" id="161">161</a>
+<a href="#162" id="162">162</a>
+<a href="#163" id="163">163</a>
+<a href="#164" id="164">164</a>
+<a href="#165" id="165">165</a>
+<a href="#166" id="166">166</a>
+<a href="#167" id="167">167</a>
+<a href="#168" id="168">168</a>
+<a href="#169" id="169">169</a>
+<a href="#170" id="170">170</a>
+<a href="#171" id="171">171</a>
+<a href="#172" id="172">172</a>
+<a href="#173" id="173">173</a>
+<a href="#174" id="174">174</a>
+<a href="#175" id="175">175</a>
+<a href="#176" id="176">176</a>
+<a href="#177" id="177">177</a>
+<a href="#178" id="178">178</a>
+<a href="#179" id="179">179</a>
+<a href="#180" id="180">180</a>
+<a href="#181" id="181">181</a>
+<a href="#182" id="182">182</a>
+<a href="#183" id="183">183</a>
+<a href="#184" id="184">184</a>
+<a href="#185" id="185">185</a>
+<a href="#186" id="186">186</a>
+<a href="#187" id="187">187</a>
+<a href="#188" id="188">188</a>
+<a href="#189" id="189">189</a>
+<a href="#190" id="190">190</a>
+<a href="#191" id="191">191</a>
+<a href="#192" id="192">192</a>
+<a href="#193" id="193">193</a>
+<a href="#194" id="194">194</a>
+<a href="#195" id="195">195</a>
+<a href="#196" id="196">196</a>
+<a href="#197" id="197">197</a>
+<a href="#198" id="198">198</a>
+<a href="#199" id="199">199</a>
+<a href="#200" id="200">200</a>
+<a href="#201" id="201">201</a>
+<a href="#202" id="202">202</a>
+<a href="#203" id="203">203</a>
+<a href="#204" id="204">204</a>
+<a href="#205" id="205">205</a>
+<a href="#206" id="206">206</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>futures::StreamExt;
+<span class="kw">use </span>parking_lot::Mutex;
 <span class="kw">use </span>sc_client_api::{BlockchainEvents, Finalizer, HeaderBackend};
 <span class="kw">use </span>sc_network_sync::SyncingService;
 <span class="kw">use </span>sc_service::SpawnTaskHandle;
 <span class="kw">use </span>sp_consensus::SyncOracle;
-<span class="kw">use </span>sp_runtime::traits::{Block <span class="kw">as </span>BlockT, CheckedSub};
+<span class="kw">use </span>sp_runtime::traits::{Block <span class="kw">as </span>BlockT, CheckedSub, NumberFor};
 <span class="kw">use </span>std::marker::PhantomData;
 <span class="kw">use </span>std::sync::atomic::{AtomicBool, Ordering};
 <span class="kw">use </span>std::sync::Arc;
+
+<span class="kw">type </span>BlockInfo&lt;Block&gt; = (NumberFor&lt;Block&gt;, &lt;Block <span class="kw">as </span>BlockT&gt;::Hash);
 
 <span class="doccomment">/// This struct is responsible for finalizing blocks with enough confirmations.
 </span><span class="kw">pub struct </span>SubcoinFinalizer&lt;Block: BlockT, Client, Backend&gt; {
     client: Arc&lt;Client&gt;,
     spawn_handle: SpawnTaskHandle,
     confirmation_depth: u32,
-    major_sync_confirmation_depth: u32,
     subcoin_networking_is_major_syncing: Arc&lt;AtomicBool&gt;,
     substrate_sync_service: <span class="prelude-ty">Option</span>&lt;Arc&lt;SyncingService&lt;Block&gt;&gt;&gt;,
     _phantom: PhantomData&lt;Backend&gt;,
@@ -179,7 +238,6 @@
         client: Arc&lt;Client&gt;,
         spawn_handle: SpawnTaskHandle,
         confirmation_depth: u32,
-        major_sync_confirmation_depth: u32,
         subcoin_networking_is_major_syncing: Arc&lt;AtomicBool&gt;,
         substrate_sync_service: <span class="prelude-ty">Option</span>&lt;Arc&lt;SyncingService&lt;Block&gt;&gt;&gt;,
     ) -&gt; <span class="self">Self </span>{
@@ -187,7 +245,6 @@
             client,
             spawn_handle,
             confirmation_depth,
-            major_sync_confirmation_depth,
             subcoin_networking_is_major_syncing,
             substrate_sync_service,
             _phantom: Default::default(),
@@ -200,7 +257,6 @@
             client,
             spawn_handle,
             confirmation_depth,
-            major_sync_confirmation_depth,
             subcoin_networking_is_major_syncing,
             substrate_sync_service,
             _phantom,
@@ -209,6 +265,11 @@
         <span class="comment">// Use `every_import_notification_stream()` so that we can receive the notifications even when
         // the Substrate network is major syncing.
         </span><span class="kw">let </span><span class="kw-2">mut </span>block_import_stream = client.every_import_notification_stream();
+
+        <span class="kw">let </span>cached_block_to_finalize: Arc&lt;Mutex&lt;<span class="prelude-ty">Option</span>&lt;BlockInfo&lt;Block&gt;&gt;&gt;&gt; =
+            Arc::new(Mutex::new(<span class="prelude-val">None</span>));
+
+        <span class="kw">let </span>finalizer_worker_is_busy = Arc::new(AtomicBool::new(<span class="bool-val">false</span>));
 
         <span class="kw">while let </span><span class="prelude-val">Some</span>(notification) = block_import_stream.next().<span class="kw">await </span>{
             <span class="kw">let </span>block_number = client
@@ -228,15 +289,26 @@
                 <span class="kw">continue</span>;
             }
 
-            <span class="kw">if </span>subcoin_networking_is_major_syncing.load(Ordering::Relaxed) {
-                <span class="comment">// During the major sync of Subcoin networking, we choose to finalize every `major_sync_confirmation_depth`
-                // block to avoid race conditions:
-                // &gt;Safety violation: attempted to revert finalized block...
-                </span><span class="kw">if </span>confirmed_block_number &lt; finalized_number + major_sync_confirmation_depth.into()
-                {
-                    <span class="kw">continue</span>;
+            <span class="kw">let </span>confirmed_block_hash = client
+                .hash(confirmed_block_number)
+                .ok()
+                .flatten()
+                .expect(<span class="string">"Confirmed block must be available; qed"</span>);
+
+            <span class="kw">let </span>try_update_cached_block_to_finalize = || {
+                <span class="kw">let </span><span class="kw-2">mut </span>cached_block_to_finalize = cached_block_to_finalize.lock();
+
+                <span class="kw">let </span>should_update = cached_block_to_finalize
+                    .map(|(cached_block_number, <span class="kw">_</span>)| confirmed_block_number &gt; cached_block_number)
+                    .unwrap_or(<span class="bool-val">true</span>);
+
+                <span class="kw">if </span>should_update {
+                    cached_block_to_finalize
+                        .replace((confirmed_block_number, confirmed_block_hash));
                 }
-            }
+
+                drop(cached_block_to_finalize);
+            };
 
             <span class="kw">if let </span><span class="prelude-val">Some</span>(sync_service) = substrate_sync_service.as_ref() {
                 <span class="comment">// State sync relies on the finalized block notification to progress
@@ -247,51 +319,93 @@
                 </span><span class="kw">if </span>sync_service.is_major_syncing()
                     &amp;&amp; sync_service.num_queued_blocks().<span class="kw">await</span>.unwrap_or(<span class="number">0</span>) &gt; <span class="number">0
                 </span>{
+                    try_update_cached_block_to_finalize();
                     <span class="kw">continue</span>;
                 }
             }
 
-            <span class="kw">let </span>confirmed_block_hash = client
-                .hash(confirmed_block_number)
-                .ok()
-                .flatten()
-                .expect(<span class="string">"Confirmed block must be available; qed"</span>);
+            <span class="kw">if </span>finalizer_worker_is_busy.load(Ordering::SeqCst) {
+                try_update_cached_block_to_finalize();
+                <span class="kw">continue</span>;
+            }
 
             <span class="kw">let </span>client = client.clone();
             <span class="kw">let </span>subcoin_networking_is_major_syncing = subcoin_networking_is_major_syncing.clone();
             <span class="kw">let </span>substrate_sync_service = substrate_sync_service.clone();
+            <span class="kw">let </span>finalizer_worker_is_busy = finalizer_worker_is_busy.clone();
+            <span class="kw">let </span>cached_block_to_finalize = cached_block_to_finalize.clone();
+
+            finalizer_worker_is_busy.store(<span class="bool-val">true</span>, Ordering::SeqCst);
 
             spawn_handle.spawn(
                 <span class="string">"finalize-block"</span>,
                 <span class="prelude-val">None</span>,
                 Box::pin(<span class="kw">async move </span>{
-                    <span class="kw">let </span>finalized_number = client.info().finalized_number;
+                    do_finalize_block(
+                        <span class="kw-2">&amp;</span>client,
+                        confirmed_block_number,
+                        confirmed_block_hash,
+                        <span class="kw-2">&amp;</span>subcoin_networking_is_major_syncing,
+                        substrate_sync_service.as_ref(),
+                    );
 
-                    <span class="kw">if </span>confirmed_block_number &lt;= finalized_number {
-                        <span class="kw">return</span>;
+                    <span class="kw">let </span><span class="kw-2">mut </span>cached_block_to_finalize = cached_block_to_finalize.lock();
+                    <span class="kw">let </span>maybe_cached_block_to_finalize = cached_block_to_finalize.take();
+                    drop(cached_block_to_finalize);
+
+                    <span class="kw">if let </span><span class="prelude-val">Some</span>((cached_block_number, cached_block_hash)) =
+                        maybe_cached_block_to_finalize
+                    {
+                        do_finalize_block(
+                            <span class="kw-2">&amp;</span>client,
+                            cached_block_number,
+                            cached_block_hash,
+                            <span class="kw-2">&amp;</span>subcoin_networking_is_major_syncing,
+                            substrate_sync_service.as_ref(),
+                        );
                     }
 
-                    <span class="kw">match </span>client.finalize_block(confirmed_block_hash, <span class="prelude-val">None</span>, <span class="bool-val">true</span>) {
-                        <span class="prelude-val">Ok</span>(()) =&gt; {
-                            <span class="kw">let </span>is_major_syncing = subcoin_networking_is_major_syncing.load(Ordering::Relaxed)
-                                || substrate_sync_service
-                                    .map(|sync_service| sync_service.is_major_syncing())
-                                    .unwrap_or(<span class="bool-val">false</span>);
-
-                            <span class="comment">// Only print the log when not major syncing to not clutter the logs.
-                            </span><span class="kw">if </span>!is_major_syncing {
-                                <span class="macro">tracing::info!</span>(<span class="string">"✅ Successfully finalized block #{confirmed_block_number},{confirmed_block_hash}"</span>);
-                            }
-                        }
-                        <span class="prelude-val">Err</span>(err) =&gt; {
-                            <span class="macro">tracing::warn!</span>(
-                                <span class="question-mark">?</span>err,
-                                <span class="question-mark">?</span>finalized_number,
-                                <span class="string">"Failed to finalize block #{confirmed_block_number},{confirmed_block_hash}"</span>,
-                            );
-                        }
-                    }
+                    finalizer_worker_is_busy.store(<span class="bool-val">false</span>, Ordering::SeqCst);
                 }),
+            );
+        }
+    }
+}
+
+<span class="kw">fn </span>do_finalize_block&lt;Block, Client, Backend&gt;(
+    client: <span class="kw-2">&amp;</span>Arc&lt;Client&gt;,
+    confirmed_block_number: NumberFor&lt;Block&gt;,
+    confirmed_block_hash: Block::Hash,
+    subcoin_networking_is_major_syncing: <span class="kw-2">&amp;</span>Arc&lt;AtomicBool&gt;,
+    substrate_sync_service: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>Arc&lt;SyncingService&lt;Block&gt;&gt;&gt;,
+) <span class="kw">where
+    </span>Block: BlockT,
+    Client: HeaderBackend&lt;Block&gt; + Finalizer&lt;Block, Backend&gt;,
+    Backend: sc_client_api::backend::Backend&lt;Block&gt;,
+{
+    <span class="kw">let </span>finalized_number = client.info().finalized_number;
+
+    <span class="kw">if </span>confirmed_block_number &lt;= finalized_number {
+        <span class="kw">return</span>;
+    }
+
+    <span class="kw">match </span>client.finalize_block(confirmed_block_hash, <span class="prelude-val">None</span>, <span class="bool-val">true</span>) {
+        <span class="prelude-val">Ok</span>(()) =&gt; {
+            <span class="kw">let </span>is_major_syncing = subcoin_networking_is_major_syncing.load(Ordering::Relaxed)
+                || substrate_sync_service
+                    .map(|sync_service| sync_service.is_major_syncing())
+                    .unwrap_or(<span class="bool-val">false</span>);
+
+            <span class="comment">// Only print the log when not major syncing to not clutter the logs.
+            </span><span class="kw">if </span>!is_major_syncing {
+                <span class="macro">tracing::info!</span>(<span class="string">"✅ Successfully finalized block #{confirmed_block_number},{confirmed_block_hash}"</span>);
+            }
+        }
+        <span class="prelude-val">Err</span>(err) =&gt; {
+            <span class="macro">tracing::warn!</span>(
+                <span class="question-mark">?</span>err,
+                <span class="question-mark">?</span>finalized_number,
+                <span class="string">"Failed to finalize block #{confirmed_block_number},{confirmed_block_hash}"</span>,
             );
         }
     }
