@@ -127,7 +127,7 @@ pub fn run() -> sc_cli::Result<()> {
                     let spawn_handle = task_manager.spawn_handle();
                     // Assume the chain is major syncing.
                     let is_major_syncing = Arc::new(true.into());
-                    subcoin_service::finalize_confirmed_blocks(
+                    subcoin_service::SubcoinFinalizer::new(
                         client,
                         spawn_handle,
                         CONFIRMATION_DEPTH,
@@ -135,6 +135,7 @@ pub fn run() -> sc_cli::Result<()> {
                         is_major_syncing,
                         None,
                     )
+                    .run()
                 });
                 Ok((
                     import_blocks_cmd.run(

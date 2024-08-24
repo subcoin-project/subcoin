@@ -47,10 +47,10 @@ subcoin-primitives = { workspace = true }
 subcoin-runtime = { workspace = true }
 substrate-frame-rpc-system = { workspace = true }
 substrate-prometheus-endpoint = { workspace = true }
+tokio = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
 sp-tracing = { workspace = true }
 subcoin-test-service = { workspace = true }
 tempfile = { workspace = true }
-tokio = { workspace = true }
