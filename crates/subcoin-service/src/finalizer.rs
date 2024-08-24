@@ -102,7 +102,7 @@ where
                 }
             }
 
-            let block_to_finalize = client
+            let confirmed_block_hash = client
                 .hash(confirmed_block_number)
                 .ok()
                 .flatten()
@@ -116,11 +116,13 @@ where
                 "finalize-block",
                 None,
                 Box::pin(async move {
-                    if confirmed_block_number <= client.info().finalized_number {
+                    let finalized_number = client.info().finalized_number;
+
+                    if confirmed_block_number <= finalized_number {
                         return;
                     }
 
-                    match client.finalize_block(block_to_finalize, None, true) {
+                    match client.finalize_block(confirmed_block_hash, None, true) {
                         Ok(()) => {
                             let is_major_syncing = subcoin_networking_is_major_syncing.load(Ordering::Relaxed)
                                 || substrate_sync_service
@@ -129,14 +131,14 @@ where
 
                             // Only print the log when not major syncing to not clutter the logs.
                             if !is_major_syncing {
-                                tracing::info!("✅ Successfully finalized block: {block_to_finalize}");
+                                tracing::info!("✅ Successfully finalized block #{confirmed_block_number},{confirmed_block_hash}");
                             }
                         }
                         Err(err) => {
                             tracing::warn!(
                                 ?err,
                                 ?finalized_number,
-                                "Failed to finalize block #{confirmed_block_number},{block_to_finalize}",
+                                "Failed to finalize block #{confirmed_block_number},{confirmed_block_hash}",
                             );
                         }
                     }
