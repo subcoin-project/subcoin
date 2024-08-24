@@ -18,13 +18,6 @@ pub struct Run {
     #[clap(long, default_value = "headers-first")]
     pub sync_strategy: SyncStrategy,
 
-    /// Specify the confirmation depth during the major sync.
-    ///
-    /// If you encounter a high memory usage when the node is major syncing, try to
-    /// specify a smaller number.
-    #[clap(long, default_value = "100")]
-    pub major_sync_confirmation_depth: u32,
-
     /// Do not run the finalizer which will finalize the blocks on confirmation depth.
     #[clap(long)]
     pub no_finalizer: bool,
@@ -100,7 +93,6 @@ impl RunCmd {
         let bitcoin_network = run.common_params.bitcoin_network();
         let import_config = run.common_params.import_config();
         let no_finalizer = run.no_finalizer;
-        let major_sync_confirmation_depth = run.major_sync_confirmation_depth;
 
         let subcoin_service::NodeComponents {
             client,
@@ -220,7 +212,6 @@ impl RunCmd {
                     client.clone(),
                     spawn_handle.clone(),
                     CONFIRMATION_DEPTH,
-                    major_sync_confirmation_depth,
                     subcoin_network_handle.is_major_syncing(),
                     Some(substrate_sync_service),
                 )
