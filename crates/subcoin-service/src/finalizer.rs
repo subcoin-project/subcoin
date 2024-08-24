@@ -1,12 +1,15 @@
 use futures::StreamExt;
+use parking_lot::Mutex;
 use sc_client_api::{BlockchainEvents, Finalizer, HeaderBackend};
 use sc_network_sync::SyncingService;
 use sc_service::SpawnTaskHandle;
 use sp_consensus::SyncOracle;
-use sp_runtime::traits::{Block as BlockT, CheckedSub};
+use sp_runtime::traits::{Block as BlockT, CheckedSub, NumberFor};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+
+type BlockInfo<Block> = (NumberFor<Block>, <Block as BlockT>::Hash);
 
 /// This struct is responsible for finalizing blocks with enough confirmations.
 pub struct SubcoinFinalizer<Block: BlockT, Client, Backend> {
@@ -61,6 +64,11 @@ where
         // the Substrate network is major syncing.
         let mut block_import_stream = client.every_import_notification_stream();
 
+        let cached_block_to_finalize: Arc<Mutex<Option<BlockInfo<Block>>>> =
+            Arc::new(Mutex::new(None));
+
+        let finalizer_worker_is_busy = Arc::new(AtomicBool::new(false));
+
         while let Some(notification) = block_import_stream.next().await {
             let block_number = client
                 .number(notification.hash)
@@ -79,15 +87,26 @@ where
                 continue;
             }
 
-            if subcoin_networking_is_major_syncing.load(Ordering::Relaxed) {
-                // During the major sync of Subcoin networking, we choose to finalize every `major_sync_confirmation_depth`
-                // block to avoid race conditions:
-                // >Safety violation: attempted to revert finalized block...
-                if confirmed_block_number < finalized_number + major_sync_confirmation_depth.into()
-                {
-                    continue;
+            let confirmed_block_hash = client
+                .hash(confirmed_block_number)
+                .ok()
+                .flatten()
+                .expect("Confirmed block must be available; qed");
+
+            let try_update_cached_block_to_finalize = || {
+                let mut cached_block_to_finalize = cached_block_to_finalize.lock();
+
+                let should_update = cached_block_to_finalize
+                    .map(|(cached_block_number, _)| confirmed_block_number > cached_block_number)
+                    .unwrap_or(true);
+
+                if should_update {
+                    cached_block_to_finalize
+                        .replace((confirmed_block_number, confirmed_block_hash));
                 }
-            }
+
+                drop(cached_block_to_finalize);
+            };
 
             if let Some(sync_service) = substrate_sync_service.as_ref() {
                 // State sync relies on the finalized block notification to progress
@@ -98,51 +117,93 @@ where
                 if sync_service.is_major_syncing()
                     && sync_service.num_queued_blocks().await.unwrap_or(0) > 0
                 {
+                    try_update_cached_block_to_finalize();
                     continue;
                 }
             }
 
-            let confirmed_block_hash = client
-                .hash(confirmed_block_number)
-                .ok()
-                .flatten()
-                .expect("Confirmed block must be available; qed");
+            if finalizer_worker_is_busy.load(Ordering::SeqCst) {
+                try_update_cached_block_to_finalize();
+                continue;
+            }
 
             let client = client.clone();
             let subcoin_networking_is_major_syncing = subcoin_networking_is_major_syncing.clone();
             let substrate_sync_service = substrate_sync_service.clone();
+            let finalizer_worker_is_busy = finalizer_worker_is_busy.clone();
+            let cached_block_to_finalize = cached_block_to_finalize.clone();
+
+            finalizer_worker_is_busy.store(true, Ordering::SeqCst);
 
             spawn_handle.spawn(
                 "finalize-block",
                 None,
                 Box::pin(async move {
-                    let finalized_number = client.info().finalized_number;
+                    do_finalize_block(
+                        &client,
+                        confirmed_block_number,
+                        confirmed_block_hash,
+                        &subcoin_networking_is_major_syncing,
+                        substrate_sync_service.as_ref(),
+                    );
 
-                    if confirmed_block_number <= finalized_number {
-                        return;
+                    let mut cached_block_to_finalize = cached_block_to_finalize.lock();
+                    let maybe_cached_block_to_finalize = cached_block_to_finalize.take();
+                    drop(cached_block_to_finalize);
+
+                    if let Some((cached_block_number, cached_block_hash)) =
+                        maybe_cached_block_to_finalize
+                    {
+                        do_finalize_block(
+                            &client,
+                            cached_block_number,
+                            cached_block_hash,
+                            &subcoin_networking_is_major_syncing,
+                            substrate_sync_service.as_ref(),
+                        );
                     }
 
-                    match client.finalize_block(confirmed_block_hash, None, true) {
-                        Ok(()) => {
-                            let is_major_syncing = subcoin_networking_is_major_syncing.load(Ordering::Relaxed)
-                                || substrate_sync_service
-                                    .map(|sync_service| sync_service.is_major_syncing())
-                                    .unwrap_or(false);
-
-                            // Only print the log when not major syncing to not clutter the logs.
-                            if !is_major_syncing {
-                                tracing::info!("✅ Successfully finalized block #{confirmed_block_number},{confirmed_block_hash}");
-                            }
-                        }
-                        Err(err) => {
-                            tracing::warn!(
-                                ?err,
-                                ?finalized_number,
-                                "Failed to finalize block #{confirmed_block_number},{confirmed_block_hash}",
-                            );
-                        }
-                    }
+                    finalizer_worker_is_busy.store(false, Ordering::SeqCst);
                 }),
+            );
+        }
+    }
+}
+
+fn do_finalize_block<Block, Client, Backend>(
+    client: &Arc<Client>,
+    confirmed_block_number: NumberFor<Block>,
+    confirmed_block_hash: Block::Hash,
+    subcoin_networking_is_major_syncing: &Arc<AtomicBool>,
+    substrate_sync_service: Option<&Arc<SyncingService<Block>>>,
+) where
+    Block: BlockT,
+    Client: HeaderBackend<Block> + Finalizer<Block, Backend>,
+    Backend: sc_client_api::backend::Backend<Block>,
+{
+    let finalized_number = client.info().finalized_number;
+
+    if confirmed_block_number <= finalized_number {
+        return;
+    }
+
+    match client.finalize_block(confirmed_block_hash, None, true) {
+        Ok(()) => {
+            let is_major_syncing = subcoin_networking_is_major_syncing.load(Ordering::Relaxed)
+                || substrate_sync_service
+                    .map(|sync_service| sync_service.is_major_syncing())
+                    .unwrap_or(false);
+
+            // Only print the log when not major syncing to not clutter the logs.
+            if !is_major_syncing {
+                tracing::info!("✅ Successfully finalized block #{confirmed_block_number},{confirmed_block_hash}");
+            }
+        }
+        Err(err) => {
+            tracing::warn!(
+                ?err,
+                ?finalized_number,
+                "Failed to finalize block #{confirmed_block_number},{confirmed_block_hash}",
             );
         }
     }

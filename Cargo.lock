@@ -9244,6 +9244,7 @@ dependencies = [
  "futures",
  "jsonrpsee",
  "pallet-bitcoin",
+ "parking_lot 0.12.3",
  "sc-client-api",
  "sc-consensus",
  "sc-consensus-nakamoto",
