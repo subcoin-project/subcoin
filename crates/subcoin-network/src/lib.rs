@@ -226,6 +226,8 @@ enum NetworkWorkerMessage {
     GetTransaction((Txid, oneshot::Sender<Option<Transaction>>)),
     /// Add transaction to the transaction manager.
     SendTransaction((IncomingTransaction, oneshot::Sender<SendTransactionResult>)),
+    /// Enable the block sync in the chain sync component.
+    StartBlockSync,
 }
 
 /// A handle for interacting with the network worker.
@@ -306,6 +308,12 @@ impl NetworkHandle {
             .unwrap_or(SendTransactionResult::Failure("Internal error".to_string()))
     }
 
+    pub fn start_block_sync(&self) -> bool {
+        self.worker_msg_sender
+            .unbounded_send(NetworkWorkerMessage::StartBlockSync)
+            .is_ok()
+    }
+
     /// Returns a flag indicating whether the node is actively performing a major sync.
     pub fn is_major_syncing(&self) -> Arc<AtomicBool> {
         self.is_major_syncing.clone()
@@ -330,6 +338,8 @@ pub struct Params {
     pub max_inbound_peers: usize,
     /// Major sync strategy.
     pub sync_strategy: SyncStrategy,
+    /// Whether the Substrate fast sync is enabled.
+    pub substrate_fast_sync_enabled: bool,
 }
 
 fn builtin_seednodes(network: BitcoinNetwork) -> &'static [&'static str] {
@@ -449,6 +459,12 @@ where
             params.ipv4_only,
         );
 
+        let enable_block_sync = !params.substrate_fast_sync_enabled;
+
+        if !enable_block_sync {
+            tracing::info!("Subcoin block sync is disabled until Substrate fast sync is complete");
+        }
+
         let network_worker = NetworkWorker::new(
             worker::Params {
                 client: client.clone(),
@@ -458,6 +474,7 @@ where
                 is_major_syncing,
                 connection_initiator: connection_initiator.clone(),
                 max_outbound_peers: params.max_outbound_peers,
+                enable_block_sync,
             },
             registry.as_ref(),
         );

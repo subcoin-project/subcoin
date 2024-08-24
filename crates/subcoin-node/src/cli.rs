@@ -131,7 +131,6 @@ pub fn run() -> sc_cli::Result<()> {
                         client,
                         spawn_handle,
                         CONFIRMATION_DEPTH,
-                        100,
                         is_major_syncing,
                         None,
                     )

@@ -2,7 +2,7 @@ use crate::cli::params::{CommonParams, NetworkParams};
 use clap::Parser;
 use sc_cli::{
     ImportParams, NetworkParams as SubstrateNetworkParams, NodeKeyParams, PrometheusParams, Role,
-    SharedParams,
+    SharedParams, SyncMode,
 };
 use sc_client_api::UsageProvider;
 use sc_consensus_nakamoto::BitcoinBlockImporter;
@@ -17,13 +17,6 @@ pub struct Run {
     /// Specify the major sync strategy.
     #[clap(long, default_value = "headers-first")]
     pub sync_strategy: SyncStrategy,
-
-    /// Specify the confirmation depth during the major sync.
-    ///
-    /// If you encounter a high memory usage when the node is major syncing, try to
-    /// specify a smaller number.
-    #[clap(long, default_value = "100")]
-    pub major_sync_confirmation_depth: u32,
 
     /// Do not run the finalizer which will finalize the blocks on confirmation depth.
     #[clap(long)]
@@ -56,6 +49,10 @@ pub struct Run {
 
 impl Run {
     pub fn subcoin_network_params(&self, network: bitcoin::Network) -> subcoin_network::Params {
+        let substrate_fast_sync_enabled = matches!(
+            self.substrate_network_params.sync,
+            SyncMode::Fast | SyncMode::FastUnsafe
+        );
         subcoin_network::Params {
             network,
             listen_on: self.network_params.listen,
@@ -65,6 +62,7 @@ impl Run {
             max_outbound_peers: self.network_params.max_outbound_peers,
             max_inbound_peers: self.network_params.max_inbound_peers,
             sync_strategy: self.sync_strategy,
+            substrate_fast_sync_enabled,
         }
     }
 }
@@ -100,7 +98,6 @@ impl RunCmd {
         let bitcoin_network = run.common_params.bitcoin_network();
         let import_config = run.common_params.import_config();
         let no_finalizer = run.no_finalizer;
-        let major_sync_confirmation_depth = run.major_sync_confirmation_depth;
 
         let subcoin_service::NodeComponents {
             client,
@@ -138,29 +135,6 @@ impl RunCmd {
             bitcoin_block_import,
         );
 
-        let (subcoin_networking, subcoin_network_handle) = subcoin_network::Network::new(
-            client.clone(),
-            run.subcoin_network_params(bitcoin_network),
-            import_queue,
-            spawn_handle.clone(),
-            config.prometheus_registry().cloned(),
-        );
-
-        // TODO: handle Substrate networking and Bitcoin networking properly.
-        if !run.disable_subcoin_networking {
-            task_manager.spawn_essential_handle().spawn_blocking(
-                "subcoin-networking",
-                None,
-                async move {
-                    if let Err(err) = subcoin_networking.run().await {
-                        tracing::error!(?err, "Error occurred in subcoin networking");
-                    }
-                },
-            );
-        } else {
-            task_manager.keep_alive(subcoin_networking);
-        }
-
         let (system_rpc_tx, substrate_sync_service) = match config.network.network_backend {
             sc_network::config::NetworkBackendType::Libp2p => {
                 subcoin_service::start_substrate_network::<
@@ -188,6 +162,44 @@ impl RunCmd {
                 )?
             }
         };
+
+        let subcoin_network_params = run.subcoin_network_params(bitcoin_network);
+
+        let substrate_fast_sync_enabled = subcoin_network_params.substrate_fast_sync_enabled;
+
+        let (subcoin_networking, subcoin_network_handle) = subcoin_network::Network::new(
+            client.clone(),
+            subcoin_network_params,
+            import_queue,
+            spawn_handle.clone(),
+            config.prometheus_registry().cloned(),
+        );
+
+        // TODO: handle Substrate networking and Bitcoin networking properly.
+        if !run.disable_subcoin_networking {
+            task_manager.spawn_essential_handle().spawn_blocking(
+                "subcoin-networking",
+                None,
+                async move {
+                    if let Err(err) = subcoin_networking.run().await {
+                        tracing::error!(?err, "Error occurred in subcoin networking");
+                    }
+                },
+            );
+
+            if substrate_fast_sync_enabled {
+                task_manager.spawn_handle().spawn(
+                    "substrate-fast-sync-watcher",
+                    None,
+                    subcoin_service::watch_substrate_fast_sync(
+                        subcoin_network_handle.clone(),
+                        substrate_sync_service.clone(),
+                    ),
+                );
+            }
+        } else {
+            task_manager.keep_alive(subcoin_networking);
+        }
 
         // TODO: Bitcoin-compatible RPC
         // Start JSON-RPC server.
@@ -220,7 +232,6 @@ impl RunCmd {
                     client.clone(),
                     spawn_handle.clone(),
                     CONFIRMATION_DEPTH,
-                    major_sync_confirmation_depth,
                     subcoin_network_handle.is_major_syncing(),
                     Some(substrate_sync_service),
                 )

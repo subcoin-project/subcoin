@@ -371,6 +371,37 @@ where
     Ok((system_rpc_tx, sync_service))
 }
 
+/// Watch the Substrate sync status and enable the subcoin block sync when the Substate
+/// state sync is finished.
+pub async fn watch_substrate_fast_sync(
+    subcoin_network_handle: subcoin_network::NetworkHandle,
+    substate_sync_service: Arc<SyncingService<Block>>,
+) {
+    let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
+
+    let mut state_sync_has_started = false;
+
+    loop {
+        interval.tick().await;
+
+        let state_sync_is_active = substate_sync_service
+            .status()
+            .await
+            .map(|status| status.state_sync.is_some())
+            .unwrap_or(false);
+
+        if state_sync_is_active {
+            if !state_sync_has_started {
+                state_sync_has_started = true;
+            }
+        } else if state_sync_has_started {
+            tracing::info!("Detected state sync is complete, starting Subcoin block sync");
+            subcoin_network_handle.start_block_sync();
+            return;
+        }
+    }
+}
+
 type PartialComponents = sc_service::PartialComponents<
     FullClient,
     FullBackend,
