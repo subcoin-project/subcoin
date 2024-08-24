@@ -9274,6 +9274,7 @@ dependencies = [
  "sp-storage 19.0.0 (git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v1)",
  "sp-tracing 16.0.0 (git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v1)",
  "sp-trie",
+ "subcoin-network",
  "subcoin-primitives",
  "subcoin-runtime",
  "subcoin-test-service",

@@ -358,6 +358,11 @@ where
         }
     }
 
+    pub(super) fn start_block_sync(&mut self) -> SyncAction {
+        self.enable_block_sync = true;
+        self.attempt_sync_start()
+    }
+
     fn attempt_sync_start(&mut self) -> SyncAction {
         if self.syncing.is_major_syncing() {
             return SyncAction::None;

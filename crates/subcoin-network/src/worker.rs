@@ -273,6 +273,10 @@ where
                 };
                 let _ = result_sender.send(send_transaction_result);
             }
+            NetworkWorkerMessage::StartBlockSync => {
+                let sync_action = self.chain_sync.start_block_sync();
+                self.do_sync_action(sync_action);
+            }
         }
     }
 

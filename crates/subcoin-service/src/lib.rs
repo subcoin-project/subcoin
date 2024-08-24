@@ -396,8 +396,8 @@ pub async fn watch_substrate_fast_sync(
             }
         } else {
             if state_sync_has_started {
-                // TODO: enable block sync
-                tracing::info!("======== TODO: enable subcoin block sync");
+                tracing::info!("Substrate state sync is complete, starting Subcoin block sync");
+                subcoin_network_handle.start_block_sync();
                 return;
             }
         }

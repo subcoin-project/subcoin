@@ -226,6 +226,8 @@ enum NetworkWorkerMessage {
     GetTransaction((Txid, oneshot::Sender<Option<Transaction>>)),
     /// Add transaction to the transaction manager.
     SendTransaction((IncomingTransaction, oneshot::Sender<SendTransactionResult>)),
+    /// Enable the block sync in the chain sync component.
+    StartBlockSync,
 }
 
 /// A handle for interacting with the network worker.
@@ -304,6 +306,12 @@ impl NetworkHandle {
         receiver
             .await
             .unwrap_or(SendTransactionResult::Failure("Internal error".to_string()))
+    }
+
+    pub fn start_block_sync(&self) -> bool {
+        self.worker_msg_sender
+            .unbounded_send(NetworkWorkerMessage::StartBlockSync)
+            .is_ok()
     }
 
     /// Returns a flag indicating whether the node is actively performing a major sync.
