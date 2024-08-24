@@ -55,6 +55,8 @@ pub struct Params<Client> {
     pub is_major_syncing: Arc<AtomicBool>,
     pub connection_initiator: ConnectionInitiator,
     pub max_outbound_peers: usize,
+    /// Whether to enable block sync on start.
+    pub enable_block_sync: bool,
 }
 
 /// [`NetworkWorker`] is responsible for processing the network events.
@@ -82,6 +84,7 @@ where
             is_major_syncing,
             connection_initiator,
             max_outbound_peers,
+            enable_block_sync,
         } = params;
 
         let config = Config::new();
@@ -101,11 +104,19 @@ where
             metrics.clone(),
         );
 
+        let chain_sync = ChainSync::new(
+            client,
+            import_queue,
+            sync_strategy,
+            is_major_syncing,
+            enable_block_sync,
+        );
+
         Self {
             network_event_receiver,
             peer_manager,
             transaction_manager: TransactionManager::new(),
-            chain_sync: ChainSync::new(client, import_queue, sync_strategy, is_major_syncing),
+            chain_sync,
             metrics,
             config,
         }

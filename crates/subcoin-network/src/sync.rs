@@ -152,8 +152,13 @@ pub(crate) struct ChainSync<Block, Client> {
     syncing: Syncing<Block, Client>,
     /// Handle of the import queue.
     import_queue: BlockImportQueue,
+    /// Block syncing strategy.
     sync_strategy: SyncStrategy,
+    /// Are we in major syncing?
     is_major_syncing: Arc<AtomicBool>,
+    /// Whether to sync blocks from Bitcoin network.
+    enable_block_sync: bool,
+    /// Randomness generator.
     rng: fastrand::Rng,
     _phantom: PhantomData<Block>,
 }
@@ -169,6 +174,7 @@ where
         import_queue: BlockImportQueue,
         sync_strategy: SyncStrategy,
         is_major_syncing: Arc<AtomicBool>,
+        enable_block_sync: bool,
     ) -> Self {
         Self {
             client,
@@ -177,6 +183,7 @@ where
             syncing: Syncing::Idle,
             sync_strategy,
             is_major_syncing,
+            enable_block_sync,
             rng: fastrand::Rng::new(),
             _phantom: Default::default(),
         }
@@ -344,7 +351,11 @@ where
 
         self.peers.insert(peer_id, new_peer);
 
-        self.attempt_sync_start()
+        if self.enable_block_sync {
+            self.attempt_sync_start()
+        } else {
+            SyncAction::None
+        }
     }
 
     fn attempt_sync_start(&mut self) -> SyncAction {

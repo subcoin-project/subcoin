@@ -2,7 +2,7 @@ use crate::cli::params::{CommonParams, NetworkParams};
 use clap::Parser;
 use sc_cli::{
     ImportParams, NetworkParams as SubstrateNetworkParams, NodeKeyParams, PrometheusParams, Role,
-    SharedParams,
+    SharedParams, SyncMode,
 };
 use sc_client_api::UsageProvider;
 use sc_consensus_nakamoto::BitcoinBlockImporter;
@@ -49,6 +49,10 @@ pub struct Run {
 
 impl Run {
     pub fn subcoin_network_params(&self, network: bitcoin::Network) -> subcoin_network::Params {
+        let substrate_fast_sync_enabled = matches!(
+            self.substrate_network_params.sync,
+            SyncMode::Fast | SyncMode::FastUnsafe
+        );
         subcoin_network::Params {
             network,
             listen_on: self.network_params.listen,
@@ -58,6 +62,7 @@ impl Run {
             max_outbound_peers: self.network_params.max_outbound_peers,
             max_inbound_peers: self.network_params.max_inbound_peers,
             sync_strategy: self.sync_strategy,
+            substrate_fast_sync_enabled,
         }
     }
 }

@@ -330,6 +330,8 @@ pub struct Params {
     pub max_inbound_peers: usize,
     /// Major sync strategy.
     pub sync_strategy: SyncStrategy,
+    /// Whether the Substrate fast sync is enabled.
+    pub substrate_fast_sync_enabled: bool,
 }
 
 fn builtin_seednodes(network: BitcoinNetwork) -> &'static [&'static str] {
@@ -458,6 +460,7 @@ where
                 is_major_syncing,
                 connection_initiator: connection_initiator.clone(),
                 max_outbound_peers: params.max_outbound_peers,
+                enable_block_sync: !params.substrate_fast_sync_enabled,
             },
             registry.as_ref(),
         );
