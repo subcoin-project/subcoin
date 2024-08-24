@@ -269,6 +269,7 @@
 <a href="#269" id="269">269</a>
 <a href="#270" id="270">270</a>
 <a href="#271" id="271">271</a>
+<a href="#272" id="272">272</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::params::{CommonParams, NetworkParams};
 <span class="kw">use </span>clap::Parser;
 <span class="kw">use </span>sc_cli::{
@@ -487,7 +488,7 @@
 
         <span class="kw">if </span>!no_finalizer {
             spawn_handle.spawn(<span class="string">"finalizer"</span>, <span class="prelude-val">None</span>, {
-                subcoin_service::finalize_confirmed_blocks(
+                subcoin_service::SubcoinFinalizer::new(
                     client.clone(),
                     spawn_handle.clone(),
                     CONFIRMATION_DEPTH,
@@ -495,6 +496,7 @@
                     subcoin_network_handle.is_major_syncing(),
                     <span class="prelude-val">Some</span>(substrate_sync_service),
                 )
+                .run()
             });
         }
 

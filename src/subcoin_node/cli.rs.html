@@ -287,6 +287,7 @@
 <a href="#287" id="287">287</a>
 <a href="#288" id="288">288</a>
 <a href="#289" id="289">289</a>
+<a href="#290" id="290">290</a>
 </pre></div><pre class="rust"><code><span class="kw">pub mod </span>params;
 
 <span class="kw">use </span><span class="kw">crate</span>::commands::blockchain::{Blockchain, BlockchainCmd};
@@ -416,7 +417,7 @@
                     <span class="kw">let </span>spawn_handle = task_manager.spawn_handle();
                     <span class="comment">// Assume the chain is major syncing.
                     </span><span class="kw">let </span>is_major_syncing = Arc::new(<span class="bool-val">true</span>.into());
-                    subcoin_service::finalize_confirmed_blocks(
+                    subcoin_service::SubcoinFinalizer::new(
                         client,
                         spawn_handle,
                         CONFIRMATION_DEPTH,
@@ -424,6 +425,7 @@
                         is_major_syncing,
                         <span class="prelude-val">None</span>,
                     )
+                    .run()
                 });
                 <span class="prelude-val">Ok</span>((
                     import_blocks_cmd.run(

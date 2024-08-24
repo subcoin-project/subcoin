@@ -10,7 +10,7 @@ var srcIndex = new Map(JSON.parse('[\
 ["subcoin_rpc",["",[],["blockchain.rs","error.rs","lib.rs","subcoin.rs"]]],\
 ["subcoin_runtime",["",[],["lib.rs"]]],\
 ["subcoin_runtime_primitives",["",[],["lib.rs"]]],\
-["subcoin_service",["",[],["block_executor.rs","chain_spec.rs","genesis_block_builder.rs","lib.rs","transaction_adapter.rs"]]],\
+["subcoin_service",["",[],["block_executor.rs","chain_spec.rs","finalizer.rs","genesis_block_builder.rs","lib.rs","transaction_adapter.rs"]]],\
 ["subcoin_test_service",["",[],["lib.rs"]]]\
 ]'));
 createSrcSidebar();
