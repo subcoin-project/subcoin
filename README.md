@@ -31,9 +31,14 @@ new users to quickly sync to the latest state of the Bitcoin chain by running a 
 
 ## Development Status
 
-Currently, Subcoin tentatively implements the feature of syncing as a Bitcoin full node. It is not yet
-capable of participating in the Bitcoin consensus as a miner node. Please note that Subcoin is not stable
-and is still under active development. Additional features and improvements are in the planning stages.
+Subcoin currently includes a tentative implementation for syncing as a Bitcoin full node, along with an
+early version of the fast sync feature. However, due to limitations, syncing to the tip of the Bitcoin
+network using fast sync is not feasible when the chain state becomes large. We are actively exploring
+solutions to address this limitation, which will be supported in future updates.
+
+It's important to note that Subcoin is still under active development and is not yet stable. It also
+does not yet support participation in Bitcoin consensus as a miner node. Additional features and
+improvements are planned for future releases.
 
 ## Run Tests
 
