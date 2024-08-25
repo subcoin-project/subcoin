@@ -1,4 +1,5 @@
 pub mod params;
+pub mod rpc_params;
 
 use crate::commands::blockchain::{Blockchain, BlockchainCmd};
 use crate::commands::import_blocks::{ImportBlocks, ImportBlocksCmd};

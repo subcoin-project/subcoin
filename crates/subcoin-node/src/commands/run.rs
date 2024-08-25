@@ -1,4 +1,5 @@
 use crate::cli::params::{CommonParams, NetworkParams};
+use crate::cli::rpc_params::RpcParams;
 use clap::Parser;
 use sc_cli::{
     ImportParams, NetworkParams as SubstrateNetworkParams, NodeKeyParams, PrometheusParams, Role,
@@ -6,7 +7,10 @@ use sc_cli::{
 };
 use sc_client_api::UsageProvider;
 use sc_consensus_nakamoto::BitcoinBlockImporter;
+use sc_service::config::{IpNetwork, RpcBatchRequestConfig};
 use sc_service::{Configuration, TaskManager};
+use std::net::SocketAddr;
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use subcoin_network::SyncStrategy;
 use subcoin_primitives::CONFIRMATION_DEPTH;
@@ -25,6 +29,10 @@ pub struct Run {
     /// Disable the Bitcoin networking.
     #[clap(long)]
     pub disable_subcoin_networking: bool,
+
+    #[allow(missing_docs)]
+    #[clap(flatten)]
+    pub rpc_params: RpcParams,
 
     #[allow(missing_docs)]
     #[clap(flatten)]
@@ -69,6 +77,7 @@ impl Run {
 
 /// Adapter of [`sc_cli::RunCmd`].
 pub struct RunCmd {
+    rpc_params: RpcParams,
     shared_params: SharedParams,
     import_params: ImportParams,
     prometheus_params: PrometheusParams,
@@ -79,6 +88,7 @@ impl RunCmd {
     pub fn new(run: &Run) -> Self {
         let shared_params = run.common_params.as_shared_params();
         Self {
+            rpc_params: run.rpc_params.clone(),
             shared_params,
             prometheus_params: run.prometheus_params.clone(),
             import_params: run.import_params.clone(),
@@ -279,5 +289,61 @@ impl sc_cli::CliConfiguration for RunCmd {
         Ok(self
             .prometheus_params
             .prometheus_config(default_listen_port, chain_spec.id().to_string()))
+    }
+
+    fn rpc_max_connections(&self) -> sc_cli::Result<u32> {
+        Ok(self.rpc_params.rpc_max_connections)
+    }
+
+    fn rpc_cors(&self, is_dev: bool) -> sc_cli::Result<Option<Vec<String>>> {
+        self.rpc_params.rpc_cors(is_dev)
+    }
+
+    fn rpc_addr(&self, default_listen_port: u16) -> sc_cli::Result<Option<SocketAddr>> {
+        self.rpc_params.rpc_addr(default_listen_port)
+    }
+
+    fn rpc_methods(&self) -> sc_cli::Result<sc_service::config::RpcMethods> {
+        Ok(self.rpc_params.rpc_methods.into())
+    }
+
+    fn rpc_max_request_size(&self) -> sc_cli::Result<u32> {
+        Ok(self.rpc_params.rpc_max_request_size)
+    }
+
+    fn rpc_max_response_size(&self) -> sc_cli::Result<u32> {
+        Ok(self.rpc_params.rpc_max_response_size)
+    }
+
+    fn rpc_max_subscriptions_per_connection(&self) -> sc_cli::Result<u32> {
+        Ok(self.rpc_params.rpc_max_subscriptions_per_connection)
+    }
+
+    fn rpc_buffer_capacity_per_connection(&self) -> sc_cli::Result<u32> {
+        Ok(self.rpc_params.rpc_message_buffer_capacity_per_connection)
+    }
+
+    fn rpc_batch_config(&self) -> sc_cli::Result<RpcBatchRequestConfig> {
+        let cfg = if self.rpc_params.rpc_disable_batch_requests {
+            RpcBatchRequestConfig::Disabled
+        } else if let Some(l) = self.rpc_params.rpc_max_batch_request_len {
+            RpcBatchRequestConfig::Limit(l)
+        } else {
+            RpcBatchRequestConfig::Unlimited
+        };
+
+        Ok(cfg)
+    }
+
+    fn rpc_rate_limit(&self) -> sc_cli::Result<Option<NonZeroU32>> {
+        Ok(self.rpc_params.rpc_rate_limit)
+    }
+
+    fn rpc_rate_limit_whitelisted_ips(&self) -> sc_cli::Result<Vec<IpNetwork>> {
+        Ok(self.rpc_params.rpc_rate_limit_whitelisted_ips.clone())
+    }
+
+    fn rpc_rate_limit_trust_proxy_headers(&self) -> sc_cli::Result<bool> {
+        Ok(self.rpc_params.rpc_rate_limit_trust_proxy_headers)
     }
 }
