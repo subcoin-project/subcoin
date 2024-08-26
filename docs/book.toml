@@ -1,0 +1,15 @@
+[book]
+title = "Subcoin"
+authors = ["Liu-Cheng Xu"]
+language = "en"
+description = "A comprehensive guide to Subcoin, a Bitcoin Node in Substrate."
+multilingual = false
+src = "src"
+
+[rust]
+edition = "2021"
+
+[output.html]
+git-repository-url = "https://github.com/subcoin-project/subcoin"
+git-repository-icon = "fa-github"
+edit-url-template = "https://github.com/subcoin-project/subcoin/edit/main/docs/{path}"
