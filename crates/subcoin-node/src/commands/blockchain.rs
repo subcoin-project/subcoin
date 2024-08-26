@@ -1,4 +1,4 @@
-use crate::cli::params::CommonParams;
+use crate::cli::subcoin_params::CommonParams;
 use crate::utils::Yield;
 use sc_cli::{ImportParams, NodeKeyParams, SharedParams};
 use sc_client_api::{HeaderBackend, StorageProvider};

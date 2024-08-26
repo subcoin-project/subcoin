@@ -1,5 +1,5 @@
-use crate::cli::params::{CommonParams, NetworkParams};
 use crate::cli::rpc_params::RpcParams;
+use crate::cli::subcoin_params::{CommonParams, NetworkParams};
 use clap::Parser;
 use sc_cli::{
     ImportParams, NetworkParams as SubstrateNetworkParams, NodeKeyParams, PrometheusParams, Role,

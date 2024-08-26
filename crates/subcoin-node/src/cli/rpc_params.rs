@@ -8,6 +8,7 @@ use sc_service::config::IpNetwork;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::num::NonZeroU32;
 
+/// RPC parameters extracted from the upstream RunCmd.
 #[derive(Debug, Clone, Parser)]
 pub struct RpcParams {
     /// Listen to all RPC interfaces (default: local).
