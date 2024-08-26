@@ -15,10 +15,10 @@ use std::sync::Arc;
 use subcoin_network::SyncStrategy;
 use subcoin_primitives::CONFIRMATION_DEPTH;
 
-/// The `run` command used to run a Bitcoin node.
+/// The `run` command used to start a Subcoin node.
 #[derive(Debug, Clone, Parser)]
 pub struct Run {
-    /// Specify the major sync strategy.
+    /// Specify the Bitcoin major sync strategy.
     #[clap(long, default_value = "headers-first")]
     pub sync_strategy: SyncStrategy,
 
@@ -56,7 +56,7 @@ pub struct Run {
 }
 
 impl Run {
-    pub fn subcoin_network_params(&self, network: bitcoin::Network) -> subcoin_network::Params {
+    fn subcoin_network_params(&self, network: bitcoin::Network) -> subcoin_network::Params {
         let substrate_fast_sync_enabled = matches!(
             self.substrate_network_params.sync,
             SyncMode::Fast | SyncMode::FastUnsafe
@@ -77,33 +77,28 @@ impl Run {
 
 /// Adapter of [`sc_cli::RunCmd`].
 pub struct RunCmd {
-    rpc_params: RpcParams,
     shared_params: SharedParams,
-    import_params: ImportParams,
-    prometheus_params: PrometheusParams,
-    substrate_network_params: SubstrateNetworkParams,
+    run: Run,
 }
 
 impl RunCmd {
-    pub fn new(run: &Run) -> Self {
+    pub fn new(run: Run) -> Self {
         let shared_params = run.common_params.as_shared_params();
-        Self {
-            rpc_params: run.rpc_params.clone(),
-            shared_params,
-            prometheus_params: run.prometheus_params.clone(),
-            import_params: run.import_params.clone(),
-            substrate_network_params: run.substrate_network_params.clone(),
-        }
+        Self { shared_params, run }
     }
 
     /// Start subcoin node.
     pub async fn start(
         self,
         mut config: Configuration,
-        run: Run,
         no_hardware_benchmarks: bool,
         storage_monitor: sc_storage_monitor::StorageMonitorParams,
     ) -> sc_cli::Result<TaskManager> {
+        let Self {
+            shared_params: _,
+            run,
+        } = self;
+
         let block_execution_strategy = run.common_params.block_execution_strategy();
         let bitcoin_network = run.common_params.bitcoin_network();
         let import_config = run.common_params.import_config();
@@ -198,7 +193,7 @@ impl RunCmd {
             );
 
             if substrate_fast_sync_enabled {
-                task_manager.spawn_handle().spawn(
+                spawn_handle.spawn(
                     "substrate-fast-sync-watcher",
                     None,
                     subcoin_service::watch_substrate_fast_sync(
@@ -211,7 +206,6 @@ impl RunCmd {
             task_manager.keep_alive(subcoin_networking);
         }
 
-        // TODO: Bitcoin-compatible RPC
         // Start JSON-RPC server.
         let gen_rpc_module = |deny_unsafe: sc_rpc::DenyUnsafe| {
             let system_info = sc_rpc::system::SystemInfo {
@@ -266,11 +260,11 @@ impl sc_cli::CliConfiguration for RunCmd {
     }
 
     fn import_params(&self) -> Option<&ImportParams> {
-        Some(&self.import_params)
+        Some(&self.run.import_params)
     }
 
     fn node_key_params(&self) -> Option<&NodeKeyParams> {
-        Some(&self.substrate_network_params.node_key_params)
+        Some(&self.run.substrate_network_params.node_key_params)
     }
 
     fn role(&self, _is_dev: bool) -> sc_cli::Result<Role> {
@@ -278,7 +272,7 @@ impl sc_cli::CliConfiguration for RunCmd {
     }
 
     fn network_params(&self) -> Option<&SubstrateNetworkParams> {
-        Some(&self.substrate_network_params)
+        Some(&self.run.substrate_network_params)
     }
 
     fn prometheus_config(
@@ -287,46 +281,50 @@ impl sc_cli::CliConfiguration for RunCmd {
         chain_spec: &Box<dyn sc_service::ChainSpec>,
     ) -> sc_cli::Result<Option<sc_service::config::PrometheusConfig>> {
         Ok(self
+            .run
             .prometheus_params
             .prometheus_config(default_listen_port, chain_spec.id().to_string()))
     }
 
     fn rpc_max_connections(&self) -> sc_cli::Result<u32> {
-        Ok(self.rpc_params.rpc_max_connections)
+        Ok(self.run.rpc_params.rpc_max_connections)
     }
 
     fn rpc_cors(&self, is_dev: bool) -> sc_cli::Result<Option<Vec<String>>> {
-        self.rpc_params.rpc_cors(is_dev)
+        self.run.rpc_params.rpc_cors(is_dev)
     }
 
     fn rpc_addr(&self, default_listen_port: u16) -> sc_cli::Result<Option<SocketAddr>> {
-        self.rpc_params.rpc_addr(default_listen_port)
+        self.run.rpc_params.rpc_addr(default_listen_port)
     }
 
     fn rpc_methods(&self) -> sc_cli::Result<sc_service::config::RpcMethods> {
-        Ok(self.rpc_params.rpc_methods.into())
+        Ok(self.run.rpc_params.rpc_methods.into())
     }
 
     fn rpc_max_request_size(&self) -> sc_cli::Result<u32> {
-        Ok(self.rpc_params.rpc_max_request_size)
+        Ok(self.run.rpc_params.rpc_max_request_size)
     }
 
     fn rpc_max_response_size(&self) -> sc_cli::Result<u32> {
-        Ok(self.rpc_params.rpc_max_response_size)
+        Ok(self.run.rpc_params.rpc_max_response_size)
     }
 
     fn rpc_max_subscriptions_per_connection(&self) -> sc_cli::Result<u32> {
-        Ok(self.rpc_params.rpc_max_subscriptions_per_connection)
+        Ok(self.run.rpc_params.rpc_max_subscriptions_per_connection)
     }
 
     fn rpc_buffer_capacity_per_connection(&self) -> sc_cli::Result<u32> {
-        Ok(self.rpc_params.rpc_message_buffer_capacity_per_connection)
+        Ok(self
+            .run
+            .rpc_params
+            .rpc_message_buffer_capacity_per_connection)
     }
 
     fn rpc_batch_config(&self) -> sc_cli::Result<RpcBatchRequestConfig> {
-        let cfg = if self.rpc_params.rpc_disable_batch_requests {
+        let cfg = if self.run.rpc_params.rpc_disable_batch_requests {
             RpcBatchRequestConfig::Disabled
-        } else if let Some(l) = self.rpc_params.rpc_max_batch_request_len {
+        } else if let Some(l) = self.run.rpc_params.rpc_max_batch_request_len {
             RpcBatchRequestConfig::Limit(l)
         } else {
             RpcBatchRequestConfig::Unlimited
@@ -336,14 +334,14 @@ impl sc_cli::CliConfiguration for RunCmd {
     }
 
     fn rpc_rate_limit(&self) -> sc_cli::Result<Option<NonZeroU32>> {
-        Ok(self.rpc_params.rpc_rate_limit)
+        Ok(self.run.rpc_params.rpc_rate_limit)
     }
 
     fn rpc_rate_limit_whitelisted_ips(&self) -> sc_cli::Result<Vec<IpNetwork>> {
-        Ok(self.rpc_params.rpc_rate_limit_whitelisted_ips.clone())
+        Ok(self.run.rpc_params.rpc_rate_limit_whitelisted_ips.clone())
     }
 
     fn rpc_rate_limit_trust_proxy_headers(&self) -> sc_cli::Result<bool> {
-        Ok(self.rpc_params.rpc_rate_limit_trust_proxy_headers)
+        Ok(self.run.rpc_params.rpc_rate_limit_trust_proxy_headers)
     }
 }
