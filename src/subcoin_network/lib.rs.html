@@ -560,6 +560,10 @@
 <a href="#560" id="560">560</a>
 <a href="#561" id="561">561</a>
 <a href="#562" id="562">562</a>
+<a href="#563" id="563">563</a>
+<a href="#564" id="564">564</a>
+<a href="#565" id="565">565</a>
+<a href="#566" id="566">566</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # Bitcoin Network
 //!
 //! This crate facilitates communication with other nodes in the Bitcoin P2P network. It handles
@@ -761,7 +765,8 @@
     }
 }
 
-<span class="attr">#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+<span class="doccomment">/// Represents the result of sending a transaction to the network.
+</span><span class="attr">#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = <span class="string">"camelCase"</span>)]
 </span><span class="kw">pub enum </span>SendTransactionResult {
     Success(Txid),
@@ -832,7 +837,8 @@
         receiver.<span class="kw">await</span>.unwrap_or_default()
     }
 
-    <span class="kw">pub async fn </span>get_transaction(<span class="kw-2">&amp;</span><span class="self">self</span>, txid: Txid) -&gt; <span class="prelude-ty">Option</span>&lt;Transaction&gt; {
+    <span class="doccomment">/// Fetches the transaction for given txid.
+    </span><span class="kw">pub async fn </span>get_transaction(<span class="kw-2">&amp;</span><span class="self">self</span>, txid: Txid) -&gt; <span class="prelude-ty">Option</span>&lt;Transaction&gt; {
         <span class="kw">let </span>(sender, receiver) = oneshot::channel();
 
         <span class="kw">if </span><span class="self">self
@@ -846,7 +852,8 @@
         receiver.<span class="kw">await</span>.ok().flatten()
     }
 
-    <span class="kw">pub async fn </span>send_transaction(<span class="kw-2">&amp;</span><span class="self">self</span>, transaction: Transaction) -&gt; SendTransactionResult {
+    <span class="doccomment">/// Sends an transaction to the network.
+    </span><span class="kw">pub async fn </span>send_transaction(<span class="kw-2">&amp;</span><span class="self">self</span>, transaction: Transaction) -&gt; SendTransactionResult {
         <span class="kw">let </span>(sender, receiver) = oneshot::channel();
 
         <span class="kw">let </span>txid = transaction.compute_txid();
@@ -870,7 +877,8 @@
             </span>.unwrap_or(SendTransactionResult::Failure(<span class="string">"Internal error"</span>.to_string()))
     }
 
-    <span class="kw">pub fn </span>start_block_sync(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+    <span class="doccomment">/// Starts the block sync in chain sync component.
+    </span><span class="kw">pub fn </span>start_block_sync(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
         <span class="self">self</span>.worker_msg_sender
             .unbounded_send(NetworkWorkerMessage::StartBlockSync)
             .is_ok()

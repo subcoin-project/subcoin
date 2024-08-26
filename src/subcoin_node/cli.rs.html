@@ -287,7 +287,9 @@
 <a href="#287" id="287">287</a>
 <a href="#288" id="288">288</a>
 <a href="#289" id="289">289</a>
-</pre></div><pre class="rust"><code><span class="kw">pub mod </span>params;
+<a href="#290" id="290">290</a>
+</pre></div><pre class="rust"><code><span class="kw">pub mod </span>rpc_params;
+<span class="kw">pub mod </span>subcoin_params;
 
 <span class="kw">use </span><span class="kw">crate</span>::commands::blockchain::{Blockchain, BlockchainCmd};
 <span class="kw">use </span><span class="kw">crate</span>::commands::import_blocks::{ImportBlocks, ImportBlocksCmd};
@@ -375,11 +377,11 @@
 
     <span class="kw">match </span>command {
         Command::Run(run) =&gt; {
-            <span class="kw">let </span>run_cmd = RunCmd::new(<span class="kw-2">&amp;</span>run);
+            <span class="kw">let </span>run_cmd = RunCmd::new(<span class="kw-2">*</span>run);
             <span class="kw">let </span>runner = SubstrateCli.create_runner(<span class="kw-2">&amp;</span>run_cmd)<span class="question-mark">?</span>;
             runner.run_node_until_exit(|config| <span class="kw">async move </span>{
                 run_cmd
-                    .start(config, <span class="kw-2">*</span>run, no_hardware_benchmarks, storage_monitor)
+                    .start(config, no_hardware_benchmarks, storage_monitor)
                     .<span class="kw">await
             </span>})
         }

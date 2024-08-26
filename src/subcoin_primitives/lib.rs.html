@@ -420,7 +420,7 @@
 
 <span class="kw">type </span>Height = u32;
 
-<span class="comment">// 6 blocks is the standard confirmation period in the Bitcoin community.
+<span class="doccomment">/// 6 blocks is the standard confirmation period in the Bitcoin community.
 </span><span class="kw">pub const </span>CONFIRMATION_DEPTH: u32 = <span class="number">6u32</span>;
 
 <span class="doccomment">/// Returns the encoded Bitcoin genesis block.
@@ -727,7 +727,7 @@
     }
 }
 
-<span class="doccomment">/// Error type of Substrate header.
+<span class="doccomment">/// Error type of Subcoin header.
 </span><span class="attr">#[derive(Debug, Clone)]
 </span><span class="kw">pub enum </span>HeaderError {
     MultiplePreRuntimeDigests,

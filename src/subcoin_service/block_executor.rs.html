@@ -438,9 +438,11 @@
 <a href="#438" id="438">438</a>
 <a href="#439" id="439">439</a>
 <a href="#440" id="440">440</a>
+<a href="#441" id="441">441</a>
 </pre></div><pre class="rust"><code><span class="kw">use crate</span>::{
-    initialize_genesis_block_hash_mapping, BitcoinExecutorDispatch, CoinStorageKey, FullBackend,
-    FullClient, GenesisBlockBuilder, InMemoryBackend, InMemoryClient, TransactionAdapter,
+    initialize_genesis_block_hash_mapping, CoinStorageKey, FullBackend, FullClient,
+    GenesisBlockBuilder, InMemoryBackend, InMemoryClient, SubcoinExecutorDispatch,
+    TransactionAdapter,
 };
 <span class="kw">use </span>sc_client_api::{Backend, HeaderBackend, StateBackend, StorageProvider};
 <span class="kw">use </span>sc_consensus_nakamoto::{
@@ -544,7 +546,7 @@
 <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>new_in_memory_client(
     client: Arc&lt;FullClient&gt;,
     backend: Arc&lt;FullBackend&gt;,
-    executor: NativeElseWasmExecutor&lt;BitcoinExecutorDispatch&gt;,
+    executor: NativeElseWasmExecutor&lt;SubcoinExecutorDispatch&gt;,
     bitcoin_network: bitcoin::Network,
     spawn_handle: SpawnTaskHandle,
     config: <span class="kw-2">&amp;</span>Configuration,

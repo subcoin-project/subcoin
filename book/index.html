@@ -3,12 +3,12 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Introduction</title>
+        <title>Introduction - Subcoin</title>
 
 
         <!-- Custom HTML head -->
         
-        <meta name="description" content="">
+        <meta name="description" content="A comprehensive guide to Subcoin, a Bitcoin Node in Substrate.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -141,11 +141,17 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title"></h1>
+                    <h1 class="menu-title">Subcoin</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/subcoin-project/subcoin" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/subcoin-project/subcoin/edit/main/docs/src/README.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
                     </div>
@@ -174,7 +180,13 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="subcoin"><a class="header" href="#subcoin">Subcoin</a></h1>
-<p>Subcoin is Bitcoin full node implemented in the Substrate framework.</p>
+<p>Subcoin is Bitcoin full node in Rust implemented in the <a href="https://github.com/paritytech/polkadot-sdk">Substrate framework</a>.</p>
+<p>Subcoin's most significant contribution is introducing decentralized fast sync to
+the Bitcoin ecosystem. Unlike traditional initial full sync, which require processing
+every historical block and replaying all past transactions, fast sync downloads
+the state at a specific block and begins normal block sync from that point. Fast sync
+is common and often the default sync strategy in newer blockchains with a global state
+like Ethereum, Near, and Polkadot.</p>
 
                     </main>
 

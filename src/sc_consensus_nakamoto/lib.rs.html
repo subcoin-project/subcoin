@@ -34,6 +34,7 @@
 <a href="#34" id="34">34</a>
 <a href="#35" id="35">35</a>
 <a href="#36" id="36">36</a>
+<a href="#37" id="37">37</a>
 </pre></div><pre class="rust"><code><span class="kw">mod </span>block_executor;
 <span class="kw">mod </span>block_import;
 <span class="kw">mod </span>chain_params;
@@ -55,7 +56,8 @@
 };
 <span class="kw">pub use </span>verification::{BlockVerification, BlockVerifier, HeaderVerifier};
 
-<span class="attr">#[derive(Debug, thiserror::Error)]
+<span class="doccomment">/// Consensus error type.
+</span><span class="attr">#[derive(Debug, thiserror::Error)]
 </span><span class="kw">pub enum </span>Error {
     <span class="attr">#[error(<span class="string">"Header uses the wrong engine {0:?}"</span>)]
     </span>WrongEngine([u8; <span class="number">4</span>]),

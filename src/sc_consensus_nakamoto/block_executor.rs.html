@@ -761,6 +761,10 @@
 <a href="#761" id="761">761</a>
 <a href="#762" id="762">762</a>
 <a href="#763" id="763">763</a>
+<a href="#764" id="764">764</a>
+<a href="#765" id="765">765</a>
+<a href="#766" id="766">766</a>
+<a href="#767" id="767">767</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>async_trait::async_trait;
 <span class="kw">use </span>bitcoin::OutPoint;
 <span class="kw">use </span>sc_client_api::{AuxStore, Backend, BlockBackend, HeaderBackend, StorageProvider};
@@ -1266,13 +1270,15 @@
     }
 }
 
-<span class="kw">pub struct </span>BenchmarkRuntimeBlockExecutor&lt;Block: BlockT&gt; {
+<span class="doccomment">/// Executor for benchmarking the runtime execution with different backends.
+</span><span class="kw">pub struct </span>BenchmarkRuntimeBlockExecutor&lt;Block: BlockT&gt; {
     disk_runtime_block_executor: Box&lt;<span class="kw">dyn </span>BlockExecutor&lt;Block&gt;&gt;,
     in_memory_runtime_block_executor: Box&lt;<span class="kw">dyn </span>BlockExecutor&lt;Block&gt;&gt;,
 }
 
 <span class="kw">impl</span>&lt;Block: BlockT&gt; BenchmarkRuntimeBlockExecutor&lt;Block&gt; {
-    <span class="kw">pub fn </span>new(
+    <span class="doccomment">/// Constructs a new instance of [`BenchmarkRuntimeBlockExecutor`].
+    </span><span class="kw">pub fn </span>new(
         disk_runtime_block_executor: Box&lt;<span class="kw">dyn </span>BlockExecutor&lt;Block&gt;&gt;,
         in_memory_runtime_block_executor: Box&lt;<span class="kw">dyn </span>BlockExecutor&lt;Block&gt;&gt;,
     ) -&gt; <span class="self">Self </span>{
@@ -1344,7 +1350,8 @@
     }
 }
 
-<span class="kw">pub struct </span>BenchmarkAllExecutor&lt;
+<span class="doccomment">/// This is responsible for benchmarking all kinds of block executors.
+</span><span class="kw">pub struct </span>BenchmarkAllExecutor&lt;
     Block,
     DiskRuntime,
     InMemoryRuntime,
@@ -1361,7 +1368,8 @@
 <span class="kw">impl</span>&lt;Block, DiskRuntime, InMemoryRuntime, DiskOffRuntime, InMemoryOffRuntime&gt;
     BenchmarkAllExecutor&lt;Block, DiskRuntime, InMemoryRuntime, DiskOffRuntime, InMemoryOffRuntime&gt;
 {
-    <span class="kw">pub fn </span>new(
+    <span class="doccomment">/// Constructs a new instance of [`BenchmarkAllExecutor`].
+    </span><span class="kw">pub fn </span>new(
         disk_runtime_block_executor: DiskRuntime,
         in_memory_runtime_block_executor: InMemoryRuntime,
         disk_off_runtime_block_executor: DiskOffRuntime,
