@@ -180,7 +180,6 @@ impl RunCmd {
             config.prometheus_registry().cloned(),
         );
 
-        // TODO: handle Substrate networking and Bitcoin networking properly.
         if !run.disable_subcoin_networking {
             task_manager.spawn_essential_handle().spawn_blocking(
                 "subcoin-networking",
