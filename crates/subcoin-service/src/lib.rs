@@ -42,7 +42,7 @@ pub type ChainSpec = sc_service::GenericChainSpec;
 
 /// Disk backend client type.
 pub type FullClient =
-    sc_service::TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<BitcoinExecutorDispatch>>;
+    sc_service::TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<SubcoinExecutorDispatch>>;
 type FullBackend = sc_service::TFullBackend<Block>;
 type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
@@ -52,16 +52,18 @@ pub type InMemoryClient = sc_service::client::Client<
     sc_service::LocalCallExecutor<
         Block,
         sc_fast_sync_backend::Backend<Block>,
-        NativeElseWasmExecutor<BitcoinExecutorDispatch>,
+        NativeElseWasmExecutor<SubcoinExecutorDispatch>,
     >,
     Block,
     RuntimeApi,
 >;
+/// In memory backend type.
 pub type InMemoryBackend = sc_fast_sync_backend::Backend<Block>;
 
-pub struct BitcoinExecutorDispatch;
+/// Subcoin executor.
+pub struct SubcoinExecutorDispatch;
 
-impl NativeExecutionDispatch for BitcoinExecutorDispatch {
+impl NativeExecutionDispatch for SubcoinExecutorDispatch {
     type ExtendHostFunctions = ();
 
     fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
@@ -73,6 +75,7 @@ impl NativeExecutionDispatch for BitcoinExecutorDispatch {
     }
 }
 
+/// This struct implements the trait [`subcoin_primitives::CoinStorageKey`].
 pub struct CoinStorageKey;
 
 impl subcoin_primitives::CoinStorageKey for CoinStorageKey {
@@ -92,7 +95,7 @@ pub struct NodeComponents {
     /// Backend.
     pub backend: Arc<FullBackend>,
     /// Executor
-    pub executor: NativeElseWasmExecutor<BitcoinExecutorDispatch>,
+    pub executor: NativeElseWasmExecutor<SubcoinExecutorDispatch>,
     /// Task manager.
     pub task_manager: TaskManager,
     /// Block processor used in the block import pipeline.

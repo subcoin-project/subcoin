@@ -1,4 +1,5 @@
-pub mod params;
+pub mod rpc_params;
+pub mod subcoin_params;
 
 use crate::commands::blockchain::{Blockchain, BlockchainCmd};
 use crate::commands::import_blocks::{ImportBlocks, ImportBlocksCmd};
@@ -86,11 +87,11 @@ pub fn run() -> sc_cli::Result<()> {
 
     match command {
         Command::Run(run) => {
-            let run_cmd = RunCmd::new(&run);
+            let run_cmd = RunCmd::new(*run);
             let runner = SubstrateCli.create_runner(&run_cmd)?;
             runner.run_node_until_exit(|config| async move {
                 run_cmd
-                    .start(config, *run, no_hardware_benchmarks, storage_monitor)
+                    .start(config, no_hardware_benchmarks, storage_monitor)
                     .await
             })
         }

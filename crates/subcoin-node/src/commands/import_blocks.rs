@@ -1,4 +1,4 @@
-use crate::cli::params::CommonParams;
+use crate::cli::subcoin_params::CommonParams;
 use crate::utils::Yield;
 use bitcoin_explorer::BitcoinDB;
 use futures::FutureExt;

@@ -19,6 +19,7 @@ pub use import_queue::{
 };
 pub use verification::{BlockVerification, BlockVerifier, HeaderVerifier};
 
+/// Consensus error type.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Header uses the wrong engine {0:?}")]

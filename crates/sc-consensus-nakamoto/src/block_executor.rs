@@ -503,12 +503,14 @@ where
     }
 }
 
+/// Executor for benchmarking the runtime execution with different backends.
 pub struct BenchmarkRuntimeBlockExecutor<Block: BlockT> {
     disk_runtime_block_executor: Box<dyn BlockExecutor<Block>>,
     in_memory_runtime_block_executor: Box<dyn BlockExecutor<Block>>,
 }
 
 impl<Block: BlockT> BenchmarkRuntimeBlockExecutor<Block> {
+    /// Constructs a new instance of [`BenchmarkRuntimeBlockExecutor`].
     pub fn new(
         disk_runtime_block_executor: Box<dyn BlockExecutor<Block>>,
         in_memory_runtime_block_executor: Box<dyn BlockExecutor<Block>>,
@@ -581,6 +583,7 @@ impl<Block: BlockT> BlockExecutor<Block> for BenchmarkRuntimeBlockExecutor<Block
     }
 }
 
+/// This is responsible for benchmarking all kinds of block executors.
 pub struct BenchmarkAllExecutor<
     Block,
     DiskRuntime,
@@ -598,6 +601,7 @@ pub struct BenchmarkAllExecutor<
 impl<Block, DiskRuntime, InMemoryRuntime, DiskOffRuntime, InMemoryOffRuntime>
     BenchmarkAllExecutor<Block, DiskRuntime, InMemoryRuntime, DiskOffRuntime, InMemoryOffRuntime>
 {
+    /// Constructs a new instance of [`BenchmarkAllExecutor`].
     pub fn new(
         disk_runtime_block_executor: DiskRuntime,
         in_memory_runtime_block_executor: InMemoryRuntime,

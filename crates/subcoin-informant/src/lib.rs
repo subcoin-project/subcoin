@@ -84,8 +84,7 @@ where
             }
         });
 
-    // TODO: proper status
-    let is_major_syncing = Arc::new(true.into());
+    let is_major_syncing = network.is_major_syncing();
 
     futures::select! {
         () = display_notifications.fuse() => (),

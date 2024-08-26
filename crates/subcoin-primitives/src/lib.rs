@@ -17,7 +17,7 @@ pub use subcoin_runtime_primitives as runtime;
 
 type Height = u32;
 
-// 6 blocks is the standard confirmation period in the Bitcoin community.
+/// 6 blocks is the standard confirmation period in the Bitcoin community.
 pub const CONFIRMATION_DEPTH: u32 = 6u32;
 
 /// Returns the encoded Bitcoin genesis block.
@@ -324,7 +324,7 @@ pub fn substrate_header_digest(bitcoin_header: &BitcoinHeader) -> Digest {
     }
 }
 
-/// Error type of Substrate header.
+/// Error type of Subcoin header.
 #[derive(Debug, Clone)]
 pub enum HeaderError {
     MultiplePreRuntimeDigests,
