@@ -1,6 +1,7 @@
 use crate::{
-    initialize_genesis_block_hash_mapping, BitcoinExecutorDispatch, CoinStorageKey, FullBackend,
-    FullClient, GenesisBlockBuilder, InMemoryBackend, InMemoryClient, TransactionAdapter,
+    initialize_genesis_block_hash_mapping, CoinStorageKey, FullBackend, FullClient,
+    GenesisBlockBuilder, InMemoryBackend, InMemoryClient, SubcoinExecutorDispatch,
+    TransactionAdapter,
 };
 use sc_client_api::{Backend, HeaderBackend, StateBackend, StorageProvider};
 use sc_consensus_nakamoto::{
@@ -104,7 +105,7 @@ fn new_in_memory_backend(
 pub(super) fn new_in_memory_client(
     client: Arc<FullClient>,
     backend: Arc<FullBackend>,
-    executor: NativeElseWasmExecutor<BitcoinExecutorDispatch>,
+    executor: NativeElseWasmExecutor<SubcoinExecutorDispatch>,
     bitcoin_network: bitcoin::Network,
     spawn_handle: SpawnTaskHandle,
     config: &Configuration,

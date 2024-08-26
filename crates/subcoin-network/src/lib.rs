@@ -199,6 +199,7 @@ impl Clone for Bandwidth {
     }
 }
 
+/// Represents the result of sending a transaction to the network.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SendTransactionResult {
@@ -270,6 +271,7 @@ impl NetworkHandle {
         receiver.await.unwrap_or_default()
     }
 
+    /// Fetches the transaction for given txid.
     pub async fn get_transaction(&self, txid: Txid) -> Option<Transaction> {
         let (sender, receiver) = oneshot::channel();
 
@@ -284,6 +286,7 @@ impl NetworkHandle {
         receiver.await.ok().flatten()
     }
 
+    /// Sends an transaction to the network.
     pub async fn send_transaction(&self, transaction: Transaction) -> SendTransactionResult {
         let (sender, receiver) = oneshot::channel();
 
@@ -308,6 +311,7 @@ impl NetworkHandle {
             .unwrap_or(SendTransactionResult::Failure("Internal error".to_string()))
     }
 
+    /// Starts the block sync in chain sync component.
     pub fn start_block_sync(&self) -> bool {
         self.worker_msg_sender
             .unbounded_send(NetworkWorkerMessage::StartBlockSync)
