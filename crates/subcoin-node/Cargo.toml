@@ -14,12 +14,14 @@ path = "src/bin/subcoin.rs"
 async-trait = { workspace = true }
 bitcoin = { workspace = true }
 bitcoin-explorer = { workspace = true, default-features = false }
+byteorder = "1.5.0"
 clap = { workspace = true, features = ["derive"] }
 codec = { workspace = true }
 frame-benchmarking-cli = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 jsonrpsee = { workspace = true }
+memmap2 = "0.9.4"
 pallet-bitcoin = { workspace = true }
 sc-cli = { workspace = true }
 sc-client-api = { workspace = true }
@@ -43,6 +45,7 @@ sp-consensus = { workspace = true }
 sp-core = { workspace = true }
 sp-io = { workspace = true }
 sp-runtime = { workspace = true }
+sp-state-machine = { workspace = true }
 subcoin-informant = { workspace = true }
 subcoin-network = { workspace = true, features = ["cli"] }
 subcoin-primitives = { workspace = true }
@@ -52,6 +55,7 @@ subcoin-service = { workspace = true }
 substrate-frame-rpc-system = { workspace = true }
 substrate-prometheus-endpoint = { workspace = true }
 tracing = { workspace = true }
+memory-stats = "1.2.0"
 
 [build-dependencies]
 substrate-build-script-utils = { workspace = true }
