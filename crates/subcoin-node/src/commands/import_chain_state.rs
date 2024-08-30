@@ -1,8 +1,9 @@
 use crate::cli::subcoin_params::CommonParams;
 use sc_cli::{ImportParams, NodeKeyParams, SharedParams};
 use sc_client_api::{HeaderBackend, StorageProvider};
-use sc_consensus::BlockImport;
-use sc_consensus::{BlockImportParams, ForkChoiceStrategy, ImportedState, StateAction};
+use sc_consensus::{
+    BlockImport, BlockImportParams, ForkChoiceStrategy, ImportedState, StateAction,
+};
 use sp_consensus::BlockOrigin;
 use sp_core::Decode;
 use std::path::{Path, PathBuf};
@@ -56,9 +57,15 @@ impl ImportChainStateCmd {
         println!("info: {info:?}");
 
         let now = std::time::Instant::now();
-        tracing::info!("Before loading state, memory usage: {:?}", memory_stats::memory_stats().map(|usage| usage.physical_mem));
+        tracing::info!(
+            "Before loading state, memory usage: {:?}",
+            memory_stats::memory_stats().map(|usage| usage.physical_mem)
+        );
         let key_values = load_data(&self.path)?;
-        tracing::info!("After loading state, memory usage: {:?}", memory_stats::memory_stats().map(|usage| usage.physical_mem));
+        tracing::info!(
+            "After loading state, memory usage: {:?}",
+            memory_stats::memory_stats().map(|usage| usage.physical_mem)
+        );
         tracing::info!("State loaded in {}ms", now.elapsed().as_millis());
         tracing::info!("Total key values: {}", key_values.len());
 
@@ -82,7 +89,10 @@ impl ImportChainStateCmd {
         );
 
         tracing::info!("Start to import block: #{},{block_hash}", self.height);
-        tracing::info!("Memory usage: {:?}", memory_stats::memory_stats().map(|usage| usage.physical_mem));
+        tracing::info!(
+            "Memory usage: {:?}",
+            memory_stats::memory_stats().map(|usage| usage.physical_mem)
+        );
         let res = client.import_block(import_params).await;
 
         println!("Import result: {res:?}");
