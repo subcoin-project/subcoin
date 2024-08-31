@@ -257,7 +257,7 @@ where
 
         self.download_state = DownloadState::DownloadingHeaders { start, end };
 
-        SyncAction::Request(SyncRequest::GetHeaders(LocatorRequest {
+        SyncAction::Request(SyncRequest::Headers(LocatorRequest {
             locator_hashes,
             stop_hash: checkpoint.hash,
             from: self.peer_id,
@@ -339,7 +339,7 @@ where
         } else {
             tracing::debug!("📄 Downloaded headers ({final_block_number}/{target_block_number})");
 
-            SyncAction::Request(SyncRequest::GetHeaders(LocatorRequest {
+            SyncAction::Request(SyncRequest::Headers(LocatorRequest {
                 locator_hashes: vec![prev_hash],
                 stop_hash: target_block_hash,
                 from: self.peer_id,
@@ -435,7 +435,7 @@ where
             get_data_msg
         };
 
-        SyncAction::Request(SyncRequest::GetData(get_data_msg, self.peer_id))
+        SyncAction::Request(SyncRequest::Data(get_data_msg, self.peer_id))
     }
 
     pub(crate) fn on_block(&mut self, block: BitcoinBlock, from: PeerId) -> SyncAction {
@@ -542,7 +542,7 @@ where
     fn blocks_request_action(&self, blocks_to_download: HashSet<BlockHash>) -> SyncAction {
         let get_data_msg =
             prepare_ordered_block_data_request(blocks_to_download, &self.downloaded_headers);
-        SyncAction::Request(SyncRequest::GetData(get_data_msg, self.peer_id))
+        SyncAction::Request(SyncRequest::Data(get_data_msg, self.peer_id))
     }
 
     // All blocks for the downloaded headers have been downloaded, start to request
@@ -576,7 +576,7 @@ where
                     checkpoint.number - block_number,
                 );
 
-                SyncAction::Request(SyncRequest::GetHeaders(LocatorRequest {
+                SyncAction::Request(SyncRequest::Headers(LocatorRequest {
                     locator_hashes: vec![block_hash],
                     stop_hash: checkpoint.hash,
                     from: self.peer_id,
