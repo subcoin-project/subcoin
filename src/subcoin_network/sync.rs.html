@@ -534,6 +534,20 @@
 <a href="#534" id="534">534</a>
 <a href="#535" id="535">535</a>
 <a href="#536" id="536">536</a>
+<a href="#537" id="537">537</a>
+<a href="#538" id="538">538</a>
+<a href="#539" id="539">539</a>
+<a href="#540" id="540">540</a>
+<a href="#541" id="541">541</a>
+<a href="#542" id="542">542</a>
+<a href="#543" id="543">543</a>
+<a href="#544" id="544">544</a>
+<a href="#545" id="545">545</a>
+<a href="#546" id="546">546</a>
+<a href="#547" id="547">547</a>
+<a href="#548" id="548">548</a>
+<a href="#549" id="549">549</a>
+<a href="#550" id="550">550</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::block_downloader::{BlocksFirstDownloader, HeadersFirstDownloader};
 <span class="kw">use </span><span class="kw">crate</span>::peer_manager::NewPeer;
 <span class="kw">use crate</span>::{Error, Latency, PeerId, SyncStatus, SyncStrategy};
@@ -556,6 +570,9 @@
 </span><span class="kw">const </span>MAJOR_SYNC_GAP: u32 = <span class="number">144</span>;
 
 <span class="kw">const </span>LATENCY_IMPROVEMENT_THRESHOLD: f64 = <span class="number">1.2</span>;
+
+<span class="comment">// Define a constant for the low ping latency cutoff, in milliseconds.
+</span><span class="kw">const </span>LOW_LATENCY_CUTOFF: Latency = <span class="number">20</span>;
 
 <span class="doccomment">/// The state of syncing between a Peer and ourselves.
 </span><span class="attr">#[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
@@ -634,11 +651,11 @@
 <span class="doccomment">/// Represents different kinds of sync requests.
 </span><span class="attr">#[derive(Debug)]
 </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">enum </span>SyncRequest {
-    <span class="doccomment">/// Get headers request.
+    <span class="doccomment">/// Request headers via `getheaders`.
     </span>Headers(LocatorRequest),
-    <span class="doccomment">/// Get blocks request.
+    <span class="doccomment">/// Request blocks via `getblocks`.
     </span>Blocks(LocatorRequest),
-    <span class="doccomment">/// Get data request.
+    <span class="doccomment">/// Request data via `getdata`.
     </span>Data(Vec&lt;Inventory&gt;, PeerId),
 }
 
@@ -825,6 +842,21 @@
             Syncing::Idle =&gt; <span class="kw">return</span>,
         };
 
+        <span class="kw">let </span><span class="prelude-val">Some</span>(PeerLatency::Ping(current_latency)) = <span class="self">self
+            </span>.peers
+            .get(<span class="kw-2">&amp;</span>current_sync_peer_id)
+            .map(|peer| peer.latency)
+        <span class="kw">else </span>{
+            <span class="kw">return</span>;
+        };
+
+        <span class="kw">if </span>current_latency &lt;= LOW_LATENCY_CUTOFF {
+            <span class="macro">tracing::trace!</span>(
+                peer_id = <span class="question-mark">?</span>current_sync_peer_id,
+                <span class="string">"Skipping sync peer update as the current latency ({current_latency}ms) is already low enough"
+            </span>);
+        }
+
         <span class="kw">let </span>our_best = <span class="self">self</span>.client.best_number();
 
         <span class="comment">// Find the peer with lowest latency.
@@ -841,31 +873,27 @@
             <span class="kw">return</span>;
         };
 
-        <span class="kw">if let </span><span class="prelude-val">Some</span>(current_sync_peer) = <span class="self">self</span>.peers.get(<span class="kw-2">&amp;</span>current_sync_peer_id) {
-            <span class="kw">if let </span>(PeerLatency::Ping(current_latency), PeerLatency::Ping(best_latency)) =
-                (current_sync_peer.latency, best_sync_peer.latency)
-            {
-                <span class="comment">// Update sync peer if the latency improvement is significant.
-                </span><span class="kw">if </span>current_latency <span class="kw">as </span>f64 / best_latency <span class="kw">as </span>f64 &gt; LATENCY_IMPROVEMENT_THRESHOLD {
-                    <span class="kw">let </span>peer_id = best_sync_peer.peer_id;
-                    <span class="kw">let </span>target_block_number = best_sync_peer.best_number;
+        <span class="kw">if let </span>PeerLatency::Ping(best_latency) = best_sync_peer.latency {
+            <span class="comment">// Update sync peer if the latency improvement is significant.
+            </span><span class="kw">if </span>current_latency <span class="kw">as </span>f64 / best_latency <span class="kw">as </span>f64 &gt; LATENCY_IMPROVEMENT_THRESHOLD {
+                <span class="kw">let </span>peer_id = best_sync_peer.peer_id;
+                <span class="kw">let </span>target_block_number = best_sync_peer.best_number;
 
-                    <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.syncing {
-                        Syncing::BlocksFirstSync(downloader) =&gt; {
-                            downloader.update_sync_peer(peer_id, target_block_number);
-                        }
-                        Syncing::HeadersFirstSync(downloader) =&gt; {
-                            downloader.update_sync_peer(peer_id, target_block_number);
-                        }
-                        Syncing::Idle =&gt; <span class="macro">unreachable!</span>(<span class="string">"Must not be Idle as checked; qed"</span>),
+                <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.syncing {
+                    Syncing::BlocksFirstSync(downloader) =&gt; {
+                        downloader.update_sync_peer(peer_id, target_block_number);
                     }
-
-                    <span class="macro">tracing::debug!</span>(
-                        old_peer_id = <span class="question-mark">?</span>current_sync_peer_id,
-                        new_peer_id = <span class="question-mark">?</span>peer_id,
-                        <span class="string">"🔧 Sync peer ({current_latency} ms) updated to a new peer with lower latency ({best_latency} ms)"</span>,
-                    );
+                    Syncing::HeadersFirstSync(downloader) =&gt; {
+                        downloader.update_sync_peer(peer_id, target_block_number);
+                    }
+                    Syncing::Idle =&gt; <span class="macro">unreachable!</span>(<span class="string">"Must not be Idle as checked; qed"</span>),
                 }
+
+                <span class="macro">tracing::debug!</span>(
+                    old_peer_id = <span class="question-mark">?</span>current_sync_peer_id,
+                    new_peer_id = <span class="question-mark">?</span>peer_id,
+                    <span class="string">"🔧 Sync peer ({current_latency} ms) updated to a new peer with lower latency ({best_latency} ms)"</span>,
+                );
             }
         }
     }

@@ -620,6 +620,7 @@
 <a href="#620" id="620">620</a>
 <a href="#621" id="621">621</a>
 <a href="#622" id="622">622</a>
+<a href="#623" id="623">623</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::block_downloader::BlockDownloadManager;
 <span class="kw">use </span><span class="kw">crate</span>::sync::{LocatorRequest, SyncAction, SyncRequest};
 <span class="kw">use crate</span>::{Error, PeerId, SyncStatus};
@@ -899,7 +900,8 @@
         }
 
         <span class="kw">let </span><span class="prelude-val">Some</span>(first_header) = headers.first() <span class="kw">else </span>{
-            <span class="macro">tracing::debug!</span>(<span class="string">"Received empty response of getheaders"</span>);
+            <span class="comment">// TODO: https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/net_processing.cpp#L3014
+            </span><span class="macro">tracing::debug!</span>(<span class="string">"Received empty response of getheaders"</span>);
             <span class="kw">return </span>SyncAction::None;
         };
 
