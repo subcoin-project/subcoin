@@ -21,6 +21,9 @@ const MAJOR_SYNC_GAP: u32 = 144;
 
 const LATENCY_IMPROVEMENT_THRESHOLD: f64 = 1.2;
 
+// Define a constant for the low ping latency cutoff, in milliseconds.
+const LOW_LATENCY_CUTOFF: Latency = 20;
+
 /// The state of syncing between a Peer and ourselves.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -289,6 +292,21 @@ where
             Syncing::Idle => return,
         };
 
+        let Some(PeerLatency::Ping(current_latency)) = self
+            .peers
+            .get(&current_sync_peer_id)
+            .map(|peer| peer.latency)
+        else {
+            return;
+        };
+
+        if current_latency <= LOW_LATENCY_CUTOFF {
+            tracing::trace!(
+                peer_id = ?current_sync_peer_id,
+                "Skipping sync peer update as the current latency ({current_latency}ms) is already low enough"
+            );
+        }
+
         let our_best = self.client.best_number();
 
         // Find the peer with lowest latency.
@@ -305,31 +323,27 @@ where
             return;
         };
 
-        if let Some(current_sync_peer) = self.peers.get(&current_sync_peer_id) {
-            if let (PeerLatency::Ping(current_latency), PeerLatency::Ping(best_latency)) =
-                (current_sync_peer.latency, best_sync_peer.latency)
-            {
-                // Update sync peer if the latency improvement is significant.
-                if current_latency as f64 / best_latency as f64 > LATENCY_IMPROVEMENT_THRESHOLD {
-                    let peer_id = best_sync_peer.peer_id;
-                    let target_block_number = best_sync_peer.best_number;
+        if let PeerLatency::Ping(best_latency) = best_sync_peer.latency {
+            // Update sync peer if the latency improvement is significant.
+            if current_latency as f64 / best_latency as f64 > LATENCY_IMPROVEMENT_THRESHOLD {
+                let peer_id = best_sync_peer.peer_id;
+                let target_block_number = best_sync_peer.best_number;
 
-                    match &mut self.syncing {
-                        Syncing::BlocksFirstSync(downloader) => {
-                            downloader.update_sync_peer(peer_id, target_block_number);
-                        }
-                        Syncing::HeadersFirstSync(downloader) => {
-                            downloader.update_sync_peer(peer_id, target_block_number);
-                        }
-                        Syncing::Idle => unreachable!("Must not be Idle as checked; qed"),
+                match &mut self.syncing {
+                    Syncing::BlocksFirstSync(downloader) => {
+                        downloader.update_sync_peer(peer_id, target_block_number);
                     }
-
-                    tracing::debug!(
-                        old_peer_id = ?current_sync_peer_id,
-                        new_peer_id = ?peer_id,
-                        "🔧 Sync peer ({current_latency} ms) updated to a new peer with lower latency ({best_latency} ms)",
-                    );
+                    Syncing::HeadersFirstSync(downloader) => {
+                        downloader.update_sync_peer(peer_id, target_block_number);
+                    }
+                    Syncing::Idle => unreachable!("Must not be Idle as checked; qed"),
                 }
+
+                tracing::debug!(
+                    old_peer_id = ?current_sync_peer_id,
+                    new_peer_id = ?peer_id,
+                    "🔧 Sync peer ({current_latency} ms) updated to a new peer with lower latency ({best_latency} ms)",
+                );
             }
         }
     }
