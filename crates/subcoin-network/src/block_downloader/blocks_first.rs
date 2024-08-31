@@ -178,7 +178,7 @@ where
             "📦 Downloading {} blocks", block_data_request.len(),
         );
 
-        SyncAction::Request(SyncRequest::Data(block_data_request, self.peer_id))
+        SyncAction::Request(SyncRequest::GetData(block_data_request, self.peer_id))
     }
 
     pub(crate) fn on_block(&mut self, block: BitcoinBlock, from: PeerId) -> SyncAction {
@@ -280,7 +280,7 @@ where
                         });
 
                     // Last `getblocks` finished, fetch more blocks by sending a new `getblocks` request.
-                    SyncAction::Request(SyncRequest::Blocks(LocatorRequest {
+                    SyncAction::Request(SyncRequest::GetBlocks(LocatorRequest {
                         locator_hashes,
                         stop_hash: BlockHash::all_zeros(),
                         from: self.peer_id,
@@ -346,7 +346,7 @@ where
             "Requesting new blocks",
         );
 
-        SyncRequest::Blocks(LocatorRequest {
+        SyncRequest::GetBlocks(LocatorRequest {
             locator_hashes,
             stop_hash: BlockHash::all_zeros(),
             from: self.peer_id,
@@ -396,7 +396,7 @@ mod tests {
         let sync_action = downloader.on_inv(vec![Inventory::Block(block_hash)], peer_id);
 
         match sync_action {
-            SyncAction::Request(SyncRequest::Data(blocks_request, _)) => {
+            SyncAction::Request(SyncRequest::GetData(blocks_request, _)) => {
                 assert_eq!(blocks_request, vec![Inventory::Block(block_hash)])
             }
             action => panic!("Should request block data but got: {action:?}"),

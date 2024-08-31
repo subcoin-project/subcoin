@@ -70,7 +70,7 @@ impl Run {
             max_outbound_peers: self.network_params.max_outbound_peers,
             max_inbound_peers: self.network_params.max_inbound_peers,
             sync_strategy: self.sync_strategy,
-            substrate_fast_sync_enabled,
+            enable_block_sync_on_startup: !substrate_fast_sync_enabled,
         }
     }
 }
@@ -170,7 +170,10 @@ impl RunCmd {
 
         let subcoin_network_params = run.subcoin_network_params(bitcoin_network);
 
-        let substrate_fast_sync_enabled = subcoin_network_params.substrate_fast_sync_enabled;
+        let substrate_fast_sync_enabled = matches!(
+            config.network.sync_mode,
+            sc_service::config::SyncMode::LightState { .. }
+        );
 
         let (subcoin_networking, subcoin_network_handle) = subcoin_network::Network::new(
             client.clone(),

@@ -98,12 +98,12 @@ pub(crate) struct LocatorRequest {
 /// Represents different kinds of sync requests.
 #[derive(Debug)]
 pub(crate) enum SyncRequest {
-    /// Get headers request.
-    Headers(LocatorRequest),
-    /// Get blocks request.
-    Blocks(LocatorRequest),
-    /// Get data request.
-    Data(Vec<Inventory>, PeerId),
+    /// Request headers via `getheaders`.
+    GetHeaders(LocatorRequest),
+    /// Request blocks via `getblocks`.
+    GetBlocks(LocatorRequest),
+    /// Request data via `getdata`.
+    GetData(Vec<Inventory>, PeerId),
 }
 
 /// Represents actions that can be taken during the syncing.

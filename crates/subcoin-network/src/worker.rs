@@ -416,7 +416,7 @@ where
     fn do_sync_action(&mut self, sync_action: SyncAction) {
         match sync_action {
             SyncAction::Request(sync_request) => match sync_request {
-                SyncRequest::Headers(request) => {
+                SyncRequest::GetHeaders(request) => {
                     let LocatorRequest {
                         locator_hashes,
                         stop_hash,
@@ -432,17 +432,17 @@ where
                         let _ = self.send(from, NetworkMessage::GetHeaders(msg));
                     }
                 }
-                SyncRequest::Blocks(request) => {
+                SyncRequest::GetBlocks(request) => {
                     self.send_get_blocks_request(request);
                 }
-                SyncRequest::Data(invs, from) => {
+                SyncRequest::GetData(invs, from) => {
                     if !invs.is_empty() {
                         let _ = self.send(from, NetworkMessage::GetData(invs));
                     }
                 }
             },
             SyncAction::SwitchToBlocksFirstSync => {
-                if let Some(SyncRequest::Blocks(request)) =
+                if let Some(SyncRequest::GetBlocks(request)) =
                     self.chain_sync.attempt_blocks_first_sync()
                 {
                     self.send_get_blocks_request(request);
