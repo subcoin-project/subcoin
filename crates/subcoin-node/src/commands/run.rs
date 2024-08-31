@@ -57,10 +57,6 @@ pub struct Run {
 
 impl Run {
     fn subcoin_network_params(&self, network: bitcoin::Network) -> subcoin_network::Params {
-        let substrate_fast_sync_enabled = matches!(
-            self.substrate_network_params.sync,
-            SyncMode::Fast | SyncMode::FastUnsafe
-        );
         subcoin_network::Params {
             network,
             listen_on: self.network_params.listen,
@@ -70,8 +66,15 @@ impl Run {
             max_outbound_peers: self.network_params.max_outbound_peers,
             max_inbound_peers: self.network_params.max_inbound_peers,
             sync_strategy: self.sync_strategy,
-            enable_block_sync_on_startup: !substrate_fast_sync_enabled,
+            enable_block_sync_on_startup: !self.substrate_fast_sync_enabled(),
         }
+    }
+
+    fn substrate_fast_sync_enabled(&self) -> bool {
+        matches!(
+            self.substrate_network_params.sync,
+            SyncMode::Fast | SyncMode::FastUnsafe
+        )
     }
 }
 
@@ -170,11 +173,6 @@ impl RunCmd {
 
         let subcoin_network_params = run.subcoin_network_params(bitcoin_network);
 
-        let substrate_fast_sync_enabled = matches!(
-            config.network.sync_mode,
-            sc_service::config::SyncMode::LightState { .. }
-        );
-
         let (subcoin_networking, subcoin_network_handle) = subcoin_network::Network::new(
             client.clone(),
             subcoin_network_params,
@@ -194,7 +192,7 @@ impl RunCmd {
                 },
             );
 
-            if substrate_fast_sync_enabled {
+            if run.substrate_fast_sync_enabled() {
                 spawn_handle.spawn(
                     "substrate-fast-sync-watcher",
                     None,
