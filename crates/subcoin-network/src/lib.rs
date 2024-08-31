@@ -43,6 +43,7 @@ use crate::connection::ConnectionInitiator;
 use crate::worker::NetworkWorker;
 use bitcoin::p2p::ServiceFlags;
 use bitcoin::{BlockHash, Network as BitcoinNetwork, Transaction, Txid};
+use chrono::prelude::{DateTime, Local};
 use peer_manager::HandshakeState;
 use sc_client_api::{AuxStore, HeaderBackend};
 use sc_consensus_nakamoto::BlockImportQueue;
@@ -65,6 +66,8 @@ pub type PeerId = SocketAddr;
 
 /// Peer latency in milliseconds.
 pub type Latency = u128;
+
+pub(crate) type LocalTime = DateTime<Local>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -203,7 +206,9 @@ impl Clone for Bandwidth {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SendTransactionResult {
+    /// Transaction was submitted successfully.
     Success(Txid),
+    /// Error occurred when submitting the transaction.
     Failure(String),
 }
 
@@ -342,8 +347,11 @@ pub struct Params {
     pub max_inbound_peers: usize,
     /// Major sync strategy.
     pub sync_strategy: SyncStrategy,
-    /// Whether the Substrate fast sync is enabled.
-    pub substrate_fast_sync_enabled: bool,
+    /// Whether to enable the block sync on startup.
+    ///
+    /// The block sync from Bitcoin P2P network may be disabled when performing fast sync from
+    /// the Subcoin network.
+    pub enable_block_sync_on_startup: bool,
 }
 
 fn builtin_seednodes(network: BitcoinNetwork) -> &'static [&'static str] {
@@ -463,9 +471,7 @@ where
             params.ipv4_only,
         );
 
-        let enable_block_sync = !params.substrate_fast_sync_enabled;
-
-        if !enable_block_sync {
+        if !params.enable_block_sync_on_startup {
             tracing::info!("Subcoin block sync is disabled until Substrate fast sync is complete");
         }
 
@@ -478,7 +484,7 @@ where
                 is_major_syncing,
                 connection_initiator: connection_initiator.clone(),
                 max_outbound_peers: params.max_outbound_peers,
-                enable_block_sync,
+                enable_block_sync: params.enable_block_sync_on_startup,
             },
             registry.as_ref(),
         );

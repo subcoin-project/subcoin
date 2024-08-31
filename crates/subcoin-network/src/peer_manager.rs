@@ -1,12 +1,12 @@
 use crate::address_book::AddressBook;
 use crate::connection::{ConnectionInitiator, ConnectionWriter, Direction, NewConnection};
 use crate::metrics::Metrics;
-use crate::{validate_outbound_services, Error, Latency, PeerId};
+use crate::{validate_outbound_services, Error, Latency, LocalTime, PeerId};
 use bitcoin::p2p::address::AddrV2Message;
 use bitcoin::p2p::message::NetworkMessage;
 use bitcoin::p2p::message_network::VersionMessage;
 use bitcoin::p2p::{Address, ServiceFlags};
-use chrono::prelude::{DateTime, Local};
+use chrono::prelude::Local;
 use sc_client_api::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
 use std::collections::HashMap;
@@ -15,8 +15,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subcoin_primitives::ClientExt;
-
-type LocalTime = DateTime<Local>;
 
 /// "wtxidrelay" command for wtxid-based relay starts with this version.
 const WTXID_RELAY_VERSION: u32 = 70016;
@@ -685,7 +683,8 @@ where
         match direction {
             Direction::Inbound => {
                 // Do not log the inbound connection success as what Bitcoin Core does.
-                // tracing::debug!(peer = ?peer_id, ?direction, "🤝 Completed handshake");
+                #[cfg(test)]
+                tracing::debug!(peer = ?peer_id, ?direction, "🤝 Completed handshake");
             }
             Direction::Outbound => {
                 self.send(peer_id, NetworkMessage::Verack)?;

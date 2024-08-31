@@ -277,6 +277,7 @@ where
         }
 
         let Some(first_header) = headers.first() else {
+            // TODO: https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/net_processing.cpp#L3014
             tracing::debug!("Received empty response of getheaders");
             return SyncAction::None;
         };

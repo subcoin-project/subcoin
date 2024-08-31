@@ -311,7 +311,7 @@ where
             spawn_handle: task_manager.spawn_handle(),
             import_queue,
             block_announce_validator_builder: None,
-            warp_sync_params: None,
+            warp_sync_config: None,
             block_relay: None,
             metrics,
         })?;

@@ -111,7 +111,12 @@ where
                 // are not empty, so that the state sync can be started when the last finalized block
                 // notification is sent.
                 if sync_service.is_major_syncing()
-                    && sync_service.num_queued_blocks().await.unwrap_or(0) > 0
+                    && sync_service
+                        .status()
+                        .await
+                        .map(|status| status.queued_blocks)
+                        .unwrap_or(0)
+                        > 0
                 {
                     try_update_cached_block_to_finalize();
                     continue;
