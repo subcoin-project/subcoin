@@ -1,10 +1,31 @@
 use substrate_prometheus_endpoint::prometheus::IntCounterVec;
 use substrate_prometheus_endpoint::{register, GaugeVec, Opts, PrometheusError, Registry, U64};
 
+#[derive(Clone, Debug)]
+pub struct BandwidthMetrics {
+    pub(crate) bandwidth: GaugeVec<U64>,
+}
+
+impl BandwidthMetrics {
+    pub fn register(registry: &Registry) -> Result<Self, PrometheusError> {
+        Ok(Self {
+            bandwidth: register(
+                GaugeVec::new(
+                    Opts::new(
+                        "subcoin_p2p_bandwidth_bytes",
+                        "Network bandwidth usage in bytes",
+                    ),
+                    &["direction"],
+                )?,
+                registry,
+            )?,
+        })
+    }
+}
+
 #[derive(Clone)]
 pub struct Metrics {
     pub(crate) addresses: GaugeVec<U64>,
-    pub(crate) bandwidth: GaugeVec<U64>,
     pub(crate) connected_peers: GaugeVec<U64>,
     pub(crate) messages_received: IntCounterVec,
     pub(crate) messages_sent: IntCounterVec,
@@ -17,16 +38,6 @@ impl Metrics {
                 GaugeVec::new(
                     Opts::new("subcoin_p2p_addresses", "Bitcoin node addresses"),
                     &["status"],
-                )?,
-                registry,
-            )?,
-            bandwidth: register(
-                GaugeVec::new(
-                    Opts::new(
-                        "subcoin_p2p_bandwidth_bytes",
-                        "Network bandwidth usage in bytes",
-                    ),
-                    &["direction"],
                 )?,
                 registry,
             )?,

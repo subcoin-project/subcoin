@@ -41,6 +41,7 @@ mod transaction_manager;
 mod worker;
 
 use crate::connection::ConnectionInitiator;
+use crate::metrics::BandwidthMetrics;
 use crate::network::NetworkWorkerMessage;
 use crate::worker::NetworkWorker;
 use bitcoin::p2p::ServiceFlags;
@@ -164,6 +165,30 @@ pub enum SyncStrategy {
 struct Bandwidth {
     total_bytes_inbound: Arc<AtomicU64>,
     total_bytes_outbound: Arc<AtomicU64>,
+    metrics: Option<BandwidthMetrics>,
+}
+
+impl Bandwidth {
+    fn new<'a>(registry: Option<&'a Registry>) -> Self {
+        Self {
+            total_bytes_inbound: Arc::new(0.into()),
+            total_bytes_outbound: Arc::new(0.into()),
+            metrics: registry.and_then(|registry| {
+                BandwidthMetrics::register(registry)
+                    .map_err(|err| tracing::error!("Failed to register bandwidth metrics: {err}"))
+                    .ok()
+            }),
+        }
+    }
+
+    /// Report the metrics if needed.
+    ///
+    /// Possible labels: `in` and `out`.
+    fn report(&self, label: &str, value: u64) {
+        if let Some(metrics) = &self.metrics {
+            metrics.bandwidth.with_label_values(&[label]).set(value);
+        }
+    }
 }
 
 impl Clone for Bandwidth {
@@ -171,6 +196,7 @@ impl Clone for Bandwidth {
         Self {
             total_bytes_inbound: self.total_bytes_inbound.clone(),
             total_bytes_outbound: self.total_bytes_outbound.clone(),
+            metrics: self.metrics.clone(),
         }
     }
 }
@@ -307,7 +333,7 @@ where
 
         let (network_event_sender, network_event_receiver) = tokio::sync::mpsc::unbounded_channel();
 
-        let bandwidth = Bandwidth::default();
+        let bandwidth = Bandwidth::new(registry.as_ref());
 
         let connection_initiator = ConnectionInitiator::new(
             params.network,

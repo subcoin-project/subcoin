@@ -162,17 +162,6 @@ where
             }
 
             self.chain_sync.import_pending_blocks();
-
-            if let Some(metrics) = &self.metrics {
-                metrics
-                    .bandwidth
-                    .with_label_values(&["in"])
-                    .set(bandwidth.total_bytes_inbound.load(Ordering::Relaxed));
-                metrics
-                    .bandwidth
-                    .with_label_values(&["out"])
-                    .set(bandwidth.total_bytes_outbound.load(Ordering::Relaxed));
-            }
         }
     }
 

@@ -316,9 +316,10 @@ async fn read_peer_messages(
             Ok(n) => {
                 tracing::trace!(from = ?peer, "<= recv {n} bytes");
 
-                bandwidth
+                let old = bandwidth
                     .total_bytes_inbound
                     .fetch_add(n as u64, Ordering::Relaxed);
+                bandwidth.report("in", old + n as u64);
 
                 decoder.input(&read_buffer[..n]);
 
@@ -370,9 +371,10 @@ async fn send_peer_messages(
             // if the readiness event is a false positive.
             match writable.as_ref().try_write(msg) {
                 Ok(n) => {
-                    bandwidth
+                    let old = bandwidth
                         .total_bytes_outbound
                         .fetch_add(n as u64, Ordering::Relaxed);
+                    bandwidth.report("out", old + n as u64);
 
                     let msg_len = msg.len().saturating_sub(MSG_HEADER_SIZE);
                     tracing::trace!(to = ?peer, "=> {cmd} ({msg_len} bytes) sent successfully");
@@ -407,9 +409,10 @@ async fn send_peer_messages(
             // the readiness event is a false positive.
             match writable.as_ref().try_write(&msg) {
                 Ok(n) => {
-                    bandwidth
+                    let old = bandwidth
                         .total_bytes_outbound
                         .fetch_add(n as u64, Ordering::Relaxed);
+                    bandwidth.report("out", old + n as u64);
 
                     // Bitcoin Core logs the message size without counting in the header.
                     let msg_len = msg.len().saturating_sub(MSG_HEADER_SIZE);
