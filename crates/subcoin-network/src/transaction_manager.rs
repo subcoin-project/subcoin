@@ -1,4 +1,5 @@
-use crate::{IncomingTransaction, PeerId};
+use crate::network::IncomingTransaction;
+use crate::PeerId;
 use bitcoin::{Transaction, Txid};
 use indexmap::map::Entry;
 use indexmap::IndexMap;

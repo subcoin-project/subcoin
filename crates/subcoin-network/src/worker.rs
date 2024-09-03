@@ -1,12 +1,12 @@
 use crate::connection::{ConnectionInitiator, Direction, NewConnection};
 use crate::metrics::Metrics;
+use crate::network::{
+    IncomingTransaction, NetworkStatus, NetworkWorkerMessage, SendTransactionResult,
+};
 use crate::peer_manager::{Config, PeerManager, SlowPeer};
 use crate::sync::{ChainSync, LocatorRequest, SyncAction, SyncRequest};
 use crate::transaction_manager::TransactionManager;
-use crate::{
-    Bandwidth, Error, IncomingTransaction, Latency, NetworkStatus, NetworkWorkerMessage, PeerId,
-    SendTransactionResult, SyncStrategy,
-};
+use crate::{Bandwidth, Error, Latency, PeerId, SyncStrategy};
 use bitcoin::p2p::message::{NetworkMessage, MAX_INV_SIZE};
 use bitcoin::p2p::message_blockdata::{GetBlocksMessage, GetHeadersMessage, Inventory};
 use futures::stream::FusedStream;
