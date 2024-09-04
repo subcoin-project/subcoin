@@ -143,8 +143,8 @@
 }
 
 <span class="kw">pub fn </span>test_configuration(tokio_handle: tokio::runtime::Handle) -&gt; Configuration {
-    <span class="kw">let </span>base_path = BasePath::new_temp_dir()
-        .expect(<span class="string">"getting the base path of a temporary path doesn't fail; qed"</span>);
+    <span class="kw">let </span>tmp = tempfile::tempdir().unwrap();
+    <span class="kw">let </span>base_path = BasePath::new(tmp.path());
     <span class="kw">let </span>root = base_path.path().to_path_buf();
 
     <span class="kw">let </span>network_config = NetworkConfiguration::new(
