@@ -269,7 +269,7 @@ async fn test_block_announcement_via_headers() {
 
     let (subcoin_networking, _subcoin_network_handle) = crate::Network::new(
         client.clone(),
-        crate::Params {
+        crate::Config {
             network: bitcoin::Network::Bitcoin,
             listen_on,
             seednodes: vec![bitcoind.local_addr.to_string()],
@@ -314,6 +314,7 @@ async fn test_block_announcement_via_headers() {
     let header1 = bitcoind.blocks[1].header.clone();
     bitcoind.send(subcoin_node, NetworkMessage::Headers(vec![header1]));
 
+    // TODO: could be flaky.
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
     assert_eq!(client.info().best_number, 1);
