@@ -9296,6 +9296,7 @@ dependencies = [
  "sp-keyring",
  "subcoin-runtime",
  "subcoin-service",
+ "tempfile",
  "tokio",
 ]
 

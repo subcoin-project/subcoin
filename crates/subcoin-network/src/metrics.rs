@@ -1,10 +1,31 @@
 use substrate_prometheus_endpoint::prometheus::IntCounterVec;
 use substrate_prometheus_endpoint::{register, GaugeVec, Opts, PrometheusError, Registry, U64};
 
+#[derive(Clone, Debug)]
+pub struct BandwidthMetrics {
+    pub(crate) bandwidth: GaugeVec<U64>,
+}
+
+impl BandwidthMetrics {
+    pub fn register(registry: &Registry) -> Result<Self, PrometheusError> {
+        Ok(Self {
+            bandwidth: register(
+                GaugeVec::new(
+                    Opts::new(
+                        "subcoin_p2p_bandwidth_bytes",
+                        "Network bandwidth usage in bytes",
+                    ),
+                    &["direction"],
+                )?,
+                registry,
+            )?,
+        })
+    }
+}
+
 #[derive(Clone)]
 pub struct Metrics {
     pub(crate) addresses: GaugeVec<U64>,
-    pub(crate) bandwidth: GaugeVec<U64>,
     pub(crate) connected_peers: GaugeVec<U64>,
     pub(crate) messages_received: IntCounterVec,
     pub(crate) messages_sent: IntCounterVec,
@@ -20,17 +41,12 @@ impl Metrics {
                 )?,
                 registry,
             )?,
-            bandwidth: register(
-                GaugeVec::new(
-                    Opts::new("subcoin_p2p_bandwidth", "Subcoin network bandwidth"),
-                    &["direction"],
-                )?,
-                registry,
-            )?,
-
             connected_peers: register(
                 GaugeVec::new(
-                    Opts::new("subcoin_p2p_connected_peers", "Number of connected peers"),
+                    Opts::new(
+                        "subcoin_p2p_connected_peers_total",
+                        "Total number of connected peers",
+                    ),
                     &["direction"],
                 )?,
                 registry,
@@ -39,7 +55,7 @@ impl Metrics {
                 IntCounterVec::new(
                     Opts::new(
                         "subcoin_p2p_messages_received_total",
-                        "Subcoin network messages received",
+                        "Total number of network messages received",
                     ),
                     &["type"],
                 )?,
@@ -49,7 +65,7 @@ impl Metrics {
                 IntCounterVec::new(
                     Opts::new(
                         "subcoin_p2p_messages_sent_total",
-                        "Subcoin network messages sent",
+                        "Total number of network messages sent",
                     ),
                     &["type"],
                 )?,

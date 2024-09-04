@@ -32,8 +32,8 @@ pub fn block_data() -> Vec<Block> {
 }
 
 pub fn test_configuration(tokio_handle: tokio::runtime::Handle) -> Configuration {
-    let base_path = BasePath::new_temp_dir()
-        .expect("getting the base path of a temporary path doesn't fail; qed");
+    let tmp = tempfile::tempdir().unwrap();
+    let base_path = BasePath::new(tmp.path());
     let root = base_path.path().to_path_buf();
 
     let network_config = NetworkConfiguration::new(

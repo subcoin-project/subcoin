@@ -31,6 +31,7 @@ mod block_downloader;
 mod checkpoint;
 mod connection;
 mod metrics;
+mod network;
 mod orphan_blocks_pool;
 mod peer_manager;
 mod sync;
@@ -40,16 +41,17 @@ mod transaction_manager;
 mod worker;
 
 use crate::connection::ConnectionInitiator;
+use crate::metrics::BandwidthMetrics;
+use crate::network::NetworkWorkerMessage;
 use crate::worker::NetworkWorker;
 use bitcoin::p2p::ServiceFlags;
-use bitcoin::{BlockHash, Network as BitcoinNetwork, Transaction, Txid};
+use bitcoin::{BlockHash, Network as BitcoinNetwork};
 use chrono::prelude::{DateTime, Local};
 use peer_manager::HandshakeState;
 use sc_client_api::{AuxStore, HeaderBackend};
 use sc_consensus_nakamoto::BlockImportQueue;
 use sc_service::SpawnTaskHandle;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
-use serde::{Deserialize, Serialize};
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::net::{AddrParseError, SocketAddr};
@@ -59,6 +61,7 @@ use substrate_prometheus_endpoint::Registry;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
+pub use crate::network::{NetworkHandle, NetworkStatus, SendTransactionResult, SyncStatus};
 pub use crate::sync::{PeerLatency, PeerSync, PeerSyncState};
 
 /// Identifies a peer.
@@ -158,39 +161,34 @@ pub enum SyncStrategy {
     BlocksFirst,
 }
 
-/// Represents the sync status of node.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum SyncStatus {
-    /// The node is idle and not currently major syncing.
-    Idle,
-    /// The node is downloading blocks from peers.
-    ///
-    /// `target` specifies the block number the node aims to reach.
-    /// `peers` is a list of peers from which the node is downloading.
-    Downloading { target: u32, peers: Vec<PeerId> },
-    /// The node is importing downloaded blocks into the local database.
-    Importing { target: u32, peers: Vec<PeerId> },
-}
-
-/// Represents the status of network.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NetworkStatus {
-    /// The number of peers currently connected to the node.
-    pub num_connected_peers: usize,
-    /// The total number of bytes received from the network.
-    pub total_bytes_inbound: u64,
-    /// The total number of bytes sent to the network.
-    pub total_bytes_outbound: u64,
-    /// Current sync status of the node.
-    pub sync_status: SyncStatus,
-}
-
 #[derive(Debug, Default)]
 struct Bandwidth {
     total_bytes_inbound: Arc<AtomicU64>,
     total_bytes_outbound: Arc<AtomicU64>,
+    metrics: Option<BandwidthMetrics>,
+}
+
+impl Bandwidth {
+    fn new(registry: Option<&Registry>) -> Self {
+        Self {
+            total_bytes_inbound: Arc::new(0.into()),
+            total_bytes_outbound: Arc::new(0.into()),
+            metrics: registry.and_then(|registry| {
+                BandwidthMetrics::register(registry)
+                    .map_err(|err| tracing::error!("Failed to register bandwidth metrics: {err}"))
+                    .ok()
+            }),
+        }
+    }
+
+    /// Report the metrics if needed.
+    ///
+    /// Possible labels: `in` and `out`.
+    fn report(&self, label: &str, value: u64) {
+        if let Some(metrics) = &self.metrics {
+            metrics.bandwidth.with_label_values(&[label]).set(value);
+        }
+    }
 }
 
 impl Clone for Bandwidth {
@@ -198,139 +196,13 @@ impl Clone for Bandwidth {
         Self {
             total_bytes_inbound: self.total_bytes_inbound.clone(),
             total_bytes_outbound: self.total_bytes_outbound.clone(),
+            metrics: self.metrics.clone(),
         }
     }
 }
 
-/// Represents the result of sending a transaction to the network.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum SendTransactionResult {
-    /// Transaction was submitted successfully.
-    Success(Txid),
-    /// Error occurred when submitting the transaction.
-    Failure(String),
-}
-
-/// An incoming transaction from RPC or network.
-#[derive(Debug)]
-pub(crate) struct IncomingTransaction {
-    pub(crate) txid: Txid,
-    pub(crate) transaction: Transaction,
-}
-
-/// Message to the network worker.
-#[derive(Debug)]
-enum NetworkWorkerMessage {
-    /// Retrieve the network status.
-    NetworkStatus(oneshot::Sender<NetworkStatus>),
-    /// Retrieve the sync peers.
-    SyncPeers(oneshot::Sender<Vec<PeerSync>>),
-    /// Retrieve the number of inbound connected peers.
-    InboundPeersCount(oneshot::Sender<usize>),
-    /// Retrieve the transaction.
-    GetTransaction((Txid, oneshot::Sender<Option<Transaction>>)),
-    /// Add transaction to the transaction manager.
-    SendTransaction((IncomingTransaction, oneshot::Sender<SendTransactionResult>)),
-    /// Enable the block sync in the chain sync component.
-    StartBlockSync,
-}
-
-/// A handle for interacting with the network worker.
-///
-/// This handle allows sending messages to the network worker and provides a simple
-/// way to check if the node is performing a major synchronization.
-#[derive(Debug, Clone)]
-pub struct NetworkHandle {
-    worker_msg_sender: TracingUnboundedSender<NetworkWorkerMessage>,
-    // A simple flag to know whether the node is doing the major sync.
-    is_major_syncing: Arc<AtomicBool>,
-}
-
-impl NetworkHandle {
-    /// Provides high-level status information about network.
-    ///
-    /// Returns None if the `NetworkWorker` is no longer running.
-    pub async fn status(&self) -> Option<NetworkStatus> {
-        let (sender, receiver) = oneshot::channel();
-
-        self.worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::NetworkStatus(sender))
-            .ok();
-
-        receiver.await.ok()
-    }
-
-    /// Returns the currently syncing peers.
-    pub async fn sync_peers(&self) -> Vec<PeerSync> {
-        let (sender, receiver) = oneshot::channel();
-
-        if self
-            .worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::SyncPeers(sender))
-            .is_err()
-        {
-            return Vec::new();
-        }
-
-        receiver.await.unwrap_or_default()
-    }
-
-    /// Fetches the transaction for given txid.
-    pub async fn get_transaction(&self, txid: Txid) -> Option<Transaction> {
-        let (sender, receiver) = oneshot::channel();
-
-        if self
-            .worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::GetTransaction((txid, sender)))
-            .is_err()
-        {
-            return None;
-        }
-
-        receiver.await.ok().flatten()
-    }
-
-    /// Sends an transaction to the network.
-    pub async fn send_transaction(&self, transaction: Transaction) -> SendTransactionResult {
-        let (sender, receiver) = oneshot::channel();
-
-        let txid = transaction.compute_txid();
-        let incoming_transaction = IncomingTransaction { txid, transaction };
-
-        if self
-            .worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::SendTransaction((
-                incoming_transaction,
-                sender,
-            )))
-            .is_err()
-        {
-            return SendTransactionResult::Failure(format!(
-                "Failed to send transaction ({txid}) to worker"
-            ));
-        }
-
-        receiver
-            .await
-            .unwrap_or(SendTransactionResult::Failure("Internal error".to_string()))
-    }
-
-    /// Starts the block sync in chain sync component.
-    pub fn start_block_sync(&self) -> bool {
-        self.worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::StartBlockSync)
-            .is_ok()
-    }
-
-    /// Returns a flag indicating whether the node is actively performing a major sync.
-    pub fn is_major_syncing(&self) -> Arc<AtomicBool> {
-        self.is_major_syncing.clone()
-    }
-}
-
-/// Network params.
-pub struct Params {
+/// Network configuration.
+pub struct Config {
     /// Bitcoin network type.
     pub network: BitcoinNetwork,
     /// Specify the local listen address.
@@ -381,10 +253,10 @@ fn builtin_seednodes(network: BitcoinNetwork) -> &'static [&'static str] {
     }
 }
 
-/// Represents the network component.
+/// Represents the Subcoin network component.
 pub struct Network<Block, Client> {
     client: Arc<Client>,
-    params: Params,
+    config: Config,
     import_queue: BlockImportQueue,
     spawn_handle: SpawnTaskHandle,
     worker_msg_sender: TracingUnboundedSender<NetworkWorkerMessage>,
@@ -402,7 +274,7 @@ where
     /// Constructs a new instance of [`Network`].
     pub fn new(
         client: Arc<Client>,
-        params: Params,
+        config: Config,
         import_queue: BlockImportQueue,
         spawn_handle: SpawnTaskHandle,
         registry: Option<Registry>,
@@ -413,7 +285,7 @@ where
 
         let network = Self {
             client,
-            params,
+            config,
             import_queue,
             spawn_handle,
             worker_msg_sender: worker_msg_sender.clone(),
@@ -438,7 +310,7 @@ where
     pub async fn run(self) -> Result<(), Error> {
         let Self {
             client,
-            params,
+            config,
             import_queue,
             spawn_handle,
             worker_msg_sender,
@@ -448,7 +320,7 @@ where
             _phantom,
         } = self;
 
-        let mut listen_on = params.listen_on;
+        let mut listen_on = config.listen_on;
         let listener = match TcpListener::bind(&listen_on).await {
             Ok(listener) => listener,
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
@@ -461,17 +333,17 @@ where
 
         let (network_event_sender, network_event_receiver) = tokio::sync::mpsc::unbounded_channel();
 
-        let bandwidth = Bandwidth::default();
+        let bandwidth = Bandwidth::new(registry.as_ref());
 
         let connection_initiator = ConnectionInitiator::new(
-            params.network,
+            config.network,
             network_event_sender,
             spawn_handle.clone(),
             bandwidth.clone(),
-            params.ipv4_only,
+            config.ipv4_only,
         );
 
-        if !params.enable_block_sync_on_startup {
+        if !config.enable_block_sync_on_startup {
             tracing::info!("Subcoin block sync is disabled until Substrate fast sync is complete");
         }
 
@@ -480,11 +352,11 @@ where
                 client: client.clone(),
                 network_event_receiver,
                 import_queue,
-                sync_strategy: params.sync_strategy,
+                sync_strategy: config.sync_strategy,
                 is_major_syncing,
                 connection_initiator: connection_initiator.clone(),
-                max_outbound_peers: params.max_outbound_peers,
-                enable_block_sync: params.enable_block_sync_on_startup,
+                max_outbound_peers: config.max_outbound_peers,
+                enable_block_sync: config.enable_block_sync_on_startup,
             },
             registry.as_ref(),
         );
@@ -492,7 +364,7 @@ where
         spawn_handle.spawn("inbound-connection", None, {
             let local_addr = listener.local_addr()?;
             let connection_initiator = connection_initiator.clone();
-            let max_inbound_peers = params.max_inbound_peers;
+            let max_inbound_peers = config.max_inbound_peers;
 
             async move {
                 tracing::info!("🔊 Listening on {local_addr:?}",);
@@ -526,12 +398,12 @@ where
             }
         });
 
-        let Params {
+        let Config {
             seednode_only,
             seednodes,
             network,
             ..
-        } = params;
+        } = config;
 
         let mut bootnodes = seednodes;
 

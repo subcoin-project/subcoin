@@ -56,8 +56,8 @@ pub struct Run {
 }
 
 impl Run {
-    fn subcoin_network_params(&self, network: bitcoin::Network) -> subcoin_network::Params {
-        subcoin_network::Params {
+    fn subcoin_network_config(&self, network: bitcoin::Network) -> subcoin_network::Config {
+        subcoin_network::Config {
             network,
             listen_on: self.network_params.listen,
             seednodes: self.network_params.seednodes.clone(),
@@ -171,11 +171,11 @@ impl RunCmd {
             }
         };
 
-        let subcoin_network_params = run.subcoin_network_params(bitcoin_network);
+        let subcoin_network_config = run.subcoin_network_config(bitcoin_network);
 
         let (subcoin_networking, subcoin_network_handle) = subcoin_network::Network::new(
             client.clone(),
-            subcoin_network_params,
+            subcoin_network_config,
             import_queue,
             spawn_handle.clone(),
             config.prometheus_registry().cloned(),
