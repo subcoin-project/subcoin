@@ -1,10 +1,12 @@
 use crate::{Local, PeerId};
 use bitcoin::consensus::{deserialize_partial, Encodable};
 use bitcoin::p2p::message::{NetworkMessage, RawNetworkMessage, MAX_MSG_SIZE};
+use bitcoin::p2p::message_blockdata::Inventory;
 use bitcoin::p2p::message_network::VersionMessage;
 use bitcoin::p2p::{Address, ServiceFlags};
 use bitcoin::{Block, BlockHash};
 use parking_lot::RwLock;
+use sc_client_api::HeaderBackend;
 use sc_service::SpawnTaskHandle;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -16,7 +18,6 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
 #[derive(Clone)]
 struct MockBitcoind {
-    number2hash: HashMap<u32, BlockHash>,
     hash2number: HashMap<BlockHash, u32>,
     blocks: Vec<Block>,
     local_addr: PeerId,
@@ -26,15 +27,12 @@ struct MockBitcoind {
 impl MockBitcoind {
     fn new(local_addr: PeerId) -> Self {
         let blocks = subcoin_test_service::block_data();
-        let mut number2hash = HashMap::new();
         let mut hash2number = HashMap::new();
         blocks.iter().enumerate().for_each(|(index, block)| {
             let block_hash = block.block_hash();
-            number2hash.insert(index as u32, block_hash);
             hash2number.insert(block_hash, index as u32);
         });
         Self {
-            number2hash,
             hash2number,
             blocks,
             local_addr,
@@ -69,8 +67,21 @@ impl MockBitcoind {
             NetworkMessage::GetAddr => {
                 self.send(from, NetworkMessage::AddrV2(Vec::new()));
             }
-            NetworkMessage::GetHeaders(msg) => todo!("Handle GetHeaders"),
-            NetworkMessage::GetData(msg) => todo!("Handle GetData"),
+            NetworkMessage::GetData(invs) => {
+                for inv in invs {
+                    match inv {
+                        Inventory::Block(block_hash) => {
+                            let block = self
+                                .hash2number
+                                .get(&block_hash)
+                                .and_then(|number| self.blocks.get(*number as usize))
+                                .expect("Block not found");
+                            self.send(from, NetworkMessage::Block(block.clone()));
+                        }
+                        unsupported_inv => todo!("Handle {unsupported_inv:?}"),
+                    }
+                }
+            }
             NetworkMessage::Ping(nonce) => {
                 self.send(from, NetworkMessage::Pong(nonce));
             }
@@ -256,7 +267,7 @@ async fn test_block_announcement_via_headers() {
 
     tracing::debug!("Subcoin listens on {listen_on:?}");
 
-    let (subcoin_networking, subcoin_network_handle) = crate::Network::new(
+    let (subcoin_networking, _subcoin_network_handle) = crate::Network::new(
         client.clone(),
         crate::Params {
             network: bitcoin::Network::Bitcoin,
@@ -282,7 +293,14 @@ async fn test_block_announcement_via_headers() {
             }
         });
 
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    // Wait for the connection to be established.
+    for _ in 0..10 {
+        if bitcoind.connections.read().keys().next().is_none() {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        } else {
+            break;
+        }
+    }
 
     let subcoin_node = bitcoind
         .connections
@@ -290,9 +308,13 @@ async fn test_block_announcement_via_headers() {
         .keys()
         .next()
         .copied()
-        .expect("Subcoin node must exist");
+        .expect("Connection has been established");
+
+    // Assume block 1 is a new block and broadcast it to the subcoin node via headers.
     let header1 = bitcoind.blocks[1].header.clone();
     bitcoind.send(subcoin_node, NetworkMessage::Headers(vec![header1]));
 
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+    assert_eq!(client.info().best_number, 1);
 }

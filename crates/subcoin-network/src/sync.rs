@@ -10,11 +10,11 @@ use serde::{Deserialize, Serialize};
 use sp_consensus::BlockOrigin;
 use sp_runtime::traits::Block as BlockT;
 use std::cmp::Ordering as CmpOrdering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use subcoin_primitives::ClientExt;
+use subcoin_primitives::{BackendExt, ClientExt};
 
 // Do major sync when the current tip falls behind the network by 144 blocks (roughly one day).
 const MAJOR_SYNC_GAP: u32 = 144;
@@ -163,6 +163,8 @@ pub(crate) struct ChainSync<Block, Client> {
     enable_block_sync: bool,
     /// Randomness generator.
     rng: fastrand::Rng,
+    /// Broadcasted blocks that are being requested.
+    broadcasted_blocks: HashSet<BlockHash>,
     _phantom: PhantomData<Block>,
 }
 
@@ -188,6 +190,7 @@ where
             is_major_syncing,
             enable_block_sync,
             rng: fastrand::Rng::new(),
+            broadcasted_blocks: HashSet::new(),
             _phantom: Default::default(),
         }
     }
@@ -490,6 +493,14 @@ where
     }
 
     pub(super) fn on_block(&mut self, block: BitcoinBlock, from: PeerId) -> SyncAction {
+        if self.broadcasted_blocks.remove(&block.block_hash()) {
+            self.import_queue.import_blocks(ImportBlocks {
+                origin: BlockOrigin::NetworkBroadcast,
+                blocks: vec![block],
+            });
+            return SyncAction::None;
+        }
+
         match &mut self.syncing {
             Syncing::Idle => SyncAction::None,
             Syncing::BlocksFirstSync(downloader) => downloader.on_block(block, from),
@@ -500,9 +511,44 @@ where
     pub(super) fn on_headers(&mut self, headers: Vec<BitcoinHeader>, from: PeerId) -> SyncAction {
         match &mut self.syncing {
             Syncing::HeadersFirstSync(downloader) => downloader.on_headers(headers, from),
-            Syncing::BlocksFirstSync(_) => SyncAction::None,
-            Syncing::Idle => {
-                // TODO: A new block maybe broadcasted via `headers` message.
+            Syncing::BlocksFirstSync(_) | Syncing::Idle => {
+                if headers.is_empty() {
+                    return SyncAction::None;
+                }
+
+                // New blocks maybe broadcasted via `headers` message.
+                let Some(best_hash) = self.client.block_hash(self.client.best_number()) else {
+                    return SyncAction::None;
+                };
+
+                // New blocks, extending the chain tip.
+                if headers[0].prev_blockhash == best_hash {
+                    // TODO: Verify header
+
+                    let data_request = SyncRequest::Data(
+                        headers
+                            .into_iter()
+                            .map(|header| {
+                                let block_hash = header.block_hash();
+                                self.broadcasted_blocks.insert(block_hash);
+                                Inventory::Block(block_hash)
+                            })
+                            .collect(),
+                        from,
+                    );
+
+                    return SyncAction::Request(data_request);
+                }
+
+                tracing::debug!(
+                    ?from,
+                    "Ignored headers: {:?}",
+                    headers
+                        .iter()
+                        .map(|header| header.block_hash())
+                        .collect::<Vec<_>>()
+                );
+
                 SyncAction::None
             }
         }

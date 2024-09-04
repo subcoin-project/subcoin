@@ -201,8 +201,8 @@ impl Clone for Bandwidth {
     }
 }
 
-/// Network params.
-pub struct Params {
+/// Network configuration.
+pub struct Config {
     /// Bitcoin network type.
     pub network: BitcoinNetwork,
     /// Specify the local listen address.
@@ -253,10 +253,10 @@ fn builtin_seednodes(network: BitcoinNetwork) -> &'static [&'static str] {
     }
 }
 
-/// Represents the network component.
+/// Represents the Subcoin network component.
 pub struct Network<Block, Client> {
     client: Arc<Client>,
-    params: Params,
+    config: Config,
     import_queue: BlockImportQueue,
     spawn_handle: SpawnTaskHandle,
     worker_msg_sender: TracingUnboundedSender<NetworkWorkerMessage>,
@@ -274,7 +274,7 @@ where
     /// Constructs a new instance of [`Network`].
     pub fn new(
         client: Arc<Client>,
-        params: Params,
+        config: Config,
         import_queue: BlockImportQueue,
         spawn_handle: SpawnTaskHandle,
         registry: Option<Registry>,
@@ -285,7 +285,7 @@ where
 
         let network = Self {
             client,
-            params,
+            config,
             import_queue,
             spawn_handle,
             worker_msg_sender: worker_msg_sender.clone(),
@@ -310,7 +310,7 @@ where
     pub async fn run(self) -> Result<(), Error> {
         let Self {
             client,
-            params,
+            config,
             import_queue,
             spawn_handle,
             worker_msg_sender,
@@ -320,7 +320,7 @@ where
             _phantom,
         } = self;
 
-        let mut listen_on = params.listen_on;
+        let mut listen_on = config.listen_on;
         let listener = match TcpListener::bind(&listen_on).await {
             Ok(listener) => listener,
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
@@ -336,14 +336,14 @@ where
         let bandwidth = Bandwidth::new(registry.as_ref());
 
         let connection_initiator = ConnectionInitiator::new(
-            params.network,
+            config.network,
             network_event_sender,
             spawn_handle.clone(),
             bandwidth.clone(),
-            params.ipv4_only,
+            config.ipv4_only,
         );
 
-        if !params.enable_block_sync_on_startup {
+        if !config.enable_block_sync_on_startup {
             tracing::info!("Subcoin block sync is disabled until Substrate fast sync is complete");
         }
 
@@ -352,11 +352,11 @@ where
                 client: client.clone(),
                 network_event_receiver,
                 import_queue,
-                sync_strategy: params.sync_strategy,
+                sync_strategy: config.sync_strategy,
                 is_major_syncing,
                 connection_initiator: connection_initiator.clone(),
-                max_outbound_peers: params.max_outbound_peers,
-                enable_block_sync: params.enable_block_sync_on_startup,
+                max_outbound_peers: config.max_outbound_peers,
+                enable_block_sync: config.enable_block_sync_on_startup,
             },
             registry.as_ref(),
         );
@@ -364,7 +364,7 @@ where
         spawn_handle.spawn("inbound-connection", None, {
             let local_addr = listener.local_addr()?;
             let connection_initiator = connection_initiator.clone();
-            let max_inbound_peers = params.max_inbound_peers;
+            let max_inbound_peers = config.max_inbound_peers;
 
             async move {
                 tracing::info!("🔊 Listening on {local_addr:?}",);
@@ -398,12 +398,12 @@ where
             }
         });
 
-        let Params {
+        let Config {
             seednode_only,
             seednodes,
             network,
             ..
-        } = params;
+        } = config;
 
         let mut bootnodes = seednodes;
 
