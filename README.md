@@ -5,7 +5,7 @@
 [![Continuous integration](https://github.com/subcoin-project/subcoin/actions/workflows/ci.yml/badge.svg)](https://github.com/subcoin-project/subcoin/actions/workflows/ci.yml)
 [![Docs](https://github.com/subcoin-project/subcoin/actions/workflows/docs.yml/badge.svg)](https://github.com/subcoin-project/subcoin/actions/workflows/docs.yml)
 [![Subcoin Book](https://img.shields.io/badge/User%20Guide-blue?logo=mdBook&logoColor=%23292b2e&link=https%3A%2F%2Fsubcoin-project.github.io%2Fsubcoin%2Fbook)](https://subcoin-project.github.io/subcoin/book)
-[![Telegram](https://img.shields.io/badge/Telegram-blue?color=white&logo=telegram&logoColor=%#64b5ef)](https://t.me/subcoin_project)
+[![Telegram](https://img.shields.io/badge/Telegram-blue?color=gray&logo=telegram&logoColor=%#64b5ef)](https://t.me/subcoin_project)
 
 </div>
 
