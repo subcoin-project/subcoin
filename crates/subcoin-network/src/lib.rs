@@ -169,7 +169,7 @@ struct Bandwidth {
 }
 
 impl Bandwidth {
-    fn new<'a>(registry: Option<&'a Registry>) -> Self {
+    fn new(registry: Option<&Registry>) -> Self {
         Self {
             total_bytes_inbound: Arc::new(0.into()),
             total_bytes_outbound: Arc::new(0.into()),
