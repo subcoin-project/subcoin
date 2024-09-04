@@ -405,36 +405,31 @@ where
             // Start major syncing if the gap is significant.
             let (new_syncing, sync_action) = if require_major_sync {
                 tracing::debug!(
-                    from = ?sync_peer,
-                    start = our_best,
                     latency = ?best_peer.latency,
-                    "⏩ Starting major sync",
+                    "⏩ Starting major sync from {sync_peer:?} at #{our_best}",
                 );
 
                 match self.sync_strategy {
                     SyncStrategy::BlocksFirst => {
-                        let (blocks_first_downloader, blocks_sync_request) =
+                        let (downloader, blocks_request) =
                             BlocksFirstDownloader::new(self.client.clone(), sync_peer, peer_best);
                         (
-                            Syncing::BlocksFirstSync(blocks_first_downloader),
-                            SyncAction::Request(blocks_sync_request),
+                            Syncing::BlocksFirstSync(downloader),
+                            SyncAction::Request(blocks_request),
                         )
                     }
                     SyncStrategy::HeadersFirst => {
-                        let (headers_first_downloader, sync_action) =
+                        let (downloader, sync_action) =
                             HeadersFirstDownloader::new(self.client.clone(), sync_peer, peer_best);
-                        (
-                            Syncing::HeadersFirstSync(headers_first_downloader),
-                            sync_action,
-                        )
+                        (Syncing::HeadersFirstSync(downloader), sync_action)
                     }
                 }
             } else {
-                let (blocks_first_downloader, blocks_sync_request) =
+                let (downloader, blocks_request) =
                     BlocksFirstDownloader::new(self.client.clone(), sync_peer, peer_best);
                 (
-                    Syncing::BlocksFirstSync(blocks_first_downloader),
-                    SyncAction::Request(blocks_sync_request),
+                    Syncing::BlocksFirstSync(downloader),
+                    SyncAction::Request(blocks_request),
                 )
             };
 

@@ -16,15 +16,27 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
 #[derive(Clone)]
 struct MockBitcoind {
-    blocks: HashMap<BlockHash, Block>,
+    number2hash: HashMap<u32, BlockHash>,
+    hash2number: HashMap<BlockHash, u32>,
+    blocks: Vec<Block>,
     local_addr: PeerId,
     connections: Arc<RwLock<HashMap<PeerId, UnboundedSender<NetworkMessage>>>>,
 }
 
 impl MockBitcoind {
     fn new(local_addr: PeerId) -> Self {
+        let blocks = subcoin_test_service::block_data();
+        let mut number2hash = HashMap::new();
+        let mut hash2number = HashMap::new();
+        blocks.iter().enumerate().for_each(|(index, block)| {
+            let block_hash = block.block_hash();
+            number2hash.insert(index as u32, block_hash);
+            hash2number.insert(block_hash, index as u32);
+        });
         Self {
-            blocks: HashMap::new(),
+            number2hash,
+            hash2number,
+            blocks,
             local_addr,
             connections: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -262,5 +274,25 @@ async fn test_block_announcement_via_headers() {
         None,
     );
 
-    subcoin_networking.run().await;
+    task_manager
+        .spawn_essential_handle()
+        .spawn("subcoin-networking", None, async move {
+            if let Err(err) = subcoin_networking.run().await {
+                panic!("Fatal error in subcoin networking: {err:?}");
+            }
+        });
+
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+    let subcoin_node = bitcoind
+        .connections
+        .read()
+        .keys()
+        .next()
+        .copied()
+        .expect("Subcoin node must exist");
+    let header1 = bitcoind.blocks[1].header.clone();
+    bitcoind.send(subcoin_node, NetworkMessage::Headers(vec![header1]));
+
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 }
