@@ -13,7 +13,6 @@ pub fn gen_rpc_module(
     client: Arc<FullClient>,
     spawn_handle: SpawnTaskHandle,
     system_rpc_tx: TracingUnboundedSender<sc_rpc::system::Request<OpaqueBlock>>,
-    deny_unsafe: sc_rpc::DenyUnsafe,
     network_handle: NetworkHandle,
 ) -> Result<RpcModule<()>, sc_service::Error> {
     use sc_rpc::chain::ChainApiServer;
@@ -28,14 +27,13 @@ pub fn gen_rpc_module(
 
     let task_executor = Arc::new(spawn_handle);
 
-    let system = sc_rpc::system::System::new(system_info, system_rpc_tx, deny_unsafe).into_rpc();
+    let system = sc_rpc::system::System::new(system_info, system_rpc_tx).into_rpc();
     let chain = sc_rpc::chain::new_full(client.clone(), task_executor.clone()).into_rpc();
     let (state, child_state) = {
-        let (state, child_state) =
-            sc_rpc::state::new_full(client.clone(), task_executor, deny_unsafe);
+        let (state, child_state) = sc_rpc::state::new_full(client.clone(), task_executor);
         (state.into_rpc(), child_state.into_rpc())
     };
-    let _frame_system = FrameSystem::new(client.clone(), dummy_pool, deny_unsafe).into_rpc();
+    let _frame_system = FrameSystem::new(client.clone(), dummy_pool).into_rpc();
 
     let into_service_error =
         |e: jsonrpsee::core::error::RegisterMethodError| sc_service::Error::Application(e.into());

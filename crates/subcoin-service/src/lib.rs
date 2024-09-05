@@ -326,7 +326,11 @@ where
         .as_mut()
         .map(|telemetry| {
             sc_service::init_telemetry(
-                config,
+                config.network.node_name.clone(),
+                config.impl_name.clone(),
+                config.impl_version.clone(),
+                config.chain_spec.name().to_string(),
+                config.role.is_authority(),
                 network.clone(),
                 client.clone(),
                 telemetry,
@@ -339,7 +343,13 @@ where
     let metrics_service =
         if let Some(PrometheusConfig { port, registry }) = config.prometheus_config.clone() {
             // Set static metrics.
-            let metrics = MetricsService::with_prometheus(telemetry, &registry, config)?;
+            let metrics = MetricsService::with_prometheus(
+                telemetry,
+                &registry,
+                config.role,
+                &config.network.node_name,
+                &config.impl_version,
+            )?;
             spawn_handle.spawn(
                 "prometheus-endpoint",
                 None,
