@@ -53,6 +53,8 @@ substrate-frame-rpc-system = { workspace = true }
 substrate-prometheus-endpoint = { workspace = true }
 tracing = { workspace = true }
 
+txoutset = { path = "../../../txoutset" }
+
 [build-dependencies]
 substrate-build-script-utils = { workspace = true }
 
