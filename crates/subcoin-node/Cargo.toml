@@ -53,7 +53,7 @@ substrate-frame-rpc-system = { workspace = true }
 substrate-prometheus-endpoint = { workspace = true }
 tracing = { workspace = true }
 
-txoutset = { path = "../../../txoutset" }
+txoutset = { git = "https://github.com/liuchengxu/txoutset", branch = "subcoin" }
 
 [build-dependencies]
 substrate-build-script-utils = { workspace = true }
