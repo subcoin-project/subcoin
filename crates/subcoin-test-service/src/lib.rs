@@ -3,8 +3,9 @@ use bitcoin::hex::FromHex;
 use bitcoin::Block;
 use sc_consensus_nakamoto::{BlockExecutionStrategy, ExecutionBackend};
 use sc_service::config::{
-    BlocksPruning, DatabaseSource, KeystoreConfig, NetworkConfiguration, OffchainWorkerConfig,
-    PruningMode, RpcBatchRequestConfig, WasmExecutionMethod, WasmtimeInstantiationStrategy,
+    BlocksPruning, DatabaseSource, ExecutorConfiguration, KeystoreConfig, NetworkConfiguration,
+    OffchainWorkerConfig, PruningMode, RpcBatchRequestConfig, RpcConfiguration,
+    WasmExecutionMethod, WasmtimeInstantiationStrategy,
 };
 use sc_service::error::Error as ServiceError;
 use sc_service::{BasePath, Configuration, Role};
@@ -61,26 +62,32 @@ pub fn test_configuration(tokio_handle: tokio::runtime::Handle) -> Configuration
         state_pruning: Some(PruningMode::ArchiveAll),
         blocks_pruning: BlocksPruning::KeepAll,
         chain_spec: Box::new(spec),
-        wasm_method: WasmExecutionMethod::Compiled {
-            instantiation_strategy: WasmtimeInstantiationStrategy::PoolingCopyOnWrite,
+        executor: ExecutorConfiguration {
+            wasm_method: WasmExecutionMethod::Compiled {
+                instantiation_strategy: WasmtimeInstantiationStrategy::PoolingCopyOnWrite,
+            },
+            max_runtime_instances: 8,
+            runtime_cache_size: 2,
+            default_heap_pages: None,
         },
-        rpc_addr: None,
-        rpc_max_connections: Default::default(),
-        rpc_cors: None,
-        rpc_methods: Default::default(),
-        rpc_max_request_size: Default::default(),
-        rpc_max_response_size: Default::default(),
-        rpc_id_provider: Default::default(),
-        rpc_max_subs_per_conn: Default::default(),
-        rpc_port: 9944,
-        rpc_message_buffer_capacity: Default::default(),
-        rpc_batch_config: RpcBatchRequestConfig::Unlimited,
-        rpc_rate_limit: None,
-        rpc_rate_limit_whitelisted_ips: Default::default(),
-        rpc_rate_limit_trust_proxy_headers: Default::default(),
+        rpc: RpcConfiguration {
+            rpc_addr: None,
+            rpc_max_connections: Default::default(),
+            rpc_cors: None,
+            rpc_methods: Default::default(),
+            rpc_max_request_size: Default::default(),
+            rpc_max_response_size: Default::default(),
+            rpc_id_provider: Default::default(),
+            rpc_max_subs_per_conn: Default::default(),
+            rpc_port: 9944,
+            rpc_message_buffer_capacity: Default::default(),
+            rpc_batch_config: RpcBatchRequestConfig::Unlimited,
+            rpc_rate_limit: None,
+            rpc_rate_limit_whitelisted_ips: Default::default(),
+            rpc_rate_limit_trust_proxy_headers: Default::default(),
+        },
         prometheus_config: None,
         telemetry_endpoints: None,
-        default_heap_pages: None,
         offchain_worker: OffchainWorkerConfig {
             enabled: true,
             indexing_enabled: false,
@@ -90,8 +97,6 @@ pub fn test_configuration(tokio_handle: tokio::runtime::Handle) -> Configuration
         dev_key_seed: Some(Sr25519Keyring::Alice.to_seed()),
         tracing_targets: None,
         tracing_receiver: Default::default(),
-        max_runtime_instances: 8,
-        runtime_cache_size: 2,
         announce_block: true,
         data_path: base_path.path().into(),
         base_path,

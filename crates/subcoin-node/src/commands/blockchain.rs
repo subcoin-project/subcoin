@@ -330,7 +330,7 @@ async fn dumptxoutset(
             .consensus_encode(&mut data)
             .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
 
-        file.write(data.as_slice())?;
+        let _ = file.write(data.as_slice())?;
 
         UtxoSetOutput::Binary(file)
     } else {
@@ -382,7 +382,7 @@ impl UtxoSetOutput {
                 amount.consensus_encode(&mut data)?;
                 script.consensus_encode(&mut data)?;
 
-                file.write(data.as_slice())?;
+                let _ = file.write(data.as_slice())?;
             }
             Self::Csv(ref mut file) => {
                 let is_coinbase = if is_coinbase { 1u8 } else { 0u8 };
