@@ -15,7 +15,7 @@ use subcoin_primitives::runtime::Coin;
 use subcoin_primitives::{BackendExt, CoinStorageKey};
 use subcoin_service::FullClient;
 
-const FINAL_PREFIX_LEN: usize = 32;
+const FINAL_STORAGE_PREFIX_LEN: usize = 32;
 
 static GENESIS_TXID: LazyLock<bitcoin::Txid> = LazyLock::new(|| {
     "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"
@@ -29,9 +29,13 @@ pub enum Blockchain {
     /// Statistics about the UTXO set.
     #[command(name = "gettxoutsetinfo")]
     GetTxOutSetInfo {
+        /// Specify the number of block to inspect.
+        ///
+        /// Defaults to the best block.
         #[clap(long)]
         height: Option<u32>,
 
+        /// Whether to display the state loading progress.
         #[clap(short, long)]
         verbose: bool,
 
@@ -47,7 +51,7 @@ pub enum Blockchain {
         #[clap(flatten)]
         database_params: DatabaseParams,
     },
-    /// Dump txout set
+    /// Dump UTXO set
     #[command(name = "dumptxoutset")]
     DumpTxoutSet {
         /// Specify the number of block to dump.
@@ -62,8 +66,9 @@ pub enum Blockchain {
 
         /// Specify the path of the binary dump file for the txout set.
         ///
-        /// The dumped txout set will be printed to stdout if no `--csv` and `--binary` options are
-        /// present.
+        /// The dumped txout set will be printed to stdout if no `--csv` and
+        /// `--binary` options are present. The binary form is compatible with
+        /// the file exported from the Bitcoin Core client.
         #[clap(short, long, conflicts_with = "csv")]
         binary: Option<PathBuf>,
 
@@ -106,6 +111,18 @@ pub enum BlockchainCmd {
 impl BlockchainCmd {
     /// Constructs a new instance of [`BlockchainCmd`].
     pub fn new(blockchain: Blockchain) -> Self {
+        let create_shared_params = |chain: Chain, base_path| sc_cli::SharedParams {
+            chain: Some(chain.chain_spec_id().to_string()),
+            dev: false,
+            base_path,
+            log: Vec::new(),
+            detailed_log_output: false,
+            disable_log_color: false,
+            enable_log_reloading: false,
+            tracing_targets: None,
+            tracing_receiver: sc_cli::TracingReceiver::Log,
+        };
+
         match blockchain {
             Blockchain::GetTxOutSetInfo {
                 height,
@@ -113,26 +130,12 @@ impl BlockchainCmd {
                 chain,
                 base_path,
                 database_params,
-            } => {
-                let shared_params = sc_cli::SharedParams {
-                    chain: Some(chain.chain_spec_id().to_string()),
-                    dev: false,
-                    base_path,
-                    log: Vec::new(),
-                    detailed_log_output: false,
-                    disable_log_color: false,
-                    enable_log_reloading: false,
-                    tracing_targets: None,
-                    tracing_receiver: sc_cli::TracingReceiver::Log,
-                };
-
-                Self::GetTxOutSetInfo {
-                    height,
-                    verbose,
-                    shared_params,
-                    database_params,
-                }
-            }
+            } => Self::GetTxOutSetInfo {
+                height,
+                verbose,
+                shared_params: create_shared_params(chain, base_path),
+                database_params,
+            },
             Blockchain::DumpTxoutSet {
                 height,
                 csv,
@@ -140,27 +143,13 @@ impl BlockchainCmd {
                 chain,
                 base_path,
                 database_params,
-            } => {
-                let shared_params = sc_cli::SharedParams {
-                    chain: Some(chain.chain_spec_id().to_string()),
-                    dev: false,
-                    base_path,
-                    log: Vec::new(),
-                    detailed_log_output: false,
-                    disable_log_color: false,
-                    enable_log_reloading: false,
-                    tracing_targets: None,
-                    tracing_receiver: sc_cli::TracingReceiver::Log,
-                };
-
-                Self::DumpTxoutSet {
-                    height,
-                    binary,
-                    csv,
-                    shared_params,
-                    database_params,
-                }
-            }
+            } => Self::DumpTxoutSet {
+                height,
+                binary,
+                csv,
+                shared_params: create_shared_params(chain, base_path),
+                database_params,
+            },
         }
     }
 
@@ -222,11 +211,16 @@ fn fetch_utxo_set_at(
 
     let bitcoin_block_hash = client
         .block_hash(block_number)
-        .expect("Bitcoin block hash missing");
+        .ok_or(sc_cli::Error::Client(sp_blockchain::Error::Backend(
+            format!("Bitcoin block hash for #{block_number} missing"),
+        )))?;
 
-    let substrate_block_hash = client
-        .hash(block_number)?
-        .expect("Substrate block hash missing");
+    let substrate_block_hash =
+        client
+            .hash(block_number)?
+            .ok_or(sc_cli::Error::Client(sp_blockchain::Error::Backend(
+                format!("Substrate block hash for #{block_number} missing"),
+            )))?;
 
     Ok((
         block_number,
@@ -235,9 +229,9 @@ fn fetch_utxo_set_at(
             .storage_pairs(substrate_block_hash, Some(&storage_key), None)?
             .filter_map(|(key, value)| {
                 let (txid, vout) = <(pallet_bitcoin::Txid, u32)>::decode(
-                    &mut &key.0.as_slice()[FINAL_PREFIX_LEN..],
+                    &mut &key.0.as_slice()[FINAL_STORAGE_PREFIX_LEN..],
                 )
-                .expect("Key type must be correct; qed");
+                .expect("UTXO key type must be correct; qed");
 
                 let txid = txid.into_bitcoin_txid();
 
@@ -264,7 +258,7 @@ async fn gettxoutsetinfo(
 
     const INTERVAL: Duration = Duration::from_secs(5);
 
-    println!("Fetching state info at block_number: #{block_number},{bitcoin_block_hash}");
+    println!("Fetching UTXO set at block_number: #{block_number},{bitcoin_block_hash}");
 
     let mut txouts = 0;
     let mut bogosize = 0;
@@ -372,14 +366,6 @@ impl UtxoSetOutput {
         let outpoint = bitcoin::OutPoint { txid, vout };
 
         match self {
-            Self::Csv(ref mut file) => {
-                let is_coinbase = if is_coinbase { 1u8 } else { 0u8 };
-                let script_pubkey = hex::encode(script_pubkey.as_slice());
-                writeln!(
-                    file,
-                    "{outpoint},{is_coinbase},{height},{amount},{script_pubkey}",
-                )?;
-            }
             Self::Binary(ref mut file) => {
                 let mut data = Vec::new();
 
@@ -397,6 +383,14 @@ impl UtxoSetOutput {
                 script.consensus_encode(&mut data)?;
 
                 file.write(data.as_slice())?;
+            }
+            Self::Csv(ref mut file) => {
+                let is_coinbase = if is_coinbase { 1u8 } else { 0u8 };
+                let script_pubkey = hex::encode(script_pubkey.as_slice());
+                writeln!(
+                    file,
+                    "{outpoint},{is_coinbase},{height},{amount},{script_pubkey}",
+                )?;
             }
             Self::Stdout => {
                 let is_coinbase = if is_coinbase { 1u8 } else { 0u8 };

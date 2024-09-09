@@ -105,6 +105,7 @@ substrate-build-script-utils = { git = "https://github.com/subcoin-project/polka
 substrate-frame-rpc-system = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v2" }
 substrate-prometheus-endpoint = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v2", default-features = false }
 substrate-wasm-builder = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v2" }
+txoutset = { git = "https://github.com/liuchengxu/txoutset", branch = "subcoin" }
 
 pallet-bitcoin = { path = "crates/pallet-bitcoin", default-features = false }
 pallet-executive = { path = "crates/pallet-executive", default-features = false }
