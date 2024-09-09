@@ -530,6 +530,16 @@
 <a href="#530" id="530">530</a>
 <a href="#531" id="531">531</a>
 <a href="#532" id="532">532</a>
+<a href="#533" id="533">533</a>
+<a href="#534" id="534">534</a>
+<a href="#535" id="535">535</a>
+<a href="#536" id="536">536</a>
+<a href="#537" id="537">537</a>
+<a href="#538" id="538">538</a>
+<a href="#539" id="539">539</a>
+<a href="#540" id="540">540</a>
+<a href="#541" id="541">541</a>
+<a href="#542" id="542">542</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! Subcoin service implementation. Specialized wrapper over substrate service.
 
 </span><span class="attr">#![allow(deprecated)]
@@ -749,13 +759,13 @@
     <span class="kw">let </span>maybe_hwbench = (!no_hardware_benchmarks)
         .then_some(database_path.as_ref().map(|db_path| {
             <span class="kw">let _ </span>= std::fs::create_dir_all(db_path);
-            sc_sysinfo::gather_hwbench(<span class="prelude-val">Some</span>(db_path))
+            sc_sysinfo::gather_hwbench(<span class="prelude-val">Some</span>(db_path), <span class="kw-2">&amp;</span>SUBSTRATE_REFERENCE_HARDWARE)
         }))
         .flatten();
 
     <span class="kw">if let </span><span class="prelude-val">Some</span>(hwbench) = maybe_hwbench {
         sc_sysinfo::print_hwbench(<span class="kw-2">&amp;</span>hwbench);
-        <span class="kw">match </span>SUBSTRATE_REFERENCE_HARDWARE.check_hardware(<span class="kw-2">&amp;</span>hwbench) {
+        <span class="kw">match </span>SUBSTRATE_REFERENCE_HARDWARE.check_hardware(<span class="kw-2">&amp;</span>hwbench, config.role.is_authority()) {
             <span class="prelude-val">Err</span>(err) <span class="kw">if </span>config.role.is_authority() =&gt; {
                 <span class="macro">tracing::warn!</span>(
 					<span class="string">"⚠️  The hardware does not meet the minimal requirements {err} for role 'Authority'."</span>,
@@ -858,7 +868,11 @@
         .as_mut()
         .map(|telemetry| {
             sc_service::init_telemetry(
-                config,
+                config.network.node_name.clone(),
+                config.impl_name.clone(),
+                config.impl_version.clone(),
+                config.chain_spec.name().to_string(),
+                config.role.is_authority(),
                 network.clone(),
                 client.clone(),
                 telemetry,
@@ -871,7 +885,13 @@
     </span><span class="kw">let </span>metrics_service =
         <span class="kw">if let </span><span class="prelude-val">Some</span>(PrometheusConfig { port, registry }) = config.prometheus_config.clone() {
             <span class="comment">// Set static metrics.
-            </span><span class="kw">let </span>metrics = MetricsService::with_prometheus(telemetry, <span class="kw-2">&amp;</span>registry, config)<span class="question-mark">?</span>;
+            </span><span class="kw">let </span>metrics = MetricsService::with_prometheus(
+                telemetry,
+                <span class="kw-2">&amp;</span>registry,
+                config.role,
+                <span class="kw-2">&amp;</span>config.network.node_name,
+                <span class="kw-2">&amp;</span>config.impl_version,
+            )<span class="question-mark">?</span>;
             spawn_handle.spawn(
                 <span class="string">"prometheus-endpoint"</span>,
                 <span class="prelude-val">None</span>,

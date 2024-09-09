@@ -55,8 +55,6 @@
 <a href="#55" id="55">55</a>
 <a href="#56" id="56">56</a>
 <a href="#57" id="57">57</a>
-<a href="#58" id="58">58</a>
-<a href="#59" id="59">59</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>jsonrpsee::RpcModule;
 <span class="kw">use </span>sc_service::SpawnTaskHandle;
 <span class="kw">use </span>sc_utils::mpsc::TracingUnboundedSender;
@@ -72,7 +70,6 @@
     client: Arc&lt;FullClient&gt;,
     spawn_handle: SpawnTaskHandle,
     system_rpc_tx: TracingUnboundedSender&lt;sc_rpc::system::Request&lt;OpaqueBlock&gt;&gt;,
-    deny_unsafe: sc_rpc::DenyUnsafe,
     network_handle: NetworkHandle,
 ) -&gt; <span class="prelude-ty">Result</span>&lt;RpcModule&lt;()&gt;, sc_service::Error&gt; {
     <span class="kw">use </span>sc_rpc::chain::ChainApiServer;
@@ -87,14 +84,13 @@
 
     <span class="kw">let </span>task_executor = Arc::new(spawn_handle);
 
-    <span class="kw">let </span>system = sc_rpc::system::System::new(system_info, system_rpc_tx, deny_unsafe).into_rpc();
+    <span class="kw">let </span>system = sc_rpc::system::System::new(system_info, system_rpc_tx).into_rpc();
     <span class="kw">let </span>chain = sc_rpc::chain::new_full(client.clone(), task_executor.clone()).into_rpc();
     <span class="kw">let </span>(state, child_state) = {
-        <span class="kw">let </span>(state, child_state) =
-            sc_rpc::state::new_full(client.clone(), task_executor, deny_unsafe);
+        <span class="kw">let </span>(state, child_state) = sc_rpc::state::new_full(client.clone(), task_executor);
         (state.into_rpc(), child_state.into_rpc())
     };
-    <span class="kw">let </span>_frame_system = FrameSystem::new(client.clone(), dummy_pool, deny_unsafe).into_rpc();
+    <span class="kw">let </span>_frame_system = FrameSystem::new(client.clone(), dummy_pool).into_rpc();
 
     <span class="kw">let </span>into_service_error =
         |e: jsonrpsee::core::error::RegisterMethodError| sc_service::Error::Application(e.into());

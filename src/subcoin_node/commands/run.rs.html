@@ -341,22 +341,17 @@
 <a href="#341" id="341">341</a>
 <a href="#342" id="342">342</a>
 <a href="#343" id="343">343</a>
-<a href="#344" id="344">344</a>
-<a href="#345" id="345">345</a>
-<a href="#346" id="346">346</a>
-<a href="#347" id="347">347</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::rpc_params::RpcParams;
 <span class="kw">use </span><span class="kw">crate</span>::cli::subcoin_params::{CommonParams, NetworkParams};
 <span class="kw">use </span>clap::Parser;
 <span class="kw">use </span>sc_cli::{
     ImportParams, NetworkParams <span class="kw">as </span>SubstrateNetworkParams, NodeKeyParams, PrometheusParams, Role,
-    SharedParams, SyncMode,
+    RpcEndpoint, SharedParams, SyncMode,
 };
 <span class="kw">use </span>sc_client_api::UsageProvider;
 <span class="kw">use </span>sc_consensus_nakamoto::BitcoinBlockImporter;
 <span class="kw">use </span>sc_service::config::{IpNetwork, RpcBatchRequestConfig};
 <span class="kw">use </span>sc_service::{Configuration, TaskManager};
-<span class="kw">use </span>std::net::SocketAddr;
 <span class="kw">use </span>std::num::NonZeroU32;
 <span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>subcoin_network::SyncStrategy;
@@ -554,7 +549,7 @@
         }
 
         <span class="comment">// Start JSON-RPC server.
-        </span><span class="kw">let </span>gen_rpc_module = |deny_unsafe: sc_rpc::DenyUnsafe| {
+        </span><span class="kw">let </span>gen_rpc_module = || {
             <span class="kw">let </span>system_info = sc_rpc::system::SystemInfo {
                 chain_name: config.chain_spec.name().into(),
                 impl_name: config.impl_name.clone(),
@@ -569,12 +564,17 @@
                 client.clone(),
                 task_manager.spawn_handle(),
                 system_rpc_tx,
-                deny_unsafe,
                 subcoin_network_handle.clone(),
             )
         };
 
-        <span class="kw">let </span>rpc = sc_service::start_rpc_servers(<span class="kw-2">&amp;</span>config, gen_rpc_module, <span class="prelude-val">None</span>)<span class="question-mark">?</span>;
+        <span class="kw">let </span>rpc = sc_service::start_rpc_servers(
+            <span class="kw-2">&amp;</span>config.rpc,
+            config.prometheus_registry(),
+            <span class="kw-2">&amp;</span>config.tokio_handle,
+            gen_rpc_module,
+            <span class="prelude-val">None</span>,
+        )<span class="question-mark">?</span>;
         task_manager.keep_alive((config.base_path.clone(), rpc));
 
         <span class="kw">if </span>!no_finalizer {
@@ -641,7 +641,7 @@
         <span class="self">self</span>.run.rpc_params.rpc_cors(is_dev)
     }
 
-    <span class="kw">fn </span>rpc_addr(<span class="kw-2">&amp;</span><span class="self">self</span>, default_listen_port: u16) -&gt; sc_cli::Result&lt;<span class="prelude-ty">Option</span>&lt;SocketAddr&gt;&gt; {
+    <span class="kw">fn </span>rpc_addr(<span class="kw-2">&amp;</span><span class="self">self</span>, default_listen_port: u16) -&gt; sc_cli::Result&lt;<span class="prelude-ty">Option</span>&lt;Vec&lt;RpcEndpoint&gt;&gt;&gt; {
         <span class="self">self</span>.run.rpc_params.rpc_addr(default_listen_port)
     }
 
@@ -669,15 +669,7 @@
     }
 
     <span class="kw">fn </span>rpc_batch_config(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; sc_cli::Result&lt;RpcBatchRequestConfig&gt; {
-        <span class="kw">let </span>cfg = <span class="kw">if </span><span class="self">self</span>.run.rpc_params.rpc_disable_batch_requests {
-            RpcBatchRequestConfig::Disabled
-        } <span class="kw">else if let </span><span class="prelude-val">Some</span>(l) = <span class="self">self</span>.run.rpc_params.rpc_max_batch_request_len {
-            RpcBatchRequestConfig::Limit(l)
-        } <span class="kw">else </span>{
-            RpcBatchRequestConfig::Unlimited
-        };
-
-        <span class="prelude-val">Ok</span>(cfg)
+        <span class="self">self</span>.run.rpc_params.rpc_batch_config()
     }
 
     <span class="kw">fn </span>rpc_rate_limit(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; sc_cli::Result&lt;<span class="prelude-ty">Option</span>&lt;NonZeroU32&gt;&gt; {
