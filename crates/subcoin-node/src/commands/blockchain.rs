@@ -7,7 +7,7 @@ use sc_consensus_nakamoto::BlockExecutionStrategy;
 use sp_core::storage::StorageKey;
 use sp_core::Decode;
 use std::fs::File;
-use std::io::Write;
+use std::io::{Stdout, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
@@ -316,9 +316,10 @@ async fn dumptxoutset(
         let utxo_set_size = fetch_utxo_set_at(client, height)?.2.count() as u64;
 
         println!(
-            "Dumping UTXO set at #{block_number},{bitcoin_block_hash} to {}, utxo_set_size: {utxo_set_size}",
+            "Dumping UTXO set at #{block_number},{bitcoin_block_hash} to {}",
             path.display()
         );
+        println!("UTXO set size: {utxo_set_size}");
 
         let mut file = std::fs::File::create(path)?;
 
@@ -335,7 +336,7 @@ async fn dumptxoutset(
         UtxoSetOutput::Binary(file)
     } else {
         println!("Dumping UTXO set at #{block_number},{bitcoin_block_hash}");
-        UtxoSetOutput::Stdout
+        UtxoSetOutput::Stdout(std::io::stdout())
     };
 
     for (txid, vout, coin) in utxo_iter {
@@ -351,7 +352,7 @@ async fn dumptxoutset(
 enum UtxoSetOutput {
     Binary(File),
     Csv(File),
-    Stdout,
+    Stdout(Stdout),
 }
 
 impl UtxoSetOutput {
@@ -385,17 +386,18 @@ impl UtxoSetOutput {
                 let _ = file.write(data.as_slice())?;
             }
             Self::Csv(ref mut file) => {
-                let is_coinbase = if is_coinbase { 1u8 } else { 0u8 };
                 let script_pubkey = hex::encode(script_pubkey.as_slice());
                 writeln!(
                     file,
                     "{outpoint},{is_coinbase},{height},{amount},{script_pubkey}",
                 )?;
             }
-            Self::Stdout => {
-                let is_coinbase = if is_coinbase { 1u8 } else { 0u8 };
+            Self::Stdout(ref mut stdout) => {
                 let script_pubkey = hex::encode(script_pubkey.as_slice());
-                println!("{outpoint},{is_coinbase},{height},{amount},{script_pubkey}");
+                writeln!(
+                    stdout,
+                    "{outpoint},{is_coinbase},{height},{amount},{script_pubkey}"
+                )?;
             }
         }
 
