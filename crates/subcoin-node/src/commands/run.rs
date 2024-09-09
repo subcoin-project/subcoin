@@ -3,13 +3,12 @@ use crate::cli::subcoin_params::{CommonParams, NetworkParams};
 use clap::Parser;
 use sc_cli::{
     ImportParams, NetworkParams as SubstrateNetworkParams, NodeKeyParams, PrometheusParams, Role,
-    SharedParams, SyncMode,
+    RpcEndpoint, SharedParams, SyncMode,
 };
 use sc_client_api::UsageProvider;
 use sc_consensus_nakamoto::BitcoinBlockImporter;
 use sc_service::config::{IpNetwork, RpcBatchRequestConfig};
 use sc_service::{Configuration, TaskManager};
-use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use subcoin_network::SyncStrategy;
@@ -207,7 +206,7 @@ impl RunCmd {
         }
 
         // Start JSON-RPC server.
-        let gen_rpc_module = |deny_unsafe: sc_rpc::DenyUnsafe| {
+        let gen_rpc_module = || {
             let system_info = sc_rpc::system::SystemInfo {
                 chain_name: config.chain_spec.name().into(),
                 impl_name: config.impl_name.clone(),
@@ -222,12 +221,17 @@ impl RunCmd {
                 client.clone(),
                 task_manager.spawn_handle(),
                 system_rpc_tx,
-                deny_unsafe,
                 subcoin_network_handle.clone(),
             )
         };
 
-        let rpc = sc_service::start_rpc_servers(&config, gen_rpc_module, None)?;
+        let rpc = sc_service::start_rpc_servers(
+            &config.rpc,
+            config.prometheus_registry(),
+            &config.tokio_handle,
+            gen_rpc_module,
+            None,
+        )?;
         task_manager.keep_alive((config.base_path.clone(), rpc));
 
         if !no_finalizer {
@@ -294,7 +298,7 @@ impl sc_cli::CliConfiguration for RunCmd {
         self.run.rpc_params.rpc_cors(is_dev)
     }
 
-    fn rpc_addr(&self, default_listen_port: u16) -> sc_cli::Result<Option<SocketAddr>> {
+    fn rpc_addr(&self, default_listen_port: u16) -> sc_cli::Result<Option<Vec<RpcEndpoint>>> {
         self.run.rpc_params.rpc_addr(default_listen_port)
     }
 
@@ -322,15 +326,7 @@ impl sc_cli::CliConfiguration for RunCmd {
     }
 
     fn rpc_batch_config(&self) -> sc_cli::Result<RpcBatchRequestConfig> {
-        let cfg = if self.run.rpc_params.rpc_disable_batch_requests {
-            RpcBatchRequestConfig::Disabled
-        } else if let Some(l) = self.run.rpc_params.rpc_max_batch_request_len {
-            RpcBatchRequestConfig::Limit(l)
-        } else {
-            RpcBatchRequestConfig::Unlimited
-        };
-
-        Ok(cfg)
+        self.run.rpc_params.rpc_batch_config()
     }
 
     fn rpc_rate_limit(&self) -> sc_cli::Result<Option<NonZeroU32>> {
