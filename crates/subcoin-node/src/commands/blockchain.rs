@@ -51,6 +51,7 @@ pub enum Blockchain {
         #[clap(flatten)]
         database_params: DatabaseParams,
     },
+
     /// Dump UTXO set
     #[command(name = "dumptxoutset")]
     DumpTxoutSet {
@@ -64,11 +65,14 @@ pub enum Blockchain {
         #[clap(short, long, value_name = "PATH")]
         csv: Option<PathBuf>,
 
-        /// Specify the path of the binary dump file for the txout set.
+        /// Path to the binary dump file for the UTXO set.
         ///
-        /// The dumped txout set will be printed to stdout if no `--csv` and
-        /// `--binary` options are present. The binary form is compatible with
-        /// the file exported from the Bitcoin Core client.
+        /// The binary dump is compatible with the format used by the Bitcoin Core client.
+        /// You can export the UTXO set from Subcoin and import it into the Bitcoin
+        /// Core client.
+        ///
+        /// If neither `--csv` nor `--binary` options are provided, the UTXO set will be
+        /// printed to stdout in CSV format.
         #[clap(short, long, conflicts_with = "csv")]
         binary: Option<PathBuf>,
 
@@ -83,6 +87,20 @@ pub enum Blockchain {
         #[allow(missing_docs)]
         #[clap(flatten)]
         database_params: DatabaseParams,
+    },
+
+    /// Parse the binary UTXO set dumped from Bitcoin Core.
+    #[command(name = "parse-txout-set")]
+    ParseTxoutSet {
+        #[clap(short, long)]
+        path: PathBuf,
+
+        #[clap(short, long)]
+        compute_addresses: bool,
+
+        /// Specify the chain.
+        #[arg(long, value_name = "CHAIN", default_value = "bitcoin-mainnet")]
+        chain: Chain,
     },
 }
 
@@ -105,6 +123,12 @@ pub enum BlockchainCmd {
         csv: Option<PathBuf>,
         shared_params: SharedParams,
         database_params: DatabaseParams,
+    },
+    ParseTxoutSet {
+        path: PathBuf,
+        compute_addresses: bool,
+        chain: Chain,
+        shared_params: SharedParams,
     },
 }
 
@@ -150,6 +174,16 @@ impl BlockchainCmd {
                 shared_params: create_shared_params(chain, base_path),
                 database_params,
             },
+            Blockchain::ParseTxoutSet {
+                path,
+                compute_addresses,
+                chain,
+            } => Self::ParseTxoutSet {
+                path,
+                compute_addresses,
+                chain,
+                shared_params: create_shared_params(chain, None),
+            },
         }
     }
 
@@ -164,6 +198,12 @@ impl BlockchainCmd {
                 binary,
                 ..
             } => dumptxoutset(&client, height, csv, binary).await,
+            Self::ParseTxoutSet {
+                path,
+                compute_addresses,
+                chain,
+                ..
+            } => parse_txout_set(path, compute_addresses, chain).await,
         }
     }
 }
@@ -173,6 +213,7 @@ impl sc_cli::CliConfiguration for BlockchainCmd {
         match self {
             Self::GetTxOutSetInfo { shared_params, .. } => shared_params,
             Self::DumpTxoutSet { shared_params, .. } => shared_params,
+            Self::ParseTxoutSet { shared_params, .. } => shared_params,
         }
     }
 
@@ -188,6 +229,7 @@ impl sc_cli::CliConfiguration for BlockchainCmd {
             Self::DumpTxoutSet {
                 database_params, ..
             } => Some(database_params),
+            Self::ParseTxoutSet { .. } => None,
         }
     }
 
@@ -294,6 +336,69 @@ async fn gettxoutsetinfo(
     println!("bogosize: {bogosize}");
     println!("total_amount: {:.8}", total_amount as f64 / 100_000_000.0);
     println!("script_pubkey_size: {script_pubkey_size} bytes");
+
+    Ok(())
+}
+
+async fn parse_txout_set(
+    path: PathBuf,
+    compute_addresses: bool,
+    chain: Chain,
+) -> sc_cli::Result<()> {
+    use std::fmt::Write;
+
+    let network = match chain {
+        Chain::BitcoinSignet => bitcoin::Network::Signet,
+        Chain::BitcoinTestnet => bitcoin::Network::Testnet,
+        Chain::BitcoinMainnet => bitcoin::Network::Bitcoin,
+    };
+
+    let dump = txoutset::Dump::new(
+        path,
+        if compute_addresses {
+            txoutset::ComputeAddresses::Yes(network)
+        } else {
+            txoutset::ComputeAddresses::No
+        },
+    )
+    .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
+
+    println!(
+        "Dump opened.\n Block Hash: {}\n UTXO Set Size: {}",
+        dump.block_hash, dump.utxo_set_size
+    );
+
+    let mut addr_str = String::new();
+
+    for txout in dump {
+        addr_str.clear();
+
+        let txoutset::TxOut {
+            address,
+            amount,
+            height,
+            is_coinbase,
+            out_point,
+            script_pubkey,
+        } = txout;
+
+        match (compute_addresses, address) {
+            (true, Some(address)) => {
+                let _ = write!(addr_str, ",{}", address);
+            }
+            (true, None) => {
+                let _ = write!(addr_str, ",");
+            }
+            (false, _) => {}
+        }
+
+        let is_coinbase = u8::from(is_coinbase);
+        let amount = u64::from(amount);
+        println!(
+            "{out_point},{is_coinbase},{height},{amount},{}{addr_str}",
+            hex::encode(script_pubkey.as_bytes()),
+        );
+    }
 
     Ok(())
 }
