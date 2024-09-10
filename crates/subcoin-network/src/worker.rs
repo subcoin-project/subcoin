@@ -12,7 +12,7 @@ use bitcoin::p2p::message_blockdata::{GetBlocksMessage, GetHeadersMessage, Inven
 use futures::stream::FusedStream;
 use futures::StreamExt;
 use sc_client_api::{AuxStore, HeaderBackend};
-use sc_consensus_nakamoto::BlockImportQueue;
+use sc_consensus_nakamoto::{BlockImportQueue, HeaderVerifier};
 use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -47,8 +47,9 @@ pub enum Event {
 }
 
 /// Parameters for creating a [`NetworkWorker`].
-pub struct Params<Client> {
+pub struct Params<Block, Client> {
     pub client: Arc<Client>,
+    pub header_verifier: HeaderVerifier<Block, Client>,
     pub network_event_receiver: UnboundedReceiver<Event>,
     pub import_queue: BlockImportQueue,
     pub sync_strategy: SyncStrategy,
@@ -75,9 +76,10 @@ where
     Client: HeaderBackend<Block> + AuxStore,
 {
     /// Constructs a new instance of [`NetworkWorker`].
-    pub fn new(params: Params<Client>, registry: Option<&Registry>) -> Self {
+    pub fn new(params: Params<Block, Client>, registry: Option<&Registry>) -> Self {
         let Params {
             client,
+            header_verifier,
             network_event_receiver,
             import_queue,
             sync_strategy,
@@ -106,6 +108,7 @@ where
 
         let chain_sync = ChainSync::new(
             client,
+            header_verifier,
             import_queue,
             sync_strategy,
             is_major_syncing,

@@ -49,7 +49,7 @@ use bitcoin::{BlockHash, Network as BitcoinNetwork};
 use chrono::prelude::{DateTime, Local};
 use peer_manager::HandshakeState;
 use sc_client_api::{AuxStore, HeaderBackend};
-use sc_consensus_nakamoto::BlockImportQueue;
+use sc_consensus_nakamoto::{BlockImportQueue, ChainParams, HeaderVerifier};
 use sc_service::SpawnTaskHandle;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_runtime::traits::Block as BlockT;
@@ -72,6 +72,7 @@ pub type Latency = u128;
 
 pub(crate) type LocalTime = DateTime<Local>;
 
+/// Network error type.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Invalid bootnode address: {0}")]
@@ -98,6 +99,8 @@ pub enum Error {
     NotSegwitNode,
     #[error("Peer's protocol version is too low")]
     ProtocolVersionTooLow,
+    #[error("Header contains invalid proof-of-block")]
+    BadProofOfWork(BlockHash),
     #[error("Too many block entries in inv message")]
     TooManyBlockEntries,
     #[error("Too many entries (> 2000) in headers message")]
@@ -350,6 +353,10 @@ where
         let network_worker = NetworkWorker::new(
             worker::Params {
                 client: client.clone(),
+                header_verifier: HeaderVerifier::new(
+                    client.clone(),
+                    ChainParams::new(config.network),
+                ),
                 network_event_receiver,
                 import_queue,
                 sync_strategy: config.sync_strategy,

@@ -38,11 +38,20 @@ pub enum Error {
 }
 
 /// A struct responsible for verifying block header.
-#[derive(Clone)]
 pub struct HeaderVerifier<Block, Client> {
     client: Arc<Client>,
     chain_params: ChainParams,
     _phantom: PhantomData<Block>,
+}
+
+impl<Block, Client> Clone for HeaderVerifier<Block, Client> {
+    fn clone(&self) -> Self {
+        Self {
+            client: self.client.clone(),
+            chain_params: self.chain_params.clone(),
+            _phantom: self._phantom,
+        }
+    }
 }
 
 impl<Block, Client> HeaderVerifier<Block, Client> {
@@ -137,6 +146,20 @@ where
         };
 
         Ok(lock_time_cutoff)
+    }
+
+    /// Check if the proof-of-work is valid.
+    pub fn has_valid_proof_of_work(&self, header: &BitcoinHeader) -> bool {
+        let target = header.target();
+
+        if target == Target::ZERO
+            || target > Target::MAX
+            || target > self.chain_params.params.max_attainable_target
+        {
+            return false;
+        }
+
+        header.validate_pow(target).is_ok()
     }
 
     /// Calculates the median time of the previous few blocks prior to the header (inclusive).
