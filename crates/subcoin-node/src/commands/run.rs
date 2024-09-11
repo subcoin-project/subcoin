@@ -1,9 +1,8 @@
-use crate::cli::rpc_params::RpcParams;
 use crate::cli::subcoin_params::{CommonParams, NetworkParams};
 use clap::Parser;
 use sc_cli::{
     ImportParams, NetworkParams as SubstrateNetworkParams, NodeKeyParams, PrometheusParams, Role,
-    RpcEndpoint, SharedParams, SyncMode,
+    RpcEndpoint, RpcParams, SharedParams, SyncMode,
 };
 use sc_client_api::UsageProvider;
 use sc_consensus_nakamoto::BitcoinBlockImporter;
@@ -299,7 +298,11 @@ impl sc_cli::CliConfiguration for RunCmd {
     }
 
     fn rpc_addr(&self, default_listen_port: u16) -> sc_cli::Result<Option<Vec<RpcEndpoint>>> {
-        self.run.rpc_params.rpc_addr(default_listen_port)
+        self.run.rpc_params.rpc_addr(
+            self.is_dev()?,
+            false, // TODO: proper is_validator once the mining capability is added.
+            default_listen_port,
+        )
     }
 
     fn rpc_methods(&self) -> sc_cli::Result<sc_service::config::RpcMethods> {
