@@ -290,6 +290,29 @@
 <a href="#290" id="290">290</a>
 <a href="#291" id="291">291</a>
 <a href="#292" id="292">292</a>
+<a href="#293" id="293">293</a>
+<a href="#294" id="294">294</a>
+<a href="#295" id="295">295</a>
+<a href="#296" id="296">296</a>
+<a href="#297" id="297">297</a>
+<a href="#298" id="298">298</a>
+<a href="#299" id="299">299</a>
+<a href="#300" id="300">300</a>
+<a href="#301" id="301">301</a>
+<a href="#302" id="302">302</a>
+<a href="#303" id="303">303</a>
+<a href="#304" id="304">304</a>
+<a href="#305" id="305">305</a>
+<a href="#306" id="306">306</a>
+<a href="#307" id="307">307</a>
+<a href="#308" id="308">308</a>
+<a href="#309" id="309">309</a>
+<a href="#310" id="310">310</a>
+<a href="#311" id="311">311</a>
+<a href="#312" id="312">312</a>
+<a href="#313" id="313">313</a>
+<a href="#314" id="314">314</a>
+<a href="#315" id="315">315</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::chain_params::{ChainParams, MEDIAN_TIME_SPAN};
 <span class="kw">use </span>bitcoin::blockdata::block::{Header <span class="kw">as </span>BitcoinHeader, ValidationError};
 <span class="kw">use </span>bitcoin::consensus::Params;
@@ -330,11 +353,20 @@
 }
 
 <span class="doccomment">/// A struct responsible for verifying block header.
-</span><span class="attr">#[derive(Clone)]
 </span><span class="kw">pub struct </span>HeaderVerifier&lt;Block, Client&gt; {
     client: Arc&lt;Client&gt;,
     chain_params: ChainParams,
     _phantom: PhantomData&lt;Block&gt;,
+}
+
+<span class="kw">impl</span>&lt;Block, Client&gt; Clone <span class="kw">for </span>HeaderVerifier&lt;Block, Client&gt; {
+    <span class="kw">fn </span>clone(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="self">Self </span>{
+        <span class="self">Self </span>{
+            client: <span class="self">self</span>.client.clone(),
+            chain_params: <span class="self">self</span>.chain_params.clone(),
+            _phantom: <span class="self">self</span>._phantom,
+        }
+    }
 }
 
 <span class="kw">impl</span>&lt;Block, Client&gt; HeaderVerifier&lt;Block, Client&gt; {
@@ -429,6 +461,20 @@
         };
 
         <span class="prelude-val">Ok</span>(lock_time_cutoff)
+    }
+
+    <span class="doccomment">/// Check if the proof-of-work is valid.
+    </span><span class="kw">pub fn </span>has_valid_proof_of_work(<span class="kw-2">&amp;</span><span class="self">self</span>, header: <span class="kw-2">&amp;</span>BitcoinHeader) -&gt; bool {
+        <span class="kw">let </span>target = header.target();
+
+        <span class="kw">if </span>target == Target::ZERO
+            || target &gt; Target::MAX
+            || target &gt; <span class="self">self</span>.chain_params.params.max_attainable_target
+        {
+            <span class="kw">return </span><span class="bool-val">false</span>;
+        }
+
+        header.validate_pow(target).is_ok()
     }
 
     <span class="doccomment">/// Calculates the median time of the previous few blocks prior to the header (inclusive).

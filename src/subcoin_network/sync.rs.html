@@ -589,6 +589,26 @@
 <a href="#589" id="589">589</a>
 <a href="#590" id="590">590</a>
 <a href="#591" id="591">591</a>
+<a href="#592" id="592">592</a>
+<a href="#593" id="593">593</a>
+<a href="#594" id="594">594</a>
+<a href="#595" id="595">595</a>
+<a href="#596" id="596">596</a>
+<a href="#597" id="597">597</a>
+<a href="#598" id="598">598</a>
+<a href="#599" id="599">599</a>
+<a href="#600" id="600">600</a>
+<a href="#601" id="601">601</a>
+<a href="#602" id="602">602</a>
+<a href="#603" id="603">603</a>
+<a href="#604" id="604">604</a>
+<a href="#605" id="605">605</a>
+<a href="#606" id="606">606</a>
+<a href="#607" id="607">607</a>
+<a href="#608" id="608">608</a>
+<a href="#609" id="609">609</a>
+<a href="#610" id="610">610</a>
+<a href="#611" id="611">611</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::block_downloader::{BlocksFirstDownloader, HeadersFirstDownloader};
 <span class="kw">use </span><span class="kw">crate</span>::peer_manager::NewPeer;
 <span class="kw">use crate</span>::{Error, Latency, PeerId, SyncStatus, SyncStrategy};
@@ -596,7 +616,9 @@
 <span class="kw">use </span>bitcoin::p2p::message_blockdata::Inventory;
 <span class="kw">use </span>bitcoin::{Block <span class="kw">as </span>BitcoinBlock, BlockHash};
 <span class="kw">use </span>sc_client_api::{AuxStore, HeaderBackend};
-<span class="kw">use </span>sc_consensus_nakamoto::{BlockImportQueue, ImportBlocks, ImportManyBlocksResult};
+<span class="kw">use </span>sc_consensus_nakamoto::{
+    BlockImportQueue, HeaderVerifier, ImportBlocks, ImportManyBlocksResult,
+};
 <span class="kw">use </span>serde::{Deserialize, Serialize};
 <span class="kw">use </span>sp_consensus::BlockOrigin;
 <span class="kw">use </span>sp_runtime::traits::Block <span class="kw">as </span>BlockT;
@@ -721,9 +743,9 @@
 // might be in during the sync process.
 </span><span class="kw">enum </span>Syncing&lt;Block, Client&gt; {
     <span class="doccomment">/// Blocks-First sync.
-    </span>BlocksFirstSync(BlocksFirstDownloader&lt;Block, Client&gt;),
+    </span>BlocksFirstSync(Box&lt;BlocksFirstDownloader&lt;Block, Client&gt;&gt;),
     <span class="doccomment">/// Headers-First sync.
-    </span>HeadersFirstSync(HeadersFirstDownloader&lt;Block, Client&gt;),
+    </span>HeadersFirstSync(Box&lt;HeadersFirstDownloader&lt;Block, Client&gt;&gt;),
     <span class="doccomment">/// Not syncing.
     ///
     /// This could indicate that the node is either fully synced
@@ -741,6 +763,8 @@
 </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">struct </span>ChainSync&lt;Block, Client&gt; {
     <span class="doccomment">/// Chain client.
     </span>client: Arc&lt;Client&gt;,
+    <span class="doccomment">/// Block header verifier.
+    </span>header_verifier: HeaderVerifier&lt;Block, Client&gt;,
     <span class="doccomment">/// The active peers that we are using to sync and their PeerSync status
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) peers: HashMap&lt;PeerId, PeerSync&gt;,
     syncing: Syncing&lt;Block, Client&gt;,
@@ -767,6 +791,7 @@
     <span class="doccomment">/// Constructs a new instance of [`ChainSync`].
     </span><span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>new(
         client: Arc&lt;Client&gt;,
+        header_verifier: HeaderVerifier&lt;Block, Client&gt;,
         import_queue: BlockImportQueue,
         sync_strategy: SyncStrategy,
         is_major_syncing: Arc&lt;AtomicBool&gt;,
@@ -774,6 +799,7 @@
     ) -&gt; <span class="self">Self </span>{
         <span class="self">Self </span>{
             client,
+            header_verifier,
             peers: HashMap::new(),
             import_queue,
             syncing: Syncing::Idle,
@@ -1008,21 +1034,25 @@
                         <span class="kw">let </span>(downloader, blocks_request) =
                             BlocksFirstDownloader::new(<span class="self">self</span>.client.clone(), sync_peer, peer_best);
                         (
-                            Syncing::BlocksFirstSync(downloader),
+                            Syncing::BlocksFirstSync(Box::new(downloader)),
                             SyncAction::Request(blocks_request),
                         )
                     }
                     SyncStrategy::HeadersFirst =&gt; {
-                        <span class="kw">let </span>(downloader, sync_action) =
-                            HeadersFirstDownloader::new(<span class="self">self</span>.client.clone(), sync_peer, peer_best);
-                        (Syncing::HeadersFirstSync(downloader), sync_action)
+                        <span class="kw">let </span>(downloader, sync_action) = HeadersFirstDownloader::new(
+                            <span class="self">self</span>.client.clone(),
+                            <span class="self">self</span>.header_verifier.clone(),
+                            sync_peer,
+                            peer_best,
+                        );
+                        (Syncing::HeadersFirstSync(Box::new(downloader)), sync_action)
                     }
                 }
             } <span class="kw">else </span>{
                 <span class="kw">let </span>(downloader, blocks_request) =
                     BlocksFirstDownloader::new(<span class="self">self</span>.client.clone(), sync_peer, peer_best);
                 (
-                    Syncing::BlocksFirstSync(downloader),
+                    Syncing::BlocksFirstSync(Box::new(downloader)),
                     SyncAction::Request(blocks_request),
                 )
             };
@@ -1065,7 +1095,7 @@
         );
 
         <span class="macro">tracing::debug!</span>(<span class="string">"Headers-first sync is complete, continuing with blocks-first sync"</span>);
-        <span class="self">self</span>.update_syncing_state(Syncing::BlocksFirstSync(blocks_first_downloader));
+        <span class="self">self</span>.update_syncing_state(Syncing::BlocksFirstSync(Box::new(blocks_first_downloader)));
 
         <span class="prelude-val">Some</span>(blocks_sync_request)
     }
@@ -1114,9 +1144,19 @@
 
                 <span class="comment">// New blocks, extending the chain tip.
                 </span><span class="kw">if </span>headers[<span class="number">0</span>].prev_blockhash == best_hash {
-                    <span class="comment">// TODO: Verify header
+                    <span class="kw">for </span>(index, header) <span class="kw">in </span>headers.iter().enumerate() {
+                        <span class="kw">if </span>!<span class="self">self</span>.header_verifier.has_valid_proof_of_work(header) {
+                            <span class="macro">tracing::error!</span>(
+                                <span class="string">"Invalid header at index {index} in headers message from {from:?}"
+                            </span>);
+                            <span class="kw">return </span>SyncAction::Disconnect(
+                                from,
+                                Error::BadProofOfWork(header.block_hash()),
+                            );
+                        }
+                    }
 
-                    </span><span class="kw">let </span>data_request = SyncRequest::Data(
+                    <span class="kw">let </span>data_request = SyncRequest::Data(
                         headers
                             .into_iter()
                             .map(|header| {

@@ -442,6 +442,13 @@
 <a href="#442" id="442">442</a>
 <a href="#443" id="443">443</a>
 <a href="#444" id="444">444</a>
+<a href="#445" id="445">445</a>
+<a href="#446" id="446">446</a>
+<a href="#447" id="447">447</a>
+<a href="#448" id="448">448</a>
+<a href="#449" id="449">449</a>
+<a href="#450" id="450">450</a>
+<a href="#451" id="451">451</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # Bitcoin Network
 //!
 //! This crate facilitates communication with other nodes in the Bitcoin P2P network. It handles
@@ -493,7 +500,7 @@
 <span class="kw">use </span>chrono::prelude::{DateTime, Local};
 <span class="kw">use </span>peer_manager::HandshakeState;
 <span class="kw">use </span>sc_client_api::{AuxStore, HeaderBackend};
-<span class="kw">use </span>sc_consensus_nakamoto::BlockImportQueue;
+<span class="kw">use </span>sc_consensus_nakamoto::{BlockImportQueue, ChainParams, HeaderVerifier};
 <span class="kw">use </span>sc_service::SpawnTaskHandle;
 <span class="kw">use </span>sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
 <span class="kw">use </span>sp_runtime::traits::Block <span class="kw">as </span>BlockT;
@@ -516,7 +523,8 @@
 
 <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">type </span>LocalTime = DateTime&lt;Local&gt;;
 
-<span class="attr">#[derive(Debug, thiserror::Error)]
+<span class="doccomment">/// Network error type.
+</span><span class="attr">#[derive(Debug, thiserror::Error)]
 </span><span class="kw">pub enum </span>Error {
     <span class="attr">#[error(<span class="string">"Invalid bootnode address: {0}"</span>)]
     </span>InvalidBootnode(String),
@@ -542,6 +550,8 @@
     </span>NotSegwitNode,
     <span class="attr">#[error(<span class="string">"Peer's protocol version is too low"</span>)]
     </span>ProtocolVersionTooLow,
+    <span class="attr">#[error(<span class="string">"Header contains invalid proof-of-block"</span>)]
+    </span>BadProofOfWork(BlockHash),
     <span class="attr">#[error(<span class="string">"Too many block entries in inv message"</span>)]
     </span>TooManyBlockEntries,
     <span class="attr">#[error(<span class="string">"Too many entries (&gt; 2000) in headers message"</span>)]
@@ -794,6 +804,10 @@
         <span class="kw">let </span>network_worker = NetworkWorker::new(
             worker::Params {
                 client: client.clone(),
+                header_verifier: HeaderVerifier::new(
+                    client.clone(),
+                    ChainParams::new(config.network),
+                ),
                 network_event_receiver,
                 import_queue,
                 sync_strategy: config.sync_strategy,

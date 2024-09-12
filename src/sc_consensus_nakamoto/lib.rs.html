@@ -54,7 +54,7 @@
 <span class="kw">pub use </span>import_queue::{
     bitcoin_import_queue, BlockImportQueue, ImportBlocks, ImportManyBlocksResult,
 };
-<span class="kw">pub use </span>verification::{BlockVerification, BlockVerifier, HeaderVerifier};
+<span class="kw">pub use </span>verification::{BlockVerification, BlockVerifier, HeaderError, HeaderVerifier};
 
 <span class="doccomment">/// Consensus error type.
 </span><span class="attr">#[derive(Debug, thiserror::Error)]

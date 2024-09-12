@@ -134,6 +134,8 @@
 <a href="#134" id="134">134</a>
 <a href="#135" id="135">135</a>
 <a href="#136" id="136">136</a>
+<a href="#137" id="137">137</a>
+<a href="#138" id="138">138</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>sc_client_api::backend::Backend;
 <span class="kw">use </span>sc_client_api::BlockImportOperation;
 <span class="kw">use </span>sc_executor::RuntimeVersionOf;
@@ -220,6 +222,8 @@
 
     <span class="kw">let </span>extrinsics_root = frame_system::extrinsics_data_root::&lt;HashingFor&lt;Block&gt;&gt;(
         extrinsics.iter().map(|xt| xt.encode()).collect(),
+        sp_core::storage::StateVersion::try_from(subcoin_runtime::VERSION.system_version)
+            .expect(<span class="string">"Invalid system version"</span>),
     );
 
     <span class="kw">let </span>digest = subcoin_primitives::substrate_header_digest(<span class="kw-2">&amp;</span>block.header);
