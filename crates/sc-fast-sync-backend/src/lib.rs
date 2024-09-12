@@ -635,6 +635,8 @@ impl<Block: BlockT> backend::BlockImportOperation<Block> for BlockImportOperatio
     ) -> sp_blockchain::Result<()> {
         Ok(())
     }
+
+    fn set_create_gap(&mut self, _create_gap: bool) {}
 }
 
 /// In-memory backend. Keeps the latest state in memory.

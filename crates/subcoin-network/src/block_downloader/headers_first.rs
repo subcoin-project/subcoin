@@ -6,6 +6,7 @@ use bitcoin::p2p::message_blockdata::Inventory;
 use bitcoin::{Block as BitcoinBlock, BlockHash};
 use indexmap::IndexMap;
 use sc_client_api::AuxStore;
+use sc_consensus_nakamoto::HeaderVerifier;
 use sp_blockchain::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
 use std::collections::{HashSet, VecDeque};
@@ -100,6 +101,7 @@ fn block_download_batch_size(height: u32) -> usize {
 /// Headers-First download strategy.
 pub struct HeadersFirstDownloader<Block, Client> {
     client: Arc<Client>,
+    header_verifier: HeaderVerifier<Block, Client>,
     peer_id: PeerId,
     download_state: DownloadState,
     download_manager: BlockDownloadManager,
@@ -119,11 +121,13 @@ where
 {
     pub(crate) fn new(
         client: Arc<Client>,
+        header_verifier: HeaderVerifier<Block, Client>,
         peer_id: PeerId,
         target_block_number: u32,
     ) -> (Self, SyncAction) {
         let mut headers_first_sync = Self {
             client,
+            header_verifier,
             peer_id,
             download_state: DownloadState::Idle,
             downloaded_headers: IndexMap::new(),
@@ -317,7 +321,10 @@ where
                 return SyncAction::Disconnect(self.peer_id, Error::HeadersNotInAscendingOrder);
             }
 
-            // TODO: Verify header?
+            if !self.header_verifier.has_valid_proof_of_work(&header) {
+                self.download_state = DownloadState::Disconnecting;
+                return SyncAction::Disconnect(from, Error::BadProofOfWork(header.block_hash()));
+            }
 
             let block_hash = header.block_hash();
             let block_number = prev_number + 1;

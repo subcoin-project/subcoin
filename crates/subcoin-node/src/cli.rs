@@ -1,4 +1,3 @@
-pub mod rpc_params;
 pub mod subcoin_params;
 
 use crate::commands::blockchain::{Blockchain, BlockchainCmd};

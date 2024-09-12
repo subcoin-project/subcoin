@@ -5,7 +5,9 @@ use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::p2p::message_blockdata::Inventory;
 use bitcoin::{Block as BitcoinBlock, BlockHash};
 use sc_client_api::{AuxStore, HeaderBackend};
-use sc_consensus_nakamoto::{BlockImportQueue, ImportBlocks, ImportManyBlocksResult};
+use sc_consensus_nakamoto::{
+    BlockImportQueue, HeaderVerifier, ImportBlocks, ImportManyBlocksResult,
+};
 use serde::{Deserialize, Serialize};
 use sp_consensus::BlockOrigin;
 use sp_runtime::traits::Block as BlockT;
@@ -130,9 +132,9 @@ pub(crate) enum SyncAction {
 // might be in during the sync process.
 enum Syncing<Block, Client> {
     /// Blocks-First sync.
-    BlocksFirstSync(BlocksFirstDownloader<Block, Client>),
+    BlocksFirstSync(Box<BlocksFirstDownloader<Block, Client>>),
     /// Headers-First sync.
-    HeadersFirstSync(HeadersFirstDownloader<Block, Client>),
+    HeadersFirstSync(Box<HeadersFirstDownloader<Block, Client>>),
     /// Not syncing.
     ///
     /// This could indicate that the node is either fully synced
@@ -150,6 +152,8 @@ impl<Block, Client> Syncing<Block, Client> {
 pub(crate) struct ChainSync<Block, Client> {
     /// Chain client.
     client: Arc<Client>,
+    /// Block header verifier.
+    header_verifier: HeaderVerifier<Block, Client>,
     /// The active peers that we are using to sync and their PeerSync status
     pub(crate) peers: HashMap<PeerId, PeerSync>,
     syncing: Syncing<Block, Client>,
@@ -176,6 +180,7 @@ where
     /// Constructs a new instance of [`ChainSync`].
     pub(super) fn new(
         client: Arc<Client>,
+        header_verifier: HeaderVerifier<Block, Client>,
         import_queue: BlockImportQueue,
         sync_strategy: SyncStrategy,
         is_major_syncing: Arc<AtomicBool>,
@@ -183,6 +188,7 @@ where
     ) -> Self {
         Self {
             client,
+            header_verifier,
             peers: HashMap::new(),
             import_queue,
             syncing: Syncing::Idle,
@@ -417,21 +423,25 @@ where
                         let (downloader, blocks_request) =
                             BlocksFirstDownloader::new(self.client.clone(), sync_peer, peer_best);
                         (
-                            Syncing::BlocksFirstSync(downloader),
+                            Syncing::BlocksFirstSync(Box::new(downloader)),
                             SyncAction::Request(blocks_request),
                         )
                     }
                     SyncStrategy::HeadersFirst => {
-                        let (downloader, sync_action) =
-                            HeadersFirstDownloader::new(self.client.clone(), sync_peer, peer_best);
-                        (Syncing::HeadersFirstSync(downloader), sync_action)
+                        let (downloader, sync_action) = HeadersFirstDownloader::new(
+                            self.client.clone(),
+                            self.header_verifier.clone(),
+                            sync_peer,
+                            peer_best,
+                        );
+                        (Syncing::HeadersFirstSync(Box::new(downloader)), sync_action)
                     }
                 }
             } else {
                 let (downloader, blocks_request) =
                     BlocksFirstDownloader::new(self.client.clone(), sync_peer, peer_best);
                 (
-                    Syncing::BlocksFirstSync(downloader),
+                    Syncing::BlocksFirstSync(Box::new(downloader)),
                     SyncAction::Request(blocks_request),
                 )
             };
@@ -474,7 +484,7 @@ where
         );
 
         tracing::debug!("Headers-first sync is complete, continuing with blocks-first sync");
-        self.update_syncing_state(Syncing::BlocksFirstSync(blocks_first_downloader));
+        self.update_syncing_state(Syncing::BlocksFirstSync(Box::new(blocks_first_downloader)));
 
         Some(blocks_sync_request)
     }
@@ -523,7 +533,17 @@ where
 
                 // New blocks, extending the chain tip.
                 if headers[0].prev_blockhash == best_hash {
-                    // TODO: Verify header
+                    for (index, header) in headers.iter().enumerate() {
+                        if !self.header_verifier.has_valid_proof_of_work(header) {
+                            tracing::error!(
+                                "Invalid header at index {index} in headers message from {from:?}"
+                            );
+                            return SyncAction::Disconnect(
+                                from,
+                                Error::BadProofOfWork(header.block_hash()),
+                            );
+                        }
+                    }
 
                     let data_request = SyncRequest::Data(
                         headers
