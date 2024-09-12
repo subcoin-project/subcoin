@@ -132,9 +132,9 @@ pub(crate) enum SyncAction {
 // might be in during the sync process.
 enum Syncing<Block, Client> {
     /// Blocks-First sync.
-    BlocksFirstSync(BlocksFirstDownloader<Block, Client>),
+    BlocksFirstSync(Box<BlocksFirstDownloader<Block, Client>>),
     /// Headers-First sync.
-    HeadersFirstSync(HeadersFirstDownloader<Block, Client>),
+    HeadersFirstSync(Box<HeadersFirstDownloader<Block, Client>>),
     /// Not syncing.
     ///
     /// This could indicate that the node is either fully synced
@@ -423,7 +423,7 @@ where
                         let (downloader, blocks_request) =
                             BlocksFirstDownloader::new(self.client.clone(), sync_peer, peer_best);
                         (
-                            Syncing::BlocksFirstSync(downloader),
+                            Syncing::BlocksFirstSync(Box::new(downloader)),
                             SyncAction::Request(blocks_request),
                         )
                     }
@@ -434,14 +434,14 @@ where
                             sync_peer,
                             peer_best,
                         );
-                        (Syncing::HeadersFirstSync(downloader), sync_action)
+                        (Syncing::HeadersFirstSync(Box::new(downloader)), sync_action)
                     }
                 }
             } else {
                 let (downloader, blocks_request) =
                     BlocksFirstDownloader::new(self.client.clone(), sync_peer, peer_best);
                 (
-                    Syncing::BlocksFirstSync(downloader),
+                    Syncing::BlocksFirstSync(Box::new(downloader)),
                     SyncAction::Request(blocks_request),
                 )
             };
@@ -484,7 +484,7 @@ where
         );
 
         tracing::debug!("Headers-first sync is complete, continuing with blocks-first sync");
-        self.update_syncing_state(Syncing::BlocksFirstSync(blocks_first_downloader));
+        self.update_syncing_state(Syncing::BlocksFirstSync(Box::new(blocks_first_downloader)));
 
         Some(blocks_sync_request)
     }
