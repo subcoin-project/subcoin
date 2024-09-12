@@ -1,5 +1,5 @@
 [book]
-title = "Subcoin"
+title = "Subcoin Book"
 authors = ["Liu-Cheng Xu"]
 language = "en"
 description = "A comprehensive guide to Subcoin, a Bitcoin Node in Substrate."
@@ -10,6 +10,7 @@ src = "src"
 edition = "2021"
 
 [output.html]
+additional-css =["src/css/custom.css"]
 git-repository-url = "https://github.com/subcoin-project/subcoin"
 git-repository-icon = "fa-github"
 edit-url-template = "https://github.com/subcoin-project/subcoin/edit/main/docs/{path}"

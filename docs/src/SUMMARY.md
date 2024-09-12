@@ -5,4 +5,5 @@
 # User Guide 
 
 - [Installation](installation.md)
-- [Usage](usage.md)
+- [Run a Node](run-a-node.md)
+- [Import Bitcoin Core Blocks](import-bitcoind-blocks.md)
