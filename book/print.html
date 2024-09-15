@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Subcoin</title>
+        <title>Subcoin Book</title>
         <meta name="robots" content="noindex">
 
 
@@ -30,6 +30,7 @@
         <link rel="stylesheet" href="ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="src/css/custom.css">
 
     </head>
     <body class="sidebar-visible no-js">
@@ -89,7 +90,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="installation.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="usage.html"><strong aria-hidden="true">2.</strong> Usage</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">Dev Guide</li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">1.</strong> Architecture</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="installation.html"><strong aria-hidden="true">2.</strong> Installation</a></li><li class="chapter-item expanded "><a href="run-a-node.html"><strong aria-hidden="true">3.</strong> Run a Node</a></li><li class="chapter-item expanded "><a href="import-bitcoind-blocks.html"><strong aria-hidden="true">4.</strong> Import Bitcoin Core Blocks</a></li><li class="chapter-item expanded "><a href="dumptxoutset.html"><strong aria-hidden="true">5.</strong> Export Bitcoin State</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -142,7 +143,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">Subcoin</h1>
+                    <h1 class="menu-title">Subcoin Book</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -185,6 +186,29 @@ every historical block and replaying all past transactions, fast sync downloads
 the state at a specific block and begins normal block sync from that point. Fast sync
 is common and often the default sync strategy in newer blockchains with a global state
 like Ethereum, Near, and Polkadot.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="architecture"><a class="header" href="#architecture">Architecture</a></h1>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<img src="./images/Derive-Subcoin-from-Bitcoin.png" alt="Derive text" style="max-width: 600px; width: 100%; display: block; margin: 0 auto;">
+<p>Subcoin operates similarly to how a Layer 2 chain is derived from a Layer 1 chain in a modular blockchain architecture. Each Subcoin block is deterministically derived from the corresponding Bitcoin block at the same height, faithfully replicating Bitcoin's transaction logic (Money Transfer).</p>
+<p>The Bitcoin state (UTXO Set) is embedded within the Subcoin state, which includes a commitment to the global chain state (<code>state_root</code>). Effectively, Subcoin functions like Bitcoin with an added state root for the global Bitcoin state. This <code>state_root</code> enables possibilities like decentralized fast sync, without requiring any modifications to the Bitcoin protocol.</p>
+<p>Additionally, Subcoin serves as an ideal testbed for new Bitcoin features, which are often challenging to land on the Bitcoin mainnet due to its stability and conservative development process. Developers can experiment with new innovations and features on Subcoin in a live environment without affecting the Bitcoin mainnet.</p>
+<p>Subcoin is not a new blockchain but a replica of the Bitcoin chain with additional functionality, such as decentralized fast sync and flexibility for testing new features.</p>
+<h2 id="code-map"><a class="header" href="#code-map">Code Map</a></h2>
+<p>This section provides a brief overview of key directories and data structures in the project.</p>
+<h3 id="cratespallet-bitcoin"><a class="header" href="#cratespallet-bitcoin"><code>crates/pallet-bitcoin</code></a></h3>
+<p>This pallet is responsible for tracking the state of the UTXO Set. Transaction verification is deliberately excluded from this pallet, with all verifications handled on the client side through <code>sc-consensus-nakamoto</code>.</p>
+<h3 id="cratessc-consensus-nakamoto"><a class="header" href="#cratessc-consensus-nakamoto"><code>crates/sc-consensus-nakamoto</code></a></h3>
+<p>This crate manages the processing and importing of Bitcoin blocks into the database, whether they are sourced from a local Bitcoin Core database or downloaded via the P2P network.</p>
+<ul>
+<li><code>BitcoinBlockImporter</code>: Processes and imports blocks into the database.</li>
+<li><code>BlockImportQueue</code>: Bridges blocks downloaded from the Bitcoin P2P network to BitcoinBlockImporter.</li>
+</ul>
+<h3 id="cratessubcoin-network"><a class="header" href="#cratessubcoin-network"><code>crates/subcoin-network</code></a></h3>
+<p>This crate handles downloading Bitcoin blocks from the Bitcoin P2P network. The downloaded blocks are sent to the import queue, running in a separate task for processing. Block processing results are communicated back to ensure seamless integration.</p>
+<h3 id="cratessubcoin-runtime"><a class="header" href="#cratessubcoin-runtime"><code>crates/subcoin-runtime</code></a></h3>
+<p>This is a minimal Substrate runtime, composed of <code>frame-system</code> and <code>pallet-bitcoin</code>, which defines the core business logic of Subcoin chain.</p>
+<h3 id="cratessubcoin-node"><a class="header" href="#cratessubcoin-node"><code>crates/subcoin-node</code></a></h3>
+<p>The entry point for the Subcoin node is located at <code>crates/subcoin-node/src/bin/subcoin.rs</code>, which initializes and runs the node.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="installing-subcoin"><a class="header" href="#installing-subcoin">Installing Subcoin</a></h1>
 <h2 id="compile-from-source"><a class="header" href="#compile-from-source">Compile from source</a></h2>
 <h3 id="install-prerequisites"><a class="header" href="#install-prerequisites">Install prerequisites</a></h3>
@@ -199,21 +223,24 @@ like Ethereum, Near, and Polkadot.</p>
 <pre><code class="language-bash">docker pull ghcr.io/subcoin-project/subcoin:main
 </code></pre>
 <p>For a list of all available versions, refer to the <a href="https://github.com/subcoin-project/subcoin/pkgs/container/subcoin/versions">Subcoin Docker Container Versions</a>.</p>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="using-subcoin"><a class="header" href="#using-subcoin">Using Subcoin</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="run-subcoin-node"><a class="header" href="#run-subcoin-node">Run Subcoin Node</a></h1>
+<h2 id="system-requirements"><a class="header" href="#system-requirements">System Requirements</a></h2>
+<p>TODO</p>
+<h2 id="syncing-the-bitcoin-network"><a class="header" href="#syncing-the-bitcoin-network">Syncing the Bitcoin Network</a></h2>
+<p>Run the following command to sync the Bitcoin blockchain from the Bitcoin P2P network. The <code>--log subcoin_network=debug</code> option
+will enable debug-level logging to show detailed information about the syncing process. By default, the block will be fully verified.
+You can use <code>--block-verification=none</code> to skip the block verification. Check out <code>subcoin run --help</code> for more options.</p>
+<pre><code class="language-bash">subcoin run -d data --log subcoin_network=debug
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="import-blocks-from-bitcoin-core-database"><a class="header" href="#import-blocks-from-bitcoin-core-database">Import Blocks from Bitcoin Core Database</a></h1>
 <!-- clap-markdown-toc -->
 <ul>
-<li><a href="usage.html#import-bitcoin-blocks-from-bitcoind-database">Import Bitcoin Blocks from <code>bitcoind</code> Database</a>
-<ul>
-<li><a href="usage.html#get-the-bitcoind-binary">Get the <code>bitcoind</code> Binary</a></li>
-<li><a href="usage.html#run-subcoin-import-blocks">Run <code>subcoin import-blocks</code></a></li>
-<li><a href="usage.html#verify-the-utxo-set-state">Verify the UTXO Set State</a></li>
-</ul>
-</li>
-<li><a href="usage.html#syncing-the-bitcoin-network">Syncing the Bitcoin Network</a></li>
+<li><a href="import-bitcoind-blocks.html#get-the-bitcoind-binary">Get the <code>bitcoind</code> Binary</a></li>
+<li><a href="import-bitcoind-blocks.html#run-subcoin-import-blocks">Run <code>subcoin import-blocks</code></a></li>
+<li><a href="import-bitcoind-blocks.html#verify-the-utxo-set-state">Verify the UTXO Set State</a></li>
 </ul>
 <!-- /clap-markdown-toc -->
-<p>This page covers some specific features supported in Subcoin. For full usage details, refer to <code>subcoin --help</code>.</p>
-<h2 id="import-bitcoin-blocks-from-bitcoind-database"><a class="header" href="#import-bitcoin-blocks-from-bitcoind-database">Import Bitcoin Blocks from <code>bitcoind</code> Database</a></h2>
+<p>If you already have a Bitcoin Core node with <code>-txindex</code> flag enabled, you can import the blocks from the Bitcoin Core database instead of downloading from the network.</p>
 <h3 id="get-the-bitcoind-binary"><a class="header" href="#get-the-bitcoind-binary">Get the <code>bitcoind</code> Binary</a></h3>
 <p>To have flexible control over <code>bitcoind</code> behavior, it’s recommended to compile the <code>bitcoind</code> binary from source rather than downloading it directly from <a href="https://github.com/bitcoin/bitcoin/releases">Bitcoin releases</a> which do not conveniently expose developer-oriented options. You can find the build instructions for your operating system under <code>build-*.md</code> in the <a href="https://github.com/bitcoin/bitcoin/tree/master/doc">Bitcoin repository</a>. For Linux, refer to <a href="https://github.com/bitcoin/bitcoin/blob/master/doc/build-unix.md">build-unix.md</a>.</p>
 <pre><code class="language-bash"># Ensure these two commands exist after successfully compiling the Bitcoin Core source code.
@@ -231,8 +258,10 @@ like Ethereum, Near, and Polkadot.</p>
 <p>Stop the <code>bitcoind</code> process and proceed to import the blocks from the <code>bitcoind</code> database into Subcoin.</p>
 <h3 id="run-subcoin-import-blocks"><a class="header" href="#run-subcoin-import-blocks">Run <code>subcoin import-blocks</code></a></h3>
 <p>Ensure you have installed <code>subcoin</code>. If not, refer to <a href="./installation.html">installation</a> to install the <code>subcoin</code> binary.</p>
-<pre><code class="language-bash"># Specify `subcoin-data` as the data directory for Subcoin and import the blocks from `/tmp/btc-data` which is the `bitcoind` database we set up earlier.
-# `--state-pruning archive` is necessary for querying the state of the Subcoin UTXO set later.
+<pre><code class="language-bash"># Specify `subcoin-data` as the data directory for Subcoin and import the blocks from
+# `/tmp/btc-data` which is the `bitcoind` database we set up earlier.
+#
+# `--state-pruning archive` is necessary for querying the state of the UTXO set later.
 subcoin import-blocks /tmp/btc-data -d subcoin-data --state-pruning archive
 </code></pre>
 <p>You should see output similar to this:</p>
@@ -254,11 +283,12 @@ subcoin import-blocks /tmp/btc-data -d subcoin-data --block-count 20000
 # Import blocks up to height 30000.
 subcoin import-blocks /tmp/btc-data -d subcoin-data --end-block 30000
 </code></pre>
-<div class="warning">
-<p>NOTE: <em>The <code>bitcoind</code> process must be stopped when running the import-blocks command, otherwise you will encounter the following error</em>:</p>
+<blockquote>
+<p>NOTE:</p>
+<p><em>The <code>bitcoind</code> process must be stopped when running the import-blocks command, otherwise you will encounter the following error</em>:</p>
 <pre><code class="language-text">Error: Application(OpError { kind: None, message: "LevelDB error: IO error: lock /tmp/btc-data/blocks/index/LOCK: Resource temporarily unavailable" })
 </code></pre>
-</div>
+</blockquote>
 <h3 id="verify-the-utxo-set-state"><a class="header" href="#verify-the-utxo-set-state">Verify the UTXO Set State</a></h3>
 <p><code>bitcoind</code> provides an interface to inspect the UTXO set state. This can be used to check the correctness of Subcoin’s UTXO set after importing blocks. For example, to export the UTXO set of <code>bitcoind</code> at height 10000:</p>
 <pre><code class="language-bash"># Note that running this command requires the bitcoind process running in the background.
@@ -294,12 +324,15 @@ txouts: 9494
 bogosize: 1109244
 total_amount: 500000.00000000
 </code></pre>
-<h2 id="syncing-the-bitcoin-network"><a class="header" href="#syncing-the-bitcoin-network">Syncing the Bitcoin Network</a></h2>
-<p>Run the following command to sync the Bitcoin blockchain from the Bitcoin P2P network. The <code>--log subcoin_network=debug</code> option
-will enable debug-level logging to show detailed information about the syncing process. By default, the block will be fully verified.
-You can use <code>--block-verification=none</code> to skip the block verification. Check out <code>subcoin run --help</code> for more options.</p>
-<pre><code class="language-bash">subcoin run -d data --log subcoin_network=debug
+<div style="break-before: page; page-break-before: always;"></div><h1 id="export-bitcoin-state-compatible-with-bitcoin-core"><a class="header" href="#export-bitcoin-state-compatible-with-bitcoin-core">Export Bitcoin State Compatible with Bitcoin Core</a></h1>
+<h2 id="dumptxoutset-command"><a class="header" href="#dumptxoutset-command"><code>dumptxoutset</code> Command</a></h2>
+<p>Subcoin provides the ability to export the Bitcoin state (UTXO Set) into a binary file that is fully compatible with the output of Bitcoin Core's <code>dumptxoutset</code> command, allowing for seamless integration and compatibility with Bitcoin Core.</p>
+<p>To use this feature, check out this command:</p>
+<pre><code class="language-bash">subcoin blockchain dumptxoutset --help
 </code></pre>
+<h2 id="decentralized-utxo-set-snapshot-download-coming-soon"><a class="header" href="#decentralized-utxo-set-snapshot-download-coming-soon">Decentralized UTXO Set Snapshot Download (Coming Soon)</a></h2>
+<p>You can download the Bitcoin state directly from the Subcoin P2P network in a fully decentralized manner, eliminating the need for trusted snapshot providers. This feature will allow you to retrieve the UTXO Set snapshot from the network, convert it into a format compatible with Bitcoin Core, and import it directly into a Bitcoin Core node. This makes Subcoin an ideal addition to the Bitcoin Core ecosystem, providing a decentralized, secure, and efficient method for syncing with Bitcoin’s UTXO set.</p>
+<p>Follow <a href="https://github.com/subcoin-project/subcoin/issues/54">Subcoin Issue #54</a> for this complementary feature, which will enhance the functionality of Bitcoin Core by integrating decentralized state retrieval from Subcoin.</p>
 
                     </main>
 
@@ -335,6 +368,8 @@ You can use <code>--block-verification=none</code> to skip the block verificatio
         <script src="book.js"></script>
 
         <!-- Custom JS scripts -->
+        <script src="mermaid.min.js"></script>
+        <script src="mermaid-init.js"></script>
 
         <script>
         window.addEventListener('load', function() {

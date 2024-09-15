@@ -3,8 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Page not found - Subcoin Book</title>
-        <base href="/">
+        <title>Run a Node - Subcoin Book</title>
 
 
         <!-- Custom HTML head -->
@@ -90,7 +89,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">Dev Guide</li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">1.</strong> Architecture</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="installation.html"><strong aria-hidden="true">2.</strong> Installation</a></li><li class="chapter-item expanded "><a href="run-a-node.html"><strong aria-hidden="true">3.</strong> Run a Node</a></li><li class="chapter-item expanded "><a href="import-bitcoind-blocks.html"><strong aria-hidden="true">4.</strong> Import Bitcoin Core Blocks</a></li><li class="chapter-item expanded "><a href="dumptxoutset.html"><strong aria-hidden="true">5.</strong> Export Bitcoin State</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">Dev Guide</li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">1.</strong> Architecture</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="installation.html"><strong aria-hidden="true">2.</strong> Installation</a></li><li class="chapter-item expanded "><a href="run-a-node.html" class="active"><strong aria-hidden="true">3.</strong> Run a Node</a></li><li class="chapter-item expanded "><a href="import-bitcoind-blocks.html"><strong aria-hidden="true">4.</strong> Import Bitcoin Core Blocks</a></li><li class="chapter-item expanded "><a href="dumptxoutset.html"><strong aria-hidden="true">5.</strong> Export Bitcoin State</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -152,6 +151,9 @@
                         <a href="https://github.com/subcoin-project/subcoin" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
+                        <a href="https://github.com/subcoin-project/subcoin/edit/main/docs/src/run-a-node.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
 
                     </div>
                 </div>
@@ -178,14 +180,27 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="document-not-found-404"><a class="header" href="#document-not-found-404">Document not found (404)</a></h1>
-<p>This URL is invalid, sorry. Please use the navigation bar or search to continue.</p>
+                        <h1 id="run-subcoin-node"><a class="header" href="#run-subcoin-node">Run Subcoin Node</a></h1>
+<h2 id="system-requirements"><a class="header" href="#system-requirements">System Requirements</a></h2>
+<p>TODO</p>
+<h2 id="syncing-the-bitcoin-network"><a class="header" href="#syncing-the-bitcoin-network">Syncing the Bitcoin Network</a></h2>
+<p>Run the following command to sync the Bitcoin blockchain from the Bitcoin P2P network. The <code>--log subcoin_network=debug</code> option
+will enable debug-level logging to show detailed information about the syncing process. By default, the block will be fully verified.
+You can use <code>--block-verification=none</code> to skip the block verification. Check out <code>subcoin run --help</code> for more options.</p>
+<pre><code class="language-bash">subcoin run -d data --log subcoin_network=debug
+</code></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="installation.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
 
+                            <a rel="next prefetch" href="import-bitcoind-blocks.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
 
                         <div style="clear: both"></div>
                     </nav>
@@ -193,7 +208,13 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="installation.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
 
+                    <a rel="next prefetch" href="import-bitcoind-blocks.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
             </nav>
 
         </div>
