@@ -56,20 +56,12 @@ pub enum Command {
     ChainInfo(sc_cli::ChainInfoCmd),
 }
 
+/// Subcoin Client Node
 #[derive(Debug, Parser)]
+#[clap(version = env!("SUBSTRATE_CLI_IMPL_VERSION"))]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
-
-    /// Disable automatic hardware benchmarks.
-    ///
-    /// By default these benchmarks are automatically ran at startup and measure
-    /// the CPU speed, the memory bandwidth and the disk speed.
-    ///
-    /// The results are then printed out in the logs, and also sent as part of
-    /// telemetry, if telemetry is enabled.
-    #[arg(long)]
-    pub no_hardware_benchmarks: bool,
 
     #[allow(missing_docs)]
     #[clap(flatten)]
@@ -80,7 +72,6 @@ pub struct Cli {
 pub fn run() -> sc_cli::Result<()> {
     let Cli {
         command,
-        no_hardware_benchmarks,
         storage_monitor,
     } = Cli::parse();
 
@@ -89,9 +80,7 @@ pub fn run() -> sc_cli::Result<()> {
             let run_cmd = RunCmd::new(*run);
             let runner = SubstrateCli.create_runner(&run_cmd)?;
             runner.run_node_until_exit(|config| async move {
-                run_cmd
-                    .start(config, no_hardware_benchmarks, storage_monitor)
-                    .await
+                run_cmd.start(config, storage_monitor).await
             })
         }
         Command::ImportBlocks(cmd) => {
@@ -118,7 +107,7 @@ pub fn run() -> sc_cli::Result<()> {
                     network: bitcoin_network,
                     config: &config,
                     block_execution_strategy,
-                    no_hardware_benchmarks,
+                    no_hardware_benchmarks: true,
                     storage_monitor,
                 })?;
                 let spawn_handle = task_manager.spawn_handle();

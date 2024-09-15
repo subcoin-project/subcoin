@@ -28,6 +28,16 @@ pub struct Run {
     #[clap(long)]
     pub disable_subcoin_networking: bool,
 
+    /// Disable automatic hardware benchmarks.
+    ///
+    /// By default these benchmarks are automatically ran at startup and measure
+    /// the CPU speed, the memory bandwidth and the disk speed.
+    ///
+    /// The results are then printed out in the logs, and also sent as part of
+    /// telemetry, if telemetry is enabled.
+    #[arg(long)]
+    pub no_hardware_benchmarks: bool,
+
     #[allow(missing_docs)]
     #[clap(flatten)]
     pub rpc_params: RpcParams,
@@ -92,7 +102,6 @@ impl RunCmd {
     pub async fn start(
         self,
         mut config: Configuration,
-        no_hardware_benchmarks: bool,
         storage_monitor: sc_storage_monitor::StorageMonitorParams,
     ) -> sc_cli::Result<TaskManager> {
         let Self {
@@ -116,7 +125,7 @@ impl RunCmd {
             network: bitcoin_network,
             config: &config,
             block_execution_strategy,
-            no_hardware_benchmarks,
+            no_hardware_benchmarks: run.no_hardware_benchmarks,
             storage_monitor,
         })?;
 
