@@ -1,18 +1,14 @@
-# Using Subcoin
+# Import Blocks from Bitcoin Core Database
 
 <!-- clap-markdown-toc -->
 
-*   [Import Bitcoin Blocks from `bitcoind` Database](#import-bitcoin-blocks-from-bitcoind-database)
-    *   [Get the `bitcoind` Binary](#get-the-bitcoind-binary)
-    *   [Run `subcoin import-blocks`](#run-subcoin-import-blocks)
-    *   [Verify the UTXO Set State](#verify-the-utxo-set-state)
-*   [Syncing the Bitcoin Network](#syncing-the-bitcoin-network)
+*   [Get the `bitcoind` Binary](#get-the-bitcoind-binary)
+*   [Run `subcoin import-blocks`](#run-subcoin-import-blocks)
+*   [Verify the UTXO Set State](#verify-the-utxo-set-state)
 
 <!-- /clap-markdown-toc -->
 
-This page covers some specific features supported in Subcoin. For full usage details, refer to `subcoin --help`.
-
-## Import Bitcoin Blocks from `bitcoind` Database
+If you already have a Bitcoin Core node with `-txindex` flag enabled, you can import the blocks from the Bitcoin Core database instead of downloading from the network.
 
 ### Get the `bitcoind` Binary
 
@@ -45,8 +41,10 @@ Stop the `bitcoind` process and proceed to import the blocks from the `bitcoind`
 Ensure you have installed `subcoin`. If not, refer to [installation](./installation.md) to install the `subcoin` binary.
 
 ```bash
-# Specify `subcoin-data` as the data directory for Subcoin and import the blocks from `/tmp/btc-data` which is the `bitcoind` database we set up earlier.
-# `--state-pruning archive` is necessary for querying the state of the Subcoin UTXO set later.
+# Specify `subcoin-data` as the data directory for Subcoin and import the blocks from
+# `/tmp/btc-data` which is the `bitcoind` database we set up earlier.
+#
+# `--state-pruning archive` is necessary for querying the state of the UTXO set later.
 subcoin import-blocks /tmp/btc-data -d subcoin-data --state-pruning archive
 ```
 
@@ -75,15 +73,14 @@ subcoin import-blocks /tmp/btc-data -d subcoin-data --block-count 20000
 subcoin import-blocks /tmp/btc-data -d subcoin-data --end-block 30000
 ```
 
-<div class="warning">
-
-NOTE: _The `bitcoind` process must be stopped when running the import-blocks command, otherwise you will encounter the following error_:
-
-```text
-Error: Application(OpError { kind: None, message: "LevelDB error: IO error: lock /tmp/btc-data/blocks/index/LOCK: Resource temporarily unavailable" })
-```
-
-</div>
+>
+>NOTE:
+>
+>_The `bitcoind` process must be stopped when running the import-blocks command, otherwise you will encounter the following error_:
+>
+>```text
+>Error: Application(OpError { kind: None, message: "LevelDB error: IO error: lock /tmp/btc-data/blocks/index/LOCK: Resource temporarily unavailable" })
+>```
 
 ### Verify the UTXO Set State
 
@@ -125,14 +122,4 @@ block_hash: 0000000099c744455f58e6c6e98b671e1bf7f37346bfd4cf5d0274ad8ee660cb
 txouts: 9494
 bogosize: 1109244
 total_amount: 500000.00000000
-```
-
-## Syncing the Bitcoin Network
-
-Run the following command to sync the Bitcoin blockchain from the Bitcoin P2P network. The `--log subcoin_network=debug` option
-will enable debug-level logging to show detailed information about the syncing process. By default, the block will be fully verified.
-You can use `--block-verification=none` to skip the block verification. Check out `subcoin run --help` for more options.
-
-```bash
-subcoin run -d data --log subcoin_network=debug
 ```

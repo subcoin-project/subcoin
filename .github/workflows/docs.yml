@@ -51,18 +51,22 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Install mdbook and mdbook-mermaid
+        run: |
+          cargo install mdbook --version 0.4.40
+          cargo install mdbook-mermaid --version 0.14.0
+
       - name: Build Rustdoc
         run: cargo +${{ env.RUST_TOOLCHAIN }} -Zgitoxide -Zgit doc --all --no-deps --lib
         env:
           RUSTDOCFLAGS: "-Z unstable-options --enable-index-page"
 
-      - name: Build User Guide
+      - name: Build Book
         run: |
-          cargo install --vers "^0.4" mdbook
           mdbook build docs && mdbook test docs
           mv docs/book target/doc
 
-      - name: Deploy Docs
+      - name: Deploy Docs (Rustdoc and Book)
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           branch: gh-pages
