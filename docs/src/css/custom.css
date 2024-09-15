@@ -55,6 +55,25 @@ footer {
     font-size: 0.9em;
 }
 
+/* Dark Mode Styles */
+body.dark-mode {
+    background-color: #212529;
+    color: #f8f9fa;
+}
+
+nav.navbar.dark-mode {
+    background-color: #1b1e21;
+}
+
+.sidebar.dark-mode {
+    background-color: #2b2f33;
+}
+
+button.dark-mode-toggle {
+    background-color: #495057;
+    color: #f8f9fa;
+}
+
 h1, h2, h3 {
     font-family: 'Merriweather', serif;  /* Elegant font for headers */
     color: #d63384;  /* Accent color for headings */
@@ -81,4 +100,10 @@ button, .btn {
 button:hover, .btn:hover {
     background-color: #c12876;  /* Darker shade on hover */
     cursor: pointer;
+}
+
+h1 code, h2 code, h3 code, h4 code, h5 code, h6 code {
+    padding: .2em;
+    background-color: #818b981f;
+    border-radius: 6px;
 }

@@ -14,3 +14,9 @@ additional-css =["src/css/custom.css"]
 git-repository-url = "https://github.com/subcoin-project/subcoin"
 git-repository-icon = "fa-github"
 edit-url-template = "https://github.com/subcoin-project/subcoin/edit/main/docs/{path}"
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
+
+[preprocessor]
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"

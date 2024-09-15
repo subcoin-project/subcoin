@@ -2,6 +2,10 @@
 
 [Introduction](README.md)
 
+# Dev Guide
+
+- [Architecture](architecture.md)
+
 # User Guide 
 
 - [Installation](installation.md)
