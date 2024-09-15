@@ -1,14 +1,10 @@
-h3 {
-    margin-block-start: 1em;
-}
-
 .warning {
     margin: 0px;
 }
 
 /* Increase the width for wider screens while maintaining a max-width for readability */
 .content main {
-    max-width: 1200px; /* Adjust the max width as needed */
+    max-width: 900px; /* Adjust the max width as needed */
     width: 90%; /* Let the width be responsive to the screen size */
     margin: 0 auto; /* Center the content */
 }
@@ -24,4 +20,65 @@ h3 {
     .content main {
         max-width: 100%; /* Make it full-width on smaller screens */
     }
+}
+
+/* Set a gradient background for the main content */
+body {
+    background: linear-gradient(to right, #f0f0f0, #fafafa); /* Light gradient */
+    font-family: 'Roboto', sans-serif; /* Use a clean, modern font */
+    color: #333;
+    line-height: 1.8;   /* Improve readability */
+}
+
+/* Header styling */
+nav.navbar {
+    background-color: #343a40;  /* Darker background for the header */
+    border-bottom: 2px solid #d63384; /* Add a border to make it pop */
+    color: white;
+}
+
+nav.navbar a {
+    color: #f8f9fa;   /* Light text color */
+    padding: 10px 20px;
+}
+
+nav.navbar a:hover {
+    background-color: #495057;  /* Slight hover effect */
+}
+
+/* Footer Styling */
+footer {
+    background-color: #343a40;
+    color: #f8f9fa;
+    text-align: center;
+    padding: 10px 0;
+    font-size: 0.9em;
+}
+
+h1, h2, h3 {
+    font-family: 'Merriweather', serif;  /* Elegant font for headers */
+    color: #d63384;  /* Accent color for headings */
+    margin-top: 30px;
+}
+
+.sidebar {
+    width: 300px;
+    background-color: #f8f9fa;  /* Light background for sidebar */
+    padding: 15px;
+    border-right: 1px solid #dee2e6;
+}
+
+/* Button Styling */
+button, .btn {
+    background-color: #d63384;  /* Accent color for buttons */
+    border: none;
+    color: white;
+    padding: 10px 15px;
+    border-radius: 5px;
+    font-size: 1em;
+}
+
+button:hover, .btn:hover {
+    background-color: #c12876;  /* Darker shade on hover */
+    cursor: pointer;
 }
