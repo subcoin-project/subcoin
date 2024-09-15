@@ -1,5 +1,9 @@
 # Run Subcoin Node
 
+## System Requirements
+
+TODO
+
 ## Syncing the Bitcoin Network
 
 Run the following command to sync the Bitcoin blockchain from the Bitcoin P2P network. The `--log subcoin_network=debug` option
