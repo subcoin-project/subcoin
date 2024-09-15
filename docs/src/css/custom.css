@@ -5,3 +5,23 @@ h3 {
 .warning {
     margin: 0px;
 }
+
+/* Increase the width for wider screens while maintaining a max-width for readability */
+.content main {
+    max-width: 1200px; /* Adjust the max width as needed */
+    width: 90%; /* Let the width be responsive to the screen size */
+    margin: 0 auto; /* Center the content */
+}
+
+/* Optional: improve readability by slightly adjusting the line height and padding */
+.content {
+    line-height: 1.6; /* Increase line height for better readability */
+    padding: 20px; /* Add some padding for a better look */
+}
+
+/* Add some spacing for mobile screens */
+@media (max-width: 768px) {
+    .content main {
+        max-width: 100%; /* Make it full-width on smaller screens */
+    }
+}

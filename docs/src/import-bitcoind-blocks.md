@@ -41,8 +41,10 @@ Stop the `bitcoind` process and proceed to import the blocks from the `bitcoind`
 Ensure you have installed `subcoin`. If not, refer to [installation](./installation.md) to install the `subcoin` binary.
 
 ```bash
-# Specify `subcoin-data` as the data directory for Subcoin and import the blocks from `/tmp/btc-data` which is the `bitcoind` database we set up earlier.
-# `--state-pruning archive` is necessary for querying the state of the Subcoin UTXO set later.
+# Specify `subcoin-data` as the data directory for Subcoin and import the blocks from
+# `/tmp/btc-data` which is the `bitcoind` database we set up earlier.
+#
+# `--state-pruning archive` is necessary for querying the state of the UTXO set later.
 subcoin import-blocks /tmp/btc-data -d subcoin-data --state-pruning archive
 ```
 
