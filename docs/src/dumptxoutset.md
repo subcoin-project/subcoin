@@ -14,4 +14,4 @@ subcoin blockchain dumptxoutset --help
 
 You can download the Bitcoin state directly from the Subcoin P2P network in a fully decentralized manner, eliminating the need for trusted snapshot providers. This feature will allow you to retrieve the UTXO Set snapshot from the network, convert it into a format compatible with Bitcoin Core, and import it directly into a Bitcoin Core node. This makes Subcoin an ideal addition to the Bitcoin Core ecosystem, providing a decentralized, secure, and efficient method for syncing with Bitcoin’s UTXO set.
 
-Stay tuned for this complementary feature, which will enhance the functionality of Bitcoin Core by integrating decentralized state retrieval from Subcoin.
+Follow [Subcoin Issue #54](https://github.com/subcoin-project/subcoin/issues/54) for this complementary feature, which will enhance the functionality of Bitcoin Core by integrating decentralized state retrieval from Subcoin.
