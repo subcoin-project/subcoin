@@ -23,10 +23,9 @@ mod tests {
     use super::*;
     use hex_literal::hex;
 
+    // https://github.com/bitcoin/bitcoin/blob/6f9db1e/test/functional/test_framework/crypto/chacha20.py#L142
     #[test]
     fn test_chacha20() {
-        // hex_key, nonce, counter, hex_output = test_vector
-
         // Test vectors from RFC7539/8439 consisting of 32 byte key, 12 byte nonce, block counter
         // and 64 byte output after applying `chacha20_block` function
         let chacha20_tests: Vec<([u8; 32], [u64; 2], u32, [u8; 64])> = vec![

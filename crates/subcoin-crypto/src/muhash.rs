@@ -14,6 +14,9 @@ fn data_to_num3072(data: &[u8; 32]) -> BigUint {
     BigUint::from_bytes_le(&bytes384)
 }
 
+/// A class representing MuHash sets.
+///
+/// https://github.com/bitcoin/bitcoin/blob/6f9db1e/src/crypto/muhash.h#L61
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct MuHash3072 {
     numerator: BigUint,
@@ -70,6 +73,7 @@ impl MuHash3072 {
 mod tests {
     use super::*;
 
+    // https://github.com/bitcoin/bitcoin/blob/6f9db1e/test/functional/test_framework/crypto/muhash.py#L48
     #[test]
     fn test_muhash() {
         let mut muhash = MuHash3072::new();
