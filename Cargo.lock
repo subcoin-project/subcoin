@@ -8993,9 +8993,11 @@ dependencies = [
  "subcoin-rpc",
  "subcoin-runtime",
  "subcoin-service",
+ "subcoin-test-service",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
+ "tokio",
  "tracing",
  "txoutset",
 ]

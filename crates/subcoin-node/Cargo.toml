@@ -57,6 +57,10 @@ substrate-prometheus-endpoint = { workspace = true }
 tracing = { workspace = true }
 txoutset = { workspace = true }
 
+[dev-dependencies]
+tokio = { workspace = true }
+subcoin-test-service = { workspace = true }
+
 [build-dependencies]
 substrate-build-script-utils = { workspace = true }
 

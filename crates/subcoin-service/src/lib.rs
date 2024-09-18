@@ -113,6 +113,19 @@ pub struct SubcoinConfiguration<'a> {
     pub storage_monitor: sc_storage_monitor::StorageMonitorParams,
 }
 
+impl<'a> SubcoinConfiguration<'a> {
+    /// Creates a [`SubcoinConfiguration`] for test purposes.
+    pub fn test_config(config: &'a Configuration) -> Self {
+        Self {
+            network: bitcoin::Network::Bitcoin,
+            block_execution_strategy: BlockExecutionStrategy::runtime_disk(),
+            config,
+            no_hardware_benchmarks: true,
+            storage_monitor: Default::default(),
+        }
+    }
+}
+
 impl<'a> Deref for SubcoinConfiguration<'a> {
     type Target = Configuration;
 

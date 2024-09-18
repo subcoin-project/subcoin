@@ -580,3 +580,30 @@ impl UtxoSetOutput {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use subcoin_test_service::new_test_node_and_produce_blocks;
+
+    #[tokio::test]
+    async fn test_muhash_in_gettxoutsetinfo() {
+        let runtime_handle = tokio::runtime::Handle::current();
+        let config = subcoin_test_service::test_configuration(runtime_handle);
+        let client = new_test_node_and_produce_blocks(&config, 3).await;
+        assert_eq!(
+            gettxoutsetinfo(&client, Some(1), false)
+                .await
+                .unwrap()
+                .muhash,
+            "1bd372a3f225dc6f8ce0e10ead6f8b0b00e65a2ff4a4c9ccaa615a69fbeeb2f2"
+        );
+        assert_eq!(
+            gettxoutsetinfo(&client, Some(2), false)
+                .await
+                .unwrap()
+                .muhash,
+            "dfd1c34195baa0a898f04d40097841e1d569e81ce845a21e79c4ab25c725c875"
+        );
+    }
+}
