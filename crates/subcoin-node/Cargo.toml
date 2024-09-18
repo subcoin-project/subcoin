@@ -37,12 +37,14 @@ sc-transaction-pool = { workspace = true }
 sc-transaction-pool-api = { workspace = true }
 sc-utils = { workspace = true }
 serde_json = { workspace = true }
+sha2 = "0.10.8"
 sp-api = { workspace = true }
 sp-blockchain = { workspace = true }
 sp-consensus = { workspace = true }
 sp-core = { workspace = true }
 sp-io = { workspace = true }
 sp-runtime = { workspace = true }
+subcoin-crypto = { workspace = true }
 subcoin-informant = { workspace = true }
 subcoin-network = { workspace = true, features = ["cli"] }
 subcoin-primitives = { workspace = true }

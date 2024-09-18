@@ -8888,6 +8888,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "subcoin-crypto"
+version = "0.1.0"
+dependencies = [
+ "chacha20",
+ "hex-literal",
+ "num-bigint",
+ "num-traits",
+ "sha2 0.10.8",
+]
+
+[[package]]
 name = "subcoin-informant"
 version = "0.1.0"
 dependencies = [
@@ -8967,12 +8978,14 @@ dependencies = [
  "sc-transaction-pool-api",
  "sc-utils",
  "serde_json",
+ "sha2 0.10.8",
  "sp-api",
  "sp-blockchain",
  "sp-consensus",
  "sp-core",
  "sp-io",
  "sp-runtime",
+ "subcoin-crypto",
  "subcoin-informant",
  "subcoin-network",
  "subcoin-primitives",

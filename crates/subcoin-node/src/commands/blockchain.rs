@@ -191,7 +191,10 @@ impl BlockchainCmd {
         match self {
             Self::GetTxOutSetInfo {
                 height, verbose, ..
-            } => gettxoutsetinfo(&client, height, verbose).await,
+            } => {
+                gettxoutsetinfo(&client, height, verbose).await?.print();
+                Ok(())
+            }
             Self::DumpTxoutSet {
                 height,
                 csv,
@@ -291,16 +294,62 @@ fn fetch_utxo_set_at(
     ))
 }
 
+// Equivalent function in Rust for serializing an OutPoint and Coin
+//
+// https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/kernel/coinstats.cpp#L51
+fn tx_out_ser(outpoint: bitcoin::OutPoint, coin: &Coin) -> bitcoin::io::Result<Vec<u8>> {
+    let mut data = Vec::new();
+
+    // Serialize the OutPoint (txid and vout)
+    outpoint.consensus_encode(&mut data)?;
+
+    // Serialize the coin's height and coinbase flag
+    let height_and_coinbase = (coin.height << 1) | (coin.is_coinbase as u32);
+    height_and_coinbase.consensus_encode(&mut data)?;
+
+    let txout = bitcoin::TxOut {
+        value: bitcoin::Amount::from_sat(coin.amount),
+        script_pubkey: bitcoin::ScriptBuf::from_bytes(coin.script_pubkey.clone()),
+    };
+
+    // Serialize the actual UTXO (value and script)
+    txout.consensus_encode(&mut data)?;
+
+    Ok(data)
+}
+
+struct TxOutSetInfo {
+    txouts: usize,
+    bogosize: usize,
+    muhash: String,
+    total_amount: u64,
+}
+
+impl TxOutSetInfo {
+    fn print(&self) {
+        let Self {
+            txouts,
+            bogosize,
+            muhash,
+            total_amount,
+        } = self;
+        println!("====================");
+        println!("txouts: {txouts}");
+        println!("bogosize: {bogosize}");
+        println!("muhash: {muhash}");
+        println!("total_amount: {:.8}", *total_amount as f64 / 100_000_000.0);
+    }
+}
+
 async fn gettxoutsetinfo(
     client: &Arc<FullClient>,
     height: Option<u32>,
     verbose: bool,
-) -> sc_cli::Result<()> {
+) -> sc_cli::Result<TxOutSetInfo> {
     let (block_number, bitcoin_block_hash, utxo_iter) = fetch_utxo_set_at(client, height)?;
+    println!("Fetching UTXO set at block_number: #{block_number},{bitcoin_block_hash}");
 
     const INTERVAL: Duration = Duration::from_secs(5);
-
-    println!("Fetching UTXO set at block_number: #{block_number},{bitcoin_block_hash}");
 
     let mut txouts = 0;
     let mut bogosize = 0;
@@ -310,7 +359,13 @@ async fn gettxoutsetinfo(
 
     let mut last_update = Instant::now();
 
-    for (_txid, _vout, coin) in utxo_iter {
+    let mut muhash = subcoin_crypto::muhash::MuHash3072::new();
+
+    for (txid, vout, coin) in utxo_iter {
+        let data = tx_out_ser(bitcoin::OutPoint { txid, vout }, &coin)
+            .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
+        muhash.insert(&data);
+
         txouts += 1;
         total_amount += coin.amount;
         // https://github.com/bitcoin/bitcoin/blob/33af14e31b9fa436029a2bb8c2b11de8feb32f86/src/kernel/coinstats.cpp#L40
@@ -331,13 +386,23 @@ async fn gettxoutsetinfo(
         Yield::new().await;
     }
 
-    println!("====================");
-    println!("txouts: {txouts}");
-    println!("bogosize: {bogosize}");
-    println!("total_amount: {:.8}", total_amount as f64 / 100_000_000.0);
-    println!("script_pubkey_size: {script_pubkey_size} bytes");
+    // Hash the combined hash of all UTXOs
+    let finalized = muhash.digest();
 
-    Ok(())
+    let utxo_set_hash = finalized
+        .iter()
+        .rev()
+        .map(|b| format!("{:02x}", b))
+        .collect::<String>();
+
+    let tx_out_set_info = TxOutSetInfo {
+        txouts,
+        bogosize,
+        muhash: utxo_set_hash,
+        total_amount,
+    };
+
+    Ok(tx_out_set_info)
 }
 
 async fn parse_txout_set(
