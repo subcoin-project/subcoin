@@ -252,7 +252,6 @@ mod tests {
     use sc_service::config::DatabaseSource;
     use sc_service::BasePath;
     use sp_core::Encode;
-    use subcoin_runtime::Header;
     use subcoin_test_service::{block_data, new_test_node_and_produce_blocks};
     use tokio::runtime::Handle;
 
@@ -262,7 +261,7 @@ mod tests {
         let runtime_handle = Handle::current();
         let config = subcoin_test_service::test_configuration(runtime_handle);
         let NodeComponents { client, .. } =
-            new_node(SubcoinConfiguration::test_config(config)).expect("Failed to create node");
+            new_node(SubcoinConfiguration::test_config(&config)).expect("Failed to create node");
 
         let substrate_genesis_header = client.header(client.info().genesis_hash).unwrap().unwrap();
         let bitcoin_genesis_header =
