@@ -1,0 +1,1 @@
+searchState.loadedDescShard("subcoin_crypto", 0, "Subcoin Crypto Primitives.\n…\nA class representing MuHash sets.\nReturns the argument unchanged.\nCalls <code>U::from(self)</code>.")

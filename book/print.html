@@ -183,9 +183,11 @@
 <p>Subcoin's most significant contribution is introducing decentralized fast sync to
 the Bitcoin ecosystem. Unlike traditional initial full sync, which require processing
 every historical block and replaying all past transactions, fast sync downloads
-the state at a specific block and begins normal block sync from that point. Fast sync
-is common and often the default sync strategy in newer blockchains with a global state
-like Ethereum, Near, and Polkadot.</p>
+the state at a specific block and begins normal block sync from that point.</p>
+<h2 id="resources"><a class="header" href="#resources">Resources</a></h2>
+<ul>
+<li><a href="https://www.notion.so/liuchengxu/Subcoin-A-Step-Toward-Decentralized-Fast-Sync-for-Bitcoin-68762427a4484d73906a91602d789be9">Subcoin: A Step Toward Decentralized Fast Sync for Bitcoin</a></li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="architecture"><a class="header" href="#architecture">Architecture</a></h1>
 <h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
 <img src="./images/Derive-Subcoin-from-Bitcoin.png" alt="Derive text" style="max-width: 600px; width: 100%; display: block; margin: 0 auto;">
@@ -293,12 +295,13 @@ subcoin import-blocks /tmp/btc-data -d subcoin-data --end-block 30000
 <p><code>bitcoind</code> provides an interface to inspect the UTXO set state. This can be used to check the correctness of Subcoin’s UTXO set after importing blocks. For example, to export the UTXO set of <code>bitcoind</code> at height 10000:</p>
 <pre><code class="language-bash"># Note that running this command requires the bitcoind process running in the background.
 # If it was stopped, now restart it. You can stop it again after this command finishes.
-./src/bitcoin-cli -datadir=/tmp/btc-data gettxoutsetinfo none 10000 true
+./src/bitcoin-cli -datadir=/tmp/btc-data gettxoutsetinfo muhash 10000
 {
   "height": 10000,
   "bestblock": "0000000099c744455f58e6c6e98b671e1bf7f37346bfd4cf5d0274ad8ee660cb",
   "txouts": 9494,
   "bogosize": 1109244,
+  "muhash": "5a7c3a051a26d8cf61722f28fbbd3f0c2678698d008e5b7ec01e28a131c58def",
   "total_amount": 500000.00000000,
   "total_unspendable_amount": 50.00000000,
   "block_info": {
@@ -318,11 +321,14 @@ subcoin import-blocks /tmp/btc-data -d subcoin-data --end-block 30000
 <p>Check the state of the UTXO set in Subcoin at the same height:</p>
 <pre><code class="language-bash"># Note that the existing `gettxoutsetinfo` only displays a subset of the information in `bitcoind`.
 subcoin blockchain gettxoutsetinfo --height 10000 -d subcoin-data
-block_number: 10000
-block_hash: 0000000099c744455f58e6c6e98b671e1bf7f37346bfd4cf5d0274ad8ee660cb
-txouts: 9494
-bogosize: 1109244
-total_amount: 500000.00000000
+{
+  "height": 10000,
+  "bestblock": "0000000099c744455f58e6c6e98b671e1bf7f37346bfd4cf5d0274ad8ee660cb",
+  "txouts": 9494,
+  "bogosize": 1109244,
+  "muhash": "5a7c3a051a26d8cf61722f28fbbd3f0c2678698d008e5b7ec01e28a131c58def",
+  "total_amount": "500000.00000000"
+}
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="export-bitcoin-state-compatible-with-bitcoin-core"><a class="header" href="#export-bitcoin-state-compatible-with-bitcoin-core">Export Bitcoin State Compatible with Bitcoin Core</a></h1>
 <h2 id="dumptxoutset-command"><a class="header" href="#dumptxoutset-command"><code>dumptxoutset</code> Command</a></h2>

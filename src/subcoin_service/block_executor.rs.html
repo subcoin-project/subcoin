@@ -388,57 +388,6 @@
 <a href="#388" id="388">388</a>
 <a href="#389" id="389">389</a>
 <a href="#390" id="390">390</a>
-<a href="#391" id="391">391</a>
-<a href="#392" id="392">392</a>
-<a href="#393" id="393">393</a>
-<a href="#394" id="394">394</a>
-<a href="#395" id="395">395</a>
-<a href="#396" id="396">396</a>
-<a href="#397" id="397">397</a>
-<a href="#398" id="398">398</a>
-<a href="#399" id="399">399</a>
-<a href="#400" id="400">400</a>
-<a href="#401" id="401">401</a>
-<a href="#402" id="402">402</a>
-<a href="#403" id="403">403</a>
-<a href="#404" id="404">404</a>
-<a href="#405" id="405">405</a>
-<a href="#406" id="406">406</a>
-<a href="#407" id="407">407</a>
-<a href="#408" id="408">408</a>
-<a href="#409" id="409">409</a>
-<a href="#410" id="410">410</a>
-<a href="#411" id="411">411</a>
-<a href="#412" id="412">412</a>
-<a href="#413" id="413">413</a>
-<a href="#414" id="414">414</a>
-<a href="#415" id="415">415</a>
-<a href="#416" id="416">416</a>
-<a href="#417" id="417">417</a>
-<a href="#418" id="418">418</a>
-<a href="#419" id="419">419</a>
-<a href="#420" id="420">420</a>
-<a href="#421" id="421">421</a>
-<a href="#422" id="422">422</a>
-<a href="#423" id="423">423</a>
-<a href="#424" id="424">424</a>
-<a href="#425" id="425">425</a>
-<a href="#426" id="426">426</a>
-<a href="#427" id="427">427</a>
-<a href="#428" id="428">428</a>
-<a href="#429" id="429">429</a>
-<a href="#430" id="430">430</a>
-<a href="#431" id="431">431</a>
-<a href="#432" id="432">432</a>
-<a href="#433" id="433">433</a>
-<a href="#434" id="434">434</a>
-<a href="#435" id="435">435</a>
-<a href="#436" id="436">436</a>
-<a href="#437" id="437">437</a>
-<a href="#438" id="438">438</a>
-<a href="#439" id="439">439</a>
-<a href="#440" id="440">440</a>
-<a href="#441" id="441">441</a>
 </pre></div><pre class="rust"><code><span class="kw">use crate</span>::{
     initialize_genesis_block_hash_mapping, CoinStorageKey, FullBackend, FullClient,
     GenesisBlockBuilder, InMemoryBackend, InMemoryClient, SubcoinExecutorDispatch,
@@ -693,61 +642,16 @@
     <span class="kw">use </span>sc_service::config::DatabaseSource;
     <span class="kw">use </span>sc_service::BasePath;
     <span class="kw">use </span>sp_core::Encode;
-    <span class="kw">use </span>subcoin_runtime::Header;
-    <span class="kw">use </span>subcoin_test_service::block_data;
+    <span class="kw">use </span>subcoin_test_service::{block_data, new_test_node_and_produce_blocks};
     <span class="kw">use </span>tokio::runtime::Handle;
-
-    <span class="kw">async fn </span>run_with_runtime_disk_executor(config: <span class="kw-2">&amp;</span>Configuration, up_to: u32) -&gt; Header {
-        <span class="kw">let </span>NodeComponents {
-            block_executor,
-            client,
-            ..
-        } = new_node(SubcoinConfiguration {
-            network: bitcoin::Network::Bitcoin,
-            block_execution_strategy: BlockExecutionStrategy::runtime_disk(),
-            config,
-            no_hardware_benchmarks: <span class="bool-val">true</span>,
-            storage_monitor: Default::default(),
-        })
-        .expect(<span class="string">"Failed to create node"</span>);
-
-        <span class="kw">let </span><span class="kw-2">mut </span>bitcoin_block_import = BitcoinBlockImporter::&lt;<span class="kw">_</span>, <span class="kw">_</span>, <span class="kw">_</span>, <span class="kw">_</span>, TransactionAdapter&gt;::new(
-            client.clone(),
-            client.clone(),
-            ImportConfig {
-                network: bitcoin::Network::Bitcoin,
-                block_verification: BlockVerification::None,
-                execute_block: <span class="bool-val">true</span>,
-                verify_script: <span class="bool-val">true</span>,
-            },
-            Arc::new(CoinStorageKey),
-            block_executor,
-            <span class="prelude-val">None</span>,
-        );
-
-        <span class="kw">let </span>test_blocks = block_data();
-        <span class="kw">for </span>block_number <span class="kw">in </span><span class="number">1</span>..=up_to {
-            <span class="kw">let </span>block = test_blocks[block_number <span class="kw">as </span>usize].clone();
-            <span class="kw">let </span>import_status = bitcoin_block_import.import_block(block).<span class="kw">await</span>.unwrap();
-            <span class="macro">assert!</span>(<span class="macro">matches!</span>(import_status, ImportStatus::Imported { .. }));
-        }
-
-        client.header(client.info().best_hash).unwrap().unwrap()
-    }
 
     <span class="attr">#[tokio::test]
     #[ignore]
     </span><span class="kw">async fn </span>inspect_substrate_header_size() {
         <span class="kw">let </span>runtime_handle = Handle::current();
         <span class="kw">let </span>config = subcoin_test_service::test_configuration(runtime_handle);
-        <span class="kw">let </span>NodeComponents { client, .. } = new_node(SubcoinConfiguration {
-            network: bitcoin::Network::Bitcoin,
-            block_execution_strategy: BlockExecutionStrategy::runtime_disk(),
-            config: <span class="kw-2">&amp;</span>config,
-            no_hardware_benchmarks: <span class="bool-val">true</span>,
-            storage_monitor: Default::default(),
-        })
-        .expect(<span class="string">"Failed to create node"</span>);
+        <span class="kw">let </span>NodeComponents { client, .. } =
+            new_node(SubcoinConfiguration::test_config(<span class="kw-2">&amp;</span>config)).expect(<span class="string">"Failed to create node"</span>);
 
         <span class="kw">let </span>substrate_genesis_header = client.header(client.info().genesis_hash).unwrap().unwrap();
         <span class="kw">let </span>bitcoin_genesis_header =
@@ -792,7 +696,8 @@
 
         <span class="kw">let </span><span class="kw-2">mut </span>config = subcoin_test_service::test_configuration(runtime_handle);
 
-        <span class="kw">let </span>expected_header3 = run_with_runtime_disk_executor(<span class="kw-2">&amp;</span>config, <span class="number">3</span>).<span class="kw">await</span>;
+        <span class="kw">let </span>client = new_test_node_and_produce_blocks(<span class="kw-2">&amp;</span>config, <span class="number">3</span>).<span class="kw">await</span>;
+        <span class="kw">let </span>expected_header3 = client.header(client.info().best_hash).unwrap().unwrap();
 
         <span class="comment">// Use a different data path as the client above may still hold the database file.
         </span><span class="kw">let </span>tmp = tempfile::tempdir().unwrap();
@@ -811,14 +716,7 @@
             task_manager,
             executor,
             ..
-        } = new_node(SubcoinConfiguration {
-            network,
-            block_execution_strategy: BlockExecutionStrategy::runtime_disk(),
-            config: <span class="kw-2">&amp;</span>config,
-            no_hardware_benchmarks: <span class="bool-val">true</span>,
-            storage_monitor: Default::default(),
-        })
-        .expect(<span class="string">"Failed to create node"</span>);
+        } = new_node(SubcoinConfiguration::test_config(<span class="kw-2">&amp;</span>config)).expect(<span class="string">"Failed to create node"</span>);
 
         <span class="kw">let </span><span class="kw-2">mut </span>bitcoin_block_import = BitcoinBlockImporter::&lt;<span class="kw">_</span>, <span class="kw">_</span>, <span class="kw">_</span>, <span class="kw">_</span>, TransactionAdapter&gt;::new(
             client.clone(),
