@@ -89,12 +89,13 @@ subcoin import-blocks /tmp/btc-data -d subcoin-data --end-block 30000
 ```bash
 # Note that running this command requires the bitcoind process running in the background.
 # If it was stopped, now restart it. You can stop it again after this command finishes.
-./src/bitcoin-cli -datadir=/tmp/btc-data gettxoutsetinfo none 10000 true
+./src/bitcoin-cli -datadir=/tmp/btc-data gettxoutsetinfo muhash 10000
 {
   "height": 10000,
   "bestblock": "0000000099c744455f58e6c6e98b671e1bf7f37346bfd4cf5d0274ad8ee660cb",
   "txouts": 9494,
   "bogosize": 1109244,
+  "muhash": "5a7c3a051a26d8cf61722f28fbbd3f0c2678698d008e5b7ec01e28a131c58def",
   "total_amount": 500000.00000000,
   "total_unspendable_amount": 50.00000000,
   "block_info": {
@@ -117,9 +118,12 @@ Check the state of the UTXO set in Subcoin at the same height:
 ```bash
 # Note that the existing `gettxoutsetinfo` only displays a subset of the information in `bitcoind`.
 subcoin blockchain gettxoutsetinfo --height 10000 -d subcoin-data
-block_number: 10000
-block_hash: 0000000099c744455f58e6c6e98b671e1bf7f37346bfd4cf5d0274ad8ee660cb
-txouts: 9494
-bogosize: 1109244
-total_amount: 500000.00000000
+{
+  "height": 10000,
+  "bestblock": "0000000099c744455f58e6c6e98b671e1bf7f37346bfd4cf5d0274ad8ee660cb",
+  "txouts": 9494,
+  "bogosize": 1109244,
+  "muhash": "5a7c3a051a26d8cf61722f28fbbd3f0c2678698d008e5b7ec01e28a131c58def",
+  "total_amount": "500000.00000000"
+}
 ```

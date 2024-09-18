@@ -1,7 +1,10 @@
 use bitcoin::consensus::Decodable;
 use bitcoin::hex::FromHex;
 use bitcoin::Block;
-use sc_consensus_nakamoto::{BlockExecutionStrategy, ExecutionBackend};
+use sc_consensus_nakamoto::{
+    BitcoinBlockImport, BitcoinBlockImporter, BlockExecutionStrategy, BlockVerification,
+    ExecutionBackend, ImportConfig, ImportStatus,
+};
 use sc_service::config::{
     BlocksPruning, DatabaseSource, ExecutorConfiguration, KeystoreConfig, NetworkConfiguration,
     OffchainWorkerConfig, PruningMode, RpcBatchRequestConfig, RpcConfiguration,
@@ -10,7 +13,8 @@ use sc_service::config::{
 use sc_service::error::Error as ServiceError;
 use sc_service::{BasePath, Configuration, Role};
 use sp_keyring::sr25519::Keyring as Sr25519Keyring;
-use subcoin_service::{NodeComponents, SubcoinConfiguration};
+use std::sync::Arc;
+use subcoin_service::{FullClient, NodeComponents, SubcoinConfiguration};
 
 fn decode_raw_block(hex_str: &str) -> Block {
     let data = Vec::<u8>::from_hex(hex_str).expect("Failed to convert hex str");
@@ -113,4 +117,48 @@ pub fn new_test_node(tokio_handle: tokio::runtime::Handle) -> Result<NodeCompone
         no_hardware_benchmarks: true,
         storage_monitor: Default::default(),
     })
+}
+
+pub async fn new_test_node_and_produce_blocks(
+    config: &Configuration,
+    up_to: u32,
+) -> Arc<FullClient> {
+    let NodeComponents {
+        block_executor,
+        client,
+        ..
+    } = subcoin_service::new_node(SubcoinConfiguration::test_config(config))
+        .expect("Failed to create node");
+
+    let mut bitcoin_block_import =
+        BitcoinBlockImporter::<_, _, _, _, subcoin_service::TransactionAdapter>::new(
+            client.clone(),
+            client.clone(),
+            ImportConfig {
+                network: bitcoin::Network::Bitcoin,
+                block_verification: BlockVerification::None,
+                execute_block: true,
+                verify_script: true,
+            },
+            Arc::new(subcoin_service::CoinStorageKey),
+            block_executor,
+            None,
+        );
+
+    let test_blocks = block_data();
+
+    if up_to as usize >= test_blocks.len() {
+        panic!(
+            "Can not produce too many blocks (maximum: {}) in test env",
+            test_blocks.len()
+        );
+    }
+
+    for block_number in 1..=up_to {
+        let block = test_blocks[block_number as usize].clone();
+        let import_status = bitcoin_block_import.import_block(block).await.unwrap();
+        assert!(matches!(import_status, ImportStatus::Imported { .. }));
+    }
+
+    client
 }

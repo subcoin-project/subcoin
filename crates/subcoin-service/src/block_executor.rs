@@ -252,61 +252,16 @@ mod tests {
     use sc_service::config::DatabaseSource;
     use sc_service::BasePath;
     use sp_core::Encode;
-    use subcoin_runtime::Header;
-    use subcoin_test_service::block_data;
+    use subcoin_test_service::{block_data, new_test_node_and_produce_blocks};
     use tokio::runtime::Handle;
-
-    async fn run_with_runtime_disk_executor(config: &Configuration, up_to: u32) -> Header {
-        let NodeComponents {
-            block_executor,
-            client,
-            ..
-        } = new_node(SubcoinConfiguration {
-            network: bitcoin::Network::Bitcoin,
-            block_execution_strategy: BlockExecutionStrategy::runtime_disk(),
-            config,
-            no_hardware_benchmarks: true,
-            storage_monitor: Default::default(),
-        })
-        .expect("Failed to create node");
-
-        let mut bitcoin_block_import = BitcoinBlockImporter::<_, _, _, _, TransactionAdapter>::new(
-            client.clone(),
-            client.clone(),
-            ImportConfig {
-                network: bitcoin::Network::Bitcoin,
-                block_verification: BlockVerification::None,
-                execute_block: true,
-                verify_script: true,
-            },
-            Arc::new(CoinStorageKey),
-            block_executor,
-            None,
-        );
-
-        let test_blocks = block_data();
-        for block_number in 1..=up_to {
-            let block = test_blocks[block_number as usize].clone();
-            let import_status = bitcoin_block_import.import_block(block).await.unwrap();
-            assert!(matches!(import_status, ImportStatus::Imported { .. }));
-        }
-
-        client.header(client.info().best_hash).unwrap().unwrap()
-    }
 
     #[tokio::test]
     #[ignore]
     async fn inspect_substrate_header_size() {
         let runtime_handle = Handle::current();
         let config = subcoin_test_service::test_configuration(runtime_handle);
-        let NodeComponents { client, .. } = new_node(SubcoinConfiguration {
-            network: bitcoin::Network::Bitcoin,
-            block_execution_strategy: BlockExecutionStrategy::runtime_disk(),
-            config: &config,
-            no_hardware_benchmarks: true,
-            storage_monitor: Default::default(),
-        })
-        .expect("Failed to create node");
+        let NodeComponents { client, .. } =
+            new_node(SubcoinConfiguration::test_config(&config)).expect("Failed to create node");
 
         let substrate_genesis_header = client.header(client.info().genesis_hash).unwrap().unwrap();
         let bitcoin_genesis_header =
@@ -351,7 +306,8 @@ mod tests {
 
         let mut config = subcoin_test_service::test_configuration(runtime_handle);
 
-        let expected_header3 = run_with_runtime_disk_executor(&config, 3).await;
+        let client = new_test_node_and_produce_blocks(&config, 3).await;
+        let expected_header3 = client.header(client.info().best_hash).unwrap().unwrap();
 
         // Use a different data path as the client above may still hold the database file.
         let tmp = tempfile::tempdir().unwrap();
@@ -370,14 +326,7 @@ mod tests {
             task_manager,
             executor,
             ..
-        } = new_node(SubcoinConfiguration {
-            network,
-            block_execution_strategy: BlockExecutionStrategy::runtime_disk(),
-            config: &config,
-            no_hardware_benchmarks: true,
-            storage_monitor: Default::default(),
-        })
-        .expect("Failed to create node");
+        } = new_node(SubcoinConfiguration::test_config(&config)).expect("Failed to create node");
 
         let mut bitcoin_block_import = BitcoinBlockImporter::<_, _, _, _, TransactionAdapter>::new(
             client.clone(),

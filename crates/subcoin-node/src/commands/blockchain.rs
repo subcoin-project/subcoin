@@ -4,8 +4,10 @@ use bitcoin::consensus::Encodable;
 use sc_cli::{DatabaseParams, ImportParams, NodeKeyParams, SharedParams};
 use sc_client_api::{HeaderBackend, StorageProvider};
 use sc_consensus_nakamoto::BlockExecutionStrategy;
+use serde::Serialize;
 use sp_core::storage::StorageKey;
 use sp_core::Decode;
+use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{Stdout, Write};
 use std::path::PathBuf;
@@ -191,7 +193,15 @@ impl BlockchainCmd {
         match self {
             Self::GetTxOutSetInfo {
                 height, verbose, ..
-            } => gettxoutsetinfo(&client, height, verbose).await,
+            } => {
+                let tx_out_set_info = gettxoutsetinfo(&client, height, verbose).await?;
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&tx_out_set_info)
+                        .map_err(|err| sc_cli::Error::Application(Box::new(err)))?
+                );
+                Ok(())
+            }
             Self::DumpTxoutSet {
                 height,
                 csv,
@@ -291,16 +301,60 @@ fn fetch_utxo_set_at(
     ))
 }
 
+// Equivalent function in Rust for serializing an OutPoint and Coin
+//
+// https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/kernel/coinstats.cpp#L51
+fn tx_out_ser(outpoint: bitcoin::OutPoint, coin: &Coin) -> bitcoin::io::Result<Vec<u8>> {
+    let mut data = Vec::new();
+
+    // Serialize the OutPoint (txid and vout)
+    outpoint.consensus_encode(&mut data)?;
+
+    // Serialize the coin's height and coinbase flag
+    let height_and_coinbase = (coin.height << 1) | (coin.is_coinbase as u32);
+    height_and_coinbase.consensus_encode(&mut data)?;
+
+    let txout = bitcoin::TxOut {
+        value: bitcoin::Amount::from_sat(coin.amount),
+        script_pubkey: bitcoin::ScriptBuf::from_bytes(coin.script_pubkey.clone()),
+    };
+
+    // Serialize the actual UTXO (value and script)
+    txout.consensus_encode(&mut data)?;
+
+    Ok(data)
+}
+
+// Custom serializer for total_amount to display 8 decimal places
+fn serialize_as_btc<S>(amount: &u64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    // Convert satoshis (u64) to BTC (f64)
+    let btc_value = *amount as f64 / 100_000_000.0;
+    // Format the value as a string with 8 decimal places
+    serializer.serialize_str(&format!("{:.8}", btc_value))
+}
+
+#[derive(Serialize)]
+struct TxOutSetInfo {
+    height: u32,
+    bestblock: bitcoin::BlockHash,
+    txouts: usize,
+    bogosize: usize,
+    muhash: String,
+    #[serde(serialize_with = "serialize_as_btc")]
+    total_amount: u64,
+}
+
 async fn gettxoutsetinfo(
     client: &Arc<FullClient>,
     height: Option<u32>,
     verbose: bool,
-) -> sc_cli::Result<()> {
+) -> sc_cli::Result<TxOutSetInfo> {
     let (block_number, bitcoin_block_hash, utxo_iter) = fetch_utxo_set_at(client, height)?;
 
     const INTERVAL: Duration = Duration::from_secs(5);
-
-    println!("Fetching UTXO set at block_number: #{block_number},{bitcoin_block_hash}");
 
     let mut txouts = 0;
     let mut bogosize = 0;
@@ -310,7 +364,13 @@ async fn gettxoutsetinfo(
 
     let mut last_update = Instant::now();
 
-    for (_txid, _vout, coin) in utxo_iter {
+    let mut muhash = subcoin_crypto::muhash::MuHash3072::new();
+
+    for (txid, vout, coin) in utxo_iter {
+        let data = tx_out_ser(bitcoin::OutPoint { txid, vout }, &coin)
+            .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
+        muhash.insert(&data);
+
         txouts += 1;
         total_amount += coin.amount;
         // https://github.com/bitcoin/bitcoin/blob/33af14e31b9fa436029a2bb8c2b11de8feb32f86/src/kernel/coinstats.cpp#L40
@@ -331,13 +391,24 @@ async fn gettxoutsetinfo(
         Yield::new().await;
     }
 
-    println!("====================");
-    println!("txouts: {txouts}");
-    println!("bogosize: {bogosize}");
-    println!("total_amount: {:.8}", total_amount as f64 / 100_000_000.0);
-    println!("script_pubkey_size: {script_pubkey_size} bytes");
+    // Hash the combined hash of all UTXOs
+    let finalized = muhash.digest();
 
-    Ok(())
+    let utxo_set_hash = finalized.iter().rev().fold(String::new(), |mut output, b| {
+        let _ = write!(output, "{b:02x}");
+        output
+    });
+
+    let tx_out_set_info = TxOutSetInfo {
+        height: block_number,
+        bestblock: bitcoin_block_hash,
+        txouts,
+        bogosize,
+        muhash: utxo_set_hash,
+        total_amount,
+    };
+
+    Ok(tx_out_set_info)
 }
 
 async fn parse_txout_set(
@@ -507,5 +578,32 @@ impl UtxoSetOutput {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use subcoin_test_service::new_test_node_and_produce_blocks;
+
+    #[tokio::test]
+    async fn test_muhash_in_gettxoutsetinfo() {
+        let runtime_handle = tokio::runtime::Handle::current();
+        let config = subcoin_test_service::test_configuration(runtime_handle);
+        let client = new_test_node_and_produce_blocks(&config, 3).await;
+        assert_eq!(
+            gettxoutsetinfo(&client, Some(1), false)
+                .await
+                .unwrap()
+                .muhash,
+            "1bd372a3f225dc6f8ce0e10ead6f8b0b00e65a2ff4a4c9ccaa615a69fbeeb2f2"
+        );
+        assert_eq!(
+            gettxoutsetinfo(&client, Some(2), false)
+                .await
+                .unwrap()
+                .muhash,
+            "dfd1c34195baa0a898f04d40097841e1d569e81ce845a21e79c4ab25c725c875"
+        );
     }
 }
