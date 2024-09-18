@@ -8977,6 +8977,7 @@ dependencies = [
  "sc-transaction-pool",
  "sc-transaction-pool-api",
  "sc-utils",
+ "serde",
  "serde_json",
  "sha2 0.10.8",
  "sp-api",

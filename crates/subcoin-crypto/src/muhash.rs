@@ -21,6 +21,12 @@ pub struct MuHash3072 {
     modulus: BigUint,
 }
 
+impl Default for MuHash3072 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MuHash3072 {
     // Create a new [`MuHash3072`] with the appropriate modulus.
     pub fn new() -> Self {
@@ -35,8 +41,7 @@ impl MuHash3072 {
     // Insert a byte array into the set
     pub fn insert(&mut self, data: &[u8]) {
         let data_hash = Sha256::digest(data);
-        let num3072 =
-            data_to_num3072(&data_hash.try_into().expect("Sha256 must fit into [u8; 32]"));
+        let num3072 = data_to_num3072(&data_hash.into());
         self.numerator *= num3072;
         self.numerator %= &self.modulus;
     }
@@ -44,8 +49,7 @@ impl MuHash3072 {
     // Remove a byte array from the set
     pub fn remove(&mut self, data: &[u8]) {
         let data_hash = Sha256::digest(data);
-        let num3072 =
-            data_to_num3072(&data_hash.try_into().expect("Sha256 must fit into [u8; 32]"));
+        let num3072 = data_to_num3072(&data_hash.into());
         self.denominator *= num3072;
         self.denominator %= &self.modulus;
     }

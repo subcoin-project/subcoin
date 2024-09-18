@@ -4,8 +4,10 @@ use bitcoin::consensus::Encodable;
 use sc_cli::{DatabaseParams, ImportParams, NodeKeyParams, SharedParams};
 use sc_client_api::{HeaderBackend, StorageProvider};
 use sc_consensus_nakamoto::BlockExecutionStrategy;
+use serde::Serialize;
 use sp_core::storage::StorageKey;
 use sp_core::Decode;
+use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{Stdout, Write};
 use std::path::PathBuf;
@@ -192,7 +194,12 @@ impl BlockchainCmd {
             Self::GetTxOutSetInfo {
                 height, verbose, ..
             } => {
-                gettxoutsetinfo(&client, height, verbose).await?.print();
+                let tx_out_set_info = gettxoutsetinfo(&client, height, verbose).await?;
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&tx_out_set_info)
+                        .map_err(|err| sc_cli::Error::Application(Box::new(err)))?
+                );
                 Ok(())
             }
             Self::DumpTxoutSet {
@@ -318,27 +325,26 @@ fn tx_out_ser(outpoint: bitcoin::OutPoint, coin: &Coin) -> bitcoin::io::Result<V
     Ok(data)
 }
 
+// Custom serializer for total_amount to display 8 decimal places
+fn serialize_as_btc<S>(amount: &u64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    // Convert satoshis (u64) to BTC (f64)
+    let btc_value = *amount as f64 / 100_000_000.0;
+    // Format the value as a string with 8 decimal places
+    serializer.serialize_str(&format!("{:.8}", btc_value))
+}
+
+#[derive(Serialize)]
 struct TxOutSetInfo {
+    height: u32,
+    bestblock: bitcoin::BlockHash,
     txouts: usize,
     bogosize: usize,
     muhash: String,
+    #[serde(serialize_with = "serialize_as_btc")]
     total_amount: u64,
-}
-
-impl TxOutSetInfo {
-    fn print(&self) {
-        let Self {
-            txouts,
-            bogosize,
-            muhash,
-            total_amount,
-        } = self;
-        println!("====================");
-        println!("txouts: {txouts}");
-        println!("bogosize: {bogosize}");
-        println!("muhash: {muhash}");
-        println!("total_amount: {:.8}", *total_amount as f64 / 100_000_000.0);
-    }
 }
 
 async fn gettxoutsetinfo(
@@ -347,7 +353,6 @@ async fn gettxoutsetinfo(
     verbose: bool,
 ) -> sc_cli::Result<TxOutSetInfo> {
     let (block_number, bitcoin_block_hash, utxo_iter) = fetch_utxo_set_at(client, height)?;
-    println!("Fetching UTXO set at block_number: #{block_number},{bitcoin_block_hash}");
 
     const INTERVAL: Duration = Duration::from_secs(5);
 
@@ -389,13 +394,14 @@ async fn gettxoutsetinfo(
     // Hash the combined hash of all UTXOs
     let finalized = muhash.digest();
 
-    let utxo_set_hash = finalized
-        .iter()
-        .rev()
-        .map(|b| format!("{:02x}", b))
-        .collect::<String>();
+    let utxo_set_hash = finalized.iter().rev().fold(String::new(), |mut output, b| {
+        let _ = write!(output, "{b:02x}");
+        output
+    });
 
     let tx_out_set_info = TxOutSetInfo {
+        height: block_number,
+        bestblock: bitcoin_block_hash,
         txouts,
         bogosize,
         muhash: utxo_set_hash,

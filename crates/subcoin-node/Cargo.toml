@@ -36,6 +36,7 @@ sc-telemetry = { workspace = true }
 sc-transaction-pool = { workspace = true }
 sc-transaction-pool-api = { workspace = true }
 sc-utils = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = "0.10.8"
 sp-api = { workspace = true }
