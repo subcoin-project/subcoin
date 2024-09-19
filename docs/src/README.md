@@ -9,4 +9,5 @@ the state at a specific block and begins normal block sync from that point.
 
 ## Resources
 
+- Join [Telegram](https://t.me/subcoin_project) for any discussions about Subcoin.
 - [Subcoin: A Step Toward Decentralized Fast Sync for Bitcoin](https://www.notion.so/liuchengxu/Subcoin-A-Step-Toward-Decentralized-Fast-Sync-for-Bitcoin-68762427a4484d73906a91602d789be9)
