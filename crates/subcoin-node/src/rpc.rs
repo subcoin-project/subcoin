@@ -18,8 +18,6 @@ pub fn gen_rpc_module(
     use sc_rpc::chain::ChainApiServer;
     use sc_rpc::state::{ChildStateApiServer, StateApiServer};
     use sc_rpc::system::SystemApiServer;
-    use subcoin_rpc::blockchain::{Blockchain, BlockchainApiServer};
-    use subcoin_rpc::subcoin::{Subcoin, SubcoinApiServer};
 
     let mut module = RpcModule::new(());
 
@@ -46,12 +44,12 @@ pub fn gen_rpc_module(
     // module.merge(frame_system).map_err(into_service_error)?;
 
     // Subcoin RPCs.
-    let blockchain =
-        Blockchain::<_, _, subcoin_service::TransactionAdapter>::new(client.clone()).into_rpc();
-    let subcoin = Subcoin::new(client.clone(), network_handle).into_rpc();
-
-    module.merge(blockchain).map_err(into_service_error)?;
-    module.merge(subcoin).map_err(into_service_error)?;
+    subcoin_rpc::SubcoinRpc::<_, _, subcoin_service::TransactionAdapter>::new(
+        client.clone(),
+        network_handle,
+    )
+    .merge_into(&mut module)
+    .map_err(into_service_error)?;
 
     Ok(module)
 }

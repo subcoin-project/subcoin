@@ -2,9 +2,6 @@ use bitcoin::consensus::encode::FromHexError;
 use jsonrpsee::types::error::ErrorObject;
 use jsonrpsee::types::ErrorObjectOwned;
 
-/// Chain RPC Result type.
-pub type Result<T> = std::result::Result<T, Error>;
-
 /// Chain RPC errors.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
