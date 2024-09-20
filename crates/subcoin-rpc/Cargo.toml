@@ -8,7 +8,7 @@ license.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
-bitcoin = { workspace = true, features = ["serde"] }
+bitcoin = { workspace = true, features = ["serde", "std"] }
 jsonrpsee = { workspace = true, features = ["client-core", "macros", "server-core"] }
 sc-client-api = { workspace = true }
 serde = { workspace = true }

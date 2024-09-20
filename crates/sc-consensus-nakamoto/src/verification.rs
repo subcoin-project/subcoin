@@ -121,8 +121,8 @@ pub enum Error {
     Header(#[from] HeaderError),
     #[error(transparent)]
     BitcoinConsensus(#[from] bitcoinconsensus::Error),
-    #[error(transparent)]
-    Bip34(#[from] Bip34Error),
+    #[error("Bip34 error: {0:?}")]
+    Bip34(Bip34Error),
     #[error("Bitcoin codec: {0:?}")]
     BitcoinCodec(bitcoin::io::Error),
     /// An error occurred in the client.
@@ -329,7 +329,8 @@ where
             if tx_index == 0 {
                 // Enforce rule that the coinbase starts with serialized block height.
                 if block_number >= self.chain_params.params.bip34_height {
-                    let block_height_in_coinbase = block.bip34_block_height()? as u32;
+                    let block_height_in_coinbase =
+                        block.bip34_block_height().map_err(Error::Bip34)? as u32;
                     if block_height_in_coinbase != block_number {
                         return Err(Error::BadCoinbaseBlockHeight {
                             got: block_height_in_coinbase,

@@ -37,7 +37,7 @@ where
         }
     }
 
-    /// Merges the entire Subcoin RPCs into the given RPC module.
+    /// Merges the Subcoin RPC components into a given RPC method registry.
     pub fn merge_into(
         self,
         module: &mut jsonrpsee::Methods,
