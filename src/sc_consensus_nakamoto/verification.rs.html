@@ -611,6 +611,7 @@
 <a href="#611" id="611">611</a>
 <a href="#612" id="612">612</a>
 <a href="#613" id="613">613</a>
+<a href="#614" id="614">614</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! This module provides block verification functionalities based on Bitcoin's consensus rules.
 //! The primary code reference for these consensus rules is Bitcoin Core.
 //!
@@ -734,8 +735,8 @@
     </span>Header(<span class="attr">#[from] </span>HeaderError),
     <span class="attr">#[error(transparent)]
     </span>BitcoinConsensus(<span class="attr">#[from] </span>bitcoinconsensus::Error),
-    <span class="attr">#[error(transparent)]
-    </span>Bip34(<span class="attr">#[from] </span>Bip34Error),
+    <span class="attr">#[error(<span class="string">"Bip34 error: {0:?}"</span>)]
+    </span>Bip34(Bip34Error),
     <span class="attr">#[error(<span class="string">"Bitcoin codec: {0:?}"</span>)]
     </span>BitcoinCodec(bitcoin::io::Error),
     <span class="doccomment">/// An error occurred in the client.
@@ -942,7 +943,8 @@
             <span class="kw">if </span>tx_index == <span class="number">0 </span>{
                 <span class="comment">// Enforce rule that the coinbase starts with serialized block height.
                 </span><span class="kw">if </span>block_number &gt;= <span class="self">self</span>.chain_params.params.bip34_height {
-                    <span class="kw">let </span>block_height_in_coinbase = block.bip34_block_height()<span class="question-mark">? </span><span class="kw">as </span>u32;
+                    <span class="kw">let </span>block_height_in_coinbase =
+                        block.bip34_block_height().map_err(Error::Bip34)<span class="question-mark">? </span><span class="kw">as </span>u32;
                     <span class="kw">if </span>block_height_in_coinbase != block_number {
                         <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadCoinbaseBlockHeight {
                             got: block_height_in_coinbase,

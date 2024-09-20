@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["blockchain","error","subcoin"]};
+window.SIDEBAR_ITEMS = {"struct":["SubcoinRpc"]};

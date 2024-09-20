@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["NetworkPeers","Subcoin"],"trait":["SubcoinApiClient","SubcoinApiServer"]};

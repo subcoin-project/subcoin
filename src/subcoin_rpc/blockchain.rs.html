@@ -109,46 +109,6 @@
 <a href="#109" id="109">109</a>
 <a href="#110" id="110">110</a>
 <a href="#111" id="111">111</a>
-<a href="#112" id="112">112</a>
-<a href="#113" id="113">113</a>
-<a href="#114" id="114">114</a>
-<a href="#115" id="115">115</a>
-<a href="#116" id="116">116</a>
-<a href="#117" id="117">117</a>
-<a href="#118" id="118">118</a>
-<a href="#119" id="119">119</a>
-<a href="#120" id="120">120</a>
-<a href="#121" id="121">121</a>
-<a href="#122" id="122">122</a>
-<a href="#123" id="123">123</a>
-<a href="#124" id="124">124</a>
-<a href="#125" id="125">125</a>
-<a href="#126" id="126">126</a>
-<a href="#127" id="127">127</a>
-<a href="#128" id="128">128</a>
-<a href="#129" id="129">129</a>
-<a href="#130" id="130">130</a>
-<a href="#131" id="131">131</a>
-<a href="#132" id="132">132</a>
-<a href="#133" id="133">133</a>
-<a href="#134" id="134">134</a>
-<a href="#135" id="135">135</a>
-<a href="#136" id="136">136</a>
-<a href="#137" id="137">137</a>
-<a href="#138" id="138">138</a>
-<a href="#139" id="139">139</a>
-<a href="#140" id="140">140</a>
-<a href="#141" id="141">141</a>
-<a href="#142" id="142">142</a>
-<a href="#143" id="143">143</a>
-<a href="#144" id="144">144</a>
-<a href="#145" id="145">145</a>
-<a href="#146" id="146">146</a>
-<a href="#147" id="147">147</a>
-<a href="#148" id="148">148</a>
-<a href="#149" id="149">149</a>
-<a href="#150" id="150">150</a>
-<a href="#151" id="151">151</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::error::Error;
 <span class="kw">use </span>bitcoin::blockdata::block::Header <span class="kw">as </span>BitcoinHeader;
 <span class="kw">use </span>bitcoin::{Block <span class="kw">as </span>BitcoinBlock, BlockHash};
@@ -165,56 +125,13 @@
 </span><span class="attr">#[rpc(client, server)]
 </span><span class="kw">pub trait </span>BlockchainApi {
     <span class="doccomment">/// Get header.
-    </span><span class="attr">#[method(name = <span class="string">"btc_getHeader"</span>, blocking)]
+    </span><span class="attr">#[method(name = <span class="string">"blockchain_getHeader"</span>, blocking)]
     </span><span class="kw">fn </span>header(<span class="kw-2">&amp;</span><span class="self">self</span>, hash: <span class="prelude-ty">Option</span>&lt;BlockHash&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;BitcoinHeader&gt;, Error&gt;;
 
     <span class="doccomment">/// Get header and body of a block.
-    </span><span class="attr">#[method(name = <span class="string">"btc_getBlock"</span>, blocking)]
+    </span><span class="attr">#[method(name = <span class="string">"blockchain_getBlock"</span>, blocking)]
     </span><span class="kw">fn </span>block(<span class="kw-2">&amp;</span><span class="self">self</span>, hash: <span class="prelude-ty">Option</span>&lt;BlockHash&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;BitcoinBlock&gt;, Error&gt;;
-
-    <span class="comment">/*
-    /// Get hash of the n-th block in the canon chain.
-    ///
-    /// By default returns latest block hash.
-    #[method(name = "chain_getBlockHash", aliases = ["chain_getHead"], blocking)]
-    fn block_hash(
-        &amp;self,
-        hash: Option&lt;ListOrValue&lt;NumberOrHex&gt;&gt;,
-    ) -&gt; Result&lt;ListOrValue&lt;Option&lt;Hash&gt;&gt;, Error&gt;;
-
-    /// Get hash of the last finalized block in the canon chain.
-    #[method(name = "chain_getFinalizedHead", aliases = ["chain_getFinalisedHead"], blocking)]
-    fn finalized_head(&amp;self) -&gt; Result&lt;Hash, Error&gt;;
-
-    /// All head subscription.
-    #[subscription(
-        name = "chain_subscribeAllHeads" =&gt; "chain_allHead",
-        unsubscribe = "chain_unsubscribeAllHeads",
-        item = Header
-    )]
-    fn subscribe_all_heads(&amp;self);
-
-    /// New head subscription.
-    #[subscription(
-        name = "chain_subscribeNewHeads" =&gt; "chain_newHead",
-        aliases = ["subscribe_newHead", "chain_subscribeNewHead"],
-        unsubscribe = "chain_unsubscribeNewHeads",
-        unsubscribe_aliases = ["unsubscribe_newHead", "chain_unsubscribeNewHead"],
-        item = Header
-    )]
-    fn subscribe_new_heads(&amp;self);
-
-    /// Finalized head subscription.
-    #[subscription(
-        name = "chain_subscribeFinalizedHeads" =&gt; "chain_finalizedHead",
-        aliases = ["chain_subscribeFinalisedHeads"],
-        unsubscribe = "chain_unsubscribeFinalizedHeads",
-        unsubscribe_aliases = ["chain_unsubscribeFinalisedHeads"],
-        item = Header
-    )]
-    fn subscribe_finalized_heads(&amp;self);
-    */
-</span>}
+}
 
 <span class="doccomment">/// This struct provides the Bitcoin Blockchain API.
 </span><span class="kw">pub struct </span>Blockchain&lt;Block, Client, TransactionAdapter&gt; {
@@ -297,7 +214,10 @@
         <span class="kw">let </span>block_hash =
             BlockHash::from_str(<span class="string">"ef537f25c895bfa782526529a9b63d97aa631564d5d789c2b765448c8635fb6c"</span>)
                 .expect(<span class="string">"failed to parse block hash"</span>);
-        <span class="macro">println!</span>(<span class="string">"==== {:?}"</span>, serde_json::to_string(<span class="kw-2">&amp;</span>block_hash).unwrap());
+        <span class="macro">assert_eq!</span>(
+            serde_json::to_string(<span class="kw-2">&amp;</span>block_hash).unwrap(),
+            <span class="string">"\"ef537f25c895bfa782526529a9b63d97aa631564d5d789c2b765448c8635fb6c\""
+        </span>);
     }
 }
 </code></pre></div></section></main></body></html>

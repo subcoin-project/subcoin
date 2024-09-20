@@ -53,8 +53,6 @@
 <a href="#53" id="53">53</a>
 <a href="#54" id="54">54</a>
 <a href="#55" id="55">55</a>
-<a href="#56" id="56">56</a>
-<a href="#57" id="57">57</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>jsonrpsee::RpcModule;
 <span class="kw">use </span>sc_service::SpawnTaskHandle;
 <span class="kw">use </span>sc_utils::mpsc::TracingUnboundedSender;
@@ -75,8 +73,6 @@
     <span class="kw">use </span>sc_rpc::chain::ChainApiServer;
     <span class="kw">use </span>sc_rpc::state::{ChildStateApiServer, StateApiServer};
     <span class="kw">use </span>sc_rpc::system::SystemApiServer;
-    <span class="kw">use </span>subcoin_rpc::blockchain::{Blockchain, BlockchainApiServer};
-    <span class="kw">use </span>subcoin_rpc::subcoin::{Subcoin, SubcoinApiServer};
 
     <span class="kw">let </span><span class="kw-2">mut </span>module = RpcModule::new(());
 
@@ -103,12 +99,12 @@
     <span class="comment">// module.merge(frame_system).map_err(into_service_error)?;
 
     // Subcoin RPCs.
-    </span><span class="kw">let </span>blockchain =
-        Blockchain::&lt;<span class="kw">_</span>, <span class="kw">_</span>, subcoin_service::TransactionAdapter&gt;::new(client.clone()).into_rpc();
-    <span class="kw">let </span>subcoin = Subcoin::new(client.clone(), network_handle).into_rpc();
-
-    module.merge(blockchain).map_err(into_service_error)<span class="question-mark">?</span>;
-    module.merge(subcoin).map_err(into_service_error)<span class="question-mark">?</span>;
+    </span>subcoin_rpc::SubcoinRpc::&lt;<span class="kw">_</span>, <span class="kw">_</span>, subcoin_service::TransactionAdapter&gt;::new(
+        client.clone(),
+        network_handle,
+    )
+    .merge_into(<span class="kw-2">&amp;mut </span>module)
+    .map_err(into_service_error)<span class="question-mark">?</span>;
 
     <span class="prelude-val">Ok</span>(module)
 }

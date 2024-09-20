@@ -41,15 +41,9 @@
 <a href="#41" id="41">41</a>
 <a href="#42" id="42">42</a>
 <a href="#43" id="43">43</a>
-<a href="#44" id="44">44</a>
-<a href="#45" id="45">45</a>
-<a href="#46" id="46">46</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>bitcoin::consensus::encode::FromHexError;
 <span class="kw">use </span>jsonrpsee::types::error::ErrorObject;
 <span class="kw">use </span>jsonrpsee::types::ErrorObjectOwned;
-
-<span class="doccomment">/// Chain RPC Result type.
-</span><span class="kw">pub type </span><span class="prelude-ty">Result</span>&lt;T&gt; = std::result::Result&lt;T, Error&gt;;
 
 <span class="doccomment">/// Chain RPC errors.
 </span><span class="attr">#[derive(Debug, thiserror::Error)]

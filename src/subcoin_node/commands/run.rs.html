@@ -353,6 +353,12 @@
 <a href="#353" id="353">353</a>
 <a href="#354" id="354">354</a>
 <a href="#355" id="355">355</a>
+<a href="#356" id="356">356</a>
+<a href="#357" id="357">357</a>
+<a href="#358" id="358">358</a>
+<a href="#359" id="359">359</a>
+<a href="#360" id="360">360</a>
+<a href="#361" id="361">361</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::subcoin_params::{CommonParams, NetworkParams};
 <span class="kw">use </span>clap::Parser;
 <span class="kw">use </span>sc_cli::{
@@ -463,6 +469,12 @@
             shared_params: <span class="kw">_</span>,
             run,
         } = <span class="self">self</span>;
+
+        <span class="kw">if </span><span class="macro">matches!</span>(run.substrate_network_params.sync, SyncMode::Warp) {
+            <span class="kw">return </span><span class="prelude-val">Err</span>(sc_cli::Error::Input(
+                <span class="string">"--sync=warp unsupported, please use --sync=fast or --sync=fast-unsafe"</span>.to_string(),
+            ));
+        }
 
         <span class="kw">let </span>block_execution_strategy = run.common_params.block_execution_strategy();
         <span class="kw">let </span>bitcoin_network = run.common_params.bitcoin_network();

@@ -306,10 +306,10 @@
     </span>BI: BitcoinBlockImport,
 {
     <span class="kw">let </span>(import_result_sender, import_result_receiver) =
-        tracing_unbounded(<span class="string">"mpsc_import_queue_result"</span>, <span class="number">100_000</span>);
+        tracing_unbounded(<span class="string">"mpsc_subcoin_import_queue_result"</span>, <span class="number">100_000</span>);
 
     <span class="kw">let </span>(block_import_sender, block_import_receiver) =
-        tracing_unbounded(<span class="string">"mpsc_import_queue_worker_blocks"</span>, <span class="number">100_000</span>);
+        tracing_unbounded(<span class="string">"mpsc_subcoin_import_queue_worker_blocks"</span>, <span class="number">100_000</span>);
 
     <span class="kw">let </span>future = <span class="kw">async move </span>{
         <span class="kw">let </span>block_import_process = block_import_process(

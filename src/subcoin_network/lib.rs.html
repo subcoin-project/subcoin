@@ -449,6 +449,7 @@
 <a href="#449" id="449">449</a>
 <a href="#450" id="450">450</a>
 <a href="#451" id="451">451</a>
+<a href="#452" id="452">452</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # Bitcoin Network
 //!
 //! This crate facilitates communication with other nodes in the Bitcoin P2P network. It handles
@@ -675,8 +676,8 @@
     </span><span class="kw">pub </span>sync_strategy: SyncStrategy,
     <span class="doccomment">/// Whether to enable the block sync on startup.
     ///
-    /// The block sync from Bitcoin P2P network may be disabled when performing fast sync from
-    /// the Subcoin network.
+    /// The block sync from Bitcoin P2P network may be disabled temporarily when
+    /// performing fast sync from the Subcoin network.
     </span><span class="kw">pub </span>enable_block_sync_on_startup: bool,
 }
 
@@ -733,7 +734,8 @@
         spawn_handle: SpawnTaskHandle,
         registry: <span class="prelude-ty">Option</span>&lt;Registry&gt;,
     ) -&gt; (<span class="self">Self</span>, NetworkHandle) {
-        <span class="kw">let </span>(worker_msg_sender, worker_msg_receiver) = tracing_unbounded(<span class="string">"network_worker_msg"</span>, <span class="number">100</span>);
+        <span class="kw">let </span>(worker_msg_sender, worker_msg_receiver) =
+            tracing_unbounded(<span class="string">"mpsc_subcoin_network_worker"</span>, <span class="number">100</span>);
 
         <span class="kw">let </span>is_major_syncing = Arc::new(AtomicBool::new(<span class="bool-val">false</span>));
 

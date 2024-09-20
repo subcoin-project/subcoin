@@ -277,6 +277,14 @@
 <a href="#277" id="277">277</a>
 <a href="#278" id="278">278</a>
 <a href="#279" id="279">279</a>
+<a href="#280" id="280">280</a>
+<a href="#281" id="281">281</a>
+<a href="#282" id="282">282</a>
+<a href="#283" id="283">283</a>
+<a href="#284" id="284">284</a>
+<a href="#285" id="285">285</a>
+<a href="#286" id="286">286</a>
+<a href="#287" id="287">287</a>
 </pre></div><pre class="rust"><code><span class="comment">// This file is part of Substrate.
 
 // Copyright (C) Parity Technologies (UK) Ltd.
@@ -305,7 +313,7 @@
 </span><span class="macro">include!</span>(<span class="macro">concat!</span>(<span class="macro">env!</span>(<span class="string">"OUT_DIR"</span>), <span class="string">"/wasm_binary.rs"</span>));
 
 <span class="kw">use </span>frame_support::genesis_builder_helper::{build_state, get_preset};
-<span class="kw">use </span>frame_support::{construct_runtime, derive_impl, parameter_types};
+<span class="kw">use </span>frame_support::{derive_impl, parameter_types};
 <span class="kw">use </span>frame_system::pallet_prelude::<span class="kw-2">*</span>;
 <span class="kw">use </span>pallet_executive::Executive;
 <span class="kw">use </span>sp_api::impl_runtime_apis;
@@ -350,12 +358,20 @@
     <span class="kw">pub const </span>Version: RuntimeVersion = VERSION;
 }
 
-<span class="macro">construct_runtime!</span>(
-    <span class="kw">pub struct </span>Runtime {
-        System: frame_system,
-        Bitcoin: pallet_bitcoin,
-    }
-);
+<span class="attr">#[frame_support::runtime]
+</span><span class="kw">mod </span>runtime {
+    <span class="comment">// The main runtime
+    </span><span class="attr">#[runtime::runtime]
+    </span><span class="comment">// Runtime Types to be generated
+    </span><span class="attr">#[runtime::derive(RuntimeCall, RuntimeEvent, RuntimeError, RuntimeOrigin, RuntimeTask)]
+    </span><span class="kw">pub struct </span>Runtime;
+
+    <span class="attr">#[runtime::pallet_index(<span class="number">0</span>)]
+    </span><span class="kw">pub type </span>System = frame_system::Pallet&lt;Runtime&gt;;
+
+    <span class="attr">#[runtime::pallet_index(<span class="number">1</span>)]
+    </span><span class="kw">pub type </span>Bitcoin = pallet_bitcoin::Pallet&lt;Runtime&gt;;
+}
 
 <span class="attr">#[derive_impl(frame_system::config_preludes::SolochainDefaultConfig <span class="kw">as </span>frame_system::DefaultConfig)]
 </span><span class="kw">impl </span>frame_system::Config <span class="kw">for </span>Runtime {

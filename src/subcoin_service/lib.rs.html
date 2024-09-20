@@ -553,6 +553,19 @@
 <a href="#553" id="553">553</a>
 <a href="#554" id="554">554</a>
 <a href="#555" id="555">555</a>
+<a href="#556" id="556">556</a>
+<a href="#557" id="557">557</a>
+<a href="#558" id="558">558</a>
+<a href="#559" id="559">559</a>
+<a href="#560" id="560">560</a>
+<a href="#561" id="561">561</a>
+<a href="#562" id="562">562</a>
+<a href="#563" id="563">563</a>
+<a href="#564" id="564">564</a>
+<a href="#565" id="565">565</a>
+<a href="#566" id="566">566</a>
+<a href="#567" id="567">567</a>
+<a href="#568" id="568">568</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! Subcoin service implementation. Specialized wrapper over substrate service.
 
 </span><span class="attr">#![allow(deprecated)]
@@ -847,7 +860,7 @@
 <span class="kw">where
     </span>N: sc_network::NetworkBackend&lt;Block, &lt;Block <span class="kw">as </span>BlockT&gt;::Hash&gt;,
 {
-    <span class="kw">let </span>net_config = sc_network::config::FullNetworkConfiguration::&lt;
+    <span class="kw">let </span><span class="kw-2">mut </span>net_config = sc_network::config::FullNetworkConfiguration::&lt;
         Block,
         &lt;Block <span class="kw">as </span>BlockT&gt;::Hash,
         N,
@@ -870,6 +883,19 @@
         <span class="prelude-val">None</span>,
     );
 
+    <span class="kw">let </span>syncing_strategy = sc_service::build_polkadot_syncing_strategy(
+        config.protocol_id(),
+        config.chain_spec.fork_id(),
+        <span class="kw-2">&amp;mut </span>net_config,
+        <span class="prelude-val">None</span>,
+        client.clone(),
+        <span class="kw-2">&amp;</span>task_manager.spawn_handle(),
+        config
+            .prometheus_config
+            .as_ref()
+            .map(|config| <span class="kw-2">&amp;</span>config.registry),
+    )<span class="question-mark">?</span>;
+
     <span class="kw">let </span>(network, system_rpc_tx, _tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config,
@@ -879,7 +905,7 @@
             spawn_handle: task_manager.spawn_handle(),
             import_queue,
             block_announce_validator_builder: <span class="prelude-val">None</span>,
-            warp_sync_config: <span class="prelude-val">None</span>,
+            syncing_strategy,
             block_relay: <span class="prelude-val">None</span>,
             metrics,
         })<span class="question-mark">?</span>;
