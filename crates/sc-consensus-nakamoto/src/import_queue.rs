@@ -55,10 +55,10 @@ where
     BI: BitcoinBlockImport,
 {
     let (import_result_sender, import_result_receiver) =
-        tracing_unbounded("mpsc_import_queue_result", 100_000);
+        tracing_unbounded("mpsc_subcoin_import_queue_result", 100_000);
 
     let (block_import_sender, block_import_receiver) =
-        tracing_unbounded("mpsc_import_queue_worker_blocks", 100_000);
+        tracing_unbounded("mpsc_subcoin_import_queue_worker_blocks", 100_000);
 
     let future = async move {
         let block_import_process = block_import_process(

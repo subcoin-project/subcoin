@@ -224,8 +224,8 @@ pub struct Config {
     pub sync_strategy: SyncStrategy,
     /// Whether to enable the block sync on startup.
     ///
-    /// The block sync from Bitcoin P2P network may be disabled when performing fast sync from
-    /// the Subcoin network.
+    /// The block sync from Bitcoin P2P network may be disabled temporarily when
+    /// performing fast sync from the Subcoin network.
     pub enable_block_sync_on_startup: bool,
 }
 
@@ -282,7 +282,8 @@ where
         spawn_handle: SpawnTaskHandle,
         registry: Option<Registry>,
     ) -> (Self, NetworkHandle) {
-        let (worker_msg_sender, worker_msg_receiver) = tracing_unbounded("network_worker_msg", 100);
+        let (worker_msg_sender, worker_msg_receiver) =
+            tracing_unbounded("mpsc_subcoin_network_worker", 100);
 
         let is_major_syncing = Arc::new(AtomicBool::new(false));
 
