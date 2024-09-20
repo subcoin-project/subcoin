@@ -26,7 +26,7 @@
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use frame_support::genesis_builder_helper::{build_state, get_preset};
-use frame_support::{construct_runtime, derive_impl, parameter_types};
+use frame_support::{derive_impl, parameter_types};
 use frame_system::pallet_prelude::*;
 use pallet_executive::Executive;
 use sp_api::impl_runtime_apis;
@@ -71,12 +71,20 @@ parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
 }
 
-construct_runtime!(
-    pub struct Runtime {
-        System: frame_system,
-        Bitcoin: pallet_bitcoin,
-    }
-);
+#[frame_support::runtime]
+mod runtime {
+    // The main runtime
+    #[runtime::runtime]
+    // Runtime Types to be generated
+    #[runtime::derive(RuntimeCall, RuntimeEvent, RuntimeError, RuntimeOrigin, RuntimeTask)]
+    pub struct Runtime;
+
+    #[runtime::pallet_index(0)]
+    pub type System = frame_system::Pallet<Runtime>;
+
+    #[runtime::pallet_index(1)]
+    pub type Bitcoin = pallet_bitcoin::Pallet<Runtime>;
+}
 
 #[derive_impl(frame_system::config_preludes::SolochainDefaultConfig as frame_system::DefaultConfig)]
 impl frame_system::Config for Runtime {
