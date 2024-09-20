@@ -3,69 +3,48 @@ use bitcoin::consensus::encode::{deserialize_hex, serialize_hex};
 use bitcoin::{Transaction, Txid};
 use jsonrpsee::proc_macros::rpc;
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
-use serde::{Deserialize, Serialize};
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subcoin_network::{
-    NetworkHandle, NetworkStatus, PeerSync, PeerSyncState, SendTransactionResult,
-};
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NetworkPeers {
-    total: usize,
-    available: usize,
-    discouraged: usize,
-    peer_best: Option<u32>,
-    sync_peers: Vec<PeerSync>,
-}
+use subcoin_network::{NetworkHandle, SendTransactionResult};
 
 #[rpc(client, server)]
-pub trait SubcoinApi {
+pub trait RawTransactionsApi {
     /// Returns a JSON object representing the serialized, hex-encoded transaction.
     ///
     /// # Arguments
     ///
     /// - `raw_tx`: The transaction hex string.
-    #[method(name = "subcoin_decodeRawTransaction", blocking)]
+    #[method(name = "rawtx_decodeRawTransaction", blocking)]
     fn decode_raw_transaction(&self, raw_tx: String) -> Result<serde_json::Value, Error>;
 
     /// Returns the raw transaction data for given txid.
-    #[method(name = "subcoin_getRawTransaction")]
+    #[method(name = "rawtx_getRawTransaction")]
     async fn get_raw_transaction(&self, txid: Txid) -> Result<Option<String>, Error>;
-
-    /// Get overall network status.
-    #[method(name = "subcoin_networkStatus")]
-    async fn network_status(&self) -> Result<Option<NetworkStatus>, Error>;
-
-    /// Get the sync peers.
-    #[method(name = "subcoin_networkPeers")]
-    async fn network_peers(&self) -> Result<NetworkPeers, Error>;
 
     /// Submits a raw transaction (serialized, hex-encoded) to local node and network.
     ///
     /// # Arguments
     ///
     /// - `raw_tx`:  The hex string of the raw transaction.
-    #[method(name = "subcoin_sendRawTransaction")]
+    #[method(name = "rawtx_sendRawTransaction")]
     async fn send_raw_transaction(&self, raw_tx: String) -> Result<SendTransactionResult, Error>;
 }
 
-/// This struct provides the Subcoin API.
-pub struct Subcoin<Block, Client> {
+/// This struct provides the RawTransactions API.
+pub struct RawTransactions<Block, Client> {
     #[allow(unused)]
     client: Arc<Client>,
     network_handle: NetworkHandle,
     _phantom: PhantomData<Block>,
 }
 
-impl<Block, Client> Subcoin<Block, Client>
+impl<Block, Client> RawTransactions<Block, Client>
 where
     Block: BlockT + 'static,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + 'static,
 {
-    /// Constructs a new instance of [`Subcoin`].
+    /// Constructs a new instance of [`RawTransactions`].
     pub fn new(client: Arc<Client>, network_handle: NetworkHandle) -> Self {
         Self {
             client,
@@ -76,7 +55,7 @@ where
 }
 
 #[async_trait::async_trait]
-impl<Block, Client> SubcoinApiServer for Subcoin<Block, Client>
+impl<Block, Client> RawTransactionsApiServer for RawTransactions<Block, Client>
 where
     Block: BlockT + 'static,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + 'static,
@@ -89,38 +68,6 @@ where
     async fn get_raw_transaction(&self, txid: Txid) -> Result<Option<String>, Error> {
         let maybe_transaction = self.network_handle.get_transaction(txid).await;
         Ok(maybe_transaction.as_ref().map(serialize_hex))
-    }
-
-    async fn network_peers(&self) -> Result<NetworkPeers, Error> {
-        let sync_peers = self.network_handle.sync_peers().await;
-        let total = sync_peers.len();
-        let mut available = 0;
-        let mut discouraged = 0;
-        let mut peer_best = 0;
-
-        for peer in &sync_peers {
-            match peer.state {
-                PeerSyncState::Available => available += 1,
-                PeerSyncState::Discouraged => discouraged += 1,
-                _ => {}
-            }
-
-            if peer.best_number > peer_best {
-                peer_best = peer.best_number;
-            }
-        }
-
-        Ok(NetworkPeers {
-            total,
-            available,
-            discouraged,
-            peer_best: if peer_best > 0 { Some(peer_best) } else { None },
-            sync_peers,
-        })
-    }
-
-    async fn network_status(&self) -> Result<Option<NetworkStatus>, Error> {
-        Ok(self.network_handle.status().await)
     }
 
     async fn send_raw_transaction(&self, raw_tx: String) -> Result<SendTransactionResult, Error> {

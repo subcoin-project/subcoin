@@ -292,7 +292,7 @@ pub fn start_substrate_network<N>(
 where
     N: sc_network::NetworkBackend<Block, <Block as BlockT>::Hash>,
 {
-    let net_config = sc_network::config::FullNetworkConfiguration::<
+    let mut net_config = sc_network::config::FullNetworkConfiguration::<
         Block,
         <Block as BlockT>::Hash,
         N,
@@ -315,6 +315,19 @@ where
         None,
     );
 
+    let syncing_strategy = sc_service::build_polkadot_syncing_strategy(
+        config.protocol_id(),
+        config.chain_spec.fork_id(),
+        &mut net_config,
+        None,
+        client.clone(),
+        &task_manager.spawn_handle(),
+        config
+            .prometheus_config
+            .as_ref()
+            .map(|config| &config.registry),
+    )?;
+
     let (network, system_rpc_tx, _tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config,
@@ -324,7 +337,7 @@ where
             spawn_handle: task_manager.spawn_handle(),
             import_queue,
             block_announce_validator_builder: None,
-            warp_sync_config: None,
+            syncing_strategy,
             block_relay: None,
             metrics,
         })?;

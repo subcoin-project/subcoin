@@ -1,6 +1,12 @@
 # Subcoin
 
-Subcoin is Bitcoin full node in Rust implemented in the [Substrate framework](https://github.com/paritytech/polkadot-sdk).
+[![Telegram](https://img.shields.io/badge/Telegram-blue?color=gray&logo=telegram&logoColor=%#64b5ef)](https://t.me/subcoin_project)
+
+<img src="https://raw.githubusercontent.com/subcoin-project/subcoin/main/docs/src/images/subcoin-high-resolution-logo.png" alt="Subcoin logo" style="max-width: 400px; width: 100%; display: block; margin: 0 auto;">
+
+<p style="text-align: center">
+Subcoin is Bitcoin full node written in Rust using the <a href="https://github.com/paritytech/polkadot-sdk">Substrate framework</a>
+</p>
 
 Subcoin's most significant contribution is introducing decentralized fast sync to
 the Bitcoin ecosystem. Unlike traditional initial full sync, which require processing

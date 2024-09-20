@@ -14,55 +14,12 @@ use subcoin_primitives::{
 #[rpc(client, server)]
 pub trait BlockchainApi {
     /// Get header.
-    #[method(name = "btc_getHeader", blocking)]
+    #[method(name = "blockchain_getHeader", blocking)]
     fn header(&self, hash: Option<BlockHash>) -> Result<Option<BitcoinHeader>, Error>;
 
     /// Get header and body of a block.
-    #[method(name = "btc_getBlock", blocking)]
+    #[method(name = "blockchain_getBlock", blocking)]
     fn block(&self, hash: Option<BlockHash>) -> Result<Option<BitcoinBlock>, Error>;
-
-    /*
-    /// Get hash of the n-th block in the canon chain.
-    ///
-    /// By default returns latest block hash.
-    #[method(name = "chain_getBlockHash", aliases = ["chain_getHead"], blocking)]
-    fn block_hash(
-        &self,
-        hash: Option<ListOrValue<NumberOrHex>>,
-    ) -> Result<ListOrValue<Option<Hash>>, Error>;
-
-    /// Get hash of the last finalized block in the canon chain.
-    #[method(name = "chain_getFinalizedHead", aliases = ["chain_getFinalisedHead"], blocking)]
-    fn finalized_head(&self) -> Result<Hash, Error>;
-
-    /// All head subscription.
-    #[subscription(
-        name = "chain_subscribeAllHeads" => "chain_allHead",
-        unsubscribe = "chain_unsubscribeAllHeads",
-        item = Header
-    )]
-    fn subscribe_all_heads(&self);
-
-    /// New head subscription.
-    #[subscription(
-        name = "chain_subscribeNewHeads" => "chain_newHead",
-        aliases = ["subscribe_newHead", "chain_subscribeNewHead"],
-        unsubscribe = "chain_unsubscribeNewHeads",
-        unsubscribe_aliases = ["unsubscribe_newHead", "chain_unsubscribeNewHead"],
-        item = Header
-    )]
-    fn subscribe_new_heads(&self);
-
-    /// Finalized head subscription.
-    #[subscription(
-        name = "chain_subscribeFinalizedHeads" => "chain_finalizedHead",
-        aliases = ["chain_subscribeFinalisedHeads"],
-        unsubscribe = "chain_unsubscribeFinalizedHeads",
-        unsubscribe_aliases = ["chain_unsubscribeFinalisedHeads"],
-        item = Header
-    )]
-    fn subscribe_finalized_heads(&self);
-    */
 }
 
 /// This struct provides the Bitcoin Blockchain API.
@@ -146,6 +103,9 @@ mod tests {
         let block_hash =
             BlockHash::from_str("ef537f25c895bfa782526529a9b63d97aa631564d5d789c2b765448c8635fb6c")
                 .expect("failed to parse block hash");
-        println!("==== {:?}", serde_json::to_string(&block_hash).unwrap());
+        assert_eq!(
+            serde_json::to_string(&block_hash).unwrap(),
+            "\"ef537f25c895bfa782526529a9b63d97aa631564d5d789c2b765448c8635fb6c\""
+        );
     }
 }

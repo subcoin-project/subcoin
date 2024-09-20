@@ -109,6 +109,12 @@ impl RunCmd {
             run,
         } = self;
 
+        if matches!(run.substrate_network_params.sync, SyncMode::Warp) {
+            return Err(sc_cli::Error::Input(
+                "--sync=warp unsupported, please use --sync=fast or --sync=fast-unsafe".to_string(),
+            ));
+        }
+
         let block_execution_strategy = run.common_params.block_execution_strategy();
         let bitcoin_network = run.common_params.bitcoin_network();
         let import_config = run.common_params.import_config();
