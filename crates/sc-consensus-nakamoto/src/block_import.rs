@@ -23,7 +23,7 @@ use crate::metrics::Metrics;
 use crate::verification::{BlockVerification, BlockVerifier};
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::hashes::Hash;
-use bitcoin::{Block as BitcoinBlock, BlockHash, Network, Target, Work};
+use bitcoin::{Block as BitcoinBlock, BlockHash, Network, Work};
 use codec::Encode;
 use sc_client_api::{AuxStore, Backend, BlockBackend, HeaderBackend, StorageProvider};
 use sc_consensus::{
@@ -375,7 +375,7 @@ where
     }
 }
 
-fn calculate_chain_work_and_fork_choice<Block, Client>(
+pub(crate) fn calculate_chain_work_and_fork_choice<Block, Client>(
     client: &Arc<Client>,
     block_header: &BitcoinHeader,
     block_number: u32,
@@ -387,7 +387,11 @@ where
     let prev_blockhash = block_header.prev_blockhash;
 
     let parent_work = if block_number == 1u32 {
-        Target::MAX.to_work()
+        // Genesis block's work is hardcoded.
+        client
+            .block_header(prev_blockhash)
+            .expect("Genesis header must exist; qed")
+            .work()
     } else {
         crate::aux_schema::load_total_work(client.as_ref(), prev_blockhash)?
     };
@@ -421,7 +425,7 @@ where
 /// Inserts a mapping between a Bitcoin block hash and a Substrate block hash into the auxiliary
 /// data of the `block_import_params`. This mapping will be stored in the aux-db during the subcoin
 /// block import or substrate block verification process.
-pub fn insert_bitcoin_block_hash_mapping<Block: BlockT>(
+pub(crate) fn insert_bitcoin_block_hash_mapping<Block: BlockT>(
     block_import_params: &mut BlockImportParams<Block>,
     bitcoin_block_hash: BlockHash,
     substrate_block_hash: Block::Hash,
