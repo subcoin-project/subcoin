@@ -39,8 +39,8 @@ where
 {
     let key = chain_work_key(bitcoin_block_hash);
 
-    // `Work` has no exposed API for encode/decode, thus using `Target` as a workaround to store
-    // the inner bytes.
+    // `Work` has no exposed API that can be used for encode/decode purpose,
+    // thus using `Target` as a workaround to store the inner bytes.
     let encoded_work = chain_work.to_target().to_le_bytes();
 
     write_aux((key, encoded_work.to_vec()))

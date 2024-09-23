@@ -357,15 +357,12 @@ where
         block_import_params.body = Some(extrinsics);
         block_import_params.state_action = state_action;
 
-        insert_bitcoin_block_hash_mapping(
+        write_aux_storage(
             &mut block_import_params,
             bitcoin_block_hash,
             substrate_block_hash,
+            total_work,
         );
-
-        crate::aux_schema::write_total_work(block.header.block_hash(), total_work, |(k, v)| {
-            block_import_params.auxiliary.push((k, Some(v)))
-        });
 
         let import_params_for_block_executor = maybe_changes.map(|changes| {
             clone_block_import_params(&block_import_params, StateAction::ApplyChanges(changes))
@@ -422,18 +419,26 @@ where
     Ok((total_work, fork_choice))
 }
 
-/// Inserts a mapping between a Bitcoin block hash and a Substrate block hash into the auxiliary
-/// data of the `block_import_params`. This mapping will be stored in the aux-db during the subcoin
-/// block import or substrate block verification process.
-pub(crate) fn insert_bitcoin_block_hash_mapping<Block: BlockT>(
+/// Writes storage into the auxiliary data of the `block_import_params`, which will be stored
+/// in the aux-db within the [`BitcoinBlockImport::import_block`] or Substrate import queue's
+/// verification process.
+///
+/// The auxiliary data stored includes:
+/// - A mapping between a Bitcoin block hash and a Substrate block hash.
+/// - Total accumulated proof-of-work up to the given block.
+pub(crate) fn write_aux_storage<Block: BlockT>(
     block_import_params: &mut BlockImportParams<Block>,
     bitcoin_block_hash: BlockHash,
     substrate_block_hash: Block::Hash,
+    total_work: Work,
 ) {
     block_import_params.auxiliary.push((
         bitcoin_block_hash.to_byte_array().to_vec(),
         Some(substrate_block_hash.encode()),
     ));
+    crate::aux_schema::write_total_work(bitcoin_block_hash, total_work, |(k, v)| {
+        block_import_params.auxiliary.push((k, Some(v)))
+    });
 }
 
 /// Result of the operation of importing a Bitcoin block.
