@@ -22,7 +22,7 @@ use crate::block_executor::{BlockExecutor, ExecuteBlockResult};
 use crate::metrics::Metrics;
 use crate::verification::{BlockVerification, BlockVerifier};
 use bitcoin::hashes::Hash;
-use bitcoin::{Block as BitcoinBlock, BlockHash, Network};
+use bitcoin::{Block as BitcoinBlock, BlockHash, Network, Target};
 use codec::Encode;
 use sc_client_api::{AuxStore, Backend, BlockBackend, HeaderBackend, StorageProvider};
 use sc_consensus::{
@@ -33,7 +33,7 @@ use sp_api::{CallApiAt, Core, ProvideRuntimeApi};
 use sp_blockchain::HashAndNumber;
 use sp_consensus::{BlockOrigin, BlockStatus};
 use sp_runtime::traits::{
-    Block as BlockT, Hash as HashT, HashingFor, Header as HeaderT, NumberFor,
+    Block as BlockT, Hash as HashT, HashingFor, Header as HeaderT, NumberFor, Zero,
 };
 use sp_runtime::{SaturatedConversion, Saturating};
 use std::marker::PhantomData;
@@ -293,6 +293,16 @@ where
 
         let digest = substrate_header_digest(&block.header);
 
+        let prev_blockhash = block.header.prev_blockhash;
+
+        let parent_work = if parent_block_number.is_zero() {
+            Target::MAX.to_work()
+        } else {
+            crate::aux_schema::load_total_work(self.client.as_ref(), prev_blockhash)?
+        };
+
+        let total_work = parent_work + block.header.work();
+
         // We know everything for the Substrate header except the state root, which will be
         // obtained after executing the block manually.
         let mut header = <<Block as BlockT>::Header as HeaderT>::new(
@@ -347,8 +357,23 @@ where
         let bitcoin_block_hash = block.header.block_hash();
 
         let mut block_import_params = BlockImportParams::new(BlockOrigin::Own, header);
+        let fork_choice = {
+            let info = self.client.info();
+
+            let last_best_work = if info.best_hash == parent_hash {
+                parent_work
+            } else {
+                let bitcoin_block_hash = self
+                    .client
+                    .bitcoin_block_hash_for(info.best_hash)
+                    .expect("Best bitcoin hash must exist; qed");
+                crate::aux_schema::load_total_work(&*self.client, bitcoin_block_hash)?
+            };
+
+            ForkChoiceStrategy::Custom(total_work > last_best_work)
+        };
+        block_import_params.fork_choice = Some(fork_choice);
         block_import_params.body = Some(extrinsics);
-        block_import_params.fork_choice = Some(ForkChoiceStrategy::LongestChain);
         block_import_params.state_action = state_action;
 
         insert_bitcoin_block_hash_mapping(
@@ -356,6 +381,10 @@ where
             bitcoin_block_hash,
             substrate_block_hash,
         );
+
+        crate::aux_schema::write_total_work(block.header.block_hash(), total_work, |(k, v)| {
+            block_import_params.auxiliary.push((k, Some(v)))
+        });
 
         let import_params_for_block_executor = maybe_changes.map(|changes| {
             clone_block_import_params(&block_import_params, StateAction::ApplyChanges(changes))
@@ -373,10 +402,10 @@ pub fn insert_bitcoin_block_hash_mapping<Block: BlockT>(
     bitcoin_block_hash: BlockHash,
     substrate_block_hash: Block::Hash,
 ) {
-    block_import_params.auxiliary = vec![(
+    block_import_params.auxiliary.push((
         bitcoin_block_hash.to_byte_array().to_vec(),
         Some(substrate_block_hash.encode()),
-    )];
+    ));
 }
 
 /// Result of the operation of importing a Bitcoin block.

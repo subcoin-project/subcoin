@@ -1,3 +1,4 @@
+mod aux_schema;
 mod block_executor;
 mod block_import;
 mod chain_params;

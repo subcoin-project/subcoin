@@ -204,7 +204,7 @@ async fn import_many_blocks(
 
         if let Ok(block_import_status) = &block_import_result {
             let block_number = block_import_status.number();
-            tracing::debug!("Block imported successfully {block_number:?} ({block_hash})");
+            tracing::debug!("Block imported successfully #{block_number:?},{block_hash}");
             imported += 1;
         } else {
             has_error = true;
