@@ -390,7 +390,7 @@ where
             .expect("Genesis header must exist; qed")
             .work()
     } else {
-        crate::aux_schema::load_total_work(client.as_ref(), prev_blockhash)?
+        crate::aux_schema::load_chain_work(client.as_ref(), prev_blockhash)?
     };
 
     let total_work = parent_work + block_header.work();
@@ -410,7 +410,7 @@ where
             let bitcoin_block_hash = client
                 .bitcoin_block_hash_for(info.best_hash)
                 .expect("Best bitcoin hash must exist; qed");
-            crate::aux_schema::load_total_work(client.as_ref(), bitcoin_block_hash)?
+            crate::aux_schema::load_chain_work(client.as_ref(), bitcoin_block_hash)?
         };
 
         ForkChoiceStrategy::Custom(total_work > last_best_work)
@@ -419,9 +419,9 @@ where
     Ok((total_work, fork_choice))
 }
 
-/// Writes storage into the auxiliary data of the `block_import_params`, which will be stored
-/// in the aux-db within the [`BitcoinBlockImport::import_block`] or Substrate import queue's
-/// verification process.
+/// Writes storage into the auxiliary data of the `block_import_params`, which
+/// will be stored in the aux-db within the [`BitcoinBlockImport::import_block`]
+/// or Substrate import queue's verification process.
 ///
 /// The auxiliary data stored includes:
 /// - A mapping between a Bitcoin block hash and a Substrate block hash.
@@ -430,13 +430,13 @@ pub(crate) fn write_aux_storage<Block: BlockT>(
     block_import_params: &mut BlockImportParams<Block>,
     bitcoin_block_hash: BlockHash,
     substrate_block_hash: Block::Hash,
-    total_work: Work,
+    chain_work: Work,
 ) {
     block_import_params.auxiliary.push((
         bitcoin_block_hash.to_byte_array().to_vec(),
         Some(substrate_block_hash.encode()),
     ));
-    crate::aux_schema::write_total_work(bitcoin_block_hash, total_work, |(k, v)| {
+    crate::aux_schema::write_chain_work(bitcoin_block_hash, chain_work, |(k, v)| {
         block_import_params.auxiliary.push((k, Some(v)))
     });
 }

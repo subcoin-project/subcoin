@@ -29,7 +29,7 @@ fn chain_work_key(bitcoin_block_hash: BlockHash) -> Vec<u8> {
 }
 
 /// Write the cumulative chain work of a block to aux storage.
-pub(crate) fn write_total_work<F, R>(
+pub(crate) fn write_chain_work<F, R>(
     bitcoin_block_hash: BlockHash,
     chain_work: Work,
     write_aux: F,
@@ -47,7 +47,7 @@ where
 }
 
 /// Load the cumulative chain work for given block.
-pub(crate) fn load_total_work<B: AuxStore>(
+pub(crate) fn load_chain_work<B: AuxStore>(
     backend: &B,
     bitcoin_block_hash: BlockHash,
 ) -> ClientResult<Work> {

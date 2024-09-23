@@ -44,7 +44,7 @@ where
             .verify(&btc_header)
             .map_err(|err| format!("Invalid header: {err:?}"))?;
 
-        let (total_work, fork_choice) = crate::block_import::calculate_chain_work_and_fork_choice(
+        let (chain_work, fork_choice) = crate::block_import::calculate_chain_work_and_fork_choice(
             &self.client,
             &btc_header,
             (*substrate_header.number()).saturated_into::<u32>(),
@@ -63,7 +63,7 @@ where
             &mut block_import_params,
             bitcoin_block_hash,
             substrate_block_hash,
-            total_work,
+            chain_work,
         );
 
         Ok(block_import_params)
