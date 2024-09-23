@@ -268,7 +268,7 @@ mod tests {
             bitcoin::constants::genesis_block(bitcoin::Network::Bitcoin).header;
 
         let encoded_substrate_header = substrate_genesis_header.encode();
-        let mut encoded_bitcoin_header = Vec::new();
+        let mut encoded_bitcoin_header = Vec::with_capacity(32);
         bitcoin_genesis_header
             .consensus_encode(&mut encoded_bitcoin_header)
             .unwrap();

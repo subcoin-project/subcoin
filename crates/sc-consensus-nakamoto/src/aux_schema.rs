@@ -21,7 +21,7 @@ where
 
 /// The aux storage key used to store the block weight of the given block hash.
 fn chain_work_key(bitcoin_block_hash: BlockHash) -> Vec<u8> {
-    let mut encoded_block_hash = Vec::new();
+    let mut encoded_block_hash = Vec::with_capacity(32);
     bitcoin_block_hash
         .consensus_encode(&mut encoded_block_hash)
         .expect("Encode bitcoin block hash must not fail; qed");

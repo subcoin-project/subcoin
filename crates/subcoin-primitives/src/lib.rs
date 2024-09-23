@@ -304,7 +304,7 @@ fn locator_indexes(mut from: Height) -> Vec<Height> {
 pub fn substrate_header_digest(bitcoin_header: &BitcoinHeader) -> Digest {
     let bitcoin_block_hash = bitcoin_header.block_hash();
 
-    let mut encoded_bitcoin_header = Vec::new();
+    let mut encoded_bitcoin_header = Vec::with_capacity(32);
     bitcoin_header
         .consensus_encode(&mut encoded_bitcoin_header)
         .expect("Bitcoin header must be valid; qed");

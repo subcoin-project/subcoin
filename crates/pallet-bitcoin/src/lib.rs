@@ -38,7 +38,7 @@ pub struct Txid(H256);
 
 impl Txid {
     fn from_bitcoin_txid(txid: bitcoin::Txid) -> Self {
-        let mut d = Vec::new();
+        let mut d = Vec::with_capacity(32);
         txid.consensus_encode(&mut d)
             .expect("txid must be encoded correctly; qed");
 
