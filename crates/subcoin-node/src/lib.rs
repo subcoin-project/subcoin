@@ -4,6 +4,7 @@
 
 mod cli;
 mod commands;
+mod indexer;
 mod rpc;
 mod substrate_cli;
 mod transaction_pool;
