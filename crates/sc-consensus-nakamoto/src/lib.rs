@@ -4,6 +4,7 @@ mod chain_params;
 mod import_queue;
 mod metrics;
 mod verification;
+mod verifier;
 
 pub use block_executor::{
     BenchmarkAllExecutor, BenchmarkRuntimeBlockExecutor, BlockExecutionStrategy, BlockExecutor,
@@ -18,6 +19,7 @@ pub use import_queue::{
     bitcoin_import_queue, BlockImportQueue, ImportBlocks, ImportManyBlocksResult,
 };
 pub use verification::{BlockVerification, BlockVerifier, HeaderError, HeaderVerifier};
+pub use verifier::SubstrateImportQueueVerifier;
 
 /// Consensus error type.
 #[derive(Debug, thiserror::Error)]

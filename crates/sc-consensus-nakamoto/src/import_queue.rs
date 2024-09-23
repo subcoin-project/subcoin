@@ -24,7 +24,7 @@ pub struct ImportBlocks {
     pub blocks: Vec<BitcoinBlock>,
 }
 
-/// Import queue for processing Bitcoin blocks.
+/// Subcoin import queue for processing Bitcoin blocks.
 #[derive(Debug)]
 pub struct BlockImportQueue {
     block_import_sender: TracingUnboundedSender<ImportBlocks>,
