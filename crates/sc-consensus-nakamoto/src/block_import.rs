@@ -21,8 +21,9 @@
 use crate::block_executor::{BlockExecutor, ExecuteBlockResult};
 use crate::metrics::Metrics;
 use crate::verification::{BlockVerification, BlockVerifier};
+use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::hashes::Hash;
-use bitcoin::{Block as BitcoinBlock, BlockHash, Network};
+use bitcoin::{Block as BitcoinBlock, BlockHash, Network, Work};
 use codec::Encode;
 use sc_client_api::{AuxStore, Backend, BlockBackend, HeaderBackend, StorageProvider};
 use sc_consensus::{
@@ -347,14 +348,20 @@ where
         let bitcoin_block_hash = block.header.block_hash();
 
         let mut block_import_params = BlockImportParams::new(BlockOrigin::Own, header);
+        let (total_work, fork_choice) = calculate_chain_work_and_fork_choice(
+            &self.client,
+            &block.header,
+            block_number.saturated_into(),
+        )?;
+        block_import_params.fork_choice = Some(fork_choice);
         block_import_params.body = Some(extrinsics);
-        block_import_params.fork_choice = Some(ForkChoiceStrategy::LongestChain);
         block_import_params.state_action = state_action;
 
-        insert_bitcoin_block_hash_mapping(
+        write_aux_storage(
             &mut block_import_params,
             bitcoin_block_hash,
             substrate_block_hash,
+            total_work,
         );
 
         let import_params_for_block_executor = maybe_changes.map(|changes| {
@@ -365,18 +372,73 @@ where
     }
 }
 
-/// Inserts a mapping between a Bitcoin block hash and a Substrate block hash into the auxiliary
-/// data of the `block_import_params`. This mapping will be stored in the aux-db during the subcoin
-/// block import or substrate block verification process.
-pub fn insert_bitcoin_block_hash_mapping<Block: BlockT>(
+pub(crate) fn calculate_chain_work_and_fork_choice<Block, Client>(
+    client: &Arc<Client>,
+    block_header: &BitcoinHeader,
+    block_number: u32,
+) -> sp_blockchain::Result<(Work, ForkChoiceStrategy)>
+where
+    Block: BlockT,
+    Client: HeaderBackend<Block> + AuxStore,
+{
+    let prev_blockhash = block_header.prev_blockhash;
+
+    let parent_work = if block_number == 1u32 {
+        // Genesis block's work is hardcoded.
+        client
+            .block_header(prev_blockhash)
+            .expect("Genesis header must exist; qed")
+            .work()
+    } else {
+        crate::aux_schema::load_chain_work(client.as_ref(), prev_blockhash)?
+    };
+
+    let total_work = parent_work + block_header.work();
+
+    let fork_choice = {
+        let info = client.info();
+
+        let parent_hash = client.substrate_block_hash_for(prev_blockhash).ok_or(
+            sp_blockchain::Error::Backend(format!(
+                "Missing substrate block hash for #{prev_blockhash}"
+            )),
+        )?;
+
+        let last_best_work = if info.best_hash == parent_hash {
+            parent_work
+        } else {
+            let bitcoin_block_hash = client
+                .bitcoin_block_hash_for(info.best_hash)
+                .expect("Best bitcoin hash must exist; qed");
+            crate::aux_schema::load_chain_work(client.as_ref(), bitcoin_block_hash)?
+        };
+
+        ForkChoiceStrategy::Custom(total_work > last_best_work)
+    };
+
+    Ok((total_work, fork_choice))
+}
+
+/// Writes storage into the auxiliary data of the `block_import_params`, which
+/// will be stored in the aux-db within the [`BitcoinBlockImport::import_block`]
+/// or Substrate import queue's verification process.
+///
+/// The auxiliary data stored includes:
+/// - A mapping between a Bitcoin block hash and a Substrate block hash.
+/// - Total accumulated proof-of-work up to the given block.
+pub(crate) fn write_aux_storage<Block: BlockT>(
     block_import_params: &mut BlockImportParams<Block>,
     bitcoin_block_hash: BlockHash,
     substrate_block_hash: Block::Hash,
+    chain_work: Work,
 ) {
-    block_import_params.auxiliary = vec![(
+    block_import_params.auxiliary.push((
         bitcoin_block_hash.to_byte_array().to_vec(),
         Some(substrate_block_hash.encode()),
-    )];
+    ));
+    crate::aux_schema::write_chain_work(bitcoin_block_hash, chain_work, |(k, v)| {
+        block_import_params.auxiliary.push((k, Some(v)))
+    });
 }
 
 /// Result of the operation of importing a Bitcoin block.
