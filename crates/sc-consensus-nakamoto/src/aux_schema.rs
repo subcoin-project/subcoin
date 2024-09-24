@@ -37,6 +37,7 @@ where
 
     // `Work` has no exposed API that can be used for encode/decode purpose,
     // thus using `Target` as a workaround to store the inner bytes.
+    // TODO: https://github.com/rust-bitcoin/rust-bitcoin/issues/3405
     let encoded_work = chain_work.to_target().to_le_bytes();
 
     write_aux((key, encoded_work.to_vec()))

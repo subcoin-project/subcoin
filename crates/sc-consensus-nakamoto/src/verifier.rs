@@ -5,6 +5,7 @@ use sc_consensus::{BlockImportParams, Verifier};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use sp_runtime::SaturatedConversion;
 use std::sync::Arc;
+use subcoin_primitives::{extract_bitcoin_block_hash, extract_bitcoin_block_header};
 
 /// Verifier used by the Substrate import queue.
 ///
@@ -36,13 +37,12 @@ where
     ) -> Result<BlockImportParams<Block>, String> {
         let substrate_header = &block_import_params.header;
 
-        let btc_header =
-            subcoin_primitives::extract_bitcoin_block_header::<Block>(substrate_header)
-                .map_err(|err| format!("Failed to extract bitcoin header: {err:?}"))?;
+        let btc_header = extract_bitcoin_block_header::<Block>(substrate_header)
+            .map_err(|err| format!("Failed to extract bitcoin header: {err:?}"))?;
 
         self.btc_header_verifier
             .verify(&btc_header)
-            .map_err(|err| format!("Invalid header: {err:?}"))?;
+            .map_err(|err| format!("Invalid bitcoin header: {err:?}"))?;
 
         let (chain_work, fork_choice) = crate::block_import::calculate_chain_work_and_fork_choice(
             &self.client,
@@ -53,9 +53,8 @@ where
 
         block_import_params.fork_choice = Some(fork_choice);
 
-        let bitcoin_block_hash =
-            subcoin_primitives::extract_bitcoin_block_hash::<Block>(substrate_header)
-                .map_err(|err| format!("Failed to extract bitcoin block hash: {err:?}"))?;
+        let bitcoin_block_hash = extract_bitcoin_block_hash::<Block>(substrate_header)
+            .map_err(|err| format!("Failed to extract bitcoin block hash: {err:?}"))?;
 
         let substrate_block_hash = substrate_header.hash();
 
