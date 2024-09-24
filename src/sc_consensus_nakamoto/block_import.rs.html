@@ -503,6 +503,68 @@
 <a href="#503" id="503">503</a>
 <a href="#504" id="504">504</a>
 <a href="#505" id="505">505</a>
+<a href="#506" id="506">506</a>
+<a href="#507" id="507">507</a>
+<a href="#508" id="508">508</a>
+<a href="#509" id="509">509</a>
+<a href="#510" id="510">510</a>
+<a href="#511" id="511">511</a>
+<a href="#512" id="512">512</a>
+<a href="#513" id="513">513</a>
+<a href="#514" id="514">514</a>
+<a href="#515" id="515">515</a>
+<a href="#516" id="516">516</a>
+<a href="#517" id="517">517</a>
+<a href="#518" id="518">518</a>
+<a href="#519" id="519">519</a>
+<a href="#520" id="520">520</a>
+<a href="#521" id="521">521</a>
+<a href="#522" id="522">522</a>
+<a href="#523" id="523">523</a>
+<a href="#524" id="524">524</a>
+<a href="#525" id="525">525</a>
+<a href="#526" id="526">526</a>
+<a href="#527" id="527">527</a>
+<a href="#528" id="528">528</a>
+<a href="#529" id="529">529</a>
+<a href="#530" id="530">530</a>
+<a href="#531" id="531">531</a>
+<a href="#532" id="532">532</a>
+<a href="#533" id="533">533</a>
+<a href="#534" id="534">534</a>
+<a href="#535" id="535">535</a>
+<a href="#536" id="536">536</a>
+<a href="#537" id="537">537</a>
+<a href="#538" id="538">538</a>
+<a href="#539" id="539">539</a>
+<a href="#540" id="540">540</a>
+<a href="#541" id="541">541</a>
+<a href="#542" id="542">542</a>
+<a href="#543" id="543">543</a>
+<a href="#544" id="544">544</a>
+<a href="#545" id="545">545</a>
+<a href="#546" id="546">546</a>
+<a href="#547" id="547">547</a>
+<a href="#548" id="548">548</a>
+<a href="#549" id="549">549</a>
+<a href="#550" id="550">550</a>
+<a href="#551" id="551">551</a>
+<a href="#552" id="552">552</a>
+<a href="#553" id="553">553</a>
+<a href="#554" id="554">554</a>
+<a href="#555" id="555">555</a>
+<a href="#556" id="556">556</a>
+<a href="#557" id="557">557</a>
+<a href="#558" id="558">558</a>
+<a href="#559" id="559">559</a>
+<a href="#560" id="560">560</a>
+<a href="#561" id="561">561</a>
+<a href="#562" id="562">562</a>
+<a href="#563" id="563">563</a>
+<a href="#564" id="564">564</a>
+<a href="#565" id="565">565</a>
+<a href="#566" id="566">566</a>
+<a href="#567" id="567">567</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! This module provides the implementation for importing Bitcoin blocks into Subcoin.
 //!
 //! Each Bitcoin block is converted into a Substrate block and imported into the database.
@@ -526,8 +588,9 @@
 </span><span class="kw">use </span><span class="kw">crate</span>::block_executor::{BlockExecutor, ExecuteBlockResult};
 <span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
 <span class="kw">use </span><span class="kw">crate</span>::verification::{BlockVerification, BlockVerifier};
+<span class="kw">use </span>bitcoin::blockdata::block::Header <span class="kw">as </span>BitcoinHeader;
 <span class="kw">use </span>bitcoin::hashes::Hash;
-<span class="kw">use </span>bitcoin::{Block <span class="kw">as </span>BitcoinBlock, BlockHash, Network};
+<span class="kw">use </span>bitcoin::{Block <span class="kw">as </span>BitcoinBlock, BlockHash, Network, Work};
 <span class="kw">use </span>codec::Encode;
 <span class="kw">use </span>sc_client_api::{AuxStore, Backend, BlockBackend, HeaderBackend, StorageProvider};
 <span class="kw">use </span>sc_consensus::{
@@ -852,14 +915,20 @@
         <span class="kw">let </span>bitcoin_block_hash = block.header.block_hash();
 
         <span class="kw">let </span><span class="kw-2">mut </span>block_import_params = BlockImportParams::new(BlockOrigin::Own, header);
+        <span class="kw">let </span>(total_work, fork_choice) = calculate_chain_work_and_fork_choice(
+            <span class="kw-2">&amp;</span><span class="self">self</span>.client,
+            <span class="kw-2">&amp;</span>block.header,
+            block_number.saturated_into(),
+        )<span class="question-mark">?</span>;
+        block_import_params.fork_choice = <span class="prelude-val">Some</span>(fork_choice);
         block_import_params.body = <span class="prelude-val">Some</span>(extrinsics);
-        block_import_params.fork_choice = <span class="prelude-val">Some</span>(ForkChoiceStrategy::LongestChain);
         block_import_params.state_action = state_action;
 
-        insert_bitcoin_block_hash_mapping(
+        write_aux_storage(
             <span class="kw-2">&amp;mut </span>block_import_params,
             bitcoin_block_hash,
             substrate_block_hash,
+            total_work,
         );
 
         <span class="kw">let </span>import_params_for_block_executor = maybe_changes.map(|changes| {
@@ -870,18 +939,73 @@
     }
 }
 
-<span class="doccomment">/// Inserts a mapping between a Bitcoin block hash and a Substrate block hash into the auxiliary
-/// data of the `block_import_params`. This mapping will be stored in the aux-db during the subcoin
-/// block import or substrate block verification process.
-</span><span class="kw">pub fn </span>insert_bitcoin_block_hash_mapping&lt;Block: BlockT&gt;(
+<span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>calculate_chain_work_and_fork_choice&lt;Block, Client&gt;(
+    client: <span class="kw-2">&amp;</span>Arc&lt;Client&gt;,
+    block_header: <span class="kw-2">&amp;</span>BitcoinHeader,
+    block_number: u32,
+) -&gt; sp_blockchain::Result&lt;(Work, ForkChoiceStrategy)&gt;
+<span class="kw">where
+    </span>Block: BlockT,
+    Client: HeaderBackend&lt;Block&gt; + AuxStore,
+{
+    <span class="kw">let </span>prev_blockhash = block_header.prev_blockhash;
+
+    <span class="kw">let </span>parent_work = <span class="kw">if </span>block_number == <span class="number">1u32 </span>{
+        <span class="comment">// Genesis block's work is hardcoded.
+        </span>client
+            .block_header(prev_blockhash)
+            .expect(<span class="string">"Genesis header must exist; qed"</span>)
+            .work()
+    } <span class="kw">else </span>{
+        <span class="kw">crate</span>::aux_schema::load_chain_work(client.as_ref(), prev_blockhash)<span class="question-mark">?
+    </span>};
+
+    <span class="kw">let </span>total_work = parent_work + block_header.work();
+
+    <span class="kw">let </span>fork_choice = {
+        <span class="kw">let </span>info = client.info();
+
+        <span class="kw">let </span>parent_hash = client.substrate_block_hash_for(prev_blockhash).ok_or(
+            sp_blockchain::Error::Backend(<span class="macro">format!</span>(
+                <span class="string">"Missing substrate block hash for #{prev_blockhash}"
+            </span>)),
+        )<span class="question-mark">?</span>;
+
+        <span class="kw">let </span>last_best_work = <span class="kw">if </span>info.best_hash == parent_hash {
+            parent_work
+        } <span class="kw">else </span>{
+            <span class="kw">let </span>bitcoin_block_hash = client
+                .bitcoin_block_hash_for(info.best_hash)
+                .expect(<span class="string">"Best bitcoin hash must exist; qed"</span>);
+            <span class="kw">crate</span>::aux_schema::load_chain_work(client.as_ref(), bitcoin_block_hash)<span class="question-mark">?
+        </span>};
+
+        ForkChoiceStrategy::Custom(total_work &gt; last_best_work)
+    };
+
+    <span class="prelude-val">Ok</span>((total_work, fork_choice))
+}
+
+<span class="doccomment">/// Writes storage into the auxiliary data of the `block_import_params`, which
+/// will be stored in the aux-db within the [`BitcoinBlockImport::import_block`]
+/// or Substrate import queue's verification process.
+///
+/// The auxiliary data stored includes:
+/// - A mapping between a Bitcoin block hash and a Substrate block hash.
+/// - Total accumulated proof-of-work up to the given block.
+</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>write_aux_storage&lt;Block: BlockT&gt;(
     block_import_params: <span class="kw-2">&amp;mut </span>BlockImportParams&lt;Block&gt;,
     bitcoin_block_hash: BlockHash,
     substrate_block_hash: Block::Hash,
+    chain_work: Work,
 ) {
-    block_import_params.auxiliary = <span class="macro">vec!</span>[(
+    block_import_params.auxiliary.push((
         bitcoin_block_hash.to_byte_array().to_vec(),
         <span class="prelude-val">Some</span>(substrate_block_hash.encode()),
-    )];
+    ));
+    <span class="kw">crate</span>::aux_schema::write_chain_work(bitcoin_block_hash, chain_work, |(k, v)| {
+        block_import_params.auxiliary.push((k, <span class="prelude-val">Some</span>(v)))
+    });
 }
 
 <span class="doccomment">/// Result of the operation of importing a Bitcoin block.

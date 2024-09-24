@@ -707,7 +707,7 @@
 </span><span class="kw">pub fn </span>substrate_header_digest(bitcoin_header: <span class="kw-2">&amp;</span>BitcoinHeader) -&gt; Digest {
     <span class="kw">let </span>bitcoin_block_hash = bitcoin_header.block_hash();
 
-    <span class="kw">let </span><span class="kw-2">mut </span>encoded_bitcoin_header = Vec::new();
+    <span class="kw">let </span><span class="kw-2">mut </span>encoded_bitcoin_header = Vec::with_capacity(<span class="number">32</span>);
     bitcoin_header
         .consensus_encode(<span class="kw-2">&amp;mut </span>encoded_bitcoin_header)
         .expect(<span class="string">"Bitcoin header must be valid; qed"</span>);

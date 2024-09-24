@@ -290,7 +290,7 @@
 
 <span class="kw">impl </span>Txid {
     <span class="kw">fn </span>from_bitcoin_txid(txid: bitcoin::Txid) -&gt; <span class="self">Self </span>{
-        <span class="kw">let </span><span class="kw-2">mut </span>d = Vec::new();
+        <span class="kw">let </span><span class="kw-2">mut </span>d = Vec::with_capacity(<span class="number">32</span>);
         txid.consensus_encode(<span class="kw-2">&amp;mut </span>d)
             .expect(<span class="string">"txid must be encoded correctly; qed"</span>);
 

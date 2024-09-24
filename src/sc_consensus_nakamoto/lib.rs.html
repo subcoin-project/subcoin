@@ -35,26 +35,26 @@
 <a href="#35" id="35">35</a>
 <a href="#36" id="36">36</a>
 <a href="#37" id="37">37</a>
-</pre></div><pre class="rust"><code><span class="kw">mod </span>block_executor;
+</pre></div><pre class="rust"><code><span class="kw">mod </span>aux_schema;
+<span class="kw">mod </span>block_executor;
 <span class="kw">mod </span>block_import;
 <span class="kw">mod </span>chain_params;
 <span class="kw">mod </span>import_queue;
 <span class="kw">mod </span>metrics;
 <span class="kw">mod </span>verification;
+<span class="kw">mod </span>verifier;
 
 <span class="kw">pub use </span>block_executor::{
     BenchmarkAllExecutor, BenchmarkRuntimeBlockExecutor, BlockExecutionStrategy, BlockExecutor,
     ClientContext, ExecutionBackend, OffRuntimeBlockExecutor, RuntimeBlockExecutor,
 };
-<span class="kw">pub use </span>block_import::{
-    insert_bitcoin_block_hash_mapping, BitcoinBlockImport, BitcoinBlockImporter, ImportConfig,
-    ImportStatus,
-};
+<span class="kw">pub use </span>block_import::{BitcoinBlockImport, BitcoinBlockImporter, ImportConfig, ImportStatus};
 <span class="kw">pub use </span>chain_params::ChainParams;
 <span class="kw">pub use </span>import_queue::{
     bitcoin_import_queue, BlockImportQueue, ImportBlocks, ImportManyBlocksResult,
 };
 <span class="kw">pub use </span>verification::{BlockVerification, BlockVerifier, HeaderError, HeaderVerifier};
+<span class="kw">pub use </span>verifier::SubstrateImportQueueVerifier;
 
 <span class="doccomment">/// Consensus error type.
 </span><span class="attr">#[derive(Debug, thiserror::Error)]
