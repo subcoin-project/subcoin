@@ -8910,6 +8910,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "subcoin-indexer"
+version = "0.1.0"
+dependencies = [
+ "bitcoin 0.32.2",
+ "futures",
+ "parity-scale-codec",
+ "sc-client-api",
+ "sp-runtime",
+ "subcoin-primitives",
+ "tracing",
+]
+
+[[package]]
 name = "subcoin-informant"
 version = "0.1.0"
 dependencies = [

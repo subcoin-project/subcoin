@@ -1,0 +1,16 @@
+[package]
+name = "subcoin-indexer"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+bitcoin = { workspace = true }
+codec = { workspace = true }
+futures = { workspace = true }
+sc-client-api = { workspace = true }
+sp-runtime = { workspace = true }
+subcoin-primitives = { workspace = true }
+tracing = { workspace = true }

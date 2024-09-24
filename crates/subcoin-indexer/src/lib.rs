@@ -10,17 +10,20 @@ use subcoin_primitives::runtime::Coin;
 use subcoin_primitives::{BitcoinTransactionAdapter, CoinStorageKey};
 
 /// Indexer responsible for tracking BTC balances by address.
-pub struct BtcBalanceIndexer<Block, Backend, Client> {
+pub struct BtcBalanceIndexer<Block, Backend, Client, TransactionAdapter> {
     network: bitcoin::Network,
     client: Arc<Client>,
-    _phantom: PhantomData<(Block, Backend)>,
+    coin_storage_key: Arc<dyn CoinStorageKey>,
+    _phantom: PhantomData<(Block, Backend, TransactionAdapter)>,
 }
 
-impl<Block, Backend, Client> BtcBalanceIndexer<Block, Backend, Client>
+impl<Block, Backend, Client, TransactionAdapter>
+    BtcBalanceIndexer<Block, Backend, Client, TransactionAdapter>
 where
     Block: BlockT,
     Backend: sc_client_api::backend::Backend<Block>,
     Client: BlockchainEvents<Block> + BlockBackend<Block> + StorageProvider<Block, Backend>,
+    TransactionAdapter: BitcoinTransactionAdapter<Block>,
 {
     pub async fn run(&self) {
         let mut block_import_stream = self.client.every_import_notification_stream();
@@ -38,7 +41,7 @@ where
             let txdata = block
                 .extrinsics()
                 .iter()
-                .map(<subcoin_service::TransactionAdapter as BitcoinTransactionAdapter::<Block>>::extrinsic_to_bitcoin_transaction)
+                .map(TransactionAdapter::extrinsic_to_bitcoin_transaction)
                 .collect::<Vec<_>>();
 
             for Transaction { input, output, .. } in txdata {
@@ -63,7 +66,7 @@ where
                 for txin in input {
                     let OutPoint { txid, vout } = txin.previous_output;
 
-                    let storage_key = subcoin_service::CoinStorageKey.storage_key(txid, vout);
+                    let storage_key = self.coin_storage_key.storage_key(txid, vout);
 
                     let spent_coin = self
                         .client
