@@ -1,6 +1,6 @@
 //! Schema for the cumulative work for each block in the chain.
 
-use bitcoin::consensus::Encodable;
+use bitcoin::hashes::Hash;
 use bitcoin::{BlockHash, Target, Work};
 use codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
@@ -21,11 +21,7 @@ where
 
 /// The aux storage key used to store the block weight of the given block hash.
 fn chain_work_key(bitcoin_block_hash: BlockHash) -> Vec<u8> {
-    let mut encoded_block_hash = Vec::with_capacity(32);
-    bitcoin_block_hash
-        .consensus_encode(&mut encoded_block_hash)
-        .expect("Encode bitcoin block hash must not fail; qed");
-    (b"chain_work", encoded_block_hash).encode()
+    (b"chain_work", bitcoin_block_hash.as_byte_array().to_vec()).encode()
 }
 
 /// Write the cumulative chain work of a block to aux storage.
