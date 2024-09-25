@@ -1,7 +1,7 @@
 //! Schema for the cumulative work for each block in the chain.
 
 use bitcoin::hashes::Hash;
-use bitcoin::{BlockHash, Target, Work};
+use bitcoin::{BlockHash, Work};
 use codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
@@ -35,12 +35,7 @@ where
 {
     let key = chain_work_key(bitcoin_block_hash);
 
-    // `Work` has no exposed API that can be used for encode/decode purpose,
-    // thus using `Target` as a workaround to store the inner bytes.
-    // TODO: https://github.com/rust-bitcoin/rust-bitcoin/issues/3405
-    let encoded_work = chain_work.to_target().to_le_bytes();
-
-    write_aux((key, encoded_work.to_vec()))
+    write_aux((key, chain_work.to_le_bytes().to_vec()))
 }
 
 /// Load the cumulative chain work for given block.
@@ -49,10 +44,7 @@ pub(crate) fn load_chain_work<B: AuxStore>(
     bitcoin_block_hash: BlockHash,
 ) -> ClientResult<Work> {
     load_decode(backend, chain_work_key(bitcoin_block_hash).as_slice())?
-        .map(|encoded_target| {
-            let target = Target::from_le_bytes(encoded_target);
-            target.to_work()
-        })
+        .map(Work::from_le_bytes)
         .ok_or(sp_blockchain::Error::Backend(format!(
             "Cumulative chain work for #{bitcoin_block_hash} not found",
         )))
