@@ -49,18 +49,10 @@
 <a href="#49" id="49">49</a>
 <a href="#50" id="50">50</a>
 <a href="#51" id="51">51</a>
-<a href="#52" id="52">52</a>
-<a href="#53" id="53">53</a>
-<a href="#54" id="54">54</a>
-<a href="#55" id="55">55</a>
-<a href="#56" id="56">56</a>
-<a href="#57" id="57">57</a>
-<a href="#58" id="58">58</a>
-<a href="#59" id="59">59</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! Schema for the cumulative work for each block in the chain.
 
 </span><span class="kw">use </span>bitcoin::hashes::Hash;
-<span class="kw">use </span>bitcoin::{BlockHash, Target, Work};
+<span class="kw">use </span>bitcoin::{BlockHash, Work};
 <span class="kw">use </span>codec::{Decode, Encode};
 <span class="kw">use </span>sc_client_api::backend::AuxStore;
 <span class="kw">use </span>sp_blockchain::{Error <span class="kw">as </span>ClientError, <span class="prelude-ty">Result </span><span class="kw">as </span>ClientResult};
@@ -94,12 +86,7 @@
 {
     <span class="kw">let </span>key = chain_work_key(bitcoin_block_hash);
 
-    <span class="comment">// `Work` has no exposed API that can be used for encode/decode purpose,
-    // thus using `Target` as a workaround to store the inner bytes.
-    // TODO: https://github.com/rust-bitcoin/rust-bitcoin/issues/3405
-    </span><span class="kw">let </span>encoded_work = chain_work.to_target().to_le_bytes();
-
-    write_aux((key, encoded_work.to_vec()))
+    write_aux((key, chain_work.to_le_bytes().to_vec()))
 }
 
 <span class="doccomment">/// Load the cumulative chain work for given block.
@@ -108,10 +95,7 @@
     bitcoin_block_hash: BlockHash,
 ) -&gt; ClientResult&lt;Work&gt; {
     load_decode(backend, chain_work_key(bitcoin_block_hash).as_slice())<span class="question-mark">?
-        </span>.map(|encoded_target| {
-            <span class="kw">let </span>target = Target::from_le_bytes(encoded_target);
-            target.to_work()
-        })
+        </span>.map(Work::from_le_bytes)
         .ok_or(sp_blockchain::Error::Backend(<span class="macro">format!</span>(
             <span class="string">"Cumulative chain work for #{bitcoin_block_hash} not found"</span>,
         )))
