@@ -156,7 +156,10 @@ pub async fn new_test_node_and_produce_blocks(
 
     for block_number in 1..=up_to {
         let block = test_blocks[block_number as usize].clone();
-        let import_status = bitcoin_block_import.import_block(block).await.unwrap();
+        let import_status = bitcoin_block_import
+            .import_block(block, BlockOrigin::Own)
+            .await
+            .unwrap();
         assert!(matches!(import_status, ImportStatus::Imported { .. }));
     }
 

@@ -153,7 +153,7 @@ pub struct ImportManyBlocksResult {
 /// be called as well.
 async fn import_many_blocks(
     import_handle: &mut dyn BitcoinBlockImport,
-    _blocks_origin: BlockOrigin,
+    origin: BlockOrigin,
     blocks: Vec<BitcoinBlock>,
 ) -> ImportManyBlocksResult {
     tracing::trace!("[import_many_blocks] importing {} blocks", blocks.len());
@@ -171,7 +171,7 @@ async fn import_many_blocks(
             Err(BlockImportError::Cancelled)
         } else {
             // The actual import.
-            let import_result = import_handle.import_block(block).await;
+            let import_result = import_handle.import_block(block, origin).await;
 
             match import_result {
                 Ok(ImportStatus::AlreadyInChain(number)) => {

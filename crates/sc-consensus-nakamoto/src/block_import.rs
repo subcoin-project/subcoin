@@ -273,6 +273,7 @@ where
         &mut self,
         block: BitcoinBlock,
         substrate_parent_block: HashAndNumber<Block>,
+        origin: BlockOrigin,
     ) -> sp_blockchain::Result<(BlockImportParams<Block>, Option<BlockImportParams<Block>>)> {
         let HashAndNumber {
             number: parent_block_number,
@@ -347,7 +348,7 @@ where
         let substrate_block_hash = header.hash();
         let bitcoin_block_hash = block.header.block_hash();
 
-        let mut block_import_params = BlockImportParams::new(BlockOrigin::Own, header);
+        let mut block_import_params = BlockImportParams::new(origin, header);
         let (total_work, fork_choice) = calculate_chain_work_and_fork_choice(
             &self.client,
             &block.header,
@@ -477,6 +478,7 @@ pub trait BitcoinBlockImport: Send + Sync + 'static {
     async fn import_block(
         &mut self,
         block: BitcoinBlock,
+        origin: BlockOrigin,
     ) -> Result<ImportStatus, sp_consensus::Error>;
 }
 
@@ -501,6 +503,7 @@ where
     async fn import_block(
         &mut self,
         block: BitcoinBlock,
+        origin: BlockOrigin,
     ) -> Result<ImportStatus, sp_consensus::Error> {
         if let Some(block_number) = self.client.block_number(block.block_hash()) {
             return Ok(ImportStatus::AlreadyInChain(block_number));
@@ -541,7 +544,7 @@ where
             .map_err(|err| import_err(format!("{err:?}")))?;
 
         let (block_import_params, maybe_import_params_for_block_executor) = self
-            .prepare_substrate_block_import(block, substrate_parent_block)
+            .prepare_substrate_block_import(block, substrate_parent_block, origin)
             .map_err(|err| import_err(err.to_string()))?;
 
         if let Some(import_params) = maybe_import_params_for_block_executor {
