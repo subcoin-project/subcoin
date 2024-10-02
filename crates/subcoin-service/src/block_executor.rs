@@ -251,6 +251,7 @@ mod tests {
     };
     use sc_service::config::DatabaseSource;
     use sc_service::BasePath;
+    use sp_consensus::BlockOrigin;
     use sp_core::Encode;
     use subcoin_test_service::{block_data, new_test_node_and_produce_blocks};
     use tokio::runtime::Handle;
@@ -345,7 +346,7 @@ mod tests {
         let test_blocks = block_data();
 
         bitcoin_block_import
-            .import_block(test_blocks[1].clone())
+            .import_block(test_blocks[1].clone(), BlockOrigin::Own)
             .await
             .unwrap();
 
@@ -370,13 +371,13 @@ mod tests {
         bitcoin_block_import.set_block_executor(block_executor);
 
         let import_status = bitcoin_block_import
-            .import_block(test_blocks[2].clone())
+            .import_block(test_blocks[2].clone(), BlockOrigin::Own)
             .await
             .unwrap();
         assert!(matches!(import_status, ImportStatus::Imported { .. }));
 
         let import_status = bitcoin_block_import
-            .import_block(test_blocks[3].clone())
+            .import_block(test_blocks[3].clone(), BlockOrigin::Own)
             .await
             .unwrap();
         assert!(matches!(import_status, ImportStatus::Imported { .. }));

@@ -7,6 +7,7 @@ use sc_client_api::HeaderBackend;
 use sc_consensus_nakamoto::{BitcoinBlockImport, BitcoinBlockImporter, ImportConfig};
 use sc_service::config::PrometheusConfig;
 use sc_service::SpawnTaskHandle;
+use sp_consensus::BlockOrigin;
 use sp_runtime::traits::{Block as BlockT, CheckedDiv, NumberFor, Zero};
 use sp_runtime::Saturating;
 use std::path::{Path, PathBuf};
@@ -131,7 +132,7 @@ impl ImportBlocksCmd {
         for index in from..=to {
             let block = bitcoind_backend.block_at(index)?;
             bitcoin_block_import
-                .import_block(block)
+                .import_block(block, BlockOrigin::Own)
                 .await
                 .map_err(sp_blockchain::Error::Consensus)?;
 

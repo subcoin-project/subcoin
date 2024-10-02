@@ -92,10 +92,7 @@ where
     };
 }
 
-fn display_block_import<B: BlockT, C>(
-    client: Arc<C>,
-    is_major_syncing: Arc<AtomicBool>,
-) -> impl Future<Output = ()>
+async fn display_block_import<B: BlockT, C>(client: Arc<C>, is_major_syncing: Arc<AtomicBool>)
 where
     C: UsageProvider<B> + HeaderMetadata<B> + BlockchainEvents<B>,
     <C as HeaderMetadata<B>>::Error: Display,
@@ -109,7 +106,7 @@ where
     let mut last_blocks = VecDeque::new();
     let max_blocks_to_track = 100;
 
-    client.import_notification_stream().for_each(move |n| {
+    while let Some(n) = client.import_notification_stream().next().await {
         // detect and log reorganizations.
         if let Some((ref last_num, ref last_hash)) = last_best {
             if n.header.parent_hash() != last_hash && n.is_new_best {
@@ -132,12 +129,12 @@ where
             }
         }
 
-        if n.is_new_best {
-            last_best = Some((*n.header.number(), n.hash));
+        if is_major_syncing.load(Ordering::Relaxed) {
+            continue;
         }
 
-        if is_major_syncing.load(Ordering::Relaxed) {
-            return future::ready(());
+        if n.is_new_best {
+            last_best = Some((*n.header.number(), n.hash));
         }
 
         // If we already printed a message for a given block recently,
@@ -158,7 +155,5 @@ where
                 n.hash,
             );
         }
-
-        future::ready(())
-    })
+    }
 }

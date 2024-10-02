@@ -12,6 +12,7 @@ use sc_service::config::{
 };
 use sc_service::error::Error as ServiceError;
 use sc_service::{BasePath, Configuration, Role};
+use sp_consensus::BlockOrigin;
 use sp_keyring::sr25519::Keyring as Sr25519Keyring;
 use std::sync::Arc;
 use subcoin_service::{FullClient, NodeComponents, SubcoinConfiguration};
@@ -156,7 +157,10 @@ pub async fn new_test_node_and_produce_blocks(
 
     for block_number in 1..=up_to {
         let block = test_blocks[block_number as usize].clone();
-        let import_status = bitcoin_block_import.import_block(block).await.unwrap();
+        let import_status = bitcoin_block_import
+            .import_block(block, BlockOrigin::Own)
+            .await
+            .unwrap();
         assert!(matches!(import_status, ImportStatus::Imported { .. }));
     }
 

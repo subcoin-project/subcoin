@@ -604,7 +604,11 @@ where
         );
 
         self.import_queue.import_blocks(ImportBlocks {
-            origin: BlockOrigin::NetworkInitialSync,
+            origin: if self.is_major_syncing.load(Ordering::Relaxed) {
+                BlockOrigin::NetworkInitialSync
+            } else {
+                BlockOrigin::NetworkBroadcast
+            },
             blocks,
         });
     }
