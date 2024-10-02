@@ -9141,6 +9141,7 @@ dependencies = [
  "sc-consensus-nakamoto",
  "sc-service",
  "serde_json",
+ "sp-consensus",
  "sp-keyring",
  "subcoin-runtime",
  "subcoin-service",
