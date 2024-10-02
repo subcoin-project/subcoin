@@ -12,6 +12,7 @@ use sc_service::config::{
 };
 use sc_service::error::Error as ServiceError;
 use sc_service::{BasePath, Configuration, Role};
+use sp_consensus::BlockOrigin;
 use sp_keyring::sr25519::Keyring as Sr25519Keyring;
 use std::sync::Arc;
 use subcoin_service::{FullClient, NodeComponents, SubcoinConfiguration};
