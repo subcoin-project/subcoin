@@ -404,7 +404,7 @@
 /// be called as well.
 </span><span class="kw">async fn </span>import_many_blocks(
     import_handle: <span class="kw-2">&amp;mut </span><span class="kw">dyn </span>BitcoinBlockImport,
-    _blocks_origin: BlockOrigin,
+    origin: BlockOrigin,
     blocks: Vec&lt;BitcoinBlock&gt;,
 ) -&gt; ImportManyBlocksResult {
     <span class="macro">tracing::trace!</span>(<span class="string">"[import_many_blocks] importing {} blocks"</span>, blocks.len());
@@ -422,7 +422,7 @@
             <span class="prelude-val">Err</span>(BlockImportError::Cancelled)
         } <span class="kw">else </span>{
             <span class="comment">// The actual import.
-            </span><span class="kw">let </span>import_result = import_handle.import_block(block).<span class="kw">await</span>;
+            </span><span class="kw">let </span>import_result = import_handle.import_block(block, origin).<span class="kw">await</span>;
 
             <span class="kw">match </span>import_result {
                 <span class="prelude-val">Ok</span>(ImportStatus::AlreadyInChain(number)) =&gt; {

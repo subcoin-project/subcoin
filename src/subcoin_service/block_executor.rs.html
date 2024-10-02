@@ -388,6 +388,7 @@
 <a href="#388" id="388">388</a>
 <a href="#389" id="389">389</a>
 <a href="#390" id="390">390</a>
+<a href="#391" id="391">391</a>
 </pre></div><pre class="rust"><code><span class="kw">use crate</span>::{
     initialize_genesis_block_hash_mapping, CoinStorageKey, FullBackend, FullClient,
     GenesisBlockBuilder, InMemoryBackend, InMemoryClient, SubcoinExecutorDispatch,
@@ -641,6 +642,7 @@
     };
     <span class="kw">use </span>sc_service::config::DatabaseSource;
     <span class="kw">use </span>sc_service::BasePath;
+    <span class="kw">use </span>sp_consensus::BlockOrigin;
     <span class="kw">use </span>sp_core::Encode;
     <span class="kw">use </span>subcoin_test_service::{block_data, new_test_node_and_produce_blocks};
     <span class="kw">use </span>tokio::runtime::Handle;
@@ -735,7 +737,7 @@
         <span class="kw">let </span>test_blocks = block_data();
 
         bitcoin_block_import
-            .import_block(test_blocks[<span class="number">1</span>].clone())
+            .import_block(test_blocks[<span class="number">1</span>].clone(), BlockOrigin::Own)
             .<span class="kw">await
             </span>.unwrap();
 
@@ -760,13 +762,13 @@
         </span>bitcoin_block_import.set_block_executor(block_executor);
 
         <span class="kw">let </span>import_status = bitcoin_block_import
-            .import_block(test_blocks[<span class="number">2</span>].clone())
+            .import_block(test_blocks[<span class="number">2</span>].clone(), BlockOrigin::Own)
             .<span class="kw">await
             </span>.unwrap();
         <span class="macro">assert!</span>(<span class="macro">matches!</span>(import_status, ImportStatus::Imported { .. }));
 
         <span class="kw">let </span>import_status = bitcoin_block_import
-            .import_block(test_blocks[<span class="number">3</span>].clone())
+            .import_block(test_blocks[<span class="number">3</span>].clone(), BlockOrigin::Own)
             .<span class="kw">await
             </span>.unwrap();
         <span class="macro">assert!</span>(<span class="macro">matches!</span>(import_status, ImportStatus::Imported { .. }));

@@ -273,6 +273,7 @@
 <a href="#273" id="273">273</a>
 <a href="#274" id="274">274</a>
 <a href="#275" id="275">275</a>
+<a href="#276" id="276">276</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::subcoin_params::CommonParams;
 <span class="kw">use </span><span class="kw">crate</span>::utils::Yield;
 <span class="kw">use </span>bitcoin_explorer::BitcoinDB;
@@ -282,6 +283,7 @@
 <span class="kw">use </span>sc_consensus_nakamoto::{BitcoinBlockImport, BitcoinBlockImporter, ImportConfig};
 <span class="kw">use </span>sc_service::config::PrometheusConfig;
 <span class="kw">use </span>sc_service::SpawnTaskHandle;
+<span class="kw">use </span>sp_consensus::BlockOrigin;
 <span class="kw">use </span>sp_runtime::traits::{Block <span class="kw">as </span>BlockT, CheckedDiv, NumberFor, Zero};
 <span class="kw">use </span>sp_runtime::Saturating;
 <span class="kw">use </span>std::path::{Path, PathBuf};
@@ -406,7 +408,7 @@
         <span class="kw">for </span>index <span class="kw">in </span>from..=to {
             <span class="kw">let </span>block = bitcoind_backend.block_at(index)<span class="question-mark">?</span>;
             bitcoin_block_import
-                .import_block(block)
+                .import_block(block, BlockOrigin::Own)
                 .<span class="kw">await
                 </span>.map_err(sp_blockchain::Error::Consensus)<span class="question-mark">?</span>;
 

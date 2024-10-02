@@ -565,6 +565,9 @@
 <a href="#565" id="565">565</a>
 <a href="#566" id="566">566</a>
 <a href="#567" id="567">567</a>
+<a href="#568" id="568">568</a>
+<a href="#569" id="569">569</a>
+<a href="#570" id="570">570</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! This module provides the implementation for importing Bitcoin blocks into Subcoin.
 //!
 //! Each Bitcoin block is converted into a Substrate block and imported into the database.
@@ -840,6 +843,7 @@
         <span class="kw-2">&amp;mut </span><span class="self">self</span>,
         block: BitcoinBlock,
         substrate_parent_block: HashAndNumber&lt;Block&gt;,
+        origin: BlockOrigin,
     ) -&gt; sp_blockchain::Result&lt;(BlockImportParams&lt;Block&gt;, <span class="prelude-ty">Option</span>&lt;BlockImportParams&lt;Block&gt;&gt;)&gt; {
         <span class="kw">let </span>HashAndNumber {
             number: parent_block_number,
@@ -914,7 +918,7 @@
         <span class="kw">let </span>substrate_block_hash = header.hash();
         <span class="kw">let </span>bitcoin_block_hash = block.header.block_hash();
 
-        <span class="kw">let </span><span class="kw-2">mut </span>block_import_params = BlockImportParams::new(BlockOrigin::Own, header);
+        <span class="kw">let </span><span class="kw-2">mut </span>block_import_params = BlockImportParams::new(origin, header);
         <span class="kw">let </span>(total_work, fork_choice) = calculate_chain_work_and_fork_choice(
             <span class="kw-2">&amp;</span><span class="self">self</span>.client,
             <span class="kw-2">&amp;</span>block.header,
@@ -1044,6 +1048,7 @@
     </span><span class="kw">async fn </span>import_block(
         <span class="kw-2">&amp;mut </span><span class="self">self</span>,
         block: BitcoinBlock,
+        origin: BlockOrigin,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;ImportStatus, sp_consensus::Error&gt;;
 }
 
@@ -1068,6 +1073,7 @@
     <span class="kw">async fn </span>import_block(
         <span class="kw-2">&amp;mut </span><span class="self">self</span>,
         block: BitcoinBlock,
+        origin: BlockOrigin,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;ImportStatus, sp_consensus::Error&gt; {
         <span class="kw">if let </span><span class="prelude-val">Some</span>(block_number) = <span class="self">self</span>.client.block_number(block.block_hash()) {
             <span class="kw">return </span><span class="prelude-val">Ok</span>(ImportStatus::AlreadyInChain(block_number));
@@ -1108,7 +1114,7 @@
             .map_err(|err| import_err(<span class="macro">format!</span>(<span class="string">"{err:?}"</span>)))<span class="question-mark">?</span>;
 
         <span class="kw">let </span>(block_import_params, maybe_import_params_for_block_executor) = <span class="self">self
-            </span>.prepare_substrate_block_import(block, substrate_parent_block)
+            </span>.prepare_substrate_block_import(block, substrate_parent_block, origin)
             .map_err(|err| import_err(err.to_string()))<span class="question-mark">?</span>;
 
         <span class="kw">if let </span><span class="prelude-val">Some</span>(import_params) = maybe_import_params_for_block_executor {

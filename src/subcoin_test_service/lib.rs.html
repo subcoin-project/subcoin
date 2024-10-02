@@ -162,6 +162,10 @@
 <a href="#162" id="162">162</a>
 <a href="#163" id="163">163</a>
 <a href="#164" id="164">164</a>
+<a href="#165" id="165">165</a>
+<a href="#166" id="166">166</a>
+<a href="#167" id="167">167</a>
+<a href="#168" id="168">168</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>bitcoin::consensus::Decodable;
 <span class="kw">use </span>bitcoin::hex::FromHex;
 <span class="kw">use </span>bitcoin::Block;
@@ -176,6 +180,7 @@
 };
 <span class="kw">use </span>sc_service::error::Error <span class="kw">as </span>ServiceError;
 <span class="kw">use </span>sc_service::{BasePath, Configuration, Role};
+<span class="kw">use </span>sp_consensus::BlockOrigin;
 <span class="kw">use </span>sp_keyring::sr25519::Keyring <span class="kw">as </span>Sr25519Keyring;
 <span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>subcoin_service::{FullClient, NodeComponents, SubcoinConfiguration};
@@ -320,7 +325,10 @@
 
     <span class="kw">for </span>block_number <span class="kw">in </span><span class="number">1</span>..=up_to {
         <span class="kw">let </span>block = test_blocks[block_number <span class="kw">as </span>usize].clone();
-        <span class="kw">let </span>import_status = bitcoin_block_import.import_block(block).<span class="kw">await</span>.unwrap();
+        <span class="kw">let </span>import_status = bitcoin_block_import
+            .import_block(block, BlockOrigin::Own)
+            .<span class="kw">await
+            </span>.unwrap();
         <span class="macro">assert!</span>(<span class="macro">matches!</span>(import_status, ImportStatus::Imported { .. }));
     }
 

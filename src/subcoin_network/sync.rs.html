@@ -609,6 +609,10 @@
 <a href="#609" id="609">609</a>
 <a href="#610" id="610">610</a>
 <a href="#611" id="611">611</a>
+<a href="#612" id="612">612</a>
+<a href="#613" id="613">613</a>
+<a href="#614" id="614">614</a>
+<a href="#615" id="615">615</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::block_downloader::{BlocksFirstDownloader, HeadersFirstDownloader};
 <span class="kw">use </span><span class="kw">crate</span>::peer_manager::NewPeer;
 <span class="kw">use crate</span>::{Error, Latency, PeerId, SyncStatus, SyncStrategy};
@@ -1215,7 +1219,11 @@
         );
 
         <span class="self">self</span>.import_queue.import_blocks(ImportBlocks {
-            origin: BlockOrigin::NetworkInitialSync,
+            origin: <span class="kw">if </span><span class="self">self</span>.is_major_syncing.load(Ordering::Relaxed) {
+                BlockOrigin::NetworkInitialSync
+            } <span class="kw">else </span>{
+                BlockOrigin::NetworkBroadcast
+            },
             blocks,
         });
     }
