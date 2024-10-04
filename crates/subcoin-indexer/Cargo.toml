@@ -9,6 +9,8 @@ license.workspace = true
 [dependencies]
 bitcoin = { workspace = true }
 codec = { workspace = true }
+diesel = { version = "2.2.4", features = ["postgres"] }
+dotenvy = "0.15.7"
 futures = { workspace = true }
 sc-client-api = { workspace = true }
 sp-runtime = { workspace = true }

@@ -1,73 +1,96 @@
+mod in_mem;
 mod indexers;
+mod postgres;
 
 use bitcoin::{Address, Script, TxOut};
-use sc_client_api::StorageProvider;
 use std::collections::HashMap;
 use subcoin_primitives::runtime::Coin;
 
-struct IndexerStore {
-    network: bitcoin::Network,
-    balances: HashMap<Address, u64>,
+#[derive(Debug)]
+enum BlockAction {
+    ApplyNew,
+    Undo,
 }
 
-impl IndexerStore {
-    fn new(network: bitcoin::Network) -> Self {
+#[derive(Debug)]
+struct BalanceChanges {
+    to_increase: HashMap<Address, u64>,
+    to_decrease: HashMap<Address, u64>,
+}
+
+impl BalanceChanges {
+    pub fn new() -> Self {
         Self {
-            network,
-            balances: HashMap::new(),
+            to_increase: HashMap::new(),
+            to_decrease: HashMap::new(),
         }
     }
 
-    fn apply_tx_changes(&mut self, added_utxos: Vec<TxOut>, spent_coins: Vec<Coin>) {
-        // Add UTXOs to the indexer.
-        for txout in added_utxos {
-            if let Some(address) =
-                Address::from_script(txout.script_pubkey.as_script(), self.network).ok()
-            {
-                let value = txout.value.to_sat();
-                self.balances
-                    .entry(address)
-                    .and_modify(|e| {
-                        *e += value;
-                    })
-                    .or_insert(value);
-            }
+    /// Merge another [`BalanceChanges`] into this one.
+    pub fn merge(&mut self, other: BalanceChanges) {
+        // Merge increase changes
+        for (address, amount) in other.to_increase {
+            *self.to_increase.entry(address).or_insert(0) += amount;
         }
 
-        // Remove spent coins.
-        for coin in spent_coins {
-            if let Some(address) =
-                Address::from_script(Script::from_bytes(&coin.script_pubkey), self.network).ok()
-            {
-                self.balances.entry(address).and_modify(|e| {
-                    *e -= coin.amount;
-                });
-            }
+        // Merge decrease changes
+        for (address, amount) in other.to_decrease {
+            *self.to_decrease.entry(address).or_insert(0) += amount;
         }
     }
+}
 
-    fn undo_tx_changes(&mut self, added_utxos: Vec<TxOut>, spent_coins: Vec<Coin>) {
-        // Remove added UTXOs.
-        for txout in added_utxos {
-            if let Some(address) =
-                Address::from_script(txout.script_pubkey.as_script(), self.network).ok()
-            {
-                let value = txout.value.to_sat();
-                self.balances.entry(address).and_modify(|e| {
-                    *e -= value;
-                });
-            }
-        }
+struct TxInfo {
+    new_utxos: Vec<TxOut>,
+    spent_coins: Vec<Coin>,
+}
 
-        // Restore spent coins.
-        for coin in spent_coins {
+fn calculate_transaction_balance_changes(
+    network: bitcoin::Network,
+    action: BlockAction,
+    tx_info: TxInfo,
+) -> BalanceChanges {
+    let TxInfo {
+        new_utxos,
+        spent_coins,
+    } = tx_info;
+
+    let utxo_changes = new_utxos
+        .into_iter()
+        .filter_map(|txout| {
             if let Some(address) =
-                Address::from_script(Script::from_bytes(&coin.script_pubkey), self.network).ok()
+                Address::from_script(txout.script_pubkey.as_script(), network).ok()
             {
-                self.balances.entry(address).and_modify(|e| {
-                    *e += coin.amount;
-                });
+                Some((address, txout.value.to_sat()))
+            } else {
+                None
             }
-        }
+        })
+        .collect::<HashMap<_, _>>();
+
+    let coin_changes = spent_coins
+        .into_iter()
+        .filter_map(|coin| {
+            if let Some(address) =
+                Address::from_script(Script::from_bytes(&coin.script_pubkey), network).ok()
+            {
+                Some((address, coin.amount))
+            } else {
+                None
+            }
+        })
+        .collect::<HashMap<_, _>>();
+
+    match action {
+        // Add UTXOs to the indexer, remove spent coins.
+        BlockAction::ApplyNew => BalanceChanges {
+            to_increase: utxo_changes,
+            to_decrease: coin_changes,
+        },
+        // Remove added UTXOs, restore spent coins.
+        BlockAction::Undo => BalanceChanges {
+            to_increase: coin_changes,
+            to_decrease: utxo_changes,
+        },
     }
 }
