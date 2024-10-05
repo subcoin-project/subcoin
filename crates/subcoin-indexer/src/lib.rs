@@ -4,10 +4,8 @@ mod postgres;
 
 use bitcoin::{Address, Script, TxOut};
 use std::collections::HashMap;
-use subcoin_primitives::runtime::Coin;
 
-pub use indexers::btc::BtcIndexer;
-pub use indexers::BackendType;
+pub use indexers::{BackendType, BtcIndexer};
 
 #[derive(Debug, Clone, Copy)]
 enum BlockAction {
@@ -43,9 +41,17 @@ impl BalanceChanges {
     }
 }
 
+/// Represents a [`TxOut`] that has been spent.
+struct SpentCoin {
+    /// The value of the output, in satoshis.
+    pub amount: u64,
+    /// The script which must be satisfied for the output to be spent.
+    pub script_pubkey: Vec<u8>,
+}
+
 struct TxInfo {
     new_utxos: Vec<TxOut>,
-    spent_coins: Vec<Coin>,
+    spent_coins: Vec<SpentCoin>,
 }
 
 fn calculate_transaction_balance_changes(

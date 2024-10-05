@@ -1,8 +1,10 @@
+mod btc;
+
 use crate::in_mem::InMemStore;
 use crate::postgres::PostgresStore;
 use crate::BalanceChanges;
 
-pub mod btc;
+pub use btc::BtcIndexer;
 
 pub enum BackendType {
     InMem,

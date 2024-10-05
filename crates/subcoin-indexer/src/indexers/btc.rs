@@ -1,4 +1,6 @@
-use crate::{calculate_transaction_balance_changes, BalanceChanges, BlockAction, TxInfo};
+use crate::{
+    calculate_transaction_balance_changes, BalanceChanges, BlockAction, SpentCoin, TxInfo,
+};
 use bitcoin::{OutPoint, Transaction, TxIn};
 use codec::Decode;
 use futures::StreamExt;
@@ -76,7 +78,11 @@ where
         }
     }
 
-    fn get_coin_from_storage(&self, block_hash: Block::Hash, out_point: OutPoint) -> Option<Coin> {
+    fn get_coin_from_storage(
+        &self,
+        block_hash: Block::Hash,
+        out_point: OutPoint,
+    ) -> Option<SpentCoin> {
         let OutPoint { txid, vout } = out_point;
 
         let storage_key = self.coin_storage_key.storage_key(txid, vout);
@@ -86,6 +92,10 @@ where
             .ok()
             .flatten()
             .and_then(|data| Coin::decode(&mut data.0.as_slice()).ok())
+            .map(|coin| SpentCoin {
+                amount: coin.amount,
+                script_pubkey: coin.script_pubkey,
+            })
     }
 
     fn fetch_spent_coins(
@@ -93,7 +103,7 @@ where
         block: &bitcoin::Block,
         parent_hash: Block::Hash,
         input: &[TxIn],
-    ) -> Vec<Coin> {
+    ) -> Vec<SpentCoin> {
         input
             .iter()
             .map(
@@ -158,32 +168,20 @@ where
     }
 }
 
-fn extract_transactions<
-    'a,
-    Block: BlockT,
-    TransactionAdapter: BitcoinTransactionAdapter<Block> + 'a,
->(
-    block: &'a Block,
-) -> impl Iterator<Item = Transaction> + '_ {
-    block
-        .extrinsics()
-        .iter()
-        .map(TransactionAdapter::extrinsic_to_bitcoin_transaction)
-}
-
-fn find_coin_in_current_block(block: &bitcoin::Block, out_point: OutPoint) -> Option<Coin> {
+fn find_coin_in_current_block(block: &bitcoin::Block, out_point: OutPoint) -> Option<SpentCoin> {
     let OutPoint { txid, vout } = out_point;
-    block
-        .txdata
-        .iter()
-        .enumerate()
-        .find_map(|(index, tx)| (tx.compute_txid() == txid).then_some((tx, index == 0)))
-        .and_then(|(tx, is_coinbase)| {
-            tx.output.get(vout as usize).cloned().map(|txout| Coin {
-                is_coinbase,
-                amount: txout.value.to_sat(),
-                height: 0u32, // TODO: unused
-                script_pubkey: txout.script_pubkey.to_bytes(),
-            })
-        })
+
+    block.txdata.iter().find_map(|tx| {
+        if tx.compute_txid() == txid {
+            tx.output
+                .get(vout as usize)
+                .cloned()
+                .map(|txout| SpentCoin {
+                    amount: txout.value.to_sat(),
+                    script_pubkey: txout.script_pubkey.to_bytes(),
+                })
+        } else {
+            None
+        }
+    })
 }
