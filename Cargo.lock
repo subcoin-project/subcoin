@@ -9119,6 +9119,7 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "subcoin-crypto",
+ "subcoin-indexer",
  "subcoin-informant",
  "subcoin-network",
  "subcoin-primitives",

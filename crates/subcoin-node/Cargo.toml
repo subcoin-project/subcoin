@@ -47,6 +47,7 @@ sp-io = { workspace = true }
 sp-runtime = { workspace = true }
 subcoin-crypto = { workspace = true }
 subcoin-informant = { workspace = true }
+subcoin-indexer = { workspace = true }
 subcoin-network = { workspace = true, features = ["cli"] }
 subcoin-primitives = { workspace = true }
 subcoin-rpc = { workspace = true }

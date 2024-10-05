@@ -38,6 +38,9 @@ pub struct Run {
     #[arg(long)]
     pub no_hardware_benchmarks: bool,
 
+    #[clap(long)]
+    pub enable_indexer: bool,
+
     #[allow(missing_docs)]
     #[clap(flatten)]
     pub rpc_params: RpcParams,
@@ -154,12 +157,14 @@ impl RunCmd {
 
         let spawn_handle = task_manager.spawn_handle();
 
+        let coin_storage_key = Arc::new(subcoin_service::CoinStorageKey);
+
         let bitcoin_block_import =
             BitcoinBlockImporter::<_, _, _, _, subcoin_service::TransactionAdapter>::new(
                 client.clone(),
                 client.clone(),
                 import_config,
-                Arc::new(subcoin_service::CoinStorageKey),
+                coin_storage_key.clone(),
                 block_executor,
                 config.prometheus_registry(),
             );
@@ -280,6 +285,20 @@ impl RunCmd {
             None,
             subcoin_informant::build(client.clone(), subcoin_network_handle),
         );
+
+        if run.enable_indexer {
+            spawn_handle.spawn(
+                "subcoin-indexer",
+                None,
+                subcoin_indexer::BtcIndexer::<_, _, _, subcoin_service::TransactionAdapter>::new(
+                    bitcoin_network,
+                    client.clone(),
+                    coin_storage_key,
+                    subcoin_indexer::BackendType::Postgres,
+                )
+                .run(),
+            );
+        }
 
         Ok(task_manager)
     }
