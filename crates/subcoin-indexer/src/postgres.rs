@@ -34,8 +34,7 @@ impl PostgresStore {
                 match query_address(conn, &address) {
                     Ok(existing_address) => {
                         // Address exists, update its balance
-                        let new_balance =
-                            existing_address.current_btc_balance.unwrap_or(0) + amount as i64;
+                        let new_balance = existing_address.current_btc_balance + amount as i64;
                         diesel::update(addresses::table.find(existing_address.id))
                             .set(addresses::current_btc_balance.eq(new_balance))
                             .execute(conn)?;
@@ -62,8 +61,7 @@ impl PostgresStore {
                 match query_address(conn, &address) {
                     Ok(existing_address) => {
                         // Address exists, update its balance by subtracting
-                        let new_balance =
-                            existing_address.current_btc_balance.unwrap_or(0) - amount as i64;
+                        let new_balance = existing_address.current_btc_balance - amount as i64;
                         diesel::update(addresses::table.find(existing_address.id))
                             .set(addresses::current_btc_balance.eq(new_balance))
                             .execute(conn)?;

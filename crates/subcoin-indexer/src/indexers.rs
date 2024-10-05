@@ -25,7 +25,9 @@ impl IndexerStore {
     pub fn write_block_changes(&mut self, block_changes: BalanceChanges) {
         match self {
             Self::InMem(store) => store.write_balance_changes(block_changes),
-            Self::Postgres(store) => store.write_balance_changes(block_changes),
+            Self::Postgres(store) => store
+                .write_balance_changes(block_changes)
+                .expect("Failed to write changes to postgres database"),
         }
     }
 }

@@ -1,5 +1,5 @@
 use crate::{calculate_transaction_balance_changes, BalanceChanges, BlockAction, TxInfo};
-use bitcoin::{Address, OutPoint, Script, Transaction, TxIn, TxOut};
+use bitcoin::{OutPoint, Transaction, TxIn};
 use codec::Decode;
 use futures::StreamExt;
 use sc_client_api::{BlockBackend, BlockchainEvents, StorageProvider};
@@ -76,7 +76,7 @@ where
         }
     }
 
-    fn expect_coin_from_storage(&self, block_hash: Block::Hash, out_point: OutPoint) -> Coin {
+    fn get_coin_from_storage(&self, block_hash: Block::Hash, out_point: OutPoint) -> Option<Coin> {
         let OutPoint { txid, vout } = out_point;
 
         let storage_key = self.coin_storage_key.storage_key(txid, vout);
@@ -86,13 +86,24 @@ where
             .ok()
             .flatten()
             .and_then(|data| Coin::decode(&mut data.0.as_slice()).ok())
-            .expect("Coin must exist in the parent block's state")
     }
 
-    fn fetch_spent_coins(&self, parent_hash: Block::Hash, input: Vec<TxIn>) -> Vec<Coin> {
+    fn fetch_spent_coins(
+        &self,
+        block: &bitcoin::Block,
+        parent_hash: Block::Hash,
+        input: &[TxIn],
+    ) -> Vec<Coin> {
         input
             .iter()
-            .map(|txin| self.expect_coin_from_storage(parent_hash, txin.previous_output))
+            .map(
+                |txin| match self.get_coin_from_storage(parent_hash, txin.previous_output) {
+                    Some(coin) => coin,
+                    None => find_coin_in_current_block(block, txin.previous_output).unwrap_or_else(
+                        || panic!("Coin not found, parent_hash: #{parent_hash:?}, txin: {txin:?}"),
+                    ),
+                },
+            )
             .collect::<Vec<_>>()
     }
 
@@ -106,42 +117,37 @@ where
     }
 
     fn apply_block_changes(&mut self, block: Block) {
-        let parent_hash = *block.header().parent_hash();
-
-        let mut block_changes = BalanceChanges::new();
-
-        for Transaction { input, output, .. } in
-            extract_transactions::<Block, TransactionAdapter>(&block)
-        {
-            let tx_changes = calculate_transaction_balance_changes(
-                self.network,
-                BlockAction::ApplyNew,
-                TxInfo {
-                    new_utxos: output,
-                    spent_coins: self.fetch_spent_coins(parent_hash, input),
-                },
-            );
-
-            block_changes.merge(tx_changes);
-        }
-
-        self.indexer_store.write_block_changes(block_changes);
+        self.process_block(block, BlockAction::ApplyNew)
     }
 
     fn undo_block_changes(&mut self, block: Block) {
+        self.process_block(block, BlockAction::Undo)
+    }
+
+    fn process_block(&mut self, block: Block, block_action: BlockAction) {
         let parent_hash = *block.header().parent_hash();
+
+        let bitcoin_block =
+            subcoin_primitives::convert_to_bitcoin_block::<Block, TransactionAdapter>(block)
+                .expect("Failed to convert Substrate block to Bitcoin block");
 
         let mut block_changes = BalanceChanges::new();
 
-        for Transaction { input, output, .. } in
-            extract_transactions::<Block, TransactionAdapter>(&block)
-        {
+        for tx in &bitcoin_block.txdata {
+            let is_coinbase = tx.is_coinbase();
+
+            let Transaction { input, output, .. } = tx;
+
             let tx_changes = calculate_transaction_balance_changes(
                 self.network,
-                BlockAction::Undo,
+                block_action,
                 TxInfo {
-                    new_utxos: output,
-                    spent_coins: self.fetch_spent_coins(parent_hash, input),
+                    new_utxos: output.to_vec(),
+                    spent_coins: if is_coinbase {
+                        Vec::new()
+                    } else {
+                        self.fetch_spent_coins(&bitcoin_block, parent_hash, input)
+                    },
                 },
             );
 
@@ -163,4 +169,21 @@ fn extract_transactions<
         .extrinsics()
         .iter()
         .map(TransactionAdapter::extrinsic_to_bitcoin_transaction)
+}
+
+fn find_coin_in_current_block(block: &bitcoin::Block, out_point: OutPoint) -> Option<Coin> {
+    let OutPoint { txid, vout } = out_point;
+    block
+        .txdata
+        .iter()
+        .enumerate()
+        .find_map(|(index, tx)| (tx.compute_txid() == txid).then_some((tx, index == 0)))
+        .and_then(|(tx, is_coinbase)| {
+            tx.output.get(vout as usize).cloned().map(|txout| Coin {
+                is_coinbase,
+                amount: txout.value.to_sat(),
+                height: 0u32, // TODO: unused
+                script_pubkey: txout.script_pubkey.to_bytes(),
+            })
+        })
 }

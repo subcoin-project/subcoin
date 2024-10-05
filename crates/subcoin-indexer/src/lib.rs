@@ -9,7 +9,7 @@ use subcoin_primitives::runtime::Coin;
 pub use indexers::btc::BtcIndexer;
 pub use indexers::BackendType;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum BlockAction {
     ApplyNew,
     Undo,

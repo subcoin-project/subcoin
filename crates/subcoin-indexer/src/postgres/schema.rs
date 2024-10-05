@@ -4,6 +4,6 @@ diesel::table! {
     addresses (id) {
         id -> Int4,
         address -> Text,
-        current_btc_balance -> Nullable<Int8>,
+        current_btc_balance -> Int8,
     }
 }
