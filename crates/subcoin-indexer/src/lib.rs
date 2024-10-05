@@ -6,6 +6,9 @@ use bitcoin::{Address, Script, TxOut};
 use std::collections::HashMap;
 use subcoin_primitives::runtime::Coin;
 
+pub use indexers::btc::BtcIndexer;
+pub use indexers::BackendType;
+
 #[derive(Debug)]
 enum BlockAction {
     ApplyNew,
@@ -82,12 +85,10 @@ fn calculate_transaction_balance_changes(
         .collect::<HashMap<_, _>>();
 
     match action {
-        // Add UTXOs to the indexer, remove spent coins.
         BlockAction::ApplyNew => BalanceChanges {
             to_increase: utxo_changes,
             to_decrease: coin_changes,
         },
-        // Remove added UTXOs, restore spent coins.
         BlockAction::Undo => BalanceChanges {
             to_increase: coin_changes,
             to_decrease: utxo_changes,
