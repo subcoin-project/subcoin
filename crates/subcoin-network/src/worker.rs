@@ -18,7 +18,7 @@ use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 use substrate_prometheus_endpoint::Registry;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::MissedTickBehavior;
@@ -358,17 +358,12 @@ where
                             self.peer_manager
                                 .disconnect(from, Error::PingLatencyTooHigh);
                             self.chain_sync.remove_peer(from);
+                            self.peer_store.remove_peer(from);
                         } else {
                             self.chain_sync.set_peer_latency(from, avg_ping_latency);
                             self.chain_sync.update_sync_peer_on_lower_latency();
-                        }
-
-                        if self.peer_store.is_latency_acceptable(avg_ping_latency) {
-                            self.peer_store.add_or_update_peer(
-                                from,
-                                avg_ping_latency,
-                                SystemTime::now(),
-                            );
+                            self.peer_store
+                                .add_peer_if_latency_acceptable(from, avg_ping_latency);
                         }
                     }
                     Err(err) => {

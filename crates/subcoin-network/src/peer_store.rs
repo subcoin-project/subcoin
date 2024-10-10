@@ -87,12 +87,14 @@ impl PeerStore {
         self.peers.keys().cloned().collect()
     }
 
-    /// Checks if the given latency is below the configured threshold.
-    pub fn is_latency_acceptable(&self, latency: u128) -> bool {
-        latency < self.good_peer_latency_threshold
+    /// Adds or updates a peer in the store if its latency is below the configured threshold.
+    pub fn add_peer_if_latency_acceptable(&mut self, peer_id: PeerId, latency: Latency) {
+        if latency < self.good_peer_latency_threshold {
+            self.add_or_update_peer(peer_id, latency, SystemTime::now());
+        }
     }
 
-    pub fn add_or_update_peer(&mut self, peer_id: PeerId, latency: Latency, last_seen: SystemTime) {
+    fn add_or_update_peer(&mut self, peer_id: PeerId, latency: Latency, last_seen: SystemTime) {
         let new_peer = GoodPeer { latency, last_seen };
 
         if let Some(peer) = self.peers.get_mut(&peer_id) {
