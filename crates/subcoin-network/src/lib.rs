@@ -34,6 +34,7 @@ mod metrics;
 mod network;
 mod orphan_blocks_pool;
 mod peer_manager;
+mod peer_store;
 mod sync;
 #[cfg(test)]
 mod tests;
@@ -55,6 +56,7 @@ use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnbound
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::net::{AddrParseError, SocketAddr};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::Arc;
 use substrate_prometheus_endpoint::Registry;
@@ -208,6 +210,8 @@ impl Clone for Bandwidth {
 pub struct Config {
     /// Bitcoin network type.
     pub network: BitcoinNetwork,
+    /// Node base path.
+    pub base_path: PathBuf,
     /// Specify the local listen address.
     pub listen_on: PeerId,
     /// List of seednodes.
@@ -365,6 +369,7 @@ where
                 connection_initiator: connection_initiator.clone(),
                 max_outbound_peers: config.max_outbound_peers,
                 enable_block_sync: config.enable_block_sync_on_startup,
+                base_path: config.base_path.clone(),
             },
             registry.as_ref(),
         );

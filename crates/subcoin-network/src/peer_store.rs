@@ -12,7 +12,7 @@ use std::time::{Instant, SystemTime};
 const PEER_STORE_FILE_NAME: &str = "peer_store.json";
 
 /// Threshold for the good peer latency, in milliseconds.
-const GOOD_PEER_LATENCY_THRESHOLD: usize = 100;
+pub(crate) const GOOD_PEER_LATENCY_THRESHOLD: u128 = 100;
 
 /// Periodic interval for updating `peer_store.json` on disk, in seconds.
 const SAVE_INTERVAL: u64 = 60 * 10;
@@ -77,8 +77,16 @@ impl PeerStore {
         }
     }
 
-    pub fn add_peer(&mut self, peer_id: PeerId, latency: Latency, last_seen: SystemTime) {
+    pub fn add_or_update_peer(&mut self, peer_id: PeerId, latency: Latency, last_seen: SystemTime) {
         let new_peer = GoodPeer { latency, last_seen };
+
+        if let Some(peer) = self.peers.get_mut(&peer_id) {
+            peer.latency = latency;
+            peer.last_seen = last_seen;
+            self.peers_changed = true;
+            self.process_peer_changes();
+            return;
+        }
 
         // Check if we need to replace the lowest quality peer.
         if self.peers.len() >= self.capacity {
@@ -104,25 +112,11 @@ impl PeerStore {
         self.process_peer_changes();
     }
 
-    pub fn update_peer(&mut self, peer_id: PeerId, latency: Latency, last_seen: SystemTime) {
-        if let Some(peer) = self.peers.get_mut(&peer_id) {
-            peer.latency = latency;
-            peer.last_seen = last_seen;
-            self.peers_changed = true;
-            self.process_peer_changes();
-        }
-    }
-
     /// Removes a peer from the store.
     pub fn remove_peer(&mut self, peer_id: PeerId) {
         if self.peers.remove(&peer_id).is_some() {
             self.process_peer_changes();
         }
-    }
-
-    /// Checks if a peer exists in the store.
-    pub fn contains(&self, peer_id: PeerId) -> bool {
-        self.peers.contains_key(&peer_id)
     }
 
     /// Update the sorted peers and write peers to disk if needed.

@@ -4,6 +4,7 @@ use crate::network::{
     IncomingTransaction, NetworkStatus, NetworkWorkerMessage, SendTransactionResult,
 };
 use crate::peer_manager::{Config, PeerManager, SlowPeer};
+use crate::peer_store::{PeerStore, GOOD_PEER_LATENCY_THRESHOLD};
 use crate::sync::{ChainSync, LocatorRequest, SyncAction, SyncRequest};
 use crate::transaction_manager::TransactionManager;
 use crate::{Bandwidth, Error, Latency, PeerId, SyncStrategy};
@@ -15,9 +16,10 @@ use sc_client_api::{AuxStore, HeaderBackend};
 use sc_consensus_nakamoto::{BlockImportQueue, HeaderVerifier};
 use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_runtime::traits::Block as BlockT;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use substrate_prometheus_endpoint::Registry;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::MissedTickBehavior;
@@ -58,6 +60,7 @@ pub struct Params<Block, Client> {
     pub max_outbound_peers: usize,
     /// Whether to enable block sync on start.
     pub enable_block_sync: bool,
+    pub base_path: PathBuf,
 }
 
 /// [`NetworkWorker`] is responsible for processing the network events.
@@ -65,6 +68,7 @@ pub struct NetworkWorker<Block, Client> {
     config: Config,
     network_event_receiver: UnboundedReceiver<Event>,
     peer_manager: PeerManager<Block, Client>,
+    peer_store: PeerStore,
     transaction_manager: TransactionManager,
     chain_sync: ChainSync<Block, Client>,
     metrics: Option<Metrics>,
@@ -87,6 +91,7 @@ where
             connection_initiator,
             max_outbound_peers,
             enable_block_sync,
+            base_path,
         } = params;
 
         let config = Config::new();
@@ -106,6 +111,8 @@ where
             metrics.clone(),
         );
 
+        let peer_store = PeerStore::new(base_path, max_outbound_peers);
+
         let chain_sync = ChainSync::new(
             client,
             header_verifier,
@@ -118,6 +125,7 @@ where
         Self {
             network_event_receiver,
             peer_manager,
+            peer_store,
             transaction_manager: TransactionManager::new(),
             chain_sync,
             metrics,
@@ -176,10 +184,12 @@ where
             Event::OutboundConnectionFailure { peer_addr, reason } => {
                 self.peer_manager
                     .on_outbound_connection_failure(peer_addr, reason);
+                self.peer_store.remove_peer(peer_addr);
             }
             Event::Disconnect { peer_addr, reason } => {
                 self.peer_manager.disconnect(peer_addr, reason);
                 self.chain_sync.remove_peer(peer_addr);
+                self.peer_store.remove_peer(peer_addr);
             }
             Event::PeerMessage {
                 from,
@@ -345,20 +355,29 @@ where
             }
             NetworkMessage::Pong(nonce) => {
                 match self.peer_manager.on_pong(from, nonce) {
-                    Ok(ping_latency) => {
+                    Ok(avg_ping_latency) => {
                         // Disconnect the peer directly if the latency is higher than the threshold.
-                        if ping_latency > LATENCY_THRESHOLD {
+                        if avg_ping_latency > LATENCY_THRESHOLD {
                             self.peer_manager
                                 .disconnect(from, Error::PingLatencyTooHigh);
                             self.chain_sync.remove_peer(from);
                         } else {
-                            self.chain_sync.set_peer_latency(from, ping_latency);
+                            self.chain_sync.set_peer_latency(from, avg_ping_latency);
                             self.chain_sync.update_sync_peer_on_lower_latency();
+                        }
+
+                        if avg_ping_latency < GOOD_PEER_LATENCY_THRESHOLD {
+                            self.peer_store.add_or_update_peer(
+                                from,
+                                avg_ping_latency,
+                                SystemTime::now(),
+                            );
                         }
                     }
                     Err(err) => {
                         self.peer_manager.disconnect(from, err);
                         self.chain_sync.remove_peer(from);
+                        self.peer_store.remove_peer(from);
                     }
                 }
                 Ok(SyncAction::None)
