@@ -450,6 +450,24 @@
 <a href="#450" id="450">450</a>
 <a href="#451" id="451">451</a>
 <a href="#452" id="452">452</a>
+<a href="#453" id="453">453</a>
+<a href="#454" id="454">454</a>
+<a href="#455" id="455">455</a>
+<a href="#456" id="456">456</a>
+<a href="#457" id="457">457</a>
+<a href="#458" id="458">458</a>
+<a href="#459" id="459">459</a>
+<a href="#460" id="460">460</a>
+<a href="#461" id="461">461</a>
+<a href="#462" id="462">462</a>
+<a href="#463" id="463">463</a>
+<a href="#464" id="464">464</a>
+<a href="#465" id="465">465</a>
+<a href="#466" id="466">466</a>
+<a href="#467" id="467">467</a>
+<a href="#468" id="468">468</a>
+<a href="#469" id="469">469</a>
+<a href="#470" id="470">470</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # Bitcoin Network
 //!
 //! This crate facilitates communication with other nodes in the Bitcoin P2P network. It handles
@@ -486,6 +504,7 @@
 <span class="kw">mod </span>network;
 <span class="kw">mod </span>orphan_blocks_pool;
 <span class="kw">mod </span>peer_manager;
+<span class="kw">mod </span>peer_store;
 <span class="kw">mod </span>sync;
 <span class="attr">#[cfg(test)]
 </span><span class="kw">mod </span>tests;
@@ -495,6 +514,7 @@
 <span class="kw">use </span><span class="kw">crate</span>::connection::ConnectionInitiator;
 <span class="kw">use </span><span class="kw">crate</span>::metrics::BandwidthMetrics;
 <span class="kw">use </span><span class="kw">crate</span>::network::NetworkWorkerMessage;
+<span class="kw">use </span><span class="kw">crate</span>::peer_store::PeerStore;
 <span class="kw">use </span><span class="kw">crate</span>::worker::NetworkWorker;
 <span class="kw">use </span>bitcoin::p2p::ServiceFlags;
 <span class="kw">use </span>bitcoin::{BlockHash, Network <span class="kw">as </span>BitcoinNetwork};
@@ -507,6 +527,7 @@
 <span class="kw">use </span>sp_runtime::traits::Block <span class="kw">as </span>BlockT;
 <span class="kw">use </span>std::marker::PhantomData;
 <span class="kw">use </span>std::net::{AddrParseError, SocketAddr};
+<span class="kw">use </span>std::path::PathBuf;
 <span class="kw">use </span>std::sync::atomic::{AtomicBool, AtomicU64};
 <span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>substrate_prometheus_endpoint::Registry;
@@ -660,6 +681,8 @@
 </span><span class="kw">pub struct </span>Config {
     <span class="doccomment">/// Bitcoin network type.
     </span><span class="kw">pub </span>network: BitcoinNetwork,
+    <span class="doccomment">/// Node base path.
+    </span><span class="kw">pub </span>base_path: PathBuf,
     <span class="doccomment">/// Specify the local listen address.
     </span><span class="kw">pub </span>listen_on: PeerId,
     <span class="doccomment">/// List of seednodes.
@@ -672,6 +695,8 @@
     </span><span class="kw">pub </span>max_outbound_peers: usize,
     <span class="doccomment">/// Maximum number of inbound peer connections.
     </span><span class="kw">pub </span>max_inbound_peers: usize,
+    <span class="doccomment">/// Persistent peer latency threshold in milliseconds (ms).
+    </span><span class="kw">pub </span>persistent_peer_latency_threshold: u128,
     <span class="doccomment">/// Major sync strategy.
     </span><span class="kw">pub </span>sync_strategy: SyncStrategy,
     <span class="doccomment">/// Whether to enable the block sync on startup.
@@ -803,6 +828,14 @@
             <span class="macro">tracing::info!</span>(<span class="string">"Subcoin block sync is disabled until Substrate fast sync is complete"</span>);
         }
 
+        <span class="kw">let </span>peer_store = PeerStore::new(
+            <span class="kw-2">&amp;</span>config.base_path,
+            config.max_outbound_peers,
+            config.persistent_peer_latency_threshold,
+        );
+
+        <span class="kw">let </span>persistent_peers = peer_store.peer_set();
+
         <span class="kw">let </span>network_worker = NetworkWorker::new(
             worker::Params {
                 client: client.clone(),
@@ -817,6 +850,7 @@
                 connection_initiator: connection_initiator.clone(),
                 max_outbound_peers: config.max_outbound_peers,
                 enable_block_sync: config.enable_block_sync_on_startup,
+                peer_store,
             },
             registry.as_ref(),
         );
@@ -870,6 +904,8 @@
         <span class="kw">if </span>!seednode_only {
             bootnodes.extend(builtin_seednodes(network).iter().map(|s| s.to_string()));
         }
+
+        bootnodes.extend(persistent_peers.into_iter().map(|s| s.to_string()));
 
         <span class="comment">// Create a vector of futures for DNS lookups
         </span><span class="kw">let </span>lookup_futures = bootnodes.into_iter().map(|bootnode| <span class="kw">async move </span>{

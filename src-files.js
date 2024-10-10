@@ -5,7 +5,7 @@ var srcIndex = new Map(JSON.parse('[\
 ["sc_fast_sync_backend",["",[],["chain_state.rs","lib.rs"]]],\
 ["subcoin_crypto",["",[],["lib.rs","muhash.rs"]]],\
 ["subcoin_informant",["",[],["display.rs","lib.rs"]]],\
-["subcoin_network",["",[["block_downloader",[],["blocks_first.rs","headers_first.rs"]]],["address_book.rs","block_downloader.rs","checkpoint.rs","connection.rs","lib.rs","metrics.rs","network.rs","orphan_blocks_pool.rs","peer_manager.rs","sync.rs","transaction_manager.rs","worker.rs"]]],\
+["subcoin_network",["",[["block_downloader",[],["blocks_first.rs","headers_first.rs"]]],["address_book.rs","block_downloader.rs","checkpoint.rs","connection.rs","lib.rs","metrics.rs","network.rs","orphan_blocks_pool.rs","peer_manager.rs","peer_store.rs","sync.rs","transaction_manager.rs","worker.rs"]]],\
 ["subcoin_node",["",[["cli",[],["subcoin_params.rs"]],["commands",[],["blockchain.rs","import_blocks.rs","run.rs","tools.rs"]]],["cli.rs","commands.rs","lib.rs","rpc.rs","substrate_cli.rs","transaction_pool.rs","utils.rs"]]],\
 ["subcoin_primitives",["",[],["lib.rs"]]],\
 ["subcoin_rpc",["",[],["blockchain.rs","error.rs","lib.rs","network.rs","raw_transactions.rs"]]],\

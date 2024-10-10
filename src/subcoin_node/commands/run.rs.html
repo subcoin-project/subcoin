@@ -359,16 +359,29 @@
 <a href="#359" id="359">359</a>
 <a href="#360" id="360">360</a>
 <a href="#361" id="361">361</a>
+<a href="#362" id="362">362</a>
+<a href="#363" id="363">363</a>
+<a href="#364" id="364">364</a>
+<a href="#365" id="365">365</a>
+<a href="#366" id="366">366</a>
+<a href="#367" id="367">367</a>
+<a href="#368" id="368">368</a>
+<a href="#369" id="369">369</a>
+<a href="#370" id="370">370</a>
+<a href="#371" id="371">371</a>
+<a href="#372" id="372">372</a>
+<a href="#373" id="373">373</a>
+<a href="#374" id="374">374</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::subcoin_params::{CommonParams, NetworkParams};
 <span class="kw">use </span>clap::Parser;
 <span class="kw">use </span>sc_cli::{
     ImportParams, NetworkParams <span class="kw">as </span>SubstrateNetworkParams, NodeKeyParams, PrometheusParams, Role,
-    RpcEndpoint, RpcParams, SharedParams, SyncMode,
+    RpcEndpoint, RpcParams, SharedParams, SubstrateCli, SyncMode,
 };
 <span class="kw">use </span>sc_client_api::UsageProvider;
 <span class="kw">use </span>sc_consensus_nakamoto::BitcoinBlockImporter;
 <span class="kw">use </span>sc_service::config::{IpNetwork, RpcBatchRequestConfig};
-<span class="kw">use </span>sc_service::{Configuration, TaskManager};
+<span class="kw">use </span>sc_service::{BasePath, Configuration, TaskManager};
 <span class="kw">use </span>std::num::NonZeroU32;
 <span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>subcoin_network::SyncStrategy;
@@ -424,6 +437,10 @@
     </span><span class="kw">pub </span>import_params: ImportParams,
 }
 
+<span class="kw">fn </span>base_path_or_default(base_path: <span class="prelude-ty">Option</span>&lt;BasePath&gt;, executable_name: <span class="kw-2">&amp;</span>str) -&gt; BasePath {
+    base_path.unwrap_or_else(|| BasePath::from_project(<span class="string">""</span>, <span class="string">""</span>, executable_name))
+}
+
 <span class="kw">impl </span>Run {
     <span class="kw">fn </span>subcoin_network_config(<span class="kw-2">&amp;</span><span class="self">self</span>, network: bitcoin::Network) -&gt; subcoin_network::Config {
         subcoin_network::Config {
@@ -434,8 +451,17 @@
             ipv4_only: <span class="self">self</span>.network_params.ipv4_only,
             max_outbound_peers: <span class="self">self</span>.network_params.max_outbound_peers,
             max_inbound_peers: <span class="self">self</span>.network_params.max_inbound_peers,
+            persistent_peer_latency_threshold: <span class="self">self
+                </span>.network_params
+                .persistent_peer_latency_threshold,
             sync_strategy: <span class="self">self</span>.sync_strategy,
             enable_block_sync_on_startup: !<span class="self">self</span>.substrate_fast_sync_enabled(),
+            base_path: base_path_or_default(
+                <span class="self">self</span>.common_params.base_path.clone().map(Into::into),
+                <span class="kw-2">&amp;</span><span class="kw">crate</span>::substrate_cli::SubstrateCli::executable_name(),
+            )
+            .path()
+            .to_path_buf(),
         }
     }
 
