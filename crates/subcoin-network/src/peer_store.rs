@@ -15,7 +15,7 @@ const PEER_STORE_FILE_NAME: &str = "peer_store.json";
 pub(crate) const GOOD_PEER_LATENCY_THRESHOLD: u128 = 100;
 
 /// Periodic interval for updating `peer_store.json` on disk, in seconds.
-const SAVE_INTERVAL: u64 = 60 * 10;
+const SAVE_INTERVAL: u64 = 60 * 5;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 struct GoodPeer {
