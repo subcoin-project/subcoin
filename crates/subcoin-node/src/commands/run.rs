@@ -77,6 +77,9 @@ impl Run {
             ipv4_only: self.network_params.ipv4_only,
             max_outbound_peers: self.network_params.max_outbound_peers,
             max_inbound_peers: self.network_params.max_inbound_peers,
+            persistent_peer_latency_threshold: self
+                .network_params
+                .persistent_peer_latency_threshold,
             sync_strategy: self.sync_strategy,
             enable_block_sync_on_startup: !self.substrate_fast_sync_enabled(),
             base_path: base_path_or_default(

@@ -225,6 +225,8 @@ pub struct Config {
     pub max_outbound_peers: usize,
     /// Maximum number of inbound peer connections.
     pub max_inbound_peers: usize,
+    /// Persistent peer latency threshold in milliseconds (ms).
+    pub persistent_peer_latency_threshold: u128,
     /// Major sync strategy.
     pub sync_strategy: SyncStrategy,
     /// Whether to enable the block sync on startup.
@@ -356,7 +358,11 @@ where
             tracing::info!("Subcoin block sync is disabled until Substrate fast sync is complete");
         }
 
-        let peer_store = PeerStore::new(&config.base_path, config.max_outbound_peers);
+        let peer_store = PeerStore::new(
+            &config.base_path,
+            config.max_outbound_peers,
+            config.persistent_peer_latency_threshold,
+        );
 
         let persistent_peers = peer_store.peer_set();
 

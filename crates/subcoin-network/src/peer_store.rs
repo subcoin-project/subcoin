@@ -11,8 +11,8 @@ use std::time::{Instant, SystemTime};
 
 const PEER_STORE_FILE_NAME: &str = "peer_store.json";
 
-/// Threshold for the good peer latency, in milliseconds.
-pub(crate) const GOOD_PEER_LATENCY_THRESHOLD: u128 = 100;
+/// Maximum number of persistent peers on disk.
+const MAX_CAPACITY: usize = 20;
 
 /// Periodic interval for updating `peer_store.json` on disk, in seconds.
 const SAVE_INTERVAL: u64 = 60 * 5;
@@ -47,12 +47,13 @@ pub struct PeerStore {
     sorted_peers: Vec<PeerId>,
     peers_changed: bool,
     capacity: usize,
+    good_peer_latency_threshold: u128,
     file_path: PathBuf,
     last_saved_at: Instant,
 }
 
 impl PeerStore {
-    pub fn new(base_path: &Path, capacity: usize) -> Self {
+    pub fn new(base_path: &Path, capacity: usize, good_peer_latency_threshold: u128) -> Self {
         let file_path = base_path.join(PEER_STORE_FILE_NAME);
 
         let peers = load_peers(&file_path)
@@ -70,15 +71,25 @@ impl PeerStore {
         Self {
             peers,
             sorted_peers,
-            capacity,
+            capacity: if capacity > MAX_CAPACITY {
+                MAX_CAPACITY
+            } else {
+                capacity
+            },
             file_path,
             peers_changed: false,
+            good_peer_latency_threshold,
             last_saved_at: Instant::now(),
         }
     }
 
     pub fn peer_set(&self) -> Vec<PeerId> {
         self.peers.keys().cloned().collect()
+    }
+
+    /// Checks if the given latency is below the configured threshold.
+    pub fn is_latency_acceptable(&self, latency: u128) -> bool {
+        latency < self.good_peer_latency_threshold
     }
 
     pub fn add_or_update_peer(&mut self, peer_id: PeerId, latency: Latency, last_seen: SystemTime) {

@@ -4,7 +4,7 @@ use crate::network::{
     IncomingTransaction, NetworkStatus, NetworkWorkerMessage, SendTransactionResult,
 };
 use crate::peer_manager::{Config, PeerManager, SlowPeer};
-use crate::peer_store::{PeerStore, GOOD_PEER_LATENCY_THRESHOLD};
+use crate::peer_store::PeerStore;
 use crate::sync::{ChainSync, LocatorRequest, SyncAction, SyncRequest};
 use crate::transaction_manager::TransactionManager;
 use crate::{Bandwidth, Error, Latency, PeerId, SyncStrategy};
@@ -363,7 +363,7 @@ where
                             self.chain_sync.update_sync_peer_on_lower_latency();
                         }
 
-                        if avg_ping_latency < GOOD_PEER_LATENCY_THRESHOLD {
+                        if self.peer_store.is_latency_acceptable(avg_ping_latency) {
                             self.peer_store.add_or_update_peer(
                                 from,
                                 avg_ping_latency,
