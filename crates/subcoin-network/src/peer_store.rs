@@ -202,18 +202,19 @@ mod tests {
 
     #[test]
     fn test_peer_store() {
-        let mut peer_store = PeerStore::new("/".into(), 10);
+        let mut peer_store = PeerStore::new(&PathBuf::from("/"), 10, 200);
 
         let now = SystemTime::now();
         let peer1: PeerId = "127.0.0.1:8001".parse().unwrap();
         let peer2: PeerId = "127.0.0.1:8002".parse().unwrap();
         let peer3: PeerId = "127.0.0.1:8003".parse().unwrap();
         let peer4: PeerId = "127.0.0.1:8004".parse().unwrap();
-        peer_store.add_peer(peer1, 10, now);
-        peer_store.add_peer(peer2, 10, now.checked_sub(Duration::from_secs(1)).unwrap());
-        peer_store.add_peer(peer3, 10, now.checked_add(Duration::from_secs(1)).unwrap());
-        peer_store.add_peer(peer4, 5, now.checked_sub(Duration::from_secs(1)).unwrap());
+        peer_store.add_or_update_peer(peer1, 10, now);
+        peer_store.add_or_update_peer(peer2, 10, now.checked_sub(Duration::from_secs(1)).unwrap());
+        peer_store.add_or_update_peer(peer3, 10, now.checked_add(Duration::from_secs(1)).unwrap());
+        peer_store.add_or_update_peer(peer4, 5, now.checked_sub(Duration::from_secs(1)).unwrap());
 
+        assert_eq!(peer_store.peers.len(), 4);
         assert_eq!(peer_store.sorted_peers, vec![peer4, peer3, peer1, peer2]);
     }
 }
