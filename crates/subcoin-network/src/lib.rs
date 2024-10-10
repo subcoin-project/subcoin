@@ -44,6 +44,7 @@ mod worker;
 use crate::connection::ConnectionInitiator;
 use crate::metrics::BandwidthMetrics;
 use crate::network::NetworkWorkerMessage;
+use crate::peer_store::PeerStore;
 use crate::worker::NetworkWorker;
 use bitcoin::p2p::ServiceFlags;
 use bitcoin::{BlockHash, Network as BitcoinNetwork};
@@ -355,6 +356,10 @@ where
             tracing::info!("Subcoin block sync is disabled until Substrate fast sync is complete");
         }
 
+        let peer_store = PeerStore::new(&config.base_path, config.max_outbound_peers);
+
+        let persistent_peers = peer_store.peer_set();
+
         let network_worker = NetworkWorker::new(
             worker::Params {
                 client: client.clone(),
@@ -369,7 +374,7 @@ where
                 connection_initiator: connection_initiator.clone(),
                 max_outbound_peers: config.max_outbound_peers,
                 enable_block_sync: config.enable_block_sync_on_startup,
-                base_path: config.base_path.clone(),
+                peer_store,
             },
             registry.as_ref(),
         );
@@ -423,6 +428,8 @@ where
         if !seednode_only {
             bootnodes.extend(builtin_seednodes(network).iter().map(|s| s.to_string()));
         }
+
+        bootnodes.extend(persistent_peers.into_iter().map(|s| s.to_string()));
 
         // Create a vector of futures for DNS lookups
         let lookup_futures = bootnodes.into_iter().map(|bootnode| async move {

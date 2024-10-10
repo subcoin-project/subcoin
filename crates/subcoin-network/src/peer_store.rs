@@ -52,7 +52,7 @@ pub struct PeerStore {
 }
 
 impl PeerStore {
-    pub fn new(base_path: PathBuf, capacity: usize) -> Self {
+    pub fn new(base_path: &Path, capacity: usize) -> Self {
         let file_path = base_path.join(PEER_STORE_FILE_NAME);
 
         let peers = load_peers(&file_path)
@@ -75,6 +75,10 @@ impl PeerStore {
             peers_changed: false,
             last_saved_at: Instant::now(),
         }
+    }
+
+    pub fn peer_set(&self) -> Vec<PeerId> {
+        self.peers.keys().cloned().collect()
     }
 
     pub fn add_or_update_peer(&mut self, peer_id: PeerId, latency: Latency, last_seen: SystemTime) {

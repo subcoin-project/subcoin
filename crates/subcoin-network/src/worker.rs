@@ -16,7 +16,6 @@ use sc_client_api::{AuxStore, HeaderBackend};
 use sc_consensus_nakamoto::{BlockImportQueue, HeaderVerifier};
 use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_runtime::traits::Block as BlockT;
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -60,7 +59,7 @@ pub struct Params<Block, Client> {
     pub max_outbound_peers: usize,
     /// Whether to enable block sync on start.
     pub enable_block_sync: bool,
-    pub base_path: PathBuf,
+    pub peer_store: PeerStore,
 }
 
 /// [`NetworkWorker`] is responsible for processing the network events.
@@ -91,7 +90,7 @@ where
             connection_initiator,
             max_outbound_peers,
             enable_block_sync,
-            base_path,
+            peer_store,
         } = params;
 
         let config = Config::new();
@@ -110,8 +109,6 @@ where
             max_outbound_peers,
             metrics.clone(),
         );
-
-        let peer_store = PeerStore::new(base_path, max_outbound_peers);
 
         let chain_sync = ChainSync::new(
             client,
