@@ -169,12 +169,12 @@ impl PeerStore {
 
     fn save_peers(&self) -> std::io::Result<()> {
         let file = std::fs::File::create(&self.file_path)?;
-        Ok(serde_json::to_writer(file, &self.peers).map_err(|err| {
+        serde_json::to_writer(file, &self.peers).map_err(|err| {
             std::io::Error::new(
                 std::io::ErrorKind::Other,
                 format!("Failed to serialize peers: {err:?}"),
             )
-        })?)
+        })
     }
 }
 
