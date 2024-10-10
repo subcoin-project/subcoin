@@ -34,6 +34,7 @@ mod metrics;
 mod network;
 mod orphan_blocks_pool;
 mod peer_manager;
+mod peer_store;
 mod sync;
 #[cfg(test)]
 mod tests;
@@ -43,6 +44,7 @@ mod worker;
 use crate::connection::ConnectionInitiator;
 use crate::metrics::BandwidthMetrics;
 use crate::network::NetworkWorkerMessage;
+use crate::peer_store::PeerStore;
 use crate::worker::NetworkWorker;
 use bitcoin::p2p::ServiceFlags;
 use bitcoin::{BlockHash, Network as BitcoinNetwork};
@@ -55,6 +57,7 @@ use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnbound
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::net::{AddrParseError, SocketAddr};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::Arc;
 use substrate_prometheus_endpoint::Registry;
@@ -208,6 +211,8 @@ impl Clone for Bandwidth {
 pub struct Config {
     /// Bitcoin network type.
     pub network: BitcoinNetwork,
+    /// Node base path.
+    pub base_path: PathBuf,
     /// Specify the local listen address.
     pub listen_on: PeerId,
     /// List of seednodes.
@@ -220,6 +225,8 @@ pub struct Config {
     pub max_outbound_peers: usize,
     /// Maximum number of inbound peer connections.
     pub max_inbound_peers: usize,
+    /// Persistent peer latency threshold in milliseconds (ms).
+    pub persistent_peer_latency_threshold: u128,
     /// Major sync strategy.
     pub sync_strategy: SyncStrategy,
     /// Whether to enable the block sync on startup.
@@ -351,6 +358,14 @@ where
             tracing::info!("Subcoin block sync is disabled until Substrate fast sync is complete");
         }
 
+        let peer_store = PeerStore::new(
+            &config.base_path,
+            config.max_outbound_peers,
+            config.persistent_peer_latency_threshold,
+        );
+
+        let persistent_peers = peer_store.peer_set();
+
         let network_worker = NetworkWorker::new(
             worker::Params {
                 client: client.clone(),
@@ -365,6 +380,7 @@ where
                 connection_initiator: connection_initiator.clone(),
                 max_outbound_peers: config.max_outbound_peers,
                 enable_block_sync: config.enable_block_sync_on_startup,
+                peer_store,
             },
             registry.as_ref(),
         );
@@ -418,6 +434,8 @@ where
         if !seednode_only {
             bootnodes.extend(builtin_seednodes(network).iter().map(|s| s.to_string()));
         }
+
+        bootnodes.extend(persistent_peers.into_iter().map(|s| s.to_string()));
 
         // Create a vector of futures for DNS lookups
         let lookup_futures = bootnodes.into_iter().map(|bootnode| async move {

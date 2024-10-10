@@ -4,6 +4,7 @@ use crate::network::{
     IncomingTransaction, NetworkStatus, NetworkWorkerMessage, SendTransactionResult,
 };
 use crate::peer_manager::{Config, PeerManager, SlowPeer};
+use crate::peer_store::PeerStore;
 use crate::sync::{ChainSync, LocatorRequest, SyncAction, SyncRequest};
 use crate::transaction_manager::TransactionManager;
 use crate::{Bandwidth, Error, Latency, PeerId, SyncStrategy};
@@ -58,6 +59,7 @@ pub struct Params<Block, Client> {
     pub max_outbound_peers: usize,
     /// Whether to enable block sync on start.
     pub enable_block_sync: bool,
+    pub peer_store: PeerStore,
 }
 
 /// [`NetworkWorker`] is responsible for processing the network events.
@@ -65,6 +67,7 @@ pub struct NetworkWorker<Block, Client> {
     config: Config,
     network_event_receiver: UnboundedReceiver<Event>,
     peer_manager: PeerManager<Block, Client>,
+    peer_store: PeerStore,
     transaction_manager: TransactionManager,
     chain_sync: ChainSync<Block, Client>,
     metrics: Option<Metrics>,
@@ -87,6 +90,7 @@ where
             connection_initiator,
             max_outbound_peers,
             enable_block_sync,
+            peer_store,
         } = params;
 
         let config = Config::new();
@@ -118,6 +122,7 @@ where
         Self {
             network_event_receiver,
             peer_manager,
+            peer_store,
             transaction_manager: TransactionManager::new(),
             chain_sync,
             metrics,
@@ -176,10 +181,12 @@ where
             Event::OutboundConnectionFailure { peer_addr, reason } => {
                 self.peer_manager
                     .on_outbound_connection_failure(peer_addr, reason);
+                self.peer_store.remove_peer(peer_addr);
             }
             Event::Disconnect { peer_addr, reason } => {
                 self.peer_manager.disconnect(peer_addr, reason);
                 self.chain_sync.remove_peer(peer_addr);
+                self.peer_store.remove_peer(peer_addr);
             }
             Event::PeerMessage {
                 from,
@@ -345,20 +352,24 @@ where
             }
             NetworkMessage::Pong(nonce) => {
                 match self.peer_manager.on_pong(from, nonce) {
-                    Ok(ping_latency) => {
+                    Ok(avg_ping_latency) => {
                         // Disconnect the peer directly if the latency is higher than the threshold.
-                        if ping_latency > LATENCY_THRESHOLD {
+                        if avg_ping_latency > LATENCY_THRESHOLD {
                             self.peer_manager
                                 .disconnect(from, Error::PingLatencyTooHigh);
                             self.chain_sync.remove_peer(from);
+                            self.peer_store.remove_peer(from);
                         } else {
-                            self.chain_sync.set_peer_latency(from, ping_latency);
+                            self.chain_sync.set_peer_latency(from, avg_ping_latency);
                             self.chain_sync.update_sync_peer_on_lower_latency();
+                            self.peer_store
+                                .add_peer_if_latency_acceptable(from, avg_ping_latency);
                         }
                     }
                     Err(err) => {
                         self.peer_manager.disconnect(from, err);
                         self.chain_sync.remove_peer(from);
+                        self.peer_store.remove_peer(from);
                     }
                 }
                 Ok(SyncAction::None)

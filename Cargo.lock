@@ -8945,6 +8945,7 @@ dependencies = [
  "sc-service",
  "sc-utils",
  "serde",
+ "serde_json",
  "sp-blockchain",
  "sp-consensus",
  "sp-core",

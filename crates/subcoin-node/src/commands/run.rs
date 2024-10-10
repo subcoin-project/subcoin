@@ -2,12 +2,12 @@ use crate::cli::subcoin_params::{CommonParams, NetworkParams};
 use clap::Parser;
 use sc_cli::{
     ImportParams, NetworkParams as SubstrateNetworkParams, NodeKeyParams, PrometheusParams, Role,
-    RpcEndpoint, RpcParams, SharedParams, SyncMode,
+    RpcEndpoint, RpcParams, SharedParams, SubstrateCli, SyncMode,
 };
 use sc_client_api::UsageProvider;
 use sc_consensus_nakamoto::BitcoinBlockImporter;
 use sc_service::config::{IpNetwork, RpcBatchRequestConfig};
-use sc_service::{Configuration, TaskManager};
+use sc_service::{BasePath, Configuration, TaskManager};
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use subcoin_network::SyncStrategy;
@@ -63,6 +63,10 @@ pub struct Run {
     pub import_params: ImportParams,
 }
 
+fn base_path_or_default(base_path: Option<BasePath>, executable_name: &str) -> BasePath {
+    base_path.unwrap_or_else(|| BasePath::from_project("", "", executable_name))
+}
+
 impl Run {
     fn subcoin_network_config(&self, network: bitcoin::Network) -> subcoin_network::Config {
         subcoin_network::Config {
@@ -73,8 +77,17 @@ impl Run {
             ipv4_only: self.network_params.ipv4_only,
             max_outbound_peers: self.network_params.max_outbound_peers,
             max_inbound_peers: self.network_params.max_inbound_peers,
+            persistent_peer_latency_threshold: self
+                .network_params
+                .persistent_peer_latency_threshold,
             sync_strategy: self.sync_strategy,
             enable_block_sync_on_startup: !self.substrate_fast_sync_enabled(),
+            base_path: base_path_or_default(
+                self.common_params.base_path.clone().map(Into::into),
+                &crate::substrate_cli::SubstrateCli::executable_name(),
+            )
+            .path()
+            .to_path_buf(),
         }
     }
 

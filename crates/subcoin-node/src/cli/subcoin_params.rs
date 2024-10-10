@@ -61,6 +61,14 @@ pub struct NetworkParams {
     /// Specify the maximum number of outbound subcoin networking peers.
     #[clap(long, default_value = "20")]
     pub max_outbound_peers: usize,
+
+    /// Persistent peer latency threshold in milliseconds (ms).
+    ///
+    /// Only peers with a latency lower than this threshold can be saved to disk.
+    ///
+    /// Default value is 200 ms
+    #[clap(long, default_value_t = 200)]
+    pub persistent_peer_latency_threshold: u128,
 }
 
 #[derive(Debug, Clone, clap::ValueEnum)]

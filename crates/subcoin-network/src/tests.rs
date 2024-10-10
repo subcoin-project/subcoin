@@ -218,6 +218,8 @@ async fn test_block_announcement_via_headers() {
 
     let config = subcoin_test_service::test_configuration(runtime_handle);
 
+    let base_path = config.base_path.path().to_path_buf();
+
     let NodeComponents {
         client,
         task_manager,
@@ -277,8 +279,10 @@ async fn test_block_announcement_via_headers() {
             ipv4_only: true,
             max_outbound_peers: 10,
             max_inbound_peers: 10,
+            persistent_peer_latency_threshold: 200,
             sync_strategy: crate::SyncStrategy::HeadersFirst,
             enable_block_sync_on_startup: false,
+            base_path,
         },
         import_queue,
         spawn_handle.clone(),

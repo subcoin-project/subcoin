@@ -8,7 +8,7 @@ license.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
-bitcoin = { workspace = true, features = ["serde"] }
+bitcoin = { workspace = true, features = ["serde", "std"] }
 chrono = { workspace = true }
 clap = { workspace = true, optional = true }
 fastrand = { workspace = true }
@@ -23,6 +23,7 @@ sc-consensus-nakamoto = { workspace = true }
 sc-service = { workspace = true }
 sc-utils = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 sp-blockchain = { workspace = true }
 sp-consensus = { workspace = true }
 sp-core = { workspace = true }
