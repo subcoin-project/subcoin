@@ -132,6 +132,7 @@ impl PeerStore {
     /// Removes a peer from the store.
     pub fn remove_peer(&mut self, peer_id: PeerId) {
         if self.peers.remove(&peer_id).is_some() {
+            self.peers_changed = true;
             self.process_peer_changes();
         }
     }
