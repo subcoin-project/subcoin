@@ -48,6 +48,9 @@ pub struct BlocksFirstDownloader<Block, Client> {
     download_state: DownloadState,
     download_manager: BlockDownloadManager,
     last_locator_start: u32,
+    pending_block_requests: Vec<Inventory>,
+    /// Number of blocks' data requested but not yet received.
+    requested_blocks_count: usize,
     _phantom: PhantomData<Block>,
 }
 
@@ -64,6 +67,8 @@ where
             download_state: DownloadState::Idle,
             download_manager: BlockDownloadManager::new(),
             last_locator_start: 0u32,
+            pending_block_requests: Vec::new(),
+            requested_blocks_count: 0,
             _phantom: Default::default(),
         };
 
@@ -115,6 +120,22 @@ where
             }
         }
 
+        if !self.pending_block_requests.is_empty() && self.requested_blocks_count == 0 {
+            let max_request_size = self.max_block_data_request_size();
+
+            let mut block_data_request = std::mem::take(&mut self.pending_block_requests);
+
+            if block_data_request.len() > max_request_size {
+                self.pending_block_requests = block_data_request.split_off(max_request_size);
+            }
+
+            self.requested_blocks_count = block_data_request.len();
+
+            tracing::debug!(from = ?self.peer_id, "📦 Downloading {} blocks", self.requested_blocks_count);
+
+            return SyncAction::Request(SyncRequest::Data(block_data_request, self.peer_id));
+        }
+
         if self.download_manager.is_stalled() {
             return SyncAction::RestartSyncWithStalledPeer(self.peer_id);
         }
@@ -128,6 +149,8 @@ where
         self.last_locator_start = 0u32;
         self.download_manager.reset();
         self.download_state = DownloadState::Restarting;
+        self.pending_block_requests.clear();
+        self.requested_blocks_count = 0;
     }
 
     // Handle `inv` message.
@@ -177,10 +200,17 @@ where
             return SyncAction::None;
         }
 
+        let max_request_size = self.max_block_data_request_size();
+
+        if block_data_request.len() > max_request_size {
+            self.pending_block_requests = block_data_request.split_off(max_request_size);
+            self.requested_blocks_count = block_data_request.len();
+        }
+
         tracing::debug!(
             from = ?self.peer_id,
             requested_blocks_count = self.download_manager.requested_blocks.len(),
-            "📦 Downloading {} blocks", block_data_request.len(),
+            "📦 Downloading {} blocks", self.requested_blocks_count,
         );
 
         SyncAction::Request(SyncRequest::Data(block_data_request, self.peer_id))
@@ -231,6 +261,8 @@ where
 
             self.download_manager
                 .add_block(block_number, block_hash, block);
+
+            self.requested_blocks_count -= 1;
 
             match block_number.cmp(&last_get_blocks_target) {
                 CmpOrdering::Less => {
@@ -377,6 +409,25 @@ where
         self.client.block_locator(Some(from), |height: u32| {
             self.download_manager.queued_blocks.block_hash(height)
         })
+    }
+
+    fn max_block_data_request_size(&self) -> usize {
+        let best_known = self
+            .client
+            .best_number()
+            .max(self.download_manager.best_queued_number);
+
+        match best_known {
+            0..=99_999 => 500,
+            100_000..=199_999 => 256,
+            200_000..=299_999 => 128,
+            300_000..=399_999 => 64,
+            400_000..=499_999 => 32,
+            500_000..=599_999 => 16,
+            600_000..=699_999 => 8,
+            700_000..=799_999 => 4,
+            _ => 2,
+        }
     }
 }
 
