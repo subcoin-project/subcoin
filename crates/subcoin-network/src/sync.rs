@@ -413,29 +413,30 @@ where
 
             // Start major syncing if the gap is significant.
             let (new_syncing, sync_action) = if require_major_sync {
+                let blocks_first = our_best >= crate::checkpoint::last_checkpoint_height()
+                    || matches!(self.sync_strategy, SyncStrategy::BlocksFirst);
+
                 tracing::debug!(
                     latency = ?best_peer.latency,
-                    "⏩ Starting major sync from {sync_peer:?} at #{our_best}",
+                    "⏩ Starting major sync ({}) from {sync_peer:?} at #{our_best}",
+                    if blocks_first { "blocks-first" } else { "headers-first" }
                 );
 
-                match self.sync_strategy {
-                    SyncStrategy::BlocksFirst => {
-                        let (downloader, blocks_request) =
-                            BlocksFirstDownloader::new(self.client.clone(), sync_peer, peer_best);
-                        (
-                            Syncing::BlocksFirstSync(Box::new(downloader)),
-                            SyncAction::Request(blocks_request),
-                        )
-                    }
-                    SyncStrategy::HeadersFirst => {
-                        let (downloader, sync_action) = HeadersFirstDownloader::new(
-                            self.client.clone(),
-                            self.header_verifier.clone(),
-                            sync_peer,
-                            peer_best,
-                        );
-                        (Syncing::HeadersFirstSync(Box::new(downloader)), sync_action)
-                    }
+                if blocks_first {
+                    let (downloader, blocks_request) =
+                        BlocksFirstDownloader::new(self.client.clone(), sync_peer, peer_best);
+                    (
+                        Syncing::BlocksFirstSync(Box::new(downloader)),
+                        SyncAction::Request(blocks_request),
+                    )
+                } else {
+                    let (downloader, sync_action) = HeadersFirstDownloader::new(
+                        self.client.clone(),
+                        self.header_verifier.clone(),
+                        sync_peer,
+                        peer_best,
+                    );
+                    (Syncing::HeadersFirstSync(Box::new(downloader)), sync_action)
                 }
             } else {
                 let (downloader, blocks_request) =

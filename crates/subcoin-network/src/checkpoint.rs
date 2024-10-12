@@ -173,6 +173,13 @@ pub(crate) fn next_checkpoint(block_number: u32) -> Option<IndexedBlock> {
     }
 }
 
+pub(crate) fn last_checkpoint_height() -> u32 {
+    CHECKPOINTS
+        .last()
+        .expect("Checkpoints are not empty; qed")
+        .number
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
