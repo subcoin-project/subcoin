@@ -135,7 +135,10 @@ where
     // NOTE: `inv` can be received unsolicited as an announcement of a new block,
     // or in reply to `getblocks`.
     pub(crate) fn on_inv(&mut self, inventories: Vec<Inventory>, from: PeerId) -> SyncAction {
-        // TODO: only handle the data from self.peer_id?
+        if from != self.peer_id {
+            tracing::debug!(?from, current_sync_peer = ?self.peer_id, "Recv unexpected {} inventories", inventories.len());
+            return SyncAction::None;
+        }
 
         if inventories
             .iter()
@@ -184,6 +187,11 @@ where
     }
 
     pub(crate) fn on_block(&mut self, block: BitcoinBlock, from: PeerId) -> SyncAction {
+        if from != self.peer_id {
+            tracing::debug!(?from, current_sync_peer = ?self.peer_id, "Recv unexpected block #{}", block.block_hash());
+            return SyncAction::None;
+        }
+
         let last_get_blocks_target = match &self.download_state {
             DownloadState::DownloadingNew(range) => range.end - 1,
             state => {
