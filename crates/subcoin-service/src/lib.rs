@@ -9,7 +9,6 @@ mod transaction_adapter;
 
 use bitcoin::hashes::Hash;
 use futures::FutureExt;
-use genesis_block_builder::GenesisBlockBuilder;
 use sc_client_api::{AuxStore, HeaderBackend};
 use sc_consensus::import_queue::BasicQueue;
 use sc_consensus_nakamoto::SubstrateImportQueueVerifier;
@@ -31,6 +30,7 @@ use subcoin_runtime::interface::OpaqueBlock as Block;
 use subcoin_runtime::RuntimeApi;
 
 pub use finalizer::SubcoinFinalizer;
+pub use genesis_block_builder::GenesisBlockBuilder;
 pub use transaction_adapter::TransactionAdapter;
 
 /// This is a specialization of the general Substrate ChainSpec type.
@@ -112,7 +112,11 @@ impl<'a> Deref for SubcoinConfiguration<'a> {
     }
 }
 
-fn initialize_genesis_block_hash_mapping<Block: BlockT, Client: HeaderBackend<Block> + AuxStore>(
+/// Insert the genesis block hash mapping into aux-db.
+pub fn initialize_genesis_block_hash_mapping<
+    Block: BlockT,
+    Client: HeaderBackend<Block> + AuxStore,
+>(
     client: &Client,
     bitcoin_network: bitcoin::Network,
 ) {

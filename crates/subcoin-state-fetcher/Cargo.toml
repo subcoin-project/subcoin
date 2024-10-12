@@ -1,0 +1,20 @@
+[package]
+name = "subcoin-state-fetcher"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+bitcoin = { workspace = true }
+sc-consensus = { workspace = true }
+sc-consensus-nakamoto = { workspace = true }
+sc-informant = { workspace = true }
+sc-network = { workspace = true }
+sc-service = { workspace = true }
+sc-transaction-pool = { workspace = true }
+sp-runtime = { workspace = true }
+subcoin-runtime = { workspace = true }
+subcoin-service = { workspace = true }
+anyhow = "1.0"

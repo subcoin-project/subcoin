@@ -10595,6 +10595,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "subcoin-state-fetcher"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bitcoin 0.32.2",
+ "sc-consensus",
+ "sc-consensus-nakamoto",
+ "sc-informant",
+ "sc-network",
+ "sc-service",
+ "sc-transaction-pool",
+ "sp-runtime",
+ "subcoin-runtime",
+ "subcoin-service",
+]
+
+[[package]]
 name = "subcoin-test-service"
 version = "0.1.0"
 dependencies = [
