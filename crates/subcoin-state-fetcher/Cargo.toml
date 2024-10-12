@@ -8,7 +8,9 @@ license.workspace = true
 
 [dependencies]
 bitcoin = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
 sc-consensus = { workspace = true }
+sc-cli = { workspace = true }
 sc-consensus-nakamoto = { workspace = true }
 sc-informant = { workspace = true }
 sc-network = { workspace = true }
