@@ -462,6 +462,10 @@ where
     }
 
     pub(super) fn attempt_blocks_first_sync(&mut self) -> Option<SyncRequest> {
+        if self.syncing.is_major_syncing() {
+            return None;
+        }
+
         // Import the potential remaining blocks downloaded by Headers-First sync.
         self.import_pending_blocks();
 
