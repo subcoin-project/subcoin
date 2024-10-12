@@ -137,23 +137,25 @@ where
     pub(crate) fn on_inv(&mut self, inventories: Vec<Inventory>, from: PeerId) -> SyncAction {
         // TODO: only handle the data from self.peer_id?
 
+        if inventories
+            .iter()
+            .filter(|inv| matches!(inv, Inventory::Block(_)))
+            .count()
+            > MAX_GET_BLOCKS_RESPONSE as usize
+        {
+            tracing::warn!(
+                ?from,
+                "Received inv with more than {MAX_GET_BLOCKS_RESPONSE} block entries"
+            );
+            self.download_state = DownloadState::Disconnecting;
+            return SyncAction::Disconnect(self.peer_id, Error::InvHasTooManyBlockItems);
+        }
+
         let mut block_data_request = Vec::new();
-        let mut block_inventories = 0;
 
         for inv in inventories {
             match inv {
                 Inventory::Block(block_hash) => {
-                    block_inventories += 1;
-
-                    if block_inventories > MAX_GET_BLOCKS_RESPONSE {
-                        tracing::warn!(
-                            ?from,
-                            "Received inv with more than {MAX_GET_BLOCKS_RESPONSE} block entries"
-                        );
-                        self.download_state = DownloadState::Disconnecting;
-                        return SyncAction::Disconnect(self.peer_id, Error::TooManyBlockEntries);
-                    }
-
                     if !self.client.block_exists(block_hash)
                         && self.download_manager.is_unknown_block(block_hash)
                     {
