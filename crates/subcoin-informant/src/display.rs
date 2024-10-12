@@ -21,6 +21,7 @@ use bitcoin::hashes::Hash;
 use bitcoin::BlockHash;
 use console::style;
 use sp_runtime::traits::{Block as BlockT, CheckedDiv, NumberFor, Saturating, Zero};
+use sp_runtime::SaturatedConversion;
 use std::fmt::{self, Display};
 use std::time::Instant;
 use subcoin_network::{NetworkStatus, SyncStatus};
@@ -106,16 +107,22 @@ impl<B: BlockT> InformantDisplay<B> {
 
         let (level, status, target) = match net_status.sync_status {
             SyncStatus::Idle => ("💤", "Idle".into(), "".into()),
-            SyncStatus::Downloading { target, .. } => (
-                "⚙️ ",
-                format!("Syncing{speed}"),
-                format!(", target=#{target}"),
-            ),
-            SyncStatus::Importing { target, .. } => (
-                "⚙️ ",
-                format!("Preparing{speed}"),
-                format!(", target=#{target}"),
-            ),
+            SyncStatus::Downloading { target, .. } => {
+                let progress = best_number.saturated_into::<u32>() as f64 * 100.0 / target as f64;
+                (
+                    "⚙️ ",
+                    format!("Syncing{speed}"),
+                    format!(", target=#{target} ({progress:.2}%)"),
+                )
+            }
+            SyncStatus::Importing { target, .. } => {
+                let progress = best_number.saturated_into::<u32>() as f64 * 100.0 / target as f64;
+                (
+                    "⚙️ ",
+                    format!("Preparing{speed}"),
+                    format!(", target=#{target} ({progress:.2}%)"),
+                )
+            }
         };
 
         let finalized_hash = info.chain.finalized_hash;
