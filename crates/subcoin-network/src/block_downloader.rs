@@ -104,14 +104,25 @@ impl BlockDownloadManager {
         }
     }
 
-    // Determine if the downloader is stalled based on the time elapsed since the last progress.
+    /// Determine if the downloader is stalled based on the time elapsed since the last progress
+    /// update.
+    ///    
+    /// The stall detection is influenced by the size of the blockchain and the time since the last
+    /// successful block processing. As the chain grows, the following factors contribute to the need
+    /// for an extended timeout:
+    ///
+    /// - **Increased Local Block Execution Time**: Larger chain state lead to longer execution times
+    ///   when processing blocks (primarily due to the state root computation).
+    /// - **Higher Average Block Size**: As the blockchain grows, the average size of blocks typically
+    ///   increases, resulting in longer network response times for block retrieval.
+    ///
+    /// The timeout values are configurated arbitrarily.
     fn is_stalled(&self) -> bool {
-        // The timeout (in seconds) is extended when the chain exceeds a certain size, as block
-        // execution times increase significantly with chain growth.
-        let stall_timeout = if self.best_queued_number > 300_000 {
-            120 // Extended timeout for larger chains
-        } else {
-            60 // Standard timeout for smaller chains
+        let stall_timeout = match self.best_queued_number {
+            0..300_000 => 60,        // Standard timeout, 1 minute
+            300_000..600_000 => 120, // Extended timeout, 2 minutes
+            600_000..800_000 => 180, // Extended timeout, 3 minutes
+            _ => 300,
         };
 
         self.last_progress_time.elapsed().as_secs() > stall_timeout
