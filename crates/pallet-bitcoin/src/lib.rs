@@ -205,25 +205,19 @@ impl<T: Config> Pallet<T> {
 
         let height = frame_system::Pallet::<T>::current_block_number();
 
-        let new_coins = tx
-            .output
-            .into_iter()
-            .enumerate()
-            .map(|(index, txout)| {
-                let out_point = OutPoint {
-                    txid,
-                    vout: index as u32,
-                };
-                let coin = Coin {
-                    is_coinbase,
-                    amount: txout.value.to_sat(),
-                    script_pubkey: txout.script_pubkey.into_bytes(),
-                    height: height.saturated_into(),
-                };
-
-                (out_point, coin)
-            })
-            .collect::<Vec<_>>();
+        let new_coins = tx.output.into_iter().enumerate().map(|(index, txout)| {
+            let out_point = OutPoint {
+                txid,
+                vout: index as u32,
+            };
+            let coin = Coin {
+                is_coinbase,
+                amount: txout.value.to_sat(),
+                script_pubkey: txout.script_pubkey.into_bytes(),
+                height: height.saturated_into(),
+            };
+            (out_point, coin)
+        });
 
         if is_coinbase {
             for (out_point, coin) in new_coins {
