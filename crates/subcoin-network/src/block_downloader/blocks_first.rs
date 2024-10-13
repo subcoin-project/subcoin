@@ -210,7 +210,7 @@ where
 
         tracing::debug!(
             from = ?self.peer_id,
-            pending_blocks = self.pending_block_requests.len(),
+            pending_block_data_request = self.pending_block_requests.len(),
             "📦 Downloading {} blocks",
             self.requested_blocks_count,
         );
