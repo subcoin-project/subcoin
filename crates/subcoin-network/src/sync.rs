@@ -550,15 +550,11 @@ where
             Syncing::HeadersFirstSync(_) => SyncAction::None,
             Syncing::Idle => {
                 if inventories.len() == 1 {
-                    match inventories[0] {
-                        Inventory::Block(block_hash) => {
-                            if !self.broadcasted_blocks.contains(&block_hash) {
-                                // A new block maybe broadcasted via `inv` message.
-                                return self
-                                    .prepare_broadcasted_blocks_request(vec![block_hash], from);
-                            }
+                    if let Inventory::Block(block_hash) = inventories[0] {
+                        if !self.broadcasted_blocks.contains(&block_hash) {
+                            // A new block maybe broadcasted via `inv` message.
+                            return self.prepare_broadcasted_blocks_request(vec![block_hash], from);
                         }
-                        _ => {}
                     }
                 }
                 SyncAction::None
