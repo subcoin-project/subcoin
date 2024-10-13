@@ -281,6 +281,17 @@
 <a href="#281" id="281">281</a>
 <a href="#282" id="282">282</a>
 <a href="#283" id="283">283</a>
+<a href="#284" id="284">284</a>
+<a href="#285" id="285">285</a>
+<a href="#286" id="286">286</a>
+<a href="#287" id="287">287</a>
+<a href="#288" id="288">288</a>
+<a href="#289" id="289">289</a>
+<a href="#290" id="290">290</a>
+<a href="#291" id="291">291</a>
+<a href="#292" id="292">292</a>
+<a href="#293" id="293">293</a>
+<a href="#294" id="294">294</a>
 </pre></div><pre class="rust"><code><span class="kw">mod </span>blocks_first;
 <span class="kw">mod </span>headers_first;
 
@@ -387,15 +398,26 @@
         }
     }
 
-    <span class="comment">// Determine if the downloader is stalled based on the time elapsed since the last progress.
+    <span class="doccomment">/// Determine if the downloader is stalled based on the time elapsed since the last progress
+    /// update.
+    ///    
+    /// The stall detection is influenced by the size of the blockchain and the time since the last
+    /// successful block processing. As the chain grows, the following factors contribute to the need
+    /// for an extended timeout:
+    ///
+    /// - **Increased Local Block Execution Time**: Larger chain state lead to longer execution times
+    ///   when processing blocks (primarily due to the state root computation).
+    /// - **Higher Average Block Size**: As the blockchain grows, the average size of blocks typically
+    ///   increases, resulting in longer network response times for block retrieval.
+    ///
+    /// The timeout values are configurated arbitrarily.
     </span><span class="kw">fn </span>is_stalled(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
-        <span class="comment">// The timeout (in seconds) is extended when the chain exceeds a certain size, as block
-        // execution times increase significantly with chain growth.
-        </span><span class="kw">let </span>stall_timeout = <span class="kw">if </span><span class="self">self</span>.best_queued_number &gt; <span class="number">300_000 </span>{
-            <span class="number">120 </span><span class="comment">// Extended timeout for larger chains
-        </span>} <span class="kw">else </span>{
-            <span class="number">60 </span><span class="comment">// Standard timeout for smaller chains
-        </span>};
+        <span class="kw">let </span>stall_timeout = <span class="kw">match </span><span class="self">self</span>.best_queued_number {
+            <span class="number">0</span>..<span class="number">300_000 </span>=&gt; <span class="number">60</span>,        <span class="comment">// Standard timeout, 1 minute
+            </span><span class="number">300_000</span>..<span class="number">600_000 </span>=&gt; <span class="number">120</span>, <span class="comment">// Extended timeout, 2 minutes
+            </span><span class="number">600_000</span>..<span class="number">800_000 </span>=&gt; <span class="number">180</span>, <span class="comment">// Extended timeout, 3 minutes
+            </span><span class="kw">_ </span>=&gt; <span class="number">300</span>,
+        };
 
         <span class="self">self</span>.last_progress_time.elapsed().as_secs() &gt; stall_timeout
     }

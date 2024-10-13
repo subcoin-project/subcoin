@@ -213,6 +213,13 @@
 <a href="#213" id="213">213</a>
 <a href="#214" id="214">214</a>
 <a href="#215" id="215">215</a>
+<a href="#216" id="216">216</a>
+<a href="#217" id="217">217</a>
+<a href="#218" id="218">218</a>
+<a href="#219" id="219">219</a>
+<a href="#220" id="220">220</a>
+<a href="#221" id="221">221</a>
+<a href="#222" id="222">222</a>
 </pre></div><pre class="rust"><code><span class="comment">// This file is part of Substrate.
 
 // Copyright (C) Parity Technologies (UK) Ltd.
@@ -236,6 +243,7 @@
 <span class="kw">use </span>bitcoin::BlockHash;
 <span class="kw">use </span>console::style;
 <span class="kw">use </span>sp_runtime::traits::{Block <span class="kw">as </span>BlockT, CheckedDiv, NumberFor, Saturating, Zero};
+<span class="kw">use </span>sp_runtime::SaturatedConversion;
 <span class="kw">use </span>std::fmt::{<span class="self">self</span>, Display};
 <span class="kw">use </span>std::time::Instant;
 <span class="kw">use </span>subcoin_network::{NetworkStatus, SyncStatus};
@@ -321,16 +329,22 @@
 
         <span class="kw">let </span>(level, status, target) = <span class="kw">match </span>net_status.sync_status {
             SyncStatus::Idle =&gt; (<span class="string">"💤"</span>, <span class="string">"Idle"</span>.into(), <span class="string">""</span>.into()),
-            SyncStatus::Downloading { target, .. } =&gt; (
-                <span class="string">"⚙️ "</span>,
-                <span class="macro">format!</span>(<span class="string">"Syncing{speed}"</span>),
-                <span class="macro">format!</span>(<span class="string">", target=#{target}"</span>),
-            ),
-            SyncStatus::Importing { target, .. } =&gt; (
-                <span class="string">"⚙️ "</span>,
-                <span class="macro">format!</span>(<span class="string">"Preparing{speed}"</span>),
-                <span class="macro">format!</span>(<span class="string">", target=#{target}"</span>),
-            ),
+            SyncStatus::Downloading { target, .. } =&gt; {
+                <span class="kw">let </span>progress = best_number.saturated_into::&lt;u32&gt;() <span class="kw">as </span>f64 * <span class="number">100.0 </span>/ target <span class="kw">as </span>f64;
+                (
+                    <span class="string">"⚙️ "</span>,
+                    <span class="macro">format!</span>(<span class="string">"Syncing{speed}"</span>),
+                    <span class="macro">format!</span>(<span class="string">", target=#{target} ({progress:.2}%)"</span>),
+                )
+            }
+            SyncStatus::Importing { target, .. } =&gt; {
+                <span class="kw">let </span>progress = best_number.saturated_into::&lt;u32&gt;() <span class="kw">as </span>f64 * <span class="number">100.0 </span>/ target <span class="kw">as </span>f64;
+                (
+                    <span class="string">"⚙️ "</span>,
+                    <span class="macro">format!</span>(<span class="string">"Preparing{speed}"</span>),
+                    <span class="macro">format!</span>(<span class="string">", target=#{target} ({progress:.2}%)"</span>),
+                )
+            }
         };
 
         <span class="kw">let </span>finalized_hash = info.chain.finalized_hash;
