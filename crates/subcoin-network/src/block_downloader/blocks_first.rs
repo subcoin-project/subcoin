@@ -121,19 +121,8 @@ where
         }
 
         if !self.pending_block_requests.is_empty() && self.requested_blocks_count == 0 {
-            let max_request_size = self.max_block_data_request_size();
-
-            let mut block_data_request = std::mem::take(&mut self.pending_block_requests);
-
-            if block_data_request.len() > max_request_size {
-                self.pending_block_requests = block_data_request.split_off(max_request_size);
-            }
-
-            self.requested_blocks_count = block_data_request.len();
-
-            tracing::debug!(from = ?self.peer_id, "📦 Downloading {} blocks", self.requested_blocks_count);
-
-            return SyncAction::Request(SyncRequest::Data(block_data_request, self.peer_id));
+            let block_data_request = std::mem::take(&mut self.pending_block_requests);
+            return self.truncate_and_prepare_block_data_request(block_data_request);
         }
 
         if self.download_manager.is_stalled() {
@@ -200,17 +189,26 @@ where
             return SyncAction::None;
         }
 
+        self.truncate_and_prepare_block_data_request(block_data_request)
+    }
+
+    fn truncate_and_prepare_block_data_request(
+        &mut self,
+        mut block_data_request: Vec<Inventory>,
+    ) -> SyncAction {
         let max_request_size = self.max_block_data_request_size();
 
         if block_data_request.len() > max_request_size {
             self.pending_block_requests = block_data_request.split_off(max_request_size);
-            self.requested_blocks_count = block_data_request.len();
         }
+
+        self.requested_blocks_count = block_data_request.len();
 
         tracing::debug!(
             from = ?self.peer_id,
-            requested_blocks_count = self.download_manager.requested_blocks.len(),
-            "📦 Downloading {} blocks", self.requested_blocks_count,
+            pending_blocks = self.pending_block_requests.len(),
+            "📦 Downloading {} blocks",
+            self.requested_blocks_count,
         );
 
         SyncAction::Request(SyncRequest::Data(block_data_request, self.peer_id))
