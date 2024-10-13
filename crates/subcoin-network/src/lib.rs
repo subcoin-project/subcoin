@@ -104,8 +104,8 @@ pub enum Error {
     ProtocolVersionTooLow,
     #[error("Header contains invalid proof-of-block")]
     BadProofOfWork(BlockHash),
-    #[error("Too many block entries in inv message")]
-    TooManyBlockEntries,
+    #[error("Too many Inventory::Block items in inv message")]
+    InvHasTooManyBlockItems,
     #[error("Too many entries (> 2000) in headers message")]
     TooManyHeaders,
     #[error("Entries in headers message are not in ascending order")]

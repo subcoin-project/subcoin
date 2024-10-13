@@ -451,6 +451,9 @@ where
                     self.send_get_blocks_request(request);
                 }
             }
+            SyncAction::SwitchToIdle => {
+                self.chain_sync.switch_to_idle();
+            }
             SyncAction::RestartSyncWithStalledPeer(stalled_peer_id) => {
                 if self.chain_sync.restart_sync(stalled_peer_id) {
                     self.chain_sync.mark_peer_as_discouraged(stalled_peer_id);
