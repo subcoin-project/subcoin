@@ -125,6 +125,10 @@ where
             return self.truncate_and_prepare_block_data_request(block_data_request);
         }
 
+        if self.client.best_number() == self.target_block_number {
+            return SyncAction::SwitchToIdle;
+        }
+
         if self.download_manager.is_stalled() {
             return SyncAction::RestartSyncWithStalledPeer(self.peer_id);
         }
@@ -275,7 +279,7 @@ where
                             "Received block #{block_number},{block_hash} higher than the target block"
                         );
                         self.download_state = DownloadState::Completed;
-                        SyncAction::None
+                        SyncAction::SwitchToIdle
                     } else {
                         self.download_state = DownloadState::Disconnecting;
                         SyncAction::Disconnect(

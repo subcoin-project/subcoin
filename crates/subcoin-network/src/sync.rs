@@ -124,6 +124,8 @@ pub(crate) enum SyncAction {
     /// Make this peer as discouraged and restart the current syncing
     /// process using other sync candidates if there are any.
     RestartSyncWithStalledPeer(PeerId),
+    /// Blocks-First sync finished, switch syncing state to idle.
+    SwitchToIdle,
     /// No action needed.
     None,
 }
@@ -500,6 +502,14 @@ where
             .store(is_major_syncing, Ordering::Relaxed);
     }
 
+    pub(super) fn switch_to_idle(&mut self) {
+        tracing::debug!(
+            best_number = self.client.best_number(),
+            "Blocks-First sync completed, switching to Idle"
+        );
+        self.update_syncing_state(Syncing::Idle);
+    }
+
     pub(super) fn attempt_blocks_first_sync(&mut self) -> Option<SyncRequest> {
         if self.syncing.is_major_syncing() {
             return None;
@@ -539,7 +549,18 @@ where
             Syncing::BlocksFirstSync(downloader) => downloader.on_inv(inventories, from),
             Syncing::HeadersFirstSync(_) => SyncAction::None,
             Syncing::Idle => {
-                // TODO: A new block maybe broadcasted via `inv` message.
+                if inventories.len() == 1 {
+                    match inventories[0] {
+                        Inventory::Block(block_hash) => {
+                            if !self.broadcasted_blocks.contains(&block_hash) {
+                                // A new block maybe broadcasted via `inv` message.
+                                return self
+                                    .prepare_broadcasted_blocks_request(vec![block_hash], from);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
                 SyncAction::None
             }
         }
@@ -559,6 +580,25 @@ where
             Syncing::BlocksFirstSync(downloader) => downloader.on_block(block, from),
             Syncing::HeadersFirstSync(downloader) => downloader.on_block(block, from),
         }
+    }
+
+    fn prepare_broadcasted_blocks_request(
+        &mut self,
+        block_hashes: impl IntoIterator<Item = BlockHash>,
+        from: PeerId,
+    ) -> SyncAction {
+        let data_request = SyncRequest::Data(
+            block_hashes
+                .into_iter()
+                .map(|block_hash| {
+                    self.broadcasted_blocks.insert(block_hash);
+                    Inventory::Block(block_hash)
+                })
+                .collect(),
+            from,
+        );
+
+        SyncAction::Request(data_request)
     }
 
     pub(super) fn on_headers(&mut self, headers: Vec<BitcoinHeader>, from: PeerId) -> SyncAction {
@@ -588,19 +628,10 @@ where
                         }
                     }
 
-                    let data_request = SyncRequest::Data(
-                        headers
-                            .into_iter()
-                            .map(|header| {
-                                let block_hash = header.block_hash();
-                                self.broadcasted_blocks.insert(block_hash);
-                                Inventory::Block(block_hash)
-                            })
-                            .collect(),
+                    return self.prepare_broadcasted_blocks_request(
+                        headers.into_iter().map(|header| header.block_hash()),
                         from,
                     );
-
-                    return SyncAction::Request(data_request);
                 }
 
                 tracing::debug!(
