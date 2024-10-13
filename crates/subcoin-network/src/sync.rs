@@ -247,9 +247,30 @@ where
                     .filter(|peer| peer.peer_id != stalled_peer && peer.best_number > our_best)
                     .collect::<Vec<_>>();
 
-                // No new sync candidate, keep it as is.
                 if sync_candidates.is_empty() {
+                    if let Some(median_seen_block) = self.median_seen() {
+                        let best_seen_block = self.peers.values().map(|p| p.best_number).max();
+
+                        if median_seen_block <= our_best {
+                            // We are synced to the median block seen by our peers, but this may
+                            // not be the network's tip.
+                            //
+                            // Transition to idle unless more blocks are announced.
+                            tracing::debug!(
+                                best_seen_block,
+                                median_seen_block,
+                                our_best,
+                                "Synced to the majority of peers, no new blocks to sync"
+                            );
+                            self.syncing = Syncing::Idle;
+                            return false;
+                        }
+                    }
+
+                    // No new sync candidate, keep it as is.
+                    // TODO: handle this properly.
                     tracing::debug!(?stalled_peer, "⚠️ Sync stalled, but no new sync candidates");
+
                     return false;
                 }
 
@@ -274,6 +295,23 @@ where
                 true
             }
             Syncing::Idle => false,
+        }
+    }
+
+    /// Returns the median block number advertised by our peers.
+    fn median_seen(&self) -> Option<u32> {
+        let mut best_seens = self
+            .peers
+            .values()
+            .map(|p| p.best_number)
+            .collect::<Vec<_>>();
+
+        if best_seens.is_empty() {
+            None
+        } else {
+            let middle = best_seens.len() / 2;
+
+            Some(*best_seens.select_nth_unstable(middle).1)
         }
     }
 
