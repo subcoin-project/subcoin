@@ -1,14 +1,16 @@
+mod cli;
+
 use clap::Parser;
-use sc_cli::NetworkParams as SubstrateNetworkParams;
+use sc_cli::{NetworkParams as SubstrateNetworkParams, SubstrateCli};
 use sc_consensus::import_queue::BasicQueue;
 use sc_consensus_nakamoto::SubstrateImportQueueVerifier;
 use sc_network::config::NetworkBackendType;
 use sc_service::config::{
     BlocksPruning, DatabaseSource, ExecutorConfiguration, KeystoreConfig, NetworkConfiguration,
-    OffchainWorkerConfig, PruningMode, RpcBatchRequestConfig, RpcConfiguration,
-    WasmExecutionMethod, WasmtimeInstantiationStrategy,
+    OffchainWorkerConfig, RpcBatchRequestConfig, RpcConfiguration, WasmExecutionMethod,
+    WasmtimeInstantiationStrategy,
 };
-use sc_service::{Configuration, Role};
+use sc_service::{BasePath, Configuration, Role, TaskManager};
 use sp_runtime::traits::Block as BlockT;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -26,22 +28,73 @@ pub struct Cli {
 
     #[allow(missing_docs)]
     #[clap(flatten)]
-    pub substrate_network_params: SubstrateNetworkParams,
+    pub network_params: SubstrateNetworkParams,
 }
 
 fn main() -> sc_cli::Result<()> {
     let Cli {
         base_path,
-        substrate_network_params,
+        network_params,
     } = Cli::parse();
+
+    let base_path = base_path
+        .map(BasePath::from)
+        .unwrap_or_else(|| BasePath::from_project("", "", "subcoin_state_sync_node"));
 
     let bitcoin_network = bitcoin::Network::Bitcoin;
 
+    let tokio_runtime = sc_cli::build_runtime()?;
+
+    // `capture` needs to be called in a tokio context.
+    // Also capture them as early as possible.
+    let signals = tokio_runtime.block_on(async { sc_cli::Signals::capture() })?;
+
+    let chain_spec = cli::SubstrateCli.load_spec("bitcoin-mainnet")?;
+    let config_dir = base_path.config_dir(chain_spec.id());
+    let net_config_dir = config_dir.join("network");
+    let client_id = cli::SubstrateCli::client_id();
+
+    let node_name = sc_cli::generate_node_name();
+    let node_key = network_params
+        .node_key_params
+        .node_key(&net_config_dir, Role::Full, false)?;
+    let network_config = network_params.network_config(
+        &chain_spec,
+        false,
+        false,
+        Some(net_config_dir),
+        &client_id,
+        &node_name,
+        node_key,
+        30333,
+    );
+
+    let tokio_handle = tokio_runtime.handle().clone();
+    let config = create_configuration(
+        tokio_handle.clone(),
+        bitcoin_network,
+        base_path,
+        network_config,
+    );
+
+    let runner = sc_cli::Runner::<cli::SubstrateCli>::new(config, tokio_runtime, signals)?;
+
+    runner
+        .run_node_until_exit(|config| async move { new_state_sync_client(bitcoin_network, config) })
+        .map_err(Into::into)
+}
+
+fn create_configuration(
+    tokio_handle: tokio::runtime::Handle,
+    bitcoin_network: bitcoin::Network,
+    base_path: BasePath,
+    network_config: NetworkConfiguration,
+) -> Configuration {
+    let root = PathBuf::from("/tmp");
     let chain_spec =
         subcoin_service::chain_spec::config(bitcoin_network).expect("Failed to create chain spec");
-
-    let config = Configuration {
-        impl_name: "subcoin-test-node".to_string(),
+    Configuration {
+        impl_name: "subcoin-state-sync-node".to_string(),
         impl_version: "0.1.0".to_string(),
         role: Role::Full,
         tokio_handle,
@@ -54,7 +107,7 @@ fn main() -> sc_cli::Result<()> {
         trie_cache_maximum_size: None,
         state_pruning: None,
         blocks_pruning: BlocksPruning::KeepAll,
-        chain_spec: Box::new(spec),
+        chain_spec: Box::new(chain_spec),
         executor: ExecutorConfiguration {
             wasm_method: WasmExecutionMethod::Compiled {
                 instantiation_strategy: WasmtimeInstantiationStrategy::PoolingCopyOnWrite,
@@ -94,19 +147,13 @@ fn main() -> sc_cli::Result<()> {
         data_path: base_path.path().into(),
         base_path,
         wasm_runtime_overrides: None,
-    };
-
-    new_state_sync_client(bitcoin_network, config)?;
-
-    // TODO: run node until exit
-
-    Ok(())
+    }
 }
 
 fn new_state_sync_client(
     bitcoin_network: bitcoin::Network,
     mut config: Configuration,
-) -> Result<(), sc_service::error::Error> {
+) -> Result<TaskManager, sc_service::error::Error> {
     let executor = sc_service::new_native_or_wasm_executor(&config);
 
     let backend = sc_service::new_db_backend(config.db_config())?;
@@ -143,16 +190,18 @@ fn new_state_sync_client(
             sc_network::NetworkWorker<Block, <Block as BlockT>::Hash>,
         >(
             &mut config, client, &mut task_manager, bitcoin_network
-        ),
+        )?,
         NetworkBackendType::Litep2p => {
             start_substrate_network::<sc_network::Litep2pNetworkBackend>(
                 &mut config,
                 client,
                 &mut task_manager,
                 bitcoin_network,
-            )
+            )?;
         }
     }
+
+    Ok(task_manager)
 }
 
 fn start_substrate_network<N>(
@@ -198,7 +247,7 @@ where
 
     let metrics = N::register_notification_metrics(config.prometheus_registry());
 
-    let (network, system_rpc_tx, _tx_handler_controller, network_starter, sync_service) =
+    let (network, _system_rpc_tx, _tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config,
             net_config,

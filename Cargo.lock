@@ -10611,6 +10611,7 @@ dependencies = [
  "sp-runtime",
  "subcoin-runtime",
  "subcoin-service",
+ "tokio",
 ]
 
 [[package]]
