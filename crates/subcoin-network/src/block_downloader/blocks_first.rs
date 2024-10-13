@@ -126,6 +126,7 @@ where
         }
 
         if self.client.best_number() == self.target_block_number {
+            self.download_state = DownloadState::Completed;
             return SyncAction::SwitchToIdle;
         }
 
