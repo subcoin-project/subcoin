@@ -12,15 +12,12 @@
 
 #[cfg(test)]
 mod tests;
-mod types;
+pub mod types;
 
-use bitcoin::consensus::{Decodable, Encodable};
-use bitcoin::{OutPoint, Transaction as BitcoinTransaction};
-use codec::{Decode, Encode, MaxEncodedLen};
+use self::types::{OutPoint, Transaction, Txid};
+use bitcoin::consensus::Decodable;
 use frame_support::dispatch::DispatchResult;
 use frame_support::weights::Weight;
-use scale_info::TypeInfo;
-use sp_core::H256;
 use sp_runtime::traits::BlockNumberProvider;
 use sp_runtime::SaturatedConversion;
 use sp_std::prelude::*;
@@ -29,58 +26,9 @@ use subcoin_runtime_primitives::Coin;
 
 // Re-export pallet items so that they can be accessed from the crate namespace.
 pub use pallet::*;
-pub use types::Transaction;
 
 /// Transaction output index.
 pub type Vout = u32;
-
-/// Wrapper type for Bitcoin txid in runtime as `bitcoin::Txid` does not implement codec.
-#[derive(Clone, TypeInfo, Encode, Decode, MaxEncodedLen, PartialEq)]
-pub struct Txid(H256);
-
-impl Txid {
-    fn from_bitcoin_txid(txid: bitcoin::Txid) -> Self {
-        let mut d = Vec::with_capacity(32);
-        txid.consensus_encode(&mut d)
-            .expect("txid must be encoded correctly; qed");
-
-        let d: [u8; 32] = d
-            .try_into()
-            .expect("Bitcoin txid is sha256 hash which must fit into [u8; 32]; qed");
-
-        Self(H256::from(d))
-    }
-
-    /// Converts the runtime [`Txid`] to a `bitcoin::Txid`.
-    pub fn into_bitcoin_txid(self) -> bitcoin::Txid {
-        bitcoin::consensus::Decodable::consensus_decode(&mut self.encode().as_slice())
-            .expect("Decode must succeed as txid was ensured to be encoded correctly; qed")
-    }
-}
-
-impl core::fmt::Debug for Txid {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        for byte in self.0.as_bytes().iter().rev() {
-            write!(f, "{:02x}", byte)?;
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, TypeInfo, Encode, Decode, MaxEncodedLen)]
-struct OutPointInner {
-    txid: Txid,
-    vout: Vout,
-}
-
-impl From<OutPoint> for OutPointInner {
-    fn from(out_point: OutPoint) -> Self {
-        Self {
-            txid: Txid::from_bitcoin_txid(out_point.txid),
-            vout: out_point.vout,
-        }
-    }
-}
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -107,9 +55,7 @@ pub mod pallet {
         pub fn transact(origin: OriginFor<T>, btc_tx: Transaction) -> DispatchResult {
             ensure_none(origin)?;
 
-            // let bitcoin_transaction = Self::decode_transaction(btc_tx);
-            let bitcoin_transaction: BitcoinTransaction = btc_tx.into();
-            Self::process_bitcoin_transaction(bitcoin_transaction);
+            Self::process_bitcoin_transaction(btc_tx.into());
 
             Ok(())
         }
@@ -196,20 +142,20 @@ pub fn coin_storage_prefix<T: Config>() -> [u8; 32] {
 }
 
 impl<T: Config> Pallet<T> {
-    fn decode_transaction(btc_tx: Vec<u8>) -> BitcoinTransaction {
-        BitcoinTransaction::consensus_decode(&mut btc_tx.as_slice()).unwrap_or_else(|_| {
+    fn decode_transaction(btc_tx: Vec<u8>) -> bitcoin::Transaction {
+        bitcoin::Transaction::consensus_decode(&mut btc_tx.as_slice()).unwrap_or_else(|_| {
             panic!("Transaction constructed internally must be decoded successfully; qed")
         })
     }
 
-    fn process_bitcoin_transaction(tx: BitcoinTransaction) {
+    fn process_bitcoin_transaction(tx: bitcoin::Transaction) {
         let txid = tx.compute_txid();
         let is_coinbase = tx.is_coinbase();
 
         let height = frame_system::Pallet::<T>::current_block_number();
 
         let new_coins = tx.output.into_iter().enumerate().map(|(index, txout)| {
-            let out_point = OutPoint {
+            let out_point = bitcoin::OutPoint {
                 txid,
                 vout: index as u32,
             };
@@ -224,7 +170,7 @@ impl<T: Config> Pallet<T> {
 
         if is_coinbase {
             for (out_point, coin) in new_coins {
-                let OutPointInner { txid, vout } = OutPointInner::from(out_point);
+                let OutPoint { txid, vout } = OutPoint::from(out_point);
                 Coins::<T>::insert(txid, vout, coin);
             }
             return;
@@ -233,7 +179,7 @@ impl<T: Config> Pallet<T> {
         // Process inputs.
         for input in tx.input {
             let previous_output = input.previous_output;
-            let OutPointInner { txid, vout } = OutPointInner::from(previous_output);
+            let OutPoint { txid, vout } = OutPoint::from(previous_output);
             if let Some(_spent) = Coins::<T>::take(txid, vout) {
             } else {
                 panic!("Corruputed state, UTXO {previous_output:?} not found");
@@ -242,7 +188,7 @@ impl<T: Config> Pallet<T> {
 
         // Process outputs.
         for (out_point, coin) in new_coins {
-            let OutPointInner { txid, vout } = OutPointInner::from(out_point);
+            let OutPoint { txid, vout } = OutPoint::from(out_point);
             Coins::<T>::insert(txid, vout, coin);
         }
     }

@@ -1,6 +1,8 @@
+use bitcoin::consensus::Encodable;
 use bitcoin::hashes::Hash;
-use codec::{Decode, Encode};
+use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
+use sp_core::H256;
 use sp_std::vec::Vec;
 
 /// An absolute lock time value, representing either a block height or a UNIX timestamp (seconds
@@ -39,11 +41,54 @@ impl Into<bitcoin::locktime::absolute::LockTime> for LockTime {
     }
 }
 
+/// Wrapper type for Bitcoin txid in runtime as `bitcoin::Txid` does not implement codec.
+#[derive(Clone, TypeInfo, Encode, Decode, MaxEncodedLen, PartialEq)]
+pub struct Txid(H256);
+
+impl Txid {
+    /// Converts `bitcoin::Txid` to [`Txid`].
+    pub fn from_bitcoin_txid(txid: bitcoin::Txid) -> Self {
+        let mut d = Vec::with_capacity(32);
+        txid.consensus_encode(&mut d)
+            .expect("txid must be encoded correctly; qed");
+
+        let d: [u8; 32] = d
+            .try_into()
+            .expect("Bitcoin txid is sha256 hash which must fit into [u8; 32]; qed");
+
+        Self(H256::from(d))
+    }
+
+    /// Converts the runtime [`Txid`] to a `bitcoin::Txid`.
+    pub fn into_bitcoin_txid(self) -> bitcoin::Txid {
+        bitcoin::consensus::Decodable::consensus_decode(&mut self.encode().as_slice())
+            .expect("Decode must succeed as txid was ensured to be encoded correctly; qed")
+    }
+}
+
+impl core::fmt::Debug for Txid {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        for byte in self.0.as_bytes().iter().rev() {
+            write!(f, "{:02x}", byte)?;
+        }
+        Ok(())
+    }
+}
+
 /// A reference to a transaction output.
-#[derive(Clone, Debug, Encode, Decode, TypeInfo, PartialEq)]
+#[derive(Clone, Debug, Encode, Decode, TypeInfo, PartialEq, MaxEncodedLen)]
 pub struct OutPoint {
-    pub txid: crate::Txid,
+    pub txid: Txid,
     pub vout: u32,
+}
+
+impl From<bitcoin::OutPoint> for OutPoint {
+    fn from(out_point: bitcoin::OutPoint) -> Self {
+        Self {
+            txid: Txid::from_bitcoin_txid(out_point.txid),
+            vout: out_point.vout,
+        }
+    }
 }
 
 /// The Witness is the data used to unlock bitcoin since the [segwit upgrade].
