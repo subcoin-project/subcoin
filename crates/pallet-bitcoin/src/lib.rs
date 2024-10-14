@@ -12,6 +12,7 @@
 
 #[cfg(test)]
 mod tests;
+mod types;
 
 use bitcoin::consensus::{Decodable, Encodable};
 use bitcoin::{OutPoint, Transaction as BitcoinTransaction};
@@ -28,12 +29,13 @@ use subcoin_runtime_primitives::Coin;
 
 // Re-export pallet items so that they can be accessed from the crate namespace.
 pub use pallet::*;
+pub use types::Transaction;
 
 /// Transaction output index.
 pub type Vout = u32;
 
 /// Wrapper type for Bitcoin txid in runtime as `bitcoin::Txid` does not implement codec.
-#[derive(Clone, TypeInfo, Encode, Decode, MaxEncodedLen)]
+#[derive(Clone, TypeInfo, Encode, Decode, MaxEncodedLen, PartialEq)]
 pub struct Txid(H256);
 
 impl Txid {
@@ -102,10 +104,11 @@ pub mod pallet {
         /// An internal unsigned extrinsic for including a Bitcoin transaction into the block.
         #[pallet::call_index(0)]
         #[pallet::weight(Weight::zero())]
-        pub fn transact(origin: OriginFor<T>, btc_tx: Vec<u8>) -> DispatchResult {
+        pub fn transact(origin: OriginFor<T>, btc_tx: Transaction) -> DispatchResult {
             ensure_none(origin)?;
 
-            let bitcoin_transaction = Self::decode_transaction(btc_tx);
+            // let bitcoin_transaction = Self::decode_transaction(btc_tx);
+            let bitcoin_transaction: BitcoinTransaction = btc_tx.into();
             Self::process_bitcoin_transaction(bitcoin_transaction);
 
             Ok(())

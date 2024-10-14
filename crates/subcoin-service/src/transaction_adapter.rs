@@ -30,21 +30,25 @@ impl<Block: BlockT> BitcoinTransactionAdapter<Block> for TransactionAdapter {
                 subcoin_runtime::Runtime,
             >::transact {
                 btc_tx,
-            }) => Transaction::consensus_decode(&mut btc_tx.as_slice())
-                .expect("Transaction decode must succeed otherwise the chain is broken; qed"),
+            }) => btc_tx.into(),
+            // Transaction::consensus_decode(&mut btc_tx.as_slice())
+            // .expect("Transaction decode must succeed otherwise the chain is broken; qed"),
             _ => unreachable!("Transactions only exist in pallet-bitcoin; qed"),
         }
     }
 
     fn bitcoin_transaction_into_extrinsic(btc_tx: &bitcoin::Transaction) -> Block::Extrinsic {
-        let mut data = Vec::new();
-        btc_tx
-            .consensus_encode(&mut data)
-            .expect("Encoding bitcoin tx in a bitcoin block must succeed; qed");
+        // let mut data = Vec::new();
+        // btc_tx
+        // .consensus_encode(&mut data)
+        // .expect("Encoding bitcoin tx in a bitcoin block must succeed; qed");
 
         Decode::decode(
             &mut subcoin_runtime::UncheckedExtrinsic::new(
-                pallet_bitcoin::Call::<subcoin_runtime::Runtime>::transact { btc_tx: data }.into(),
+                pallet_bitcoin::Call::<subcoin_runtime::Runtime>::transact {
+                    btc_tx: btc_tx.clone().into(),
+                }
+                .into(),
                 None,
             )
             .expect("Internally construct extrinsic must not fail; qed")
