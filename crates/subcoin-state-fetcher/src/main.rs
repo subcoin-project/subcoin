@@ -79,6 +79,8 @@ fn main() -> sc_cli::Result<()> {
 
     let runner = sc_cli::Runner::<cli::SubstrateCli>::new(config, tokio_runtime, signals)?;
 
+    // TODO: command.init()
+
     runner
         .run_node_until_exit(|config| async move { new_state_sync_client(bitcoin_network, config) })
         .map_err(Into::into)
