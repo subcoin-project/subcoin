@@ -1,5 +1,6 @@
 use bitcoin::consensus::Encodable;
 use bitcoin::hashes::Hash;
+use bitcoin::locktime::absolute;
 use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_core::H256;
@@ -10,32 +11,30 @@ use sp_std::vec::Vec;
 #[derive(Clone, Debug, Encode, Decode, TypeInfo, PartialEq)]
 pub enum LockTime {
     /// A block height lock time value.
-    Blocks(u32),
+    Height(u32),
     /// A UNIX timestamp lock time value.
-    Seconds(u32),
+    ///
+    /// A UNIX timestamp, seconds since epoch, guaranteed to always contain a valid time value.
+    Time(u32),
 }
 
-impl From<bitcoin::locktime::absolute::LockTime> for LockTime {
-    fn from(lock_time: bitcoin::locktime::absolute::LockTime) -> Self {
+impl From<absolute::LockTime> for LockTime {
+    fn from(lock_time: absolute::LockTime) -> Self {
         match lock_time {
-            bitcoin::locktime::absolute::LockTime::Blocks(n) => Self::Blocks(n.to_consensus_u32()),
-            bitcoin::locktime::absolute::LockTime::Seconds(n) => {
-                Self::Seconds(n.to_consensus_u32())
-            }
+            absolute::LockTime::Blocks(n) => Self::Height(n.to_consensus_u32()),
+            absolute::LockTime::Seconds(n) => Self::Time(n.to_consensus_u32()),
         }
     }
 }
 
-impl Into<bitcoin::locktime::absolute::LockTime> for LockTime {
-    fn into(self) -> bitcoin::locktime::absolute::LockTime {
+impl Into<absolute::LockTime> for LockTime {
+    fn into(self) -> absolute::LockTime {
         match self {
-            Self::Blocks(n) => bitcoin::locktime::absolute::LockTime::Blocks(
-                bitcoin::locktime::absolute::Height::from_consensus(n)
-                    .expect("Invalid height in LockTime"),
+            Self::Height(n) => absolute::LockTime::Blocks(
+                absolute::Height::from_consensus(n).expect("Invalid height in LockTime"),
             ),
-            Self::Seconds(n) => bitcoin::locktime::absolute::LockTime::Seconds(
-                bitcoin::locktime::absolute::Time::from_consensus(n)
-                    .expect("Invalid time in LockTime"),
+            Self::Time(n) => absolute::LockTime::Seconds(
+                absolute::Time::from_consensus(n).expect("Invalid time in LockTime"),
             ),
         }
     }
@@ -62,7 +61,7 @@ impl Txid {
     /// Converts the runtime [`Txid`] to a `bitcoin::Txid`.
     pub fn into_bitcoin_txid(self) -> bitcoin::Txid {
         bitcoin::consensus::Decodable::consensus_decode(&mut self.encode().as_slice())
-            .expect("Decode must succeed as txid was ensured to be encoded correctly; qed")
+            .expect("Decode must succeed as txid was guaranteed to be encoded correctly; qed")
     }
 }
 
@@ -91,6 +90,16 @@ impl From<bitcoin::OutPoint> for OutPoint {
     }
 }
 
+impl Into<bitcoin::OutPoint> for OutPoint {
+    fn into(self) -> bitcoin::OutPoint {
+        bitcoin::OutPoint {
+            txid: bitcoin::Txid::from_slice(&self.txid.encode())
+                .expect("Txid must be valid as Transaction is constructed internally; qed"),
+            vout: self.vout,
+        }
+    }
+}
+
 /// The Witness is the data used to unlock bitcoin since the [segwit upgrade].
 ///
 /// Can be logically seen as an array of bytestrings, i.e. `Vec<Vec<u8>>`, and it is serialized on the wire
@@ -113,14 +122,16 @@ pub struct Witness {
     indices_start: u64,
 }
 
-/// Bitcoin transaction input.
+/// Regular bitcoin transaction input.
+///
+/// Structurely same with [`bitcoin::TxIn`].
 #[derive(Clone, Debug, Encode, Decode, TypeInfo, PartialEq)]
-pub struct TxIn {
+pub struct RegularTxIn {
     /// The reference to the previous output that is being used as an input.
     pub previous_output: OutPoint,
-    /// The script which pushes values on the stack which will cause
-    /// the referenced output's script to be accepted.
-    pub script_sig: Vec<u8>,
+    /// The unlocking script (scriptSig) that pushes values onto the stack,
+    /// enabling the referenced output's script to be satisfied.
+    pub unlocking_script: Vec<u8>,
     /// The sequence number, which suggests to miners which of two
     /// conflicting transactions should be preferred, or 0xFFFFFFFF
     /// to ignore this feature. This is generally never used since
@@ -132,6 +143,63 @@ pub struct TxIn {
     /// Transaction. It *is* (de)serialized with the rest of the TxIn in other
     /// (de)serialization routines.
     pub witness: Vec<Vec<u8>>,
+}
+
+/// Bitcoin transaction input.
+///
+/// This type is a wrapper around [`bitcoin::TxIn`], designed to provide a user-friendly representation
+/// of transaction inputs (`TxIn`) in polkadot.js.org. It handles both coinbase (block reward)
+/// transactions and standard transactions.
+#[derive(Clone, Debug, Encode, Decode, TypeInfo, PartialEq)]
+pub enum TxIn {
+    /// Input from a coinbase transaction, which does not reference any previous output.
+    Coinbase {
+        /// Arbitrary data used in the coinbase transaction, such as extra nonce or miner-specific information.
+        coinbase_data: Vec<u8>,
+    },
+    /// Input from a regular transaction, which references a previous output (`OutPoint`).
+    Regular(RegularTxIn),
+}
+
+impl From<bitcoin::TxIn> for TxIn {
+    fn from(txin: bitcoin::TxIn) -> Self {
+        if txin.previous_output.is_null() {
+            Self::Coinbase {
+                coinbase_data: txin.script_sig.into_bytes(),
+            }
+        } else {
+            Self::Regular(RegularTxIn {
+                previous_output: txin.previous_output.into(),
+                unlocking_script: txin.script_sig.into_bytes(),
+                sequence: txin.sequence.0,
+                witness: txin.witness.to_vec(),
+            })
+        }
+    }
+}
+
+impl Into<bitcoin::TxIn> for TxIn {
+    fn into(self) -> bitcoin::TxIn {
+        match self {
+            Self::Coinbase { coinbase_data } => bitcoin::TxIn {
+                previous_output: bitcoin::OutPoint::null(),
+                script_sig: bitcoin::ScriptBuf::from_bytes(coinbase_data),
+                sequence: bitcoin::Sequence::MAX,
+                witness: bitcoin::Witness::new(),
+            },
+            Self::Regular(RegularTxIn {
+                previous_output,
+                unlocking_script,
+                sequence,
+                witness,
+            }) => bitcoin::TxIn {
+                previous_output: previous_output.into(),
+                script_sig: bitcoin::ScriptBuf::from_bytes(unlocking_script),
+                sequence: bitcoin::Sequence(sequence),
+                witness: witness.into(),
+            },
+        }
+    }
 }
 
 /// Bitcoin transaction output.
@@ -168,21 +236,7 @@ impl Into<bitcoin::Transaction> for Transaction {
         bitcoin::Transaction {
             version: bitcoin::transaction::Version(version),
             lock_time: lock_time.into(),
-            input: input
-                .into_iter()
-                .map(|txin| bitcoin::TxIn {
-                    previous_output: bitcoin::OutPoint {
-                        txid: bitcoin::Txid::from_slice(&txin.previous_output.txid.encode())
-                            .expect(
-                                "Txid must be valid as Transaction is constructed internally; qed",
-                            ),
-                        vout: txin.previous_output.vout,
-                    },
-                    script_sig: bitcoin::ScriptBuf::from_bytes(txin.script_sig),
-                    sequence: bitcoin::Sequence(txin.sequence),
-                    witness: txin.witness.into(),
-                })
-                .collect(),
+            input: input.into_iter().map(Into::into).collect(),
             output: output
                 .into_iter()
                 .map(|txout| bitcoin::TxOut {
@@ -199,19 +253,7 @@ impl From<bitcoin::Transaction> for Transaction {
         Self {
             version: btc_tx.version.0,
             lock_time: btc_tx.lock_time.into(),
-            input: btc_tx
-                .input
-                .into_iter()
-                .map(|txin| TxIn {
-                    previous_output: OutPoint {
-                        txid: crate::Txid::from_bitcoin_txid(txin.previous_output.txid),
-                        vout: txin.previous_output.vout,
-                    },
-                    script_sig: txin.script_sig.into_bytes(),
-                    sequence: txin.sequence.0,
-                    witness: txin.witness.to_vec(),
-                })
-                .collect(),
+            input: btc_tx.input.into_iter().map(Into::into).collect(),
             output: btc_tx
                 .output
                 .into_iter()
