@@ -26,15 +26,15 @@ impl From<absolute::LockTime> for LockTime {
     }
 }
 
-impl Into<absolute::LockTime> for LockTime {
-    fn into(self) -> absolute::LockTime {
-        match self {
-            Self::Height(n) => absolute::LockTime::Blocks(
+impl From<LockTime> for absolute::LockTime {
+    fn from(val: LockTime) -> Self {
+        match val {
+            LockTime::Height(n) => Self::Blocks(
                 absolute::Height::from_consensus(n).expect("Invalid height in LockTime"),
             ),
-            Self::Time(n) => absolute::LockTime::Seconds(
-                absolute::Time::from_consensus(n).expect("Invalid time in LockTime"),
-            ),
+            LockTime::Time(n) => {
+                Self::Seconds(absolute::Time::from_consensus(n).expect("Invalid time in LockTime"))
+            }
         }
     }
 }
@@ -95,11 +95,11 @@ impl From<bitcoin::OutPoint> for OutPoint {
     }
 }
 
-impl Into<bitcoin::OutPoint> for OutPoint {
-    fn into(self) -> bitcoin::OutPoint {
+impl From<OutPoint> for bitcoin::OutPoint {
+    fn from(val: OutPoint) -> Self {
         bitcoin::OutPoint {
-            txid: self.txid.into_bitcoin_txid(),
-            vout: self.output_index,
+            txid: val.txid.into_bitcoin_txid(),
+            vout: val.output_index,
         }
     }
 }
@@ -182,16 +182,16 @@ impl From<bitcoin::TxIn> for TxIn {
     }
 }
 
-impl Into<bitcoin::TxIn> for TxIn {
-    fn into(self) -> bitcoin::TxIn {
-        match self {
-            Self::Coinbase { coinbase_data } => bitcoin::TxIn {
+impl From<TxIn> for bitcoin::TxIn {
+    fn from(val: TxIn) -> Self {
+        match val {
+            TxIn::Coinbase { coinbase_data } => bitcoin::TxIn {
                 previous_output: bitcoin::OutPoint::null(),
                 script_sig: bitcoin::ScriptBuf::from_bytes(coinbase_data),
                 sequence: bitcoin::Sequence::MAX,
                 witness: bitcoin::Witness::new(),
             },
-            Self::Regular(RegularTxIn {
+            TxIn::Regular(RegularTxIn {
                 previous_output,
                 unlocking_script,
                 sequence,
@@ -228,14 +228,14 @@ pub struct Transaction {
     pub output: Vec<TxOut>,
 }
 
-impl Into<bitcoin::Transaction> for Transaction {
-    fn into(self) -> bitcoin::Transaction {
-        let Self {
+impl From<Transaction> for bitcoin::Transaction {
+    fn from(val: Transaction) -> Self {
+        let Transaction {
             version,
             lock_time,
             input,
             output,
-        } = self;
+        } = val;
 
         bitcoin::Transaction {
             version: bitcoin::transaction::Version(version),
