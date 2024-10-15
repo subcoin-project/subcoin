@@ -1,5 +1,4 @@
 use bitcoin::consensus::Encodable;
-use bitcoin::hashes::Hash;
 use bitcoin::locktime::absolute;
 use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
@@ -40,34 +39,38 @@ impl Into<absolute::LockTime> for LockTime {
     }
 }
 
-/// Wrapper type for Bitcoin txid in runtime as `bitcoin::Txid` does not implement codec.
+/// Wrapper type for representing [`bitcoin::Txid`] in runtime, stored in reversed byte order.
 #[derive(Clone, TypeInfo, Encode, Decode, MaxEncodedLen, PartialEq)]
 pub struct Txid(H256);
 
 impl Txid {
-    /// Converts `bitcoin::Txid` to [`Txid`].
+    /// Converts a [`bitcoin::Txid`]` to a [`Txid`].
     pub fn from_bitcoin_txid(txid: bitcoin::Txid) -> Self {
-        let mut d = Vec::with_capacity(32);
-        txid.consensus_encode(&mut d)
+        let mut bytes = Vec::with_capacity(32);
+        txid.consensus_encode(&mut bytes)
             .expect("txid must be encoded correctly; qed");
 
-        let d: [u8; 32] = d
+        bytes.reverse();
+
+        let bytes: [u8; 32] = bytes
             .try_into()
             .expect("Bitcoin txid is sha256 hash which must fit into [u8; 32]; qed");
 
-        Self(H256::from(d))
+        Self(H256::from(bytes))
     }
 
-    /// Converts the runtime [`Txid`] to a `bitcoin::Txid`.
+    /// Converts a [`Txid`] to a [`bitcoin::Txid`].
     pub fn into_bitcoin_txid(self) -> bitcoin::Txid {
-        bitcoin::consensus::Decodable::consensus_decode(&mut self.encode().as_slice())
+        let mut bytes = self.encode();
+        bytes.reverse();
+        bitcoin::consensus::Decodable::consensus_decode(&mut bytes.as_slice())
             .expect("Decode must succeed as txid was guaranteed to be encoded correctly; qed")
     }
 }
 
 impl core::fmt::Debug for Txid {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        for byte in self.0.as_bytes().iter().rev() {
+        for byte in self.0.as_bytes().iter() {
             write!(f, "{:02x}", byte)?;
         }
         Ok(())
@@ -77,15 +80,17 @@ impl core::fmt::Debug for Txid {
 /// A reference to a transaction output.
 #[derive(Clone, Debug, Encode, Decode, TypeInfo, PartialEq, MaxEncodedLen)]
 pub struct OutPoint {
+    /// The transaction ID of the referenced output.
     pub txid: Txid,
-    pub vout: u32,
+    /// The index of the output within the referenced transaction.
+    pub output_index: u32,
 }
 
 impl From<bitcoin::OutPoint> for OutPoint {
     fn from(out_point: bitcoin::OutPoint) -> Self {
         Self {
             txid: Txid::from_bitcoin_txid(out_point.txid),
-            vout: out_point.vout,
+            output_index: out_point.vout,
         }
     }
 }
@@ -93,9 +98,8 @@ impl From<bitcoin::OutPoint> for OutPoint {
 impl Into<bitcoin::OutPoint> for OutPoint {
     fn into(self) -> bitcoin::OutPoint {
         bitcoin::OutPoint {
-            txid: bitcoin::Txid::from_slice(&self.txid.encode())
-                .expect("Txid must be valid as Transaction is constructed internally; qed"),
-            vout: self.vout,
+            txid: self.txid.into_bitcoin_txid(),
+            vout: self.output_index,
         }
     }
 }

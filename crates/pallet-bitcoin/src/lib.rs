@@ -28,7 +28,7 @@ use subcoin_runtime_primitives::Coin;
 pub use pallet::*;
 
 /// Transaction output index.
-pub type Vout = u32;
+pub type OutputIndex = u32;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -127,17 +127,18 @@ pub mod pallet {
 
     /// UTXO set.
     ///
-    /// (Txid, Vout, Coin)
+    /// (Txid, OutputIndex(vout), Coin)
     #[pallet::storage]
-    pub type Coins<T> = StorageDoubleMap<_, Identity, Txid, Identity, Vout, Coin, OptionQuery>;
+    pub type Coins<T> =
+        StorageDoubleMap<_, Identity, Txid, Identity, OutputIndex, Coin, OptionQuery>;
 }
 
 /// Returns the storage key for the referenced output.
-pub fn coin_storage_key<T: Config>(bitcoin_txid: bitcoin::Txid, index: Vout) -> Vec<u8> {
+pub fn coin_storage_key<T: Config>(bitcoin_txid: bitcoin::Txid, vout: OutputIndex) -> Vec<u8> {
     use frame_support::storage::generator::StorageDoubleMap;
 
     let txid = Txid::from_bitcoin_txid(bitcoin_txid);
-    Coins::<T>::storage_double_map_final_key(txid, index)
+    Coins::<T>::storage_double_map_final_key(txid, vout)
 }
 
 /// Returns the final storage prefix for the storage item `Coins`.
@@ -170,8 +171,8 @@ impl<T: Config> Pallet<T> {
 
         if is_coinbase {
             for (out_point, coin) in new_coins {
-                let OutPoint { txid, vout } = OutPoint::from(out_point);
-                Coins::<T>::insert(txid, vout, coin);
+                let OutPoint { txid, output_index } = OutPoint::from(out_point);
+                Coins::<T>::insert(txid, output_index, coin);
             }
             return;
         }
@@ -179,8 +180,8 @@ impl<T: Config> Pallet<T> {
         // Process inputs.
         for input in tx.input {
             let previous_output = input.previous_output;
-            let OutPoint { txid, vout } = OutPoint::from(previous_output);
-            if let Some(_spent) = Coins::<T>::take(txid, vout) {
+            let OutPoint { txid, output_index } = OutPoint::from(previous_output);
+            if let Some(_spent) = Coins::<T>::take(txid, output_index) {
             } else {
                 panic!("Corruputed state, UTXO {previous_output:?} not found");
             }
@@ -188,8 +189,8 @@ impl<T: Config> Pallet<T> {
 
         // Process outputs.
         for (out_point, coin) in new_coins {
-            let OutPoint { txid, vout } = OutPoint::from(out_point);
-            Coins::<T>::insert(txid, vout, coin);
+            let OutPoint { txid, output_index } = OutPoint::from(out_point);
+            Coins::<T>::insert(txid, output_index, coin);
         }
     }
 }

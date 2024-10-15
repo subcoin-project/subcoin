@@ -12,5 +12,6 @@ fn test_runtime_txid_type() {
     let mut d = Vec::new();
     txid.consensus_encode(&mut d)
         .expect("txid must be encoded correctly; qed");
+    d.reverse();
     assert_eq!(d, runtime_txid.encode());
 }
