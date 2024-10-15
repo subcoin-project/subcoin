@@ -96,7 +96,13 @@ pub mod pallet {
     #[pallet::genesis_build]
     impl<T: Config> BuildGenesisConfig for GenesisConfig<T> {
         fn build(&self) {
-            let genesis_tx = Pallet::<T>::decode_transaction(self.genesis_tx.clone());
+            let genesis_tx =
+                bitcoin::Transaction::consensus_decode(&mut self.genesis_tx.clone().as_slice())
+                    .unwrap_or_else(|_| {
+                        panic!(
+                            "Transaction constructed internally must be decoded successfully; qed"
+                        )
+                    });
 
             let txid = Txid::from_bitcoin_txid(genesis_tx.compute_txid());
 
@@ -142,12 +148,6 @@ pub fn coin_storage_prefix<T: Config>() -> [u8; 32] {
 }
 
 impl<T: Config> Pallet<T> {
-    fn decode_transaction(btc_tx: Vec<u8>) -> bitcoin::Transaction {
-        bitcoin::Transaction::consensus_decode(&mut btc_tx.as_slice()).unwrap_or_else(|_| {
-            panic!("Transaction constructed internally must be decoded successfully; qed")
-        })
-    }
-
     fn process_bitcoin_transaction(tx: bitcoin::Transaction) {
         let txid = tx.compute_txid();
         let is_coinbase = tx.is_coinbase();
