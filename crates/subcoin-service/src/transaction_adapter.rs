@@ -1,4 +1,3 @@
-use bitcoin::consensus::{Decodable, Encodable};
 use bitcoin::Transaction;
 use sp_core::{Decode, Encode};
 use sp_runtime::traits::{Block as BlockT, Extrinsic};
@@ -31,30 +30,23 @@ impl<Block: BlockT> BitcoinTransactionAdapter<Block> for TransactionAdapter {
             >::transact {
                 btc_tx,
             }) => btc_tx.into(),
-            // Transaction::consensus_decode(&mut btc_tx.as_slice())
-            // .expect("Transaction decode must succeed otherwise the chain is broken; qed"),
             _ => unreachable!("Transactions only exist in pallet-bitcoin; qed"),
         }
     }
 
-    fn bitcoin_transaction_into_extrinsic(btc_tx: &bitcoin::Transaction) -> Block::Extrinsic {
-        // let mut data = Vec::new();
-        // btc_tx
-        // .consensus_encode(&mut data)
-        // .expect("Encoding bitcoin tx in a bitcoin block must succeed; qed");
-
+    fn bitcoin_transaction_into_extrinsic(btc_tx: bitcoin::Transaction) -> Block::Extrinsic {
         Decode::decode(
             &mut subcoin_runtime::UncheckedExtrinsic::new(
                 pallet_bitcoin::Call::<subcoin_runtime::Runtime>::transact {
-                    btc_tx: btc_tx.clone().into(),
+                    btc_tx: btc_tx.into(),
                 }
                 .into(),
                 None,
             )
-            .expect("Internally construct extrinsic must not fail; qed")
+            .expect("Extrinsic constructed internally must not fail; qed")
             .encode()
             .as_slice(),
         )
-        .expect("Internally construct extrinsic must not fail; qed")
+        .expect("Extrinsic constructed internally must not fail; qed")
     }
 }

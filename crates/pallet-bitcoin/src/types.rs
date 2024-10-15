@@ -173,7 +173,9 @@ impl Into<bitcoin::Transaction> for Transaction {
                 .map(|txin| bitcoin::TxIn {
                     previous_output: bitcoin::OutPoint {
                         txid: bitcoin::Txid::from_slice(&txin.previous_output.txid.encode())
-                            .expect("Txid must be valid; qed"),
+                            .expect(
+                                "Txid must be valid as Transaction is constructed internally; qed",
+                            ),
                         vout: txin.previous_output.vout,
                     },
                     script_sig: bitcoin::ScriptBuf::from_bytes(txin.script_sig),

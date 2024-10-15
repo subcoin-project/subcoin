@@ -280,7 +280,7 @@ fn fetch_utxo_set_at(
         client
             .storage_pairs(substrate_block_hash, Some(&storage_key), None)?
             .filter_map(|(key, value)| {
-                let (txid, vout) = <(pallet_bitcoin::Txid, u32)>::decode(
+                let (txid, vout) = <(pallet_bitcoin::types::Txid, u32)>::decode(
                     &mut &key.0.as_slice()[FINAL_STORAGE_PREFIX_LEN..],
                 )
                 .expect("UTXO key type must be correct; qed");
