@@ -73,6 +73,8 @@
 <a href="#73" id="73">73</a>
 <a href="#74" id="74">74</a>
 <a href="#75" id="75">75</a>
+<a href="#76" id="76">76</a>
+<a href="#77" id="77">77</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>bitcoin::blockdata::script::Script;
 <span class="kw">use </span>bitcoin::hashes::{sha256d, Hash};
 
@@ -104,6 +106,8 @@
 
 <span class="kw">fn </span>revert_sha256d(h256d: <span class="kw-2">&amp;</span>str) -&gt; sc_cli::Result&lt;String&gt; {
     <span class="kw">let </span>hash: sha256d::Hash = h256d
+        .strip_prefix(<span class="string">"0x"</span>)
+        .unwrap_or(h256d)
         .parse()
         .map_err(|err| sc_cli::Error::Input(<span class="macro">format!</span>(<span class="string">"Invalid h256: {err}"</span>)))<span class="question-mark">?</span>;
 

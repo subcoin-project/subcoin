@@ -568,6 +568,7 @@
 <a href="#568" id="568">568</a>
 <a href="#569" id="569">569</a>
 <a href="#570" id="570">570</a>
+<a href="#571" id="571">571</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! This module provides the implementation for importing Bitcoin blocks into Subcoin.
 //!
 //! Each Bitcoin block is converted into a Substrate block and imported into the database.
@@ -854,7 +855,8 @@
 
         <span class="kw">let </span>extrinsics = block
             .txdata
-            .iter()
+            .clone()
+            .into_iter()
             .map(TransactionAdapter::bitcoin_transaction_into_extrinsic)
             .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
 

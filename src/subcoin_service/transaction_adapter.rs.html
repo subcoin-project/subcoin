@@ -50,12 +50,7 @@
 <a href="#50" id="50">50</a>
 <a href="#51" id="51">51</a>
 <a href="#52" id="52">52</a>
-<a href="#53" id="53">53</a>
-<a href="#54" id="54">54</a>
-<a href="#55" id="55">55</a>
-<a href="#56" id="56">56</a>
-</pre></div><pre class="rust"><code><span class="kw">use </span>bitcoin::consensus::{Decodable, Encodable};
-<span class="kw">use </span>bitcoin::Transaction;
+</pre></div><pre class="rust"><code><span class="kw">use </span>bitcoin::Transaction;
 <span class="kw">use </span>sp_core::{Decode, Encode};
 <span class="kw">use </span>sp_runtime::traits::{Block <span class="kw">as </span>BlockT, Extrinsic};
 <span class="kw">use </span>subcoin_primitives::BitcoinTransactionAdapter;
@@ -86,28 +81,25 @@
                 subcoin_runtime::Runtime,
             &gt;::transact {
                 btc_tx,
-            }) =&gt; Transaction::consensus_decode(<span class="kw-2">&amp;mut </span>btc_tx.as_slice())
-                .expect(<span class="string">"Transaction decode must succeed otherwise the chain is broken; qed"</span>),
+            }) =&gt; btc_tx.into(),
             <span class="kw">_ </span>=&gt; <span class="macro">unreachable!</span>(<span class="string">"Transactions only exist in pallet-bitcoin; qed"</span>),
         }
     }
 
-    <span class="kw">fn </span>bitcoin_transaction_into_extrinsic(btc_tx: <span class="kw-2">&amp;</span>bitcoin::Transaction) -&gt; Block::Extrinsic {
-        <span class="kw">let </span><span class="kw-2">mut </span>data = Vec::new();
-        btc_tx
-            .consensus_encode(<span class="kw-2">&amp;mut </span>data)
-            .expect(<span class="string">"Encoding bitcoin tx in a bitcoin block must succeed; qed"</span>);
-
+    <span class="kw">fn </span>bitcoin_transaction_into_extrinsic(btc_tx: bitcoin::Transaction) -&gt; Block::Extrinsic {
         Decode::decode(
             <span class="kw-2">&amp;mut </span>subcoin_runtime::UncheckedExtrinsic::new(
-                pallet_bitcoin::Call::&lt;subcoin_runtime::Runtime&gt;::transact { btc_tx: data }.into(),
+                pallet_bitcoin::Call::&lt;subcoin_runtime::Runtime&gt;::transact {
+                    btc_tx: btc_tx.into(),
+                }
+                .into(),
                 <span class="prelude-val">None</span>,
             )
-            .expect(<span class="string">"Internally construct extrinsic must not fail; qed"</span>)
+            .expect(<span class="string">"Extrinsic constructed internally must not fail; qed"</span>)
             .encode()
             .as_slice(),
         )
-        .expect(<span class="string">"Internally construct extrinsic must not fail; qed"</span>)
+        .expect(<span class="string">"Extrinsic constructed internally must not fail; qed"</span>)
     }
 }
 </code></pre></div></section></main></body></html>

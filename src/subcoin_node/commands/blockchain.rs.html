@@ -889,7 +889,7 @@
         client
             .storage_pairs(substrate_block_hash, <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>storage_key), <span class="prelude-val">None</span>)<span class="question-mark">?
             </span>.filter_map(|(key, value)| {
-                <span class="kw">let </span>(txid, vout) = &lt;(pallet_bitcoin::Txid, u32)&gt;::decode(
+                <span class="kw">let </span>(txid, vout) = &lt;(pallet_bitcoin::types::Txid, u32)&gt;::decode(
                     <span class="kw-2">&amp;mut &amp;</span>key.<span class="number">0</span>.as_slice()[FINAL_STORAGE_PREFIX_LEN..],
                 )
                 .expect(<span class="string">"UTXO key type must be correct; qed"</span>);

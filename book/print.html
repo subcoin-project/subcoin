@@ -90,7 +90,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">Dev Guide</li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">1.</strong> Architecture</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="installation.html"><strong aria-hidden="true">2.</strong> Installation</a></li><li class="chapter-item expanded "><a href="run-a-node.html"><strong aria-hidden="true">3.</strong> Run a Node</a></li><li class="chapter-item expanded "><a href="import-bitcoind-blocks.html"><strong aria-hidden="true">4.</strong> Import Bitcoin Core Blocks</a></li><li class="chapter-item expanded "><a href="dumptxoutset.html"><strong aria-hidden="true">5.</strong> Export Bitcoin State</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">Dev Guide</li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">1.</strong> Architecture</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="import-bitcoind-blocks.html"><strong aria-hidden="true">2.</strong> Import Bitcoin Core Blocks</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -215,29 +215,6 @@ the state at a specific block and begins normal block sync from that point.</p>
 <p>This is a minimal Substrate runtime, composed of <code>frame-system</code> and <code>pallet-bitcoin</code>, which defines the core business logic of Subcoin chain.</p>
 <h3 id="cratessubcoin-node"><a class="header" href="#cratessubcoin-node"><code>crates/subcoin-node</code></a></h3>
 <p>The entry point for the Subcoin node is located at <code>crates/subcoin-node/src/bin/subcoin.rs</code>, which initializes and runs the node.</p>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="installing-subcoin"><a class="header" href="#installing-subcoin">Installing Subcoin</a></h1>
-<h2 id="compile-from-source"><a class="header" href="#compile-from-source">Compile from source</a></h2>
-<h3 id="install-prerequisites"><a class="header" href="#install-prerequisites">Install prerequisites</a></h3>
-<p>Subcoin is a Substrate-based chain, so you need to install the necessary development tools to compile the binary from source. Follow the full guide for installing the prerequisites at <a href="https://docs.substrate.io/install/">Substrate Installation Guide</a>.</p>
-<h3 id="compile-subcoin-node-binary"><a class="header" href="#compile-subcoin-node-binary">Compile subcoin node binary</a></h3>
-<p>After installing the required packages and Rust, proceed to compile the binary using the following command:</p>
-<pre><code class="language-bash">cargo build --profile production --bin subcoin
-</code></pre>
-<p>Once the compilation is complete, the Subcoin node executable subcoin will be located at <code>target/production/subcoin</code>.</p>
-<h2 id="docker"><a class="header" href="#docker">Docker</a></h2>
-<p>You can pull the Docker image built from the latest commit of the main branch with the following command:</p>
-<pre><code class="language-bash">docker pull ghcr.io/subcoin-project/subcoin:main
-</code></pre>
-<p>For a list of all available versions, refer to the <a href="https://github.com/subcoin-project/subcoin/pkgs/container/subcoin/versions">Subcoin Docker Container Versions</a>.</p>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="run-subcoin-node"><a class="header" href="#run-subcoin-node">Run Subcoin Node</a></h1>
-<h2 id="system-requirements"><a class="header" href="#system-requirements">System Requirements</a></h2>
-<p>TODO</p>
-<h2 id="syncing-the-bitcoin-network"><a class="header" href="#syncing-the-bitcoin-network">Syncing the Bitcoin Network</a></h2>
-<p>Run the following command to sync the Bitcoin blockchain from the Bitcoin P2P network. The <code>--log subcoin_network=debug</code> option
-will enable debug-level logging to show detailed information about the syncing process. By default, the block will be fully verified.
-You can use <code>--block-verification=none</code> to skip the block verification. Check out <code>subcoin run --help</code> for more options.</p>
-<pre><code class="language-bash">subcoin run -d data --log subcoin_network=debug
-</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="import-blocks-from-bitcoin-core-database"><a class="header" href="#import-blocks-from-bitcoin-core-database">Import Blocks from Bitcoin Core Database</a></h1>
 <!-- clap-markdown-toc -->
 <ul>
@@ -334,15 +311,6 @@ subcoin blockchain gettxoutsetinfo --height 10000 -d subcoin-data
   "total_amount": "500000.00000000"
 }
 </code></pre>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="export-bitcoin-state-compatible-with-bitcoin-core"><a class="header" href="#export-bitcoin-state-compatible-with-bitcoin-core">Export Bitcoin State Compatible with Bitcoin Core</a></h1>
-<h2 id="dumptxoutset-command"><a class="header" href="#dumptxoutset-command"><code>dumptxoutset</code> Command</a></h2>
-<p>Subcoin provides the ability to export the Bitcoin state (UTXO Set) into a binary file that is fully compatible with the output of Bitcoin Core's <code>dumptxoutset</code> command, allowing for seamless integration and compatibility with Bitcoin Core.</p>
-<p>To use this feature, check out this command:</p>
-<pre><code class="language-bash">subcoin blockchain dumptxoutset --help
-</code></pre>
-<h2 id="decentralized-utxo-set-snapshot-download-coming-soon"><a class="header" href="#decentralized-utxo-set-snapshot-download-coming-soon">Decentralized UTXO Set Snapshot Download (Coming Soon)</a></h2>
-<p>You can download the Bitcoin state directly from the Subcoin P2P network in a fully decentralized manner, eliminating the need for trusted snapshot providers. This feature will allow you to retrieve the UTXO Set snapshot from the network, convert it into a format compatible with Bitcoin Core, and import it directly into a Bitcoin Core node. This makes Subcoin an ideal addition to the Bitcoin Core ecosystem, providing a decentralized, secure, and efficient method for syncing with Bitcoin’s UTXO set.</p>
-<p>Follow <a href="https://github.com/subcoin-project/subcoin/issues/54">Subcoin Issue #54</a> for this complementary feature, which will enhance the functionality of Bitcoin Core by integrating decentralized state retrieval from Subcoin.</p>
 
                     </main>
 

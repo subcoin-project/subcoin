@@ -475,7 +475,7 @@
     </span><span class="kw">fn </span>extrinsic_to_bitcoin_transaction(extrinsics: <span class="kw-2">&amp;</span>Block::Extrinsic) -&gt; Transaction;
 
     <span class="doccomment">/// Converts a Bitcoin transaction into a Substrate extrinsic.
-    </span><span class="kw">fn </span>bitcoin_transaction_into_extrinsic(btc_tx: <span class="kw-2">&amp;</span>Transaction) -&gt; Block::Extrinsic;
+    </span><span class="kw">fn </span>bitcoin_transaction_into_extrinsic(btc_tx: Transaction) -&gt; Block::Extrinsic;
 }
 
 <span class="doccomment">/// Trait for interfacing with the Bitcoin storage.
