@@ -284,7 +284,8 @@ where
 
         let extrinsics = block
             .txdata
-            .iter()
+            .clone()
+            .into_iter()
             .map(TransactionAdapter::bitcoin_transaction_into_extrinsic)
             .collect::<Vec<_>>();
 

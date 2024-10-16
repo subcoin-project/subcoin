@@ -29,6 +29,8 @@ pub enum Tools {
 
 fn revert_sha256d(h256d: &str) -> sc_cli::Result<String> {
     let hash: sha256d::Hash = h256d
+        .strip_prefix("0x")
+        .unwrap_or(h256d)
         .parse()
         .map_err(|err| sc_cli::Error::Input(format!("Invalid h256: {err}")))?;
 

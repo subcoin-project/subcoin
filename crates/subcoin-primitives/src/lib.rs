@@ -72,7 +72,7 @@ pub trait BitcoinTransactionAdapter<Block: BlockT> {
     fn extrinsic_to_bitcoin_transaction(extrinsics: &Block::Extrinsic) -> Transaction;
 
     /// Converts a Bitcoin transaction into a Substrate extrinsic.
-    fn bitcoin_transaction_into_extrinsic(btc_tx: &Transaction) -> Block::Extrinsic;
+    fn bitcoin_transaction_into_extrinsic(btc_tx: Transaction) -> Block::Extrinsic;
 }
 
 /// Trait for interfacing with the Bitcoin storage.

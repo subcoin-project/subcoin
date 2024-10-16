@@ -5298,6 +5298,7 @@ dependencies = [
  "bitcoin 0.32.2",
  "frame-support",
  "frame-system",
+ "hex-conservative 0.2.1",
  "log",
  "parity-scale-codec",
  "scale-info",

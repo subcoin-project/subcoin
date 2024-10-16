@@ -19,6 +19,9 @@ sp-runtime = { workspace = true, default-features = false }
 sp-std = { workspace = true, default-features = false }
 subcoin-runtime-primitives = { workspace = true, default-features = false }
 
+[dev-dependencies]
+hex = { package = "hex-conservative", version = "0.2.0", features = ["alloc"] }
+
 [features]
 default = ["std"]
 std = [
