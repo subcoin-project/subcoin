@@ -6967,21 +6967,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sc-fast-sync-backend"
-version = "0.1.0"
-dependencies = [
- "parking_lot 0.12.3",
- "sc-client-api",
- "sp-blockchain",
- "sp-core",
- "sp-runtime",
- "sp-state-machine",
- "sp-trie",
- "subcoin-runtime",
- "tracing",
-]
-
-[[package]]
 name = "sc-informant"
 version = "0.33.0"
 source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v2#4e8e05f0da14ead54c4c04c146f900f79751257c"
@@ -9099,7 +9084,6 @@ dependencies = [
  "sc-consensus",
  "sc-consensus-nakamoto",
  "sc-executor",
- "sc-fast-sync-backend",
  "sc-informant",
  "sc-network",
  "sc-network-sync",

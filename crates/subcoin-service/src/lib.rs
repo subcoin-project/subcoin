@@ -43,20 +43,6 @@ pub type FullClient =
 type FullBackend = sc_service::TFullBackend<Block>;
 type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
-/// In memory client type.
-pub type InMemoryClient = sc_service::client::Client<
-    InMemoryBackend,
-    sc_service::LocalCallExecutor<
-        Block,
-        sc_fast_sync_backend::Backend<Block>,
-        NativeElseWasmExecutor<SubcoinExecutorDispatch>,
-    >,
-    Block,
-    RuntimeApi,
->;
-/// In memory backend type.
-pub type InMemoryBackend = sc_fast_sync_backend::Backend<Block>;
-
 /// Subcoin executor.
 pub struct SubcoinExecutorDispatch;
 
