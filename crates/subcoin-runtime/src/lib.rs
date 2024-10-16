@@ -25,13 +25,17 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
+use frame_support::dispatch::PerDispatchClass;
 use frame_support::genesis_builder_helper::{build_state, get_preset};
+use frame_support::pallet_prelude::*;
 use frame_support::{derive_impl, parameter_types};
+use frame_system::limits::WeightsPerClass;
 use frame_system::pallet_prelude::*;
 use pallet_executive::Executive;
 use sp_api::impl_runtime_apis;
 use sp_core::{ConstU32, OpaqueMetadata};
 use sp_inherents::{CheckInherentsResult, InherentData};
+use sp_runtime::traits::Get;
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{ApplyExtrinsicResult, ExtrinsicInclusionMode};
 use sp_std::vec;
@@ -39,6 +43,13 @@ use sp_std::vec::Vec;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::{create_runtime_str, runtime_version, RuntimeVersion};
+
+/// header weight (80 * 4) + tx_data_len(4)
+const BITCOIN_BASE_BLOCK_WEIGHT: u64 = 80 * 4 + 4;
+
+/// Maximum block weight.
+/// https://github.com/bitcoin/bips/blob/master/bip-0141.mediawiki#Block_size
+const BITCOIN_MAX_WEIGHT: u64 = 4_000_000;
 
 #[runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
@@ -91,11 +102,37 @@ impl frame_system::Config for Runtime {
     type Block = Block;
     type Version = Version;
     type BlockHashCount = ConstU32<1024>;
+    type BlockWeights = BlockWeights;
+}
+
+/// Subcoin block weights.
+pub struct BlockWeights;
+
+impl Get<frame_system::limits::BlockWeights> for BlockWeights {
+    fn get() -> frame_system::limits::BlockWeights {
+        frame_system::limits::BlockWeights {
+            base_block: Weight::from_parts(BITCOIN_BASE_BLOCK_WEIGHT, 0u64),
+            max_block: Weight::from_parts(BITCOIN_MAX_WEIGHT, 0u64),
+            per_class: PerDispatchClass::new(|class| {
+                let initial = if class == DispatchClass::Mandatory {
+                    None
+                } else {
+                    Some(Weight::zero())
+                };
+                WeightsPerClass {
+                    base_extrinsic: Weight::zero(),
+                    max_extrinsic: None,
+                    max_total: initial,
+                    reserved: initial,
+                }
+            }),
+        }
+    }
 }
 
 impl pallet_bitcoin::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type WeightInfo = ();
+    type WeightInfo = pallet_bitcoin::BitcoinTransactionWeight;
 }
 
 type Signature = crate::types_common::Signature;
