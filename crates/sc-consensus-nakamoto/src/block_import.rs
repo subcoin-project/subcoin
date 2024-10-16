@@ -18,10 +18,11 @@
 //! - [`ImportStatus`]
 //!     An enum representing the result of an import operation, with variants for different import outcomes.
 
-use crate::block_executor::{BlockExecutor, ExecuteBlockResult};
 use crate::metrics::Metrics;
 use crate::verification::{BlockVerification, BlockVerifier};
 use bitcoin::blockdata::block::Header as BitcoinHeader;
+use sp_api::CallContext;
+use sp_api::ApiExt;
 use bitcoin::hashes::Hash;
 use bitcoin::{Block as BitcoinBlock, BlockHash, Network, Work};
 use codec::Encode;
@@ -132,7 +133,6 @@ pub struct BitcoinBlockImporter<Block, Client, BE, BI, TransactionAdapter> {
     stats: Stats,
     config: ImportConfig,
     verifier: BlockVerifier<Block, Client, BE>,
-    block_executor: Box<dyn BlockExecutor<Block>>,
     metrics: Option<Metrics>,
     last_block_execution_report: Instant,
     _phantom: PhantomData<TransactionAdapter>,
@@ -161,7 +161,6 @@ where
         block_import: BI,
         config: ImportConfig,
         coin_storage_key: Arc<dyn CoinStorageKey>,
-        block_executor: Box<dyn BlockExecutor<Block>>,
         registry: Option<&Registry>,
     ) -> Self {
         let verifier = BlockVerifier::new(
@@ -185,16 +184,10 @@ where
             stats: Stats::default(),
             config,
             verifier,
-            block_executor,
             metrics,
             last_block_execution_report: Instant::now(),
             _phantom: Default::default(),
         }
-    }
-
-    /// Sets new block executor.
-    pub fn set_block_executor(&mut self, new_executor: Box<dyn BlockExecutor<Block>>) {
-        self.block_executor = new_executor;
     }
 
     #[inline]
@@ -239,11 +232,18 @@ where
         let transactions_count = block.extrinsics().len();
         let block_size = block.encoded_size();
 
-        let ExecuteBlockResult {
-            state_root,
-            storage_changes,
-            exec_info: _,
-        } = self.block_executor.execute_block(parent_hash, block)?;
+        let mut runtime_api = self.client.runtime_api();
+        runtime_api.set_call_context(CallContext::Onchain);
+
+        runtime_api.execute_block_without_state_root_check(parent_hash, block)?;
+
+        let state = self.client.state_at(parent_hash)?;
+
+        let storage_changes = runtime_api
+            .into_storage_changes(&state, parent_hash)
+            .map_err(sp_blockchain::Error::StorageChanges)?;
+
+        let state_root = storage_changes.transaction_storage_root;
 
         if let Some(metrics) = &self.metrics {
             const BLOCK_EXECUTION_REPORT_INTERVAL: u128 = 50;
@@ -274,7 +274,7 @@ where
         block: BitcoinBlock,
         substrate_parent_block: HashAndNumber<Block>,
         origin: BlockOrigin,
-    ) -> sp_blockchain::Result<(BlockImportParams<Block>, Option<BlockImportParams<Block>>)> {
+    ) -> sp_blockchain::Result<BlockImportParams<Block>> {
         let HashAndNumber {
             number: parent_block_number,
             hash: parent_hash,
@@ -307,7 +307,7 @@ where
         );
 
         // subcoin bootstrap node must execute every block.
-        let (state_action, maybe_changes) = if self.config.execute_block {
+        let state_action = if self.config.execute_block {
             let now = std::time::Instant::now();
 
             let tx_count = extrinsics.len();
@@ -330,20 +330,9 @@ where
             // Now it's a normal Substrate header after setting the state root.
             header.set_state_root(state_root);
 
-            let changes_for_block_executor = if self.block_executor.is_in_memory_backend_used() {
-                Some(StorageChanges::Changes(clone_storage_changes::<Block>(
-                    &storage_changes,
-                )))
-            } else {
-                None
-            };
-
-            (
-                StateAction::ApplyChanges(StorageChanges::<Block>::Changes(storage_changes)),
-                changes_for_block_executor,
-            )
+            StateAction::ApplyChanges(StorageChanges::<Block>::Changes(storage_changes))
         } else {
-            (StateAction::Skip, None)
+            StateAction::Skip
         };
 
         let substrate_block_hash = header.hash();
@@ -366,11 +355,7 @@ where
             total_work,
         );
 
-        let import_params_for_block_executor = maybe_changes.map(|changes| {
-            clone_block_import_params(&block_import_params, StateAction::ApplyChanges(changes))
-        });
-
-        Ok((block_import_params, import_params_for_block_executor))
+        Ok(block_import_params)
     }
 }
 
@@ -544,13 +529,9 @@ where
             .verify_block(block_number, &block)
             .map_err(|err| import_err(format!("{err:?}")))?;
 
-        let (block_import_params, maybe_import_params_for_block_executor) = self
+        let block_import_params = self
             .prepare_substrate_block_import(block, substrate_parent_block, origin)
             .map_err(|err| import_err(err.to_string()))?;
-
-        if let Some(import_params) = maybe_import_params_for_block_executor {
-            self.block_executor.import_block(import_params).await?;
-        }
 
         self.inner
             .import_block(block_import_params)

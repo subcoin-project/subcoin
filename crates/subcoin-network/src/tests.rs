@@ -227,7 +227,6 @@ async fn test_block_announcement_via_headers() {
         ..
     } = new_node(SubcoinConfiguration {
         network: bitcoin::Network::Bitcoin,
-        block_execution_strategy: sc_consensus_nakamoto::BlockExecutionStrategy::runtime_disk(),
         config: &config,
         no_hardware_benchmarks: true,
         storage_monitor: Default::default(),

@@ -1,6 +1,6 @@
 use clap::Parser;
 use sc_consensus_nakamoto::{
-    BlockExecutionStrategy, BlockVerification, ExecutionBackend, ImportConfig,
+    BlockVerification, ImportConfig,
 };
 use std::path::PathBuf;
 use subcoin_network::PeerId;
@@ -71,31 +71,11 @@ pub struct NetworkParams {
     pub persistent_peer_latency_threshold: u128,
 }
 
-#[derive(Debug, Clone, clap::ValueEnum)]
-pub enum BlockExecution {
-    /// Execute the block using runtime api `execute_block` on disk backend.
-    RuntimeDisk,
-    /// Execute the block using runtime api `execute_block` on in memory backend.
-    RuntimeInMemory,
-    /// Use custom `apply_extrinsics` on disk backend.
-    OffRuntimeDisk,
-    /// Use custom `apply_extrinsics` on in memory backend.
-    OffRuntimeInMemory,
-    /// Combo of `RuntimeDisk` and `RuntimeInMemory`.
-    BenchRuntime,
-    /// Benchmark all supported strategies.
-    BenchAll,
-}
-
 #[derive(Debug, Clone, Parser)]
 pub struct CommonParams {
     /// Specify the chain.
     #[arg(long, value_name = "CHAIN", default_value = "bitcoin-mainnet")]
     pub chain: Chain,
-
-    /// Specify the block execution strategy.
-    #[clap(long, value_enum, default_value_t = BlockExecution::RuntimeDisk)]
-    pub block_execution: BlockExecution,
 
     /// Specify the block verification level.
     #[clap(long, default_value = "full")]
@@ -161,25 +141,6 @@ impl CommonParams {
             block_verification: self.block_verification,
             execute_block: true,
             verify_script: self.verify_script,
-        }
-    }
-
-    pub fn block_execution_strategy(&self) -> BlockExecutionStrategy {
-        match &self.block_execution {
-            BlockExecution::RuntimeDisk => {
-                BlockExecutionStrategy::RuntimeExecution(ExecutionBackend::Disk)
-            }
-            BlockExecution::RuntimeInMemory => {
-                BlockExecutionStrategy::RuntimeExecution(ExecutionBackend::InMemory)
-            }
-            BlockExecution::OffRuntimeDisk => {
-                BlockExecutionStrategy::OffRuntimeExecution(ExecutionBackend::Disk)
-            }
-            BlockExecution::OffRuntimeInMemory => {
-                BlockExecutionStrategy::OffRuntimeExecution(ExecutionBackend::InMemory)
-            }
-            BlockExecution::BenchRuntime => BlockExecutionStrategy::BenchmarkRuntimeExecution,
-            BlockExecution::BenchAll => BlockExecutionStrategy::BenchmarkAll,
         }
     }
 }

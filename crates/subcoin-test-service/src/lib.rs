@@ -113,7 +113,6 @@ pub fn new_test_node(tokio_handle: tokio::runtime::Handle) -> Result<NodeCompone
     let config = test_configuration(tokio_handle);
     subcoin_service::new_node(SubcoinConfiguration {
         network: bitcoin::Network::Bitcoin,
-        block_execution_strategy: BlockExecutionStrategy::RuntimeExecution(ExecutionBackend::Disk),
         config: &config,
         no_hardware_benchmarks: true,
         storage_monitor: Default::default(),
