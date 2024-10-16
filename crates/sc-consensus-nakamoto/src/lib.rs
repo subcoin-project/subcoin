@@ -1,5 +1,4 @@
 mod aux_schema;
-// mod block_executor;
 mod block_import;
 mod chain_params;
 mod import_queue;
@@ -7,10 +6,6 @@ mod metrics;
 mod verification;
 mod verifier;
 
-// pub use block_executor::{
-    // BenchmarkAllExecutor, BenchmarkRuntimeBlockExecutor, BlockExecutionStrategy, BlockExecutor,
-    // ClientContext, ExecutionBackend, OffRuntimeBlockExecutor, RuntimeBlockExecutor,
-// };
 pub use block_import::{BitcoinBlockImport, BitcoinBlockImporter, ImportConfig, ImportStatus};
 pub use chain_params::ChainParams;
 pub use import_queue::{

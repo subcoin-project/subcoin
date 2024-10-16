@@ -1,7 +1,5 @@
 use clap::Parser;
-use sc_consensus_nakamoto::{
-    BlockVerification, ImportConfig,
-};
+use sc_consensus_nakamoto::{BlockVerification, ImportConfig};
 use std::path::PathBuf;
 use subcoin_network::PeerId;
 

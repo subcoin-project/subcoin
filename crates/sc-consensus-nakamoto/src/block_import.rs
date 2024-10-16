@@ -21,8 +21,6 @@
 use crate::metrics::Metrics;
 use crate::verification::{BlockVerification, BlockVerifier};
 use bitcoin::blockdata::block::Header as BitcoinHeader;
-use sp_api::CallContext;
-use sp_api::ApiExt;
 use bitcoin::hashes::Hash;
 use bitcoin::{Block as BitcoinBlock, BlockHash, Network, Work};
 use codec::Encode;
@@ -31,7 +29,7 @@ use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, ImportedAux, StateAction,
     StorageChanges,
 };
-use sp_api::{CallApiAt, Core, ProvideRuntimeApi};
+use sp_api::{ApiExt, CallApiAt, CallContext, Core, ProvideRuntimeApi};
 use sp_blockchain::HashAndNumber;
 use sp_consensus::{BlockOrigin, BlockStatus};
 use sp_runtime::traits::{
@@ -46,33 +44,6 @@ use subcoin_primitives::{
     substrate_header_digest, BackendExt, BitcoinTransactionAdapter, CoinStorageKey,
 };
 use substrate_prometheus_endpoint::Registry;
-
-pub(crate) fn clone_storage_changes<Block: BlockT>(
-    c: &sp_state_machine::StorageChanges<HashingFor<Block>>,
-) -> sp_state_machine::StorageChanges<HashingFor<Block>> {
-    sp_state_machine::StorageChanges {
-        main_storage_changes: c.main_storage_changes.clone(),
-        child_storage_changes: c.child_storage_changes.clone(),
-        offchain_storage_changes: c.offchain_storage_changes.clone(),
-        transaction: c.transaction.clone(),
-        transaction_storage_root: c.transaction_storage_root,
-        transaction_index_changes: c.transaction_index_changes.clone(),
-    }
-}
-
-fn clone_block_import_params<Block: BlockT>(
-    params: &BlockImportParams<Block>,
-    state_action: StateAction<Block>,
-) -> BlockImportParams<Block> {
-    let mut import_params = BlockImportParams::new(params.origin, params.header.clone());
-    import_params.post_digests.clone_from(&params.post_digests);
-    import_params.state_action = state_action;
-    import_params.auxiliary.clone_from(&params.auxiliary);
-    import_params.fork_choice = params.fork_choice;
-    import_params.import_existing = params.import_existing;
-    import_params.post_hash.clone_from(&params.post_hash);
-    import_params
-}
 
 /// Block import configuration.
 #[derive(Debug, Clone)]
