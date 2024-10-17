@@ -30,10 +30,13 @@ pub use pallet::*;
 /// Transaction output index.
 pub type OutputIndex = u32;
 
+/// Weight functions needed for `pallet_bitcoin`.
 pub trait WeightInfo {
+    /// Calculates the weight of [`Call::transact`].
     fn transact(btc_tx: &Transaction) -> Weight;
 }
 
+/// A struct that implements the [`WeightInfo`] trait for Bitcoin transactions.
 pub struct BitcoinTransactionWeight;
 
 impl WeightInfo for BitcoinTransactionWeight {
