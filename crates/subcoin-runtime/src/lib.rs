@@ -112,7 +112,7 @@ impl Get<frame_system::limits::BlockWeights> for BlockWeights {
     fn get() -> frame_system::limits::BlockWeights {
         frame_system::limits::BlockWeights {
             base_block: Weight::from_parts(BITCOIN_BASE_BLOCK_WEIGHT, 0u64),
-            max_block: Weight::from_parts(BITCOIN_MAX_WEIGHT, 0u64),
+            max_block: Weight::from_parts(BITCOIN_MAX_WEIGHT, u64::MAX),
             per_class: PerDispatchClass::new(|class| {
                 let initial = if class == DispatchClass::Mandatory {
                     None
