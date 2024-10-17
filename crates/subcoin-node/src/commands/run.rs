@@ -128,7 +128,6 @@ impl RunCmd {
             ));
         }
 
-        let block_execution_strategy = run.common_params.block_execution_strategy();
         let bitcoin_network = run.common_params.bitcoin_network();
         let import_config = run.common_params.import_config();
         let no_finalizer = run.no_finalizer;
@@ -137,13 +136,11 @@ impl RunCmd {
             client,
             backend,
             mut task_manager,
-            block_executor,
             telemetry,
             ..
         } = subcoin_service::new_node(subcoin_service::SubcoinConfiguration {
             network: bitcoin_network,
             config: &config,
-            block_execution_strategy,
             no_hardware_benchmarks: run.no_hardware_benchmarks,
             storage_monitor,
         })?;
@@ -160,7 +157,6 @@ impl RunCmd {
                 client.clone(),
                 import_config,
                 Arc::new(subcoin_service::CoinStorageKey),
-                block_executor,
                 config.prometheus_registry(),
             );
 

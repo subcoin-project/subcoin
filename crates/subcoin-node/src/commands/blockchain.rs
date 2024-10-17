@@ -3,7 +3,6 @@ use crate::utils::Yield;
 use bitcoin::consensus::Encodable;
 use sc_cli::{DatabaseParams, ImportParams, NodeKeyParams, SharedParams};
 use sc_client_api::{HeaderBackend, StorageProvider};
-use sc_consensus_nakamoto::BlockExecutionStrategy;
 use serde::Serialize;
 use sp_core::storage::StorageKey;
 use sp_core::Decode;
@@ -104,12 +103,6 @@ pub enum Blockchain {
         #[arg(long, value_name = "CHAIN", default_value = "bitcoin-mainnet")]
         chain: Chain,
     },
-}
-
-impl Blockchain {
-    pub fn block_execution_strategy(&self) -> BlockExecutionStrategy {
-        BlockExecutionStrategy::runtime_disk()
-    }
 }
 
 pub enum BlockchainCmd {

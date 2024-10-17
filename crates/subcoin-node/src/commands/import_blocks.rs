@@ -80,7 +80,6 @@ impl ImportBlocksCmd {
     pub async fn run<'a>(
         &self,
         client: Arc<FullClient>,
-        block_executor: Box<dyn sc_consensus_nakamoto::BlockExecutor<OpaqueBlock>>,
         data_dir: PathBuf,
         import_config: ImportConfig,
         spawn_handle: SpawnTaskHandle,
@@ -114,7 +113,6 @@ impl ImportBlocksCmd {
                 client.clone(),
                 import_config,
                 Arc::new(subcoin_service::CoinStorageKey),
-                block_executor,
                 maybe_prometheus_config
                     .as_ref()
                     .map(|config| config.registry.clone())

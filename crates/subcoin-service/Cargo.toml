@@ -19,7 +19,6 @@ sc-client-api = { workspace = true }
 sc-consensus = { workspace = true }
 sc-consensus-nakamoto = { workspace = true }
 sc-executor = { workspace = true }
-sc-fast-sync-backend = { workspace = true }
 sc-informant = { workspace = true }
 sc-network = { workspace = true }
 sc-network-sync = { workspace = true }

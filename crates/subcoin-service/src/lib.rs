@@ -2,20 +2,18 @@
 
 #![allow(deprecated)]
 
-mod block_executor;
 pub mod chain_spec;
 mod finalizer;
 mod genesis_block_builder;
 mod transaction_adapter;
 
 use bitcoin::hashes::Hash;
-use block_executor::{new_block_executor, new_in_memory_client};
 use frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE;
 use futures::FutureExt;
 use genesis_block_builder::GenesisBlockBuilder;
 use sc_client_api::{AuxStore, HeaderBackend};
 use sc_consensus::import_queue::BasicQueue;
-use sc_consensus_nakamoto::{BlockExecutionStrategy, BlockExecutor, SubstrateImportQueueVerifier};
+use sc_consensus_nakamoto::SubstrateImportQueueVerifier;
 use sc_executor::NativeElseWasmExecutor;
 use sc_network_sync::SyncingService;
 use sc_service::config::PrometheusConfig;
@@ -44,20 +42,6 @@ pub type FullClient =
     sc_service::TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<SubcoinExecutorDispatch>>;
 type FullBackend = sc_service::TFullBackend<Block>;
 type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
-
-/// In memory client type.
-pub type InMemoryClient = sc_service::client::Client<
-    InMemoryBackend,
-    sc_service::LocalCallExecutor<
-        Block,
-        sc_fast_sync_backend::Backend<Block>,
-        NativeElseWasmExecutor<SubcoinExecutorDispatch>,
-    >,
-    Block,
-    RuntimeApi,
->;
-/// In memory backend type.
-pub type InMemoryBackend = sc_fast_sync_backend::Backend<Block>;
 
 /// Subcoin executor.
 pub struct SubcoinExecutorDispatch;
@@ -97,8 +81,6 @@ pub struct NodeComponents {
     pub executor: NativeElseWasmExecutor<SubcoinExecutorDispatch>,
     /// Task manager.
     pub task_manager: TaskManager,
-    /// Block processor used in the block import pipeline.
-    pub block_executor: Box<dyn BlockExecutor<Block>>,
     pub keystore_container: KeystoreContainer,
     pub telemetry: Option<Telemetry>,
 }
@@ -107,7 +89,6 @@ pub struct NodeComponents {
 pub struct SubcoinConfiguration<'a> {
     pub network: bitcoin::Network,
     pub config: &'a Configuration,
-    pub block_execution_strategy: BlockExecutionStrategy,
     pub no_hardware_benchmarks: bool,
     pub storage_monitor: sc_storage_monitor::StorageMonitorParams,
 }
@@ -117,7 +98,6 @@ impl<'a> SubcoinConfiguration<'a> {
     pub fn test_config(config: &'a Configuration) -> Self {
         Self {
             network: bitcoin::Network::Bitcoin,
-            block_execution_strategy: BlockExecutionStrategy::runtime_disk(),
             config,
             no_hardware_benchmarks: true,
             storage_monitor: Default::default(),
@@ -156,7 +136,6 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
     let SubcoinConfiguration {
         network: bitcoin_network,
         config,
-        block_execution_strategy,
         no_hardware_benchmarks,
         storage_monitor,
     } = config;
@@ -199,24 +178,6 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
     initialize_genesis_block_hash_mapping(&client, bitcoin_network);
 
     let client = Arc::new(client);
-
-    let should_create_in_memory_client = block_execution_strategy.in_memory_backend_used();
-    let block_executor = new_block_executor(
-        client.clone(),
-        block_execution_strategy,
-        if should_create_in_memory_client {
-            Some(new_in_memory_client(
-                client.clone(),
-                backend.clone(),
-                executor.clone(),
-                bitcoin_network,
-                task_manager.spawn_handle(),
-                config,
-            )?)
-        } else {
-            None
-        },
-    );
 
     let mut telemetry = telemetry.map(|(worker, telemetry)| {
         task_manager
@@ -268,7 +229,6 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
         backend,
         executor,
         task_manager,
-        block_executor,
         keystore_container,
         telemetry,
     })
