@@ -223,7 +223,6 @@ async fn test_block_announcement_via_headers() {
     let NodeComponents {
         client,
         task_manager,
-        block_executor,
         ..
     } = new_node(SubcoinConfiguration {
         network: bitcoin::Network::Bitcoin,
@@ -253,7 +252,6 @@ async fn test_block_announcement_via_headers() {
             verify_script: true,
         },
         Arc::new(subcoin_service::CoinStorageKey),
-        block_executor,
         None,
     );
 
