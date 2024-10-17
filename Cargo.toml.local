@@ -1,0 +1,136 @@
+[workspace.package]
+version = "0.1.0"
+authors = ["xuliuchengxlc@gmail.com"]
+edition = "2021"
+repository = "https://github.com/subcoin-project/subcoin.git"
+license = "MIT"
+
+[workspace]
+resolver = "2"
+
+members = [
+    "crates/pallet-bitcoin",
+    "crates/pallet-executive",
+    "crates/sc-consensus-nakamoto",
+    "crates/subcoin-crypto",
+    "crates/subcoin-informant",
+    "crates/subcoin-network",
+    "crates/subcoin-node",
+    "crates/subcoin-primitives",
+    "crates/subcoin-rpc",
+    "crates/subcoin-runtime",
+    "crates/subcoin-runtime-primitives",
+    "crates/subcoin-service",
+    "crates/subcoin-test-service",
+]
+
+default-members = ["crates/subcoin-node"]
+
+[workspace.dependencies]
+async-trait = "0.1"
+bitcoin = { git = "https://github.com/liuchengxu/rust-bitcoin", branch = "0.32.x-subcoin", default-features = false }
+bitcoinconsensus = "0.105.0+25.1"
+bitcoin-explorer = { git = "https://github.com/liuchengxu/Rusty-Bitcoin-Explorer", branch = "rust-bitcoin-upgrade", default-features = false }
+chrono = "0.4.37"
+clap = { version = "4", features = ["derive"] }
+codec = { package = "parity-scale-codec", version = "3.0.0", default-features = false }
+console = "0.15.8"
+fastrand = "2.0.2"
+futures = "0.3"
+futures-timer = "3.0.1"
+jsonrpsee = { version = "0.24.3", features = ["server"] }
+hex = "0.4"
+hex-literal = "0.4.1"
+indexmap = "2.2.6"
+ip_network = "0.4.1"
+log = { version = "0.4", default-features = false }
+once_cell = "1.19.0"
+parking_lot = "0.12"
+scale-info = { version = "2.6.0", default-features = false }
+serde = "1"
+serde_json = "1"
+tempfile = "3.10.1"
+thiserror = "1.0"
+tokio = "1.37.0"
+tracing = "0.1"
+
+frame-benchmarking-cli = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/utils/frame/benchmarking-cli" }
+frame-support = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/frame/support", default-features = false }
+frame-system = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/frame/system", default-features = false }
+frame-system-rpc-runtime-api = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/frame/system/rpc/runtime-api", default-features = false }
+frame-try-runtime = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/frame/try-runtime", default-features = false }
+pallet-balances = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/frame/balances", default-features = false }
+pallet-transaction-payment = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/frame/transaction-payment", default-features = false }
+# Disable the default `rocksdb` feature
+sc-cli = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/client/cli", default-features = false }
+sc-client-api = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/client/api" }
+sc-consensus = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/client/consensus/common" }
+sc-executor = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/client/executor" }
+sc-informant = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/client/informant" }
+sc-network = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/client/network" }
+sc-network-sync = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/client/network/sync" }
+sc-rpc = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/client/rpc" }
+sc-rpc-api = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/client/rpc-api" }
+# Disable the default `rocksdb` feature
+sc-service = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/client/service", default-features = false }
+sc-storage-monitor = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/client/storage-monitor" }
+sc-sysinfo = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/client/sysinfo" }
+sc-telemetry = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/client/telemetry" }
+sc-transaction-pool = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/client/transaction-pool" }
+sc-transaction-pool-api = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/client/transaction-pool/api" }
+sc-utils = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/client/utils" }
+sp-api = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/api", default-features = false }
+sp-blockchain = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/blockchain", default-features = false }
+sp-block-builder = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/block-builder", default-features = false }
+sp-consensus = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/consensus/common", default-features = false }
+sp-consensus-grandpa = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/consensus/grandpa", default-features = false }
+sp-core = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/core", default-features = false }
+sp-database = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/database", default-features = false }
+sp-genesis-builder = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/genesis-builder", default-features = false }
+sp-keyring = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/keyring" }
+sp-keystore = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/keystore" }
+sp-inherents = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/inherents", default-features = false }
+sp-io = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/io", default-features = false }
+sp-rpc = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/rpc" }
+sp-runtime = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/runtime", default-features = false }
+sp-session = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/session", default-features = false }
+sp-std = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/std", default-features = false }
+sp-state-machine = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/state-machine" }
+sp-storage = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/storage", default-features = false }
+sp-tracing = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/tracing", default-features = false }
+sp-transaction-pool = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/transaction-pool", default-features = false }
+sp-trie = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/trie", default-features = false }
+sp-version = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/primitives/version", default-features = false }
+substrate-build-script-utils = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/utils/build-script-utils" }
+substrate-frame-rpc-system = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/utils/frame/rpc/system" }
+substrate-prometheus-endpoint = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/utils/prometheus", default-features = false }
+substrate-wasm-builder = { path = "/home/xlc/Data2/github.com/subcoin-project/polkadot-sdk/substrate/utils/wasm-builder" }
+
+txoutset = { git = "https://github.com/liuchengxu/txoutset", branch = "subcoin" }
+
+pallet-bitcoin = { path = "crates/pallet-bitcoin", default-features = false }
+pallet-executive = { path = "crates/pallet-executive", default-features = false }
+sc-consensus-nakamoto = { path = "crates/sc-consensus-nakamoto" }
+subcoin-crypto = { path = "crates/subcoin-crypto" }
+subcoin-informant = { path = "crates/subcoin-informant" }
+subcoin-network = { path = "crates/subcoin-network" }
+subcoin-node = { path = "crates/subcoin-node" }
+subcoin-primitives = { path = "crates/subcoin-primitives" }
+subcoin-rpc = { path = "crates/subcoin-rpc" }
+subcoin-runtime = { path = "crates/subcoin-runtime" }
+subcoin-runtime-primitives = { path = "crates/subcoin-runtime-primitives", default-features = false }
+subcoin-service = { path = "crates/subcoin-service" }
+subcoin-test-service = { path = "crates/subcoin-test-service" }
+
+[profile.release]
+panic = "abort"
+
+[profile.production]
+inherits = "release"
+# Sacrifice compile speed for execution speed by using optimization flags:
+lto = "fat"       # https://doc.rust-lang.org/rustc/linker-plugin-lto.html
+codegen-units = 1 # https://doc.rust-lang.org/rustc/codegen-options/index.html#codegen-units
+
+[profile.profiling]
+inherits = "release"
+debug = true
