@@ -9049,7 +9049,6 @@ dependencies = [
  "sp-genesis-builder",
  "sp-inherents",
  "sp-runtime",
- "sp-session",
  "sp-std 14.0.0 (git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v3)",
  "sp-transaction-pool",
  "sp-version",

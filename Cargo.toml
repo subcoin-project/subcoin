@@ -93,7 +93,6 @@ sp-inherents = { git = "https://github.com/subcoin-project/polkadot-sdk", branch
 sp-io = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
 sp-rpc = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
 sp-runtime = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
-sp-session = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
 sp-state-machine = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
 sp-std = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
 sp-storage = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }

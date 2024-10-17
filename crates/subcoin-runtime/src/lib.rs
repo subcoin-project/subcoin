@@ -72,12 +72,6 @@ pub fn native_version() -> NativeVersion {
     }
 }
 
-type SignedExtra = (
-    frame_system::CheckNonZeroSender<Runtime>,
-    frame_system::CheckSpecVersion<Runtime>,
-    frame_system::CheckGenesis<Runtime>,
-);
-
 parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
 }
@@ -135,6 +129,11 @@ impl pallet_bitcoin::Config for Runtime {
     type WeightInfo = pallet_bitcoin::BitcoinTransactionWeight;
 }
 
+type SignedExtra = (
+    frame_system::CheckNonZeroSender<Runtime>,
+    frame_system::CheckSpecVersion<Runtime>,
+    frame_system::CheckGenesis<Runtime>,
+);
 type Signature = crate::types_common::Signature;
 type Block = crate::types_common::BlockOf<Runtime, SignedExtra>;
 // TODO: Proper address
@@ -204,21 +203,6 @@ impl_runtime_apis! {
             block_hash: <Runtime as frame_system::Config>::Hash,
         ) -> TransactionValidity {
             RuntimeExecutive::validate_transaction(source, tx, block_hash)
-        }
-    }
-
-    // Cannot be removed as required by `sc_service::spawn_tasks()`.
-    //
-    // TODO: remove if we introduce our own version of spawn_tasks.
-    impl sp_session::SessionKeys<Block> for Runtime {
-        fn generate_session_keys(_seed: Option<Vec<u8>>) -> Vec<u8> {
-            Default::default()
-        }
-
-        fn decode_session_keys(
-            _encoded: Vec<u8>,
-        ) -> Option<Vec<(Vec<u8>, sp_session::KeyTypeId)>> {
-            Default::default()
         }
     }
 
