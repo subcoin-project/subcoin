@@ -600,19 +600,11 @@
 <a href="#600" id="600">600</a>
 <a href="#601" id="601">601</a>
 <a href="#602" id="602">602</a>
-<a href="#603" id="603">603</a>
-<a href="#604" id="604">604</a>
-<a href="#605" id="605">605</a>
-<a href="#606" id="606">606</a>
-<a href="#607" id="607">607</a>
-<a href="#608" id="608">608</a>
-<a href="#609" id="609">609</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::subcoin_params::Chain;
 <span class="kw">use </span><span class="kw">crate</span>::utils::Yield;
 <span class="kw">use </span>bitcoin::consensus::Encodable;
 <span class="kw">use </span>sc_cli::{DatabaseParams, ImportParams, NodeKeyParams, SharedParams};
 <span class="kw">use </span>sc_client_api::{HeaderBackend, StorageProvider};
-<span class="kw">use </span>sc_consensus_nakamoto::BlockExecutionStrategy;
 <span class="kw">use </span>serde::Serialize;
 <span class="kw">use </span>sp_core::storage::StorageKey;
 <span class="kw">use </span>sp_core::Decode;
@@ -713,12 +705,6 @@
         </span><span class="attr">#[arg(long, value_name = <span class="string">"CHAIN"</span>, default_value = <span class="string">"bitcoin-mainnet"</span>)]
         </span>chain: Chain,
     },
-}
-
-<span class="kw">impl </span>Blockchain {
-    <span class="kw">pub fn </span>block_execution_strategy(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; BlockExecutionStrategy {
-        BlockExecutionStrategy::runtime_disk()
-    }
 }
 
 <span class="kw">pub enum </span>BlockchainCmd {

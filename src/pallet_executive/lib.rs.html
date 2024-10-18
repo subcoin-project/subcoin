@@ -829,6 +829,20 @@
 <a href="#829" id="829">829</a>
 <a href="#830" id="830">830</a>
 <a href="#831" id="831">831</a>
+<a href="#832" id="832">832</a>
+<a href="#833" id="833">833</a>
+<a href="#834" id="834">834</a>
+<a href="#835" id="835">835</a>
+<a href="#836" id="836">836</a>
+<a href="#837" id="837">837</a>
+<a href="#838" id="838">838</a>
+<a href="#839" id="839">839</a>
+<a href="#840" id="840">840</a>
+<a href="#841" id="841">841</a>
+<a href="#842" id="842">842</a>
+<a href="#843" id="843">843</a>
+<a href="#844" id="844">844</a>
+<a href="#845" id="845">845</a>
 </pre></div><pre class="rust"><code><span class="comment">// This file is part of Substrate.
 
 // Copyright (C) Parity Technologies (UK) Ltd.
@@ -1310,6 +1324,13 @@
         </span>&lt;frame_system::Pallet&lt;System&gt;&gt;::reset_events();
 
         &lt;frame_system::Pallet&lt;System&gt;&gt;::initialize(header.number(), header.parent_hash(), <span class="kw-2">&amp;</span>digests);
+
+        <span class="kw">let </span>weight = &lt;System::BlockWeights <span class="kw">as </span>frame_support::traits::Get&lt;<span class="kw">_</span>&gt;&gt;::get().base_block;
+        &lt;frame_system::Pallet&lt;System&gt;&gt;::register_extra_weight_unchecked(
+            weight,
+            DispatchClass::Mandatory,
+        );
+
         frame_system::Pallet::&lt;System&gt;::note_finished_initialize();
 
         ExtrinsicInclusionMode::AllExtrinsics
@@ -1566,7 +1587,14 @@
             <span class="kw">return </span><span class="prelude-val">Err</span>(InvalidTransaction::BadMandatory.into());
         }
 
+        <span class="kw">let </span>tx_weight = frame_support::dispatch::extract_actual_weight(<span class="kw-2">&amp;</span>r, <span class="kw-2">&amp;</span>dispatch_info);
+
         &lt;frame_system::Pallet&lt;System&gt;&gt;::note_applied_extrinsic(<span class="kw-2">&amp;</span>r, dispatch_info);
+
+        &lt;frame_system::Pallet&lt;System&gt;&gt;::register_extra_weight_unchecked(
+            tx_weight,
+            DispatchClass::Normal,
+        );
 
         <span class="prelude-val">Ok</span>(r.map(|<span class="kw">_</span>| ()).map_err(|e| e.error))
     }

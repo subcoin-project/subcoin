@@ -194,6 +194,22 @@
 <a href="#194" id="194">194</a>
 <a href="#195" id="195">195</a>
 <a href="#196" id="196">196</a>
+<a href="#197" id="197">197</a>
+<a href="#198" id="198">198</a>
+<a href="#199" id="199">199</a>
+<a href="#200" id="200">200</a>
+<a href="#201" id="201">201</a>
+<a href="#202" id="202">202</a>
+<a href="#203" id="203">203</a>
+<a href="#204" id="204">204</a>
+<a href="#205" id="205">205</a>
+<a href="#206" id="206">206</a>
+<a href="#207" id="207">207</a>
+<a href="#208" id="208">208</a>
+<a href="#209" id="209">209</a>
+<a href="#210" id="210">210</a>
+<a href="#211" id="211">211</a>
+<a href="#212" id="212">212</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # Bitcoin Pallet
 //!
 //! This pallet is designed to be minimalist, containing only one storage item for maintaining
@@ -226,6 +242,22 @@
 <span class="doccomment">/// Transaction output index.
 </span><span class="kw">pub type </span>OutputIndex = u32;
 
+<span class="doccomment">/// Weight functions needed for `pallet_bitcoin`.
+</span><span class="kw">pub trait </span>WeightInfo {
+    <span class="doccomment">/// Calculates the weight of [`Call::transact`].
+    </span><span class="kw">fn </span>transact(btc_tx: <span class="kw-2">&amp;</span>Transaction) -&gt; Weight;
+}
+
+<span class="doccomment">/// A struct that implements the [`WeightInfo`] trait for Bitcoin transactions.
+</span><span class="kw">pub struct </span>BitcoinTransactionWeight;
+
+<span class="kw">impl </span>WeightInfo <span class="kw">for </span>BitcoinTransactionWeight {
+    <span class="kw">fn </span>transact(btc_tx: <span class="kw-2">&amp;</span>Transaction) -&gt; Weight {
+        <span class="kw">let </span>btc_weight = bitcoin::Transaction::from(btc_tx.clone()).weight().to_wu();
+        Weight::from_parts(btc_weight, <span class="number">0u64</span>)
+    }
+}
+
 <span class="attr">#[frame_support::pallet]
 </span><span class="kw">pub mod </span>pallet {
     <span class="kw">use super</span>::<span class="kw-2">*</span>;
@@ -237,7 +269,7 @@
         <span class="doccomment">/// The overarching event type.
         </span><span class="kw">type </span>RuntimeEvent: From&lt;Event&lt;<span class="self">Self</span>&gt;&gt; + IsType&lt;&lt;<span class="self">Self </span><span class="kw">as </span>frame_system::Config&gt;::RuntimeEvent&gt;;
 
-        <span class="kw">type </span>WeightInfo: frame_system::WeightInfo;
+        <span class="kw">type </span>WeightInfo: WeightInfo;
     }
 
     <span class="attr">#[pallet::pallet]
@@ -247,7 +279,7 @@
     </span><span class="kw">impl</span>&lt;T: Config&gt; Pallet&lt;T&gt; {
         <span class="doccomment">/// An unsigned extrinsic for embedding a Bitcoin transaction into the Substrate block.
         </span><span class="attr">#[pallet::call_index(<span class="number">0</span>)]
-        #[pallet::weight(Weight::zero())]
+        #[pallet::weight((T::WeightInfo::transact(btc_tx), DispatchClass::Normal, Pays::No))]
         </span><span class="kw">pub fn </span>transact(origin: OriginFor&lt;T&gt;, btc_tx: Transaction) -&gt; DispatchResult {
             ensure_none(origin)<span class="question-mark">?</span>;
 

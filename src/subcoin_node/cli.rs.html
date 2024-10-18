@@ -270,12 +270,6 @@
 <a href="#270" id="270">270</a>
 <a href="#271" id="271">271</a>
 <a href="#272" id="272">272</a>
-<a href="#273" id="273">273</a>
-<a href="#274" id="274">274</a>
-<a href="#275" id="275">275</a>
-<a href="#276" id="276">276</a>
-<a href="#277" id="277">277</a>
-<a href="#278" id="278">278</a>
 </pre></div><pre class="rust"><code><span class="kw">pub mod </span>subcoin_params;
 
 <span class="kw">use </span><span class="kw">crate</span>::commands::blockchain::{Blockchain, BlockchainCmd};
@@ -362,7 +356,6 @@
             </span>})
         }
         Command::ImportBlocks(cmd) =&gt; {
-            <span class="kw">let </span>block_execution_strategy = cmd.common_params.block_execution_strategy();
             <span class="kw">let </span>bitcoin_network = cmd.common_params.bitcoin_network();
             <span class="kw">let </span>import_config = ImportConfig {
                 execute_block: cmd.execute_transactions,
@@ -379,12 +372,10 @@
                 <span class="kw">let </span>subcoin_service::NodeComponents {
                     client,
                     task_manager,
-                    block_executor,
                     ..
                 } = subcoin_service::new_node(subcoin_service::SubcoinConfiguration {
                     network: bitcoin_network,
                     config: <span class="kw-2">&amp;</span>config,
-                    block_execution_strategy,
                     no_hardware_benchmarks: <span class="bool-val">true</span>,
                     storage_monitor,
                 })<span class="question-mark">?</span>;
@@ -406,7 +397,6 @@
                 <span class="prelude-val">Ok</span>((
                     import_blocks_cmd.run(
                         client,
-                        block_executor,
                         data_dir,
                         import_config,
                         spawn_handle,
@@ -418,7 +408,6 @@
         }
         Command::Tools(tools) =&gt; tools.run(),
         Command::Blockchain(blockchain) =&gt; {
-            <span class="kw">let </span>block_execution_strategy = blockchain.block_execution_strategy();
             <span class="kw">let </span>cmd = BlockchainCmd::new(blockchain);
             <span class="kw">let </span>runner = SubstrateCli.create_runner(<span class="kw-2">&amp;</span>cmd)<span class="question-mark">?</span>;
             runner.async_run(|config| {
@@ -429,7 +418,6 @@
                 } = subcoin_service::new_node(subcoin_service::SubcoinConfiguration {
                     network: bitcoin::Network::Bitcoin,
                     config: <span class="kw-2">&amp;</span>config,
-                    block_execution_strategy,
                     no_hardware_benchmarks: <span class="bool-val">true</span>,
                     storage_monitor,
                 })<span class="question-mark">?</span>;

@@ -521,54 +521,6 @@
 <a href="#521" id="521">521</a>
 <a href="#522" id="522">522</a>
 <a href="#523" id="523">523</a>
-<a href="#524" id="524">524</a>
-<a href="#525" id="525">525</a>
-<a href="#526" id="526">526</a>
-<a href="#527" id="527">527</a>
-<a href="#528" id="528">528</a>
-<a href="#529" id="529">529</a>
-<a href="#530" id="530">530</a>
-<a href="#531" id="531">531</a>
-<a href="#532" id="532">532</a>
-<a href="#533" id="533">533</a>
-<a href="#534" id="534">534</a>
-<a href="#535" id="535">535</a>
-<a href="#536" id="536">536</a>
-<a href="#537" id="537">537</a>
-<a href="#538" id="538">538</a>
-<a href="#539" id="539">539</a>
-<a href="#540" id="540">540</a>
-<a href="#541" id="541">541</a>
-<a href="#542" id="542">542</a>
-<a href="#543" id="543">543</a>
-<a href="#544" id="544">544</a>
-<a href="#545" id="545">545</a>
-<a href="#546" id="546">546</a>
-<a href="#547" id="547">547</a>
-<a href="#548" id="548">548</a>
-<a href="#549" id="549">549</a>
-<a href="#550" id="550">550</a>
-<a href="#551" id="551">551</a>
-<a href="#552" id="552">552</a>
-<a href="#553" id="553">553</a>
-<a href="#554" id="554">554</a>
-<a href="#555" id="555">555</a>
-<a href="#556" id="556">556</a>
-<a href="#557" id="557">557</a>
-<a href="#558" id="558">558</a>
-<a href="#559" id="559">559</a>
-<a href="#560" id="560">560</a>
-<a href="#561" id="561">561</a>
-<a href="#562" id="562">562</a>
-<a href="#563" id="563">563</a>
-<a href="#564" id="564">564</a>
-<a href="#565" id="565">565</a>
-<a href="#566" id="566">566</a>
-<a href="#567" id="567">567</a>
-<a href="#568" id="568">568</a>
-<a href="#569" id="569">569</a>
-<a href="#570" id="570">570</a>
-<a href="#571" id="571">571</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! This module provides the implementation for importing Bitcoin blocks into Subcoin.
 //!
 //! Each Bitcoin block is converted into a Substrate block and imported into the database.
@@ -589,8 +541,7 @@
 //! - [`ImportStatus`]
 //!     An enum representing the result of an import operation, with variants for different import outcomes.
 
-</span><span class="kw">use </span><span class="kw">crate</span>::block_executor::{BlockExecutor, ExecuteBlockResult};
-<span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
+</span><span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
 <span class="kw">use </span><span class="kw">crate</span>::verification::{BlockVerification, BlockVerifier};
 <span class="kw">use </span>bitcoin::blockdata::block::Header <span class="kw">as </span>BitcoinHeader;
 <span class="kw">use </span>bitcoin::hashes::Hash;
@@ -601,7 +552,7 @@
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, ImportedAux, StateAction,
     StorageChanges,
 };
-<span class="kw">use </span>sp_api::{CallApiAt, Core, ProvideRuntimeApi};
+<span class="kw">use </span>sp_api::{ApiExt, CallApiAt, CallContext, Core, ProvideRuntimeApi};
 <span class="kw">use </span>sp_blockchain::HashAndNumber;
 <span class="kw">use </span>sp_consensus::{BlockOrigin, BlockStatus};
 <span class="kw">use </span>sp_runtime::traits::{
@@ -616,33 +567,6 @@
     substrate_header_digest, BackendExt, BitcoinTransactionAdapter, CoinStorageKey,
 };
 <span class="kw">use </span>substrate_prometheus_endpoint::Registry;
-
-<span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>clone_storage_changes&lt;Block: BlockT&gt;(
-    c: <span class="kw-2">&amp;</span>sp_state_machine::StorageChanges&lt;HashingFor&lt;Block&gt;&gt;,
-) -&gt; sp_state_machine::StorageChanges&lt;HashingFor&lt;Block&gt;&gt; {
-    sp_state_machine::StorageChanges {
-        main_storage_changes: c.main_storage_changes.clone(),
-        child_storage_changes: c.child_storage_changes.clone(),
-        offchain_storage_changes: c.offchain_storage_changes.clone(),
-        transaction: c.transaction.clone(),
-        transaction_storage_root: c.transaction_storage_root,
-        transaction_index_changes: c.transaction_index_changes.clone(),
-    }
-}
-
-<span class="kw">fn </span>clone_block_import_params&lt;Block: BlockT&gt;(
-    params: <span class="kw-2">&amp;</span>BlockImportParams&lt;Block&gt;,
-    state_action: StateAction&lt;Block&gt;,
-) -&gt; BlockImportParams&lt;Block&gt; {
-    <span class="kw">let </span><span class="kw-2">mut </span>import_params = BlockImportParams::new(params.origin, params.header.clone());
-    import_params.post_digests.clone_from(<span class="kw-2">&amp;</span>params.post_digests);
-    import_params.state_action = state_action;
-    import_params.auxiliary.clone_from(<span class="kw-2">&amp;</span>params.auxiliary);
-    import_params.fork_choice = params.fork_choice;
-    import_params.import_existing = params.import_existing;
-    import_params.post_hash.clone_from(<span class="kw-2">&amp;</span>params.post_hash);
-    import_params
-}
 
 <span class="doccomment">/// Block import configuration.
 </span><span class="attr">#[derive(Debug, Clone)]
@@ -703,7 +627,6 @@
     stats: Stats,
     config: ImportConfig,
     verifier: BlockVerifier&lt;Block, Client, BE&gt;,
-    block_executor: Box&lt;<span class="kw">dyn </span>BlockExecutor&lt;Block&gt;&gt;,
     metrics: <span class="prelude-ty">Option</span>&lt;Metrics&gt;,
     last_block_execution_report: Instant,
     _phantom: PhantomData&lt;TransactionAdapter&gt;,
@@ -732,7 +655,6 @@
         block_import: BI,
         config: ImportConfig,
         coin_storage_key: Arc&lt;<span class="kw">dyn </span>CoinStorageKey&gt;,
-        block_executor: Box&lt;<span class="kw">dyn </span>BlockExecutor&lt;Block&gt;&gt;,
         registry: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>Registry&gt;,
     ) -&gt; <span class="self">Self </span>{
         <span class="kw">let </span>verifier = BlockVerifier::new(
@@ -756,16 +678,10 @@
             stats: Stats::default(),
             config,
             verifier,
-            block_executor,
             metrics,
             last_block_execution_report: Instant::now(),
             _phantom: Default::default(),
         }
-    }
-
-    <span class="doccomment">/// Sets new block executor.
-    </span><span class="kw">pub fn </span>set_block_executor(<span class="kw-2">&amp;mut </span><span class="self">self</span>, new_executor: Box&lt;<span class="kw">dyn </span>BlockExecutor&lt;Block&gt;&gt;) {
-        <span class="self">self</span>.block_executor = new_executor;
     }
 
     <span class="attr">#[inline]
@@ -810,11 +726,18 @@
         <span class="kw">let </span>transactions_count = block.extrinsics().len();
         <span class="kw">let </span>block_size = block.encoded_size();
 
-        <span class="kw">let </span>ExecuteBlockResult {
-            state_root,
-            storage_changes,
-            exec_info: <span class="kw">_</span>,
-        } = <span class="self">self</span>.block_executor.execute_block(parent_hash, block)<span class="question-mark">?</span>;
+        <span class="kw">let </span><span class="kw-2">mut </span>runtime_api = <span class="self">self</span>.client.runtime_api();
+        runtime_api.set_call_context(CallContext::Onchain);
+
+        runtime_api.execute_block_without_state_root_check(parent_hash, block)<span class="question-mark">?</span>;
+
+        <span class="kw">let </span>state = <span class="self">self</span>.client.state_at(parent_hash)<span class="question-mark">?</span>;
+
+        <span class="kw">let </span>storage_changes = runtime_api
+            .into_storage_changes(<span class="kw-2">&amp;</span>state, parent_hash)
+            .map_err(sp_blockchain::Error::StorageChanges)<span class="question-mark">?</span>;
+
+        <span class="kw">let </span>state_root = storage_changes.transaction_storage_root;
 
         <span class="kw">if let </span><span class="prelude-val">Some</span>(metrics) = <span class="kw-2">&amp;</span><span class="self">self</span>.metrics {
             <span class="kw">const </span>BLOCK_EXECUTION_REPORT_INTERVAL: u128 = <span class="number">50</span>;
@@ -845,7 +768,7 @@
         block: BitcoinBlock,
         substrate_parent_block: HashAndNumber&lt;Block&gt;,
         origin: BlockOrigin,
-    ) -&gt; sp_blockchain::Result&lt;(BlockImportParams&lt;Block&gt;, <span class="prelude-ty">Option</span>&lt;BlockImportParams&lt;Block&gt;&gt;)&gt; {
+    ) -&gt; sp_blockchain::Result&lt;BlockImportParams&lt;Block&gt;&gt; {
         <span class="kw">let </span>HashAndNumber {
             number: parent_block_number,
             hash: parent_hash,
@@ -878,7 +801,7 @@
         );
 
         <span class="comment">// subcoin bootstrap node must execute every block.
-        </span><span class="kw">let </span>(state_action, maybe_changes) = <span class="kw">if </span><span class="self">self</span>.config.execute_block {
+        </span><span class="kw">let </span>state_action = <span class="kw">if </span><span class="self">self</span>.config.execute_block {
             <span class="kw">let </span>now = std::time::Instant::now();
 
             <span class="kw">let </span>tx_count = extrinsics.len();
@@ -901,20 +824,9 @@
             <span class="comment">// Now it's a normal Substrate header after setting the state root.
             </span>header.set_state_root(state_root);
 
-            <span class="kw">let </span>changes_for_block_executor = <span class="kw">if </span><span class="self">self</span>.block_executor.is_in_memory_backend_used() {
-                <span class="prelude-val">Some</span>(StorageChanges::Changes(clone_storage_changes::&lt;Block&gt;(
-                    <span class="kw-2">&amp;</span>storage_changes,
-                )))
-            } <span class="kw">else </span>{
-                <span class="prelude-val">None
-            </span>};
-
-            (
-                StateAction::ApplyChanges(StorageChanges::&lt;Block&gt;::Changes(storage_changes)),
-                changes_for_block_executor,
-            )
+            StateAction::ApplyChanges(StorageChanges::&lt;Block&gt;::Changes(storage_changes))
         } <span class="kw">else </span>{
-            (StateAction::Skip, <span class="prelude-val">None</span>)
+            StateAction::Skip
         };
 
         <span class="kw">let </span>substrate_block_hash = header.hash();
@@ -937,11 +849,7 @@
             total_work,
         );
 
-        <span class="kw">let </span>import_params_for_block_executor = maybe_changes.map(|changes| {
-            clone_block_import_params(<span class="kw-2">&amp;</span>block_import_params, StateAction::ApplyChanges(changes))
-        });
-
-        <span class="prelude-val">Ok</span>((block_import_params, import_params_for_block_executor))
+        <span class="prelude-val">Ok</span>(block_import_params)
     }
 }
 
@@ -1115,13 +1023,9 @@
             .verify_block(block_number, <span class="kw-2">&amp;</span>block)
             .map_err(|err| import_err(<span class="macro">format!</span>(<span class="string">"{err:?}"</span>)))<span class="question-mark">?</span>;
 
-        <span class="kw">let </span>(block_import_params, maybe_import_params_for_block_executor) = <span class="self">self
+        <span class="kw">let </span>block_import_params = <span class="self">self
             </span>.prepare_substrate_block_import(block, substrate_parent_block, origin)
             .map_err(|err| import_err(err.to_string()))<span class="question-mark">?</span>;
-
-        <span class="kw">if let </span><span class="prelude-val">Some</span>(import_params) = maybe_import_params_for_block_executor {
-            <span class="self">self</span>.block_executor.import_block(import_params).<span class="kw">await</span><span class="question-mark">?</span>;
-        }
 
         <span class="self">self</span>.inner
             .import_block(block_import_params)

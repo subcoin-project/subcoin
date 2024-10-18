@@ -285,6 +285,27 @@
 <a href="#285" id="285">285</a>
 <a href="#286" id="286">286</a>
 <a href="#287" id="287">287</a>
+<a href="#288" id="288">288</a>
+<a href="#289" id="289">289</a>
+<a href="#290" id="290">290</a>
+<a href="#291" id="291">291</a>
+<a href="#292" id="292">292</a>
+<a href="#293" id="293">293</a>
+<a href="#294" id="294">294</a>
+<a href="#295" id="295">295</a>
+<a href="#296" id="296">296</a>
+<a href="#297" id="297">297</a>
+<a href="#298" id="298">298</a>
+<a href="#299" id="299">299</a>
+<a href="#300" id="300">300</a>
+<a href="#301" id="301">301</a>
+<a href="#302" id="302">302</a>
+<a href="#303" id="303">303</a>
+<a href="#304" id="304">304</a>
+<a href="#305" id="305">305</a>
+<a href="#306" id="306">306</a>
+<a href="#307" id="307">307</a>
+<a href="#308" id="308">308</a>
 </pre></div><pre class="rust"><code><span class="comment">// This file is part of Substrate.
 
 // Copyright (C) Parity Technologies (UK) Ltd.
@@ -312,13 +333,17 @@
 </span><span class="attr">#[cfg(feature = <span class="string">"std"</span>)]
 </span><span class="macro">include!</span>(<span class="macro">concat!</span>(<span class="macro">env!</span>(<span class="string">"OUT_DIR"</span>), <span class="string">"/wasm_binary.rs"</span>));
 
+<span class="kw">use </span>frame_support::dispatch::PerDispatchClass;
 <span class="kw">use </span>frame_support::genesis_builder_helper::{build_state, get_preset};
+<span class="kw">use </span>frame_support::pallet_prelude::<span class="kw-2">*</span>;
 <span class="kw">use </span>frame_support::{derive_impl, parameter_types};
+<span class="kw">use </span>frame_system::limits::WeightsPerClass;
 <span class="kw">use </span>frame_system::pallet_prelude::<span class="kw-2">*</span>;
 <span class="kw">use </span>pallet_executive::Executive;
 <span class="kw">use </span>sp_api::impl_runtime_apis;
 <span class="kw">use </span>sp_core::{ConstU32, OpaqueMetadata};
 <span class="kw">use </span>sp_inherents::{CheckInherentsResult, InherentData};
+<span class="kw">use </span>sp_runtime::traits::Get;
 <span class="kw">use </span>sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 <span class="kw">use </span>sp_runtime::{ApplyExtrinsicResult, ExtrinsicInclusionMode};
 <span class="kw">use </span>sp_std::vec;
@@ -326,6 +351,13 @@
 <span class="attr">#[cfg(feature = <span class="string">"std"</span>)]
 </span><span class="kw">use </span>sp_version::NativeVersion;
 <span class="kw">use </span>sp_version::{create_runtime_str, runtime_version, RuntimeVersion};
+
+<span class="doccomment">/// header weight (80 * 4) + tx_data_len(4)
+</span><span class="kw">const </span>BITCOIN_BASE_BLOCK_WEIGHT: u64 = <span class="number">80 </span>* <span class="number">4 </span>+ <span class="number">4</span>;
+
+<span class="doccomment">/// Maximum block weight.
+/// https://github.com/bitcoin/bips/blob/master/bip-0141.mediawiki#Block_size
+</span><span class="kw">const </span>BITCOIN_MAX_WEIGHT: u64 = <span class="number">4_000_000</span>;
 
 <span class="attr">#[runtime_version]
 </span><span class="kw">pub const </span>VERSION: RuntimeVersion = RuntimeVersion {
@@ -347,12 +379,6 @@
         can_author_with: Default::default(),
     }
 }
-
-<span class="kw">type </span>SignedExtra = (
-    frame_system::CheckNonZeroSender&lt;Runtime&gt;,
-    frame_system::CheckSpecVersion&lt;Runtime&gt;,
-    frame_system::CheckGenesis&lt;Runtime&gt;,
-);
 
 <span class="macro">parameter_types!</span> {
     <span class="kw">pub const </span>Version: RuntimeVersion = VERSION;
@@ -378,13 +404,44 @@
     <span class="kw">type </span>Block = Block;
     <span class="kw">type </span>Version = Version;
     <span class="kw">type </span>BlockHashCount = ConstU32&lt;<span class="number">1024</span>&gt;;
+    <span class="kw">type </span>BlockWeights = BlockWeights;
+}
+
+<span class="doccomment">/// Subcoin block weights.
+</span><span class="kw">pub struct </span>BlockWeights;
+
+<span class="kw">impl </span>Get&lt;frame_system::limits::BlockWeights&gt; <span class="kw">for </span>BlockWeights {
+    <span class="kw">fn </span>get() -&gt; frame_system::limits::BlockWeights {
+        frame_system::limits::BlockWeights {
+            base_block: Weight::from_parts(BITCOIN_BASE_BLOCK_WEIGHT, <span class="number">0u64</span>),
+            max_block: Weight::from_parts(BITCOIN_MAX_WEIGHT, u64::MAX),
+            per_class: PerDispatchClass::new(|class| {
+                <span class="kw">let </span>initial = <span class="kw">if </span>class == DispatchClass::Mandatory {
+                    <span class="prelude-val">None
+                </span>} <span class="kw">else </span>{
+                    <span class="prelude-val">Some</span>(Weight::zero())
+                };
+                WeightsPerClass {
+                    base_extrinsic: Weight::zero(),
+                    max_extrinsic: <span class="prelude-val">None</span>,
+                    max_total: initial,
+                    reserved: initial,
+                }
+            }),
+        }
+    }
 }
 
 <span class="kw">impl </span>pallet_bitcoin::Config <span class="kw">for </span>Runtime {
     <span class="kw">type </span>RuntimeEvent = RuntimeEvent;
-    <span class="kw">type </span>WeightInfo = ();
+    <span class="kw">type </span>WeightInfo = pallet_bitcoin::BitcoinTransactionWeight;
 }
 
+<span class="kw">type </span>SignedExtra = (
+    frame_system::CheckNonZeroSender&lt;Runtime&gt;,
+    frame_system::CheckSpecVersion&lt;Runtime&gt;,
+    frame_system::CheckGenesis&lt;Runtime&gt;,
+);
 <span class="kw">type </span>Signature = <span class="kw">crate</span>::types_common::Signature;
 <span class="kw">type </span>Block = <span class="kw">crate</span>::types_common::BlockOf&lt;Runtime, SignedExtra&gt;;
 <span class="comment">// TODO: Proper address
@@ -454,21 +511,6 @@
             block_hash: &lt;Runtime <span class="kw">as </span>frame_system::Config&gt;::Hash,
         ) -&gt; TransactionValidity {
             RuntimeExecutive::validate_transaction(source, tx, block_hash)
-        }
-    }
-
-    <span class="comment">// Cannot be removed as required by `sc_service::spawn_tasks()`.
-    //
-    // TODO: remove if we introduce our own version of spawn_tasks.
-    </span><span class="kw">impl </span>sp_session::SessionKeys&lt;Block&gt; <span class="kw">for </span>Runtime {
-        <span class="kw">fn </span>generate_session_keys(_seed: <span class="prelude-ty">Option</span>&lt;Vec&lt;u8&gt;&gt;) -&gt; Vec&lt;u8&gt; {
-            Default::default()
-        }
-
-        <span class="kw">fn </span>decode_session_keys(
-            _encoded: Vec&lt;u8&gt;,
-        ) -&gt; <span class="prelude-ty">Option</span>&lt;Vec&lt;(Vec&lt;u8&gt;, sp_session::KeyTypeId)&gt;&gt; {
-            Default::default()
         }
     }
 

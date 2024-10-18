@@ -1,8 +1,7 @@
 var srcIndex = new Map(JSON.parse('[\
 ["pallet_bitcoin",["",[],["lib.rs","types.rs"]]],\
 ["pallet_executive",["",[],["lib.rs"]]],\
-["sc_consensus_nakamoto",["",[["verification",[],["header_verify.rs","tx_verify.rs"]]],["aux_schema.rs","block_executor.rs","block_import.rs","chain_params.rs","import_queue.rs","lib.rs","metrics.rs","verification.rs","verifier.rs"]]],\
-["sc_fast_sync_backend",["",[],["chain_state.rs","lib.rs"]]],\
+["sc_consensus_nakamoto",["",[["verification",[],["header_verify.rs","tx_verify.rs"]]],["aux_schema.rs","block_import.rs","chain_params.rs","import_queue.rs","lib.rs","metrics.rs","verification.rs","verifier.rs"]]],\
 ["subcoin_crypto",["",[],["lib.rs","muhash.rs"]]],\
 ["subcoin_informant",["",[],["display.rs","lib.rs"]]],\
 ["subcoin_network",["",[["block_downloader",[],["blocks_first.rs","headers_first.rs"]]],["address_book.rs","block_downloader.rs","checkpoint.rs","connection.rs","lib.rs","metrics.rs","network.rs","orphan_blocks_pool.rs","peer_manager.rs","peer_store.rs","sync.rs","transaction_manager.rs","worker.rs"]]],\
@@ -11,7 +10,7 @@ var srcIndex = new Map(JSON.parse('[\
 ["subcoin_rpc",["",[],["blockchain.rs","error.rs","lib.rs","network.rs","raw_transactions.rs"]]],\
 ["subcoin_runtime",["",[],["lib.rs"]]],\
 ["subcoin_runtime_primitives",["",[],["lib.rs"]]],\
-["subcoin_service",["",[],["block_executor.rs","chain_spec.rs","finalizer.rs","genesis_block_builder.rs","lib.rs","transaction_adapter.rs"]]],\
+["subcoin_service",["",[],["chain_spec.rs","finalizer.rs","genesis_block_builder.rs","lib.rs","transaction_adapter.rs"]]],\
 ["subcoin_test_service",["",[],["lib.rs"]]]\
 ]'));
 createSrcSidebar();

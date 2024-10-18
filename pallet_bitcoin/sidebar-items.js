@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["coin_storage_key","coin_storage_prefix"],"mod":["pallet","types"],"type":["OutputIndex"]};
+window.SIDEBAR_ITEMS = {"fn":["coin_storage_key","coin_storage_prefix"],"mod":["pallet","types"],"struct":["BitcoinTransactionWeight"],"trait":["WeightInfo"],"type":["OutputIndex"]};

@@ -1,3 +1,3 @@
 (function() {var implementors = {
-"sc_consensus_nakamoto":[]
+"pallet_bitcoin":[]
 };if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
