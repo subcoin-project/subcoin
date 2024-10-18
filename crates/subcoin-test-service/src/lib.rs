@@ -2,8 +2,7 @@ use bitcoin::consensus::Decodable;
 use bitcoin::hex::FromHex;
 use bitcoin::Block;
 use sc_consensus_nakamoto::{
-    BitcoinBlockImport, BitcoinBlockImporter, BlockExecutionStrategy, BlockVerification,
-    ExecutionBackend, ImportConfig, ImportStatus,
+    BitcoinBlockImport, BitcoinBlockImporter, BlockVerification, ImportConfig, ImportStatus,
 };
 use sc_service::config::{
     BlocksPruning, DatabaseSource, ExecutorConfiguration, KeystoreConfig, NetworkConfiguration,
@@ -113,7 +112,6 @@ pub fn new_test_node(tokio_handle: tokio::runtime::Handle) -> Result<NodeCompone
     let config = test_configuration(tokio_handle);
     subcoin_service::new_node(SubcoinConfiguration {
         network: bitcoin::Network::Bitcoin,
-        block_execution_strategy: BlockExecutionStrategy::RuntimeExecution(ExecutionBackend::Disk),
         config: &config,
         no_hardware_benchmarks: true,
         storage_monitor: Default::default(),
@@ -124,12 +122,9 @@ pub async fn new_test_node_and_produce_blocks(
     config: &Configuration,
     up_to: u32,
 ) -> Arc<FullClient> {
-    let NodeComponents {
-        block_executor,
-        client,
-        ..
-    } = subcoin_service::new_node(SubcoinConfiguration::test_config(config))
-        .expect("Failed to create node");
+    let NodeComponents { client, .. } =
+        subcoin_service::new_node(SubcoinConfiguration::test_config(config))
+            .expect("Failed to create node");
 
     let mut bitcoin_block_import =
         BitcoinBlockImporter::<_, _, _, _, subcoin_service::TransactionAdapter>::new(
@@ -142,7 +137,6 @@ pub async fn new_test_node_and_produce_blocks(
                 verify_script: true,
             },
             Arc::new(subcoin_service::CoinStorageKey),
-            block_executor,
             None,
         );
 

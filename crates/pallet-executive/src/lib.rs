@@ -479,6 +479,13 @@ where
         <frame_system::Pallet<System>>::reset_events();
 
         <frame_system::Pallet<System>>::initialize(header.number(), header.parent_hash(), &digests);
+
+        let weight = <System::BlockWeights as frame_support::traits::Get<_>>::get().base_block;
+        <frame_system::Pallet<System>>::register_extra_weight_unchecked(
+            weight,
+            DispatchClass::Mandatory,
+        );
+
         frame_system::Pallet::<System>::note_finished_initialize();
 
         ExtrinsicInclusionMode::AllExtrinsics
@@ -735,7 +742,14 @@ where
             return Err(InvalidTransaction::BadMandatory.into());
         }
 
+        let tx_weight = frame_support::dispatch::extract_actual_weight(&r, &dispatch_info);
+
         <frame_system::Pallet<System>>::note_applied_extrinsic(&r, dispatch_info);
+
+        <frame_system::Pallet<System>>::register_extra_weight_unchecked(
+            tx_weight,
+            DispatchClass::Normal,
+        );
 
         Ok(r.map(|_| ()).map_err(|e| e.error))
     }

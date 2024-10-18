@@ -223,11 +223,9 @@ async fn test_block_announcement_via_headers() {
     let NodeComponents {
         client,
         task_manager,
-        block_executor,
         ..
     } = new_node(SubcoinConfiguration {
         network: bitcoin::Network::Bitcoin,
-        block_execution_strategy: sc_consensus_nakamoto::BlockExecutionStrategy::runtime_disk(),
         config: &config,
         no_hardware_benchmarks: true,
         storage_monitor: Default::default(),
@@ -254,7 +252,6 @@ async fn test_block_announcement_via_headers() {
             verify_script: true,
         },
         Arc::new(subcoin_service::CoinStorageKey),
-        block_executor,
         None,
     );
 

@@ -30,6 +30,22 @@ pub use pallet::*;
 /// Transaction output index.
 pub type OutputIndex = u32;
 
+/// Weight functions needed for `pallet_bitcoin`.
+pub trait WeightInfo {
+    /// Calculates the weight of [`Call::transact`].
+    fn transact(btc_tx: &Transaction) -> Weight;
+}
+
+/// A struct that implements the [`WeightInfo`] trait for Bitcoin transactions.
+pub struct BitcoinTransactionWeight;
+
+impl WeightInfo for BitcoinTransactionWeight {
+    fn transact(btc_tx: &Transaction) -> Weight {
+        let btc_weight = bitcoin::Transaction::from(btc_tx.clone()).weight().to_wu();
+        Weight::from_parts(btc_weight, 0u64)
+    }
+}
+
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
@@ -41,7 +57,7 @@ pub mod pallet {
         /// The overarching event type.
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
-        type WeightInfo: frame_system::WeightInfo;
+        type WeightInfo: WeightInfo;
     }
 
     #[pallet::pallet]
@@ -51,7 +67,7 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         /// An unsigned extrinsic for embedding a Bitcoin transaction into the Substrate block.
         #[pallet::call_index(0)]
-        #[pallet::weight(Weight::zero())]
+        #[pallet::weight((T::WeightInfo::transact(btc_tx), DispatchClass::Normal, Pays::No))]
         pub fn transact(origin: OriginFor<T>, btc_tx: Transaction) -> DispatchResult {
             ensure_none(origin)?;
 
