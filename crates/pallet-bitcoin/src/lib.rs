@@ -133,7 +133,7 @@ pub mod pallet {
                         script_pubkey: txout.script_pubkey.clone().into_bytes(),
                         height: 0u32,
                     };
-                    Coins::<T>::insert(txid.clone(), index as u32, coin);
+                    Coins::<T>::insert(txid, index as u32, coin);
                 });
         }
     }

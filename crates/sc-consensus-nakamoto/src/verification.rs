@@ -97,6 +97,7 @@ pub enum Error {
     #[error("UTXO not found (#{block_number}:{txid}: {utxo:?})")]
     UtxoNotFound {
         block_number: u32,
+        tx_index: usize,
         txid: Txid,
         utxo: OutPoint,
     },
@@ -393,6 +394,7 @@ where
                 let (spent_output, is_coinbase, coin_height) =
                     access_coin(coin).ok_or_else(|| Error::UtxoNotFound {
                         block_number,
+                        tx_index,
                         txid: get_txid(tx_index),
                         utxo: coin,
                     })?;

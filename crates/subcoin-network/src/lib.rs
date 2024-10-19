@@ -397,7 +397,7 @@ where
                     let (sender, receiver) = oneshot::channel();
 
                     if worker_msg_sender
-                        .unbounded_send(NetworkWorkerMessage::InboundPeersCount(sender))
+                        .unbounded_send(NetworkWorkerMessage::RequestInboundPeersCount(sender))
                         .is_err()
                     {
                         return;
