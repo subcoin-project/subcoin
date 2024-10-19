@@ -28,6 +28,10 @@ pub struct Run {
     #[clap(long)]
     pub disable_subcoin_networking: bool,
 
+    /// Enable the transaction indexing.
+    #[clap(long)]
+    pub tx_index: bool,
+
     /// Disable automatic hardware benchmarks.
     ///
     /// By default these benchmarks are automatically ran at startup and measure
@@ -268,6 +272,15 @@ impl RunCmd {
                 )
                 .run()
             });
+        }
+
+        if run.tx_index {
+            spawn_handle.spawn(
+                "tx-index",
+                None,
+                subcoin_service::indexer::TransactionIndexer::new(bitcoin_network, client.clone())
+                    .run(),
+            );
         }
 
         // Spawn subcoin informant task.
