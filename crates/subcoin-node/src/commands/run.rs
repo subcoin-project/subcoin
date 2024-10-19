@@ -11,7 +11,7 @@ use sc_service::{BasePath, Configuration, TaskManager};
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use subcoin_network::SyncStrategy;
-use subcoin_primitives::CONFIRMATION_DEPTH;
+use subcoin_primitives::{TransactionIndex, CONFIRMATION_DEPTH};
 
 /// The `run` command used to start a Subcoin node.
 #[derive(Debug, Clone, Parser)]
@@ -232,6 +232,19 @@ impl RunCmd {
             task_manager.keep_alive(subcoin_networking);
         }
 
+        let transaction_indexer: Arc<dyn TransactionIndex + Send + Sync> = if run.tx_index {
+            let transaction_indexer = subcoin_service::indexer::TransactionIndexer::<
+                _,
+                _,
+                _,
+                subcoin_service::TransactionAdapter,
+            >::new(bitcoin_network, client.clone());
+            spawn_handle.spawn("tx-index", None, transaction_indexer.clone().run());
+            Arc::new(transaction_indexer)
+        } else {
+            Arc::new(subcoin_primitives::NoTransactionIndex)
+        };
+
         // Start JSON-RPC server.
         let gen_rpc_module = || {
             let system_info = sc_rpc::system::SystemInfo {
@@ -249,6 +262,7 @@ impl RunCmd {
                 task_manager.spawn_handle(),
                 system_rpc_tx,
                 subcoin_network_handle.clone(),
+                transaction_indexer.clone(),
             )
         };
 
@@ -272,15 +286,6 @@ impl RunCmd {
                 )
                 .run()
             });
-        }
-
-        if run.tx_index {
-            spawn_handle.spawn(
-                "tx-index",
-                None,
-                subcoin_service::indexer::TransactionIndexer::new(bitcoin_network, client.clone())
-                    .run(),
-            );
         }
 
         // Spawn subcoin informant task.

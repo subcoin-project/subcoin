@@ -8,8 +8,7 @@ use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, Header, SaturatedConversion};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subcoin_primitives::runtime::Coin;
-use subcoin_primitives::{BitcoinTransactionAdapter, CoinStorageKey, TransactionIndex, TxPosition};
+use subcoin_primitives::{BitcoinTransactionAdapter, TransactionIndex, TxPosition};
 
 #[derive(Debug, Clone, Copy)]
 enum BlockAction {
@@ -23,6 +22,18 @@ pub struct TransactionIndexer<Block, Backend, Client, TransactionAdapter> {
     network: bitcoin::Network,
     client: Arc<Client>,
     _phantom: PhantomData<(Block, Backend, TransactionAdapter)>,
+}
+
+impl<Block, Backend, Client, TransactionAdapter> Clone
+    for TransactionIndexer<Block, Backend, Client, TransactionAdapter>
+{
+    fn clone(&self) -> Self {
+        Self {
+            network: self.network,
+            client: self.client.clone(),
+            _phantom: self._phantom,
+        }
+    }
 }
 
 impl<Block, Backend, Client, TransactionAdapter>
@@ -43,14 +54,14 @@ where
         }
     }
 
-    pub async fn run(mut self) -> sp_blockchain::Result<()> {
+    pub async fn run(mut self) {
         let mut block_import_stream = self.client.every_import_notification_stream();
 
         while let Some(notification) = block_import_stream.next().await {
-            let Some(SignedBlock {
+            let Ok(Some(SignedBlock {
                 block,
                 justifications: _,
-            }) = self.client.block(notification.hash)?
+            })) = self.client.block(notification.hash)
             else {
                 tracing::error!("Imported block {} unavailable", notification.hash);
                 continue;
@@ -73,8 +84,6 @@ where
                 self.process_block(block, BlockAction::ApplyNew)
             }
         }
-
-        Ok(())
     }
 
     fn expect_block(&self, block_hash: Block::Hash) -> Block {
@@ -108,7 +117,9 @@ where
             })
             .collect::<Vec<_>>();
 
-        write_transaction_index_changes(&self.client, block_action, changes)
+        if let Err(err) = write_transaction_index_changes(&*self.client, block_action, changes) {
+            tracing::error!(?err, "Failed to write index changes");
+        }
     }
 }
 
@@ -168,8 +179,7 @@ fn load_transaction_index<B: AuxStore>(
     backend: &B,
     txid: Txid,
 ) -> sp_blockchain::Result<Option<TxPosition>> {
-    Ok(load_decode(backend, &txid_key(txid))?
-        .and_then(|value: Vec<u8>| TxPosition::decode(&mut value.as_slice()).ok()))
+    load_decode(backend, &txid_key(txid))
 }
 
 impl<Block, Backend, Client, TransactionAdapter> TransactionIndex
@@ -182,6 +192,6 @@ where
     TransactionAdapter: BitcoinTransactionAdapter<Block>,
 {
     fn tx_index(&self, txid: Txid) -> sp_blockchain::Result<Option<TxPosition>> {
-        load_transaction_index(self.client, txid)
+        load_transaction_index(&*self.client, txid)
     }
 }
