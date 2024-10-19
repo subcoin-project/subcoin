@@ -9078,6 +9078,7 @@ dependencies = [
  "futures",
  "jsonrpsee",
  "pallet-bitcoin",
+ "parity-scale-codec",
  "parking_lot 0.12.3",
  "sc-client-api",
  "sc-consensus",

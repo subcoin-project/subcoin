@@ -300,6 +300,21 @@ fn locator_indexes(mut from: Height) -> Vec<Height> {
     indexes
 }
 
+/// Represents the index of a transaction.
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct TxPosition {
+    /// Number of the block including the transaction.
+    pub block_number: u32,
+    /// Position of the transaction within the block.
+    pub index: u32,
+}
+
+///
+pub trait TransactionIndex {
+    /// Returns the position of given transaction ID if any.
+    fn tx_index(&self, txid: Txid) -> sp_blockchain::Result<Option<TxPosition>>;
+}
+
 /// Constructs a Substrate header digest from a Bitcoin header.
 ///
 /// NOTE: The bitcoin block hash digest is stored in the reversed byte order, making it

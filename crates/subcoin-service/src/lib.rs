@@ -5,6 +5,7 @@
 pub mod chain_spec;
 mod finalizer;
 mod genesis_block_builder;
+mod indexer;
 mod transaction_adapter;
 
 use bitcoin::hashes::Hash;
