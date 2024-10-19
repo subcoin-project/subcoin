@@ -345,7 +345,7 @@
                         script_pubkey: txout.script_pubkey.clone().into_bytes(),
                         height: <span class="number">0u32</span>,
                     };
-                    Coins::&lt;T&gt;::insert(txid.clone(), index <span class="kw">as </span>u32, coin);
+                    Coins::&lt;T&gt;::insert(txid, index <span class="kw">as </span>u32, coin);
                 });
         }
     }

@@ -225,13 +225,13 @@
 </span><span class="attr">#[derive(Debug)]
 </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">enum </span>NetworkWorkerMessage {
     <span class="doccomment">/// Request the current network status.
-    </span>NetworkStatus(oneshot::Sender&lt;NetworkStatus&gt;),
+    </span>RequestNetworkStatus(oneshot::Sender&lt;NetworkStatus&gt;),
     <span class="doccomment">/// Request the sync peers.
-    </span>SyncPeers(oneshot::Sender&lt;Vec&lt;PeerSync&gt;&gt;),
+    </span>RequestSyncPeers(oneshot::Sender&lt;Vec&lt;PeerSync&gt;&gt;),
     <span class="doccomment">/// Request the number of inbound connected peers.
-    </span>InboundPeersCount(oneshot::Sender&lt;usize&gt;),
+    </span>RequestInboundPeersCount(oneshot::Sender&lt;usize&gt;),
     <span class="doccomment">/// Request a specific transaction by its Txid.
-    </span>GetTransaction((Txid, oneshot::Sender&lt;<span class="prelude-ty">Option</span>&lt;Transaction&gt;&gt;)),
+    </span>RequestTransaction((Txid, oneshot::Sender&lt;<span class="prelude-ty">Option</span>&lt;Transaction&gt;&gt;)),
     <span class="doccomment">/// Submit a transaction to the transaction manager.
     </span>SendTransaction((IncomingTransaction, oneshot::Sender&lt;SendTransactionResult&gt;)),
     <span class="doccomment">/// Enable the block sync within the chain sync component.
@@ -257,7 +257,7 @@
         <span class="kw">let </span>(sender, receiver) = oneshot::channel();
 
         <span class="self">self</span>.worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::NetworkStatus(sender))
+            .unbounded_send(NetworkWorkerMessage::RequestNetworkStatus(sender))
             .ok();
 
         receiver.<span class="kw">await</span>.ok()
@@ -269,7 +269,7 @@
 
         <span class="kw">if </span><span class="self">self
             </span>.worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::SyncPeers(sender))
+            .unbounded_send(NetworkWorkerMessage::RequestSyncPeers(sender))
             .is_err()
         {
             <span class="kw">return </span>Vec::new();
@@ -284,7 +284,7 @@
 
         <span class="kw">if </span><span class="self">self
             </span>.worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::GetTransaction((txid, sender)))
+            .unbounded_send(NetworkWorkerMessage::RequestTransaction((txid, sender)))
             .is_err()
         {
             <span class="kw">return </span><span class="prelude-val">None</span>;

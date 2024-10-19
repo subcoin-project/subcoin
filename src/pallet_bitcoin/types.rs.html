@@ -269,6 +269,11 @@
 <a href="#269" id="269">269</a>
 <a href="#270" id="270">270</a>
 <a href="#271" id="271">271</a>
+<a href="#272" id="272">272</a>
+<a href="#273" id="273">273</a>
+<a href="#274" id="274">274</a>
+<a href="#275" id="275">275</a>
+<a href="#276" id="276">276</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>bitcoin::consensus::Encodable;
 <span class="kw">use </span>bitcoin::locktime::absolute;
 <span class="kw">use </span>codec::{Decode, Encode, MaxEncodedLen};
@@ -311,7 +316,7 @@
 }
 
 <span class="doccomment">/// Wrapper type for representing [`bitcoin::Txid`] in runtime, stored in reversed byte order.
-</span><span class="attr">#[derive(Clone, TypeInfo, Encode, Decode, MaxEncodedLen, PartialEq)]
+</span><span class="attr">#[derive(Clone, Copy, TypeInfo, Encode, Decode, MaxEncodedLen, PartialEq)]
 </span><span class="kw">pub struct </span>Txid(H256);
 
 <span class="kw">impl </span>Txid {
@@ -430,7 +435,11 @@
     <span class="doccomment">/// Input from a coinbase transaction, which does not reference any previous output.
     </span>Coinbase {
         <span class="doccomment">/// Arbitrary data used in the coinbase transaction, such as extra nonce or miner-specific information.
-        </span>coinbase_data: Vec&lt;u8&gt;,
+        </span>data: Vec&lt;u8&gt;,
+        <span class="doccomment">/// Sequence.
+        ///
+        /// Note that the value of sequence is not always Sequence::MAX, see https://www.blockchain.com/explorer/transactions/btc/0961c660358478829505e16a1f028757e54b5bbf9758341a7546573738f31429
+        </span>sequence: u32,
     },
     <span class="doccomment">/// Input from a regular transaction, which references a previous output (`OutPoint`).
     </span>Regular(RegularTxIn),
@@ -440,7 +449,8 @@
     <span class="kw">fn </span>from(txin: bitcoin::TxIn) -&gt; <span class="self">Self </span>{
         <span class="kw">if </span>txin.previous_output.is_null() {
             <span class="self">Self</span>::Coinbase {
-                coinbase_data: txin.script_sig.into_bytes(),
+                data: txin.script_sig.into_bytes(),
+                sequence: txin.sequence.<span class="number">0</span>,
             }
         } <span class="kw">else </span>{
             <span class="self">Self</span>::Regular(RegularTxIn {
@@ -456,10 +466,10 @@
 <span class="kw">impl </span>From&lt;TxIn&gt; <span class="kw">for </span>bitcoin::TxIn {
     <span class="kw">fn </span>from(val: TxIn) -&gt; <span class="self">Self </span>{
         <span class="kw">match </span>val {
-            TxIn::Coinbase { coinbase_data } =&gt; bitcoin::TxIn {
+            TxIn::Coinbase { data, sequence } =&gt; bitcoin::TxIn {
                 previous_output: bitcoin::OutPoint::null(),
-                script_sig: bitcoin::ScriptBuf::from_bytes(coinbase_data),
-                sequence: bitcoin::Sequence::MAX,
+                script_sig: bitcoin::ScriptBuf::from_bytes(data),
+                sequence: bitcoin::Sequence(sequence),
                 witness: bitcoin::Witness::new(),
             },
             TxIn::Regular(RegularTxIn {

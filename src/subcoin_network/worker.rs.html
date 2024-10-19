@@ -776,7 +776,7 @@
 
     <span class="kw">fn </span>process_worker_message(<span class="kw-2">&amp;mut </span><span class="self">self</span>, worker_msg: NetworkWorkerMessage, bandwidth: <span class="kw-2">&amp;</span>Bandwidth) {
         <span class="kw">match </span>worker_msg {
-            NetworkWorkerMessage::NetworkStatus(result_sender) =&gt; {
+            NetworkWorkerMessage::RequestNetworkStatus(result_sender) =&gt; {
                 <span class="kw">let </span>net_status = NetworkStatus {
                     num_connected_peers: <span class="self">self</span>.peer_manager.connected_peers_count(),
                     total_bytes_inbound: bandwidth.total_bytes_inbound.load(Ordering::Relaxed),
@@ -785,14 +785,14 @@
                 };
                 <span class="kw">let _ </span>= result_sender.send(net_status);
             }
-            NetworkWorkerMessage::SyncPeers(result_sender) =&gt; {
+            NetworkWorkerMessage::RequestSyncPeers(result_sender) =&gt; {
                 <span class="kw">let </span>sync_peers = <span class="self">self</span>.chain_sync.peers.values().cloned().collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
                 <span class="kw">let _ </span>= result_sender.send(sync_peers);
             }
-            NetworkWorkerMessage::InboundPeersCount(result_sender) =&gt; {
+            NetworkWorkerMessage::RequestInboundPeersCount(result_sender) =&gt; {
                 <span class="kw">let _ </span>= result_sender.send(<span class="self">self</span>.peer_manager.inbound_peers_count());
             }
-            NetworkWorkerMessage::GetTransaction((txid, result_sender)) =&gt; {
+            NetworkWorkerMessage::RequestTransaction((txid, result_sender)) =&gt; {
                 <span class="kw">let _ </span>= result_sender.send(<span class="self">self</span>.transaction_manager.get_transaction(<span class="kw-2">&amp;</span>txid));
             }
             NetworkWorkerMessage::SendTransaction((incoming_transaction, result_sender)) =&gt; {

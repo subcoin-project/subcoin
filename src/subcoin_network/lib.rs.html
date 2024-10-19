@@ -867,7 +867,7 @@
                     <span class="kw">let </span>(sender, receiver) = oneshot::channel();
 
                     <span class="kw">if </span>worker_msg_sender
-                        .unbounded_send(NetworkWorkerMessage::InboundPeersCount(sender))
+                        .unbounded_send(NetworkWorkerMessage::RequestInboundPeersCount(sender))
                         .is_err()
                     {
                         <span class="kw">return</span>;
