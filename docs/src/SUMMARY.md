@@ -5,6 +5,7 @@
 # Dev Guide
 
 - [Architecture](architecture.md)
+- [Design Notes](design-notes.md)
 
 # User Guide 
 
