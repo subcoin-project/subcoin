@@ -471,6 +471,36 @@
 <a href="#471" id="471">471</a>
 <a href="#472" id="472">472</a>
 <a href="#473" id="473">473</a>
+<a href="#474" id="474">474</a>
+<a href="#475" id="475">475</a>
+<a href="#476" id="476">476</a>
+<a href="#477" id="477">477</a>
+<a href="#478" id="478">478</a>
+<a href="#479" id="479">479</a>
+<a href="#480" id="480">480</a>
+<a href="#481" id="481">481</a>
+<a href="#482" id="482">482</a>
+<a href="#483" id="483">483</a>
+<a href="#484" id="484">484</a>
+<a href="#485" id="485">485</a>
+<a href="#486" id="486">486</a>
+<a href="#487" id="487">487</a>
+<a href="#488" id="488">488</a>
+<a href="#489" id="489">489</a>
+<a href="#490" id="490">490</a>
+<a href="#491" id="491">491</a>
+<a href="#492" id="492">492</a>
+<a href="#493" id="493">493</a>
+<a href="#494" id="494">494</a>
+<a href="#495" id="495">495</a>
+<a href="#496" id="496">496</a>
+<a href="#497" id="497">497</a>
+<a href="#498" id="498">498</a>
+<a href="#499" id="499">499</a>
+<a href="#500" id="500">500</a>
+<a href="#501" id="501">501</a>
+<a href="#502" id="502">502</a>
+<a href="#503" id="503">503</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! Subcoin service implementation. Specialized wrapper over substrate service.
 
 </span><span class="attr">#![allow(deprecated)]
@@ -943,5 +973,35 @@
         transaction_pool,
         other: (telemetry),
     })
+}
+
+<span class="attr">#[cfg(test)]
+</span><span class="kw">mod </span>tests {
+    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+    <span class="kw">use crate</span>::{new_node, NodeComponents, SubcoinConfiguration};
+    <span class="kw">use </span>subcoin_primitives::extract_bitcoin_block_hash;
+    <span class="kw">use </span>tokio::runtime::Handle;
+
+    <span class="attr">#[tokio::test]
+    </span><span class="kw">async fn </span>test_bitcoin_block_hash_in_substrate_header() {
+        <span class="kw">let </span>runtime_handle = Handle::current();
+        <span class="kw">let </span>config = subcoin_test_service::test_configuration(runtime_handle);
+        <span class="kw">let </span>NodeComponents { client, .. } =
+            new_node(SubcoinConfiguration::test_config(<span class="kw-2">&amp;</span>config)).expect(<span class="string">"Failed to create node"</span>);
+
+        <span class="kw">let </span>substrate_genesis_header = client.header(client.info().genesis_hash).unwrap().unwrap();
+        <span class="kw">let </span>bitcoin_genesis_header =
+            bitcoin::constants::genesis_block(bitcoin::Network::Bitcoin).header;
+
+        <span class="kw">let </span>bitcoin_genesis_block_hash = bitcoin_genesis_header.block_hash();
+
+        <span class="macro">assert_eq!</span>(
+            extract_bitcoin_block_hash::&lt;subcoin_runtime::interface::OpaqueBlock&gt;(
+                <span class="kw-2">&amp;</span>substrate_genesis_header
+            )
+            .unwrap(),
+            bitcoin_genesis_block_hash,
+        );
+    }
 }
 </code></pre></div></section></main></body></html>

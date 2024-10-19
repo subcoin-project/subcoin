@@ -401,6 +401,10 @@
 <a href="#401" id="401">401</a>
 <a href="#402" id="402">402</a>
 <a href="#403" id="403">403</a>
+<a href="#404" id="404">404</a>
+<a href="#405" id="405">405</a>
+<a href="#406" id="406">406</a>
+<a href="#407" id="407">407</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! Primitives for the client.
 
 </span><span class="kw">use </span>bitcoin::blockdata::block::Header <span class="kw">as </span>BitcoinHeader;
@@ -704,8 +708,12 @@
 }
 
 <span class="doccomment">/// Constructs a Substrate header digest from a Bitcoin header.
+///
+/// NOTE: The bitcoin block hash digest is stored in the reversed byte order, making it
+/// user-friendly on polkadot.js.org.
 </span><span class="kw">pub fn </span>substrate_header_digest(bitcoin_header: <span class="kw-2">&amp;</span>BitcoinHeader) -&gt; Digest {
-    <span class="kw">let </span>bitcoin_block_hash = bitcoin_header.block_hash();
+    <span class="kw">let </span><span class="kw-2">mut </span>raw_bitcoin_block_hash = bitcoin_header.block_hash().to_byte_array().to_vec();
+    raw_bitcoin_block_hash.reverse();
 
     <span class="kw">let </span><span class="kw-2">mut </span>encoded_bitcoin_header = Vec::with_capacity(<span class="number">32</span>);
     bitcoin_header
@@ -718,10 +726,7 @@
     // decoding the entire bitcoin header later.
     </span>Digest {
         logs: <span class="macro">vec!</span>[
-            DigestItem::PreRuntime(
-                NAKAMOTO_HASH_ENGINE_ID,
-                bitcoin_block_hash.to_byte_array().to_vec(),
-            ),
+            DigestItem::PreRuntime(NAKAMOTO_HASH_ENGINE_ID, raw_bitcoin_block_hash),
             DigestItem::PreRuntime(NAKAMOTO_HEADER_ENGINE_ID, encoded_bitcoin_header),
         ],
     }
@@ -734,7 +739,7 @@
     MissingBitcoinBlockHashDigest,
     InvalidBitcoinBlockHashDigest,
     MissingBitcoinBlockHeader,
-    InvalidBitcoinBlockHeader,
+    InvalidBitcoinBlockHeader(String),
 }
 
 <span class="doccomment">/// Extracts the Bitcoin block hash from the given Substrate header.
@@ -756,9 +761,12 @@
         }
     }
 
-    <span class="kw">let </span>bitcoin_block_hash = pre_digest.ok_or(HeaderError::MissingBitcoinBlockHashDigest)<span class="question-mark">?</span>;
+    <span class="kw">let </span><span class="kw-2">mut </span>raw_bitcoin_block_hash = pre_digest
+        .ok_or(HeaderError::MissingBitcoinBlockHashDigest)<span class="question-mark">?
+        </span>.to_vec();
+    raw_bitcoin_block_hash.reverse();
 
-    BlockHash::from_slice(bitcoin_block_hash)
+    BlockHash::from_slice(<span class="kw-2">&amp;</span>raw_bitcoin_block_hash)
         .map_err(|<span class="kw">_</span>| HeaderError::InvalidBitcoinBlockHashDigest)
 }
 
@@ -784,7 +792,7 @@
     <span class="kw">let </span>bitcoin_block_header = pre_digest.ok_or(HeaderError::MissingBitcoinBlockHeader)<span class="question-mark">?</span>;
 
     BitcoinHeader::consensus_decode(<span class="kw-2">&amp;mut </span>bitcoin_block_header.as_slice())
-        .map_err(|<span class="kw">_</span>| HeaderError::InvalidBitcoinBlockHeader)
+        .map_err(|err| HeaderError::InvalidBitcoinBlockHeader(err.to_string()))
 }
 
 <span class="doccomment">/// Converts a Substrate block to a Bitcoin block.

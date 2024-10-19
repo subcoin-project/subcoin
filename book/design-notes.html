@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Introduction - Subcoin Book</title>
+        <title>Design Notes - Subcoin Book</title>
 
 
         <!-- Custom HTML head -->
@@ -89,7 +89,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html" class="active">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">Dev Guide</li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="design-notes.html"><strong aria-hidden="true">2.</strong> Design Notes</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="import-bitcoind-blocks.html"><strong aria-hidden="true">3.</strong> Import Bitcoin Core Blocks</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">Dev Guide</li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="design-notes.html" class="active"><strong aria-hidden="true">2.</strong> Design Notes</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="import-bitcoind-blocks.html"><strong aria-hidden="true">3.</strong> Import Bitcoin Core Blocks</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -151,7 +151,7 @@
                         <a href="https://github.com/subcoin-project/subcoin" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/subcoin-project/subcoin/edit/main/docs/src/README.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/subcoin-project/subcoin/edit/main/docs/src/design-notes.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -180,27 +180,24 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="subcoin"><a class="header" href="#subcoin">Subcoin</a></h1>
-<p><a href="https://t.me/subcoin_project"><img src="https://img.shields.io/badge/Telegram-blue?color=gray&amp;logo=telegram&amp;logoColor=%#64b5ef" alt="Telegram" /></a></p>
-<img src="https://raw.githubusercontent.com/subcoin-project/subcoin/main/docs/src/images/subcoin-high-resolution-logo.png" alt="Subcoin logo" style="max-width: 400px; width: 100%; display: block; margin: 0 auto;">
-<p style="text-align: center">
-Subcoin is Bitcoin full node written in Rust using the <a href="https://github.com/paritytech/polkadot-sdk">Substrate framework</a>
-</p>
-<p>Subcoin's most significant contribution is introducing decentralized fast sync to
-the Bitcoin ecosystem. Unlike traditional initial full sync, which require processing
-every historical block and replaying all past transactions, fast sync downloads
-the state at a specific block and begins normal block sync from that point.</p>
-<h2 id="resources"><a class="header" href="#resources">Resources</a></h2>
+                        <h1 id="design-notes"><a class="header" href="#design-notes">Design Notes</a></h1>
+<h2 id="storage"><a class="header" href="#storage">Storage</a></h2>
+<p>By default, Subcoin simply stores Bitcoin data in their original byte order (little-endian). However, displaying Bitcoin block hashes and transaction IDs (txids) in this format is not user-friendly, as the broader Bitcoin ecosystem presents these values in big-endian order. To improve readability on platforms like polkadot.js.org, we will store certain Bitcoin data in big-endian format whenever it needs to be displayed.</p>
+<p>The following data will now be stored in big-endian format to align with Bitcoin ecosystem display conventions:</p>
 <ul>
-<li><a href="https://www.notion.so/liuchengxu/Subcoin-A-Step-Toward-Decentralized-Fast-Sync-for-Bitcoin-68762427a4484d73906a91602d789be9">Subcoin: A Step Toward Decentralized Fast Sync for Bitcoin</a></li>
+<li><code>txid</code> in <code>pallet_bitcoin::Call::transact { btc_tx: Transaction }</code>.</li>
+<li><code>hash</code> in the digest of the block header.</li>
 </ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="architecture.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
 
-                            <a rel="next prefetch" href="architecture.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="import-bitcoind-blocks.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -210,8 +207,11 @@ the state at a specific block and begins normal block sync from that point.</p>
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="architecture.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
 
-                    <a rel="next prefetch" href="architecture.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="import-bitcoind-blocks.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

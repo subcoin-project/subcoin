@@ -90,7 +90,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">Dev Guide</li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">1.</strong> Architecture</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="import-bitcoind-blocks.html"><strong aria-hidden="true">2.</strong> Import Bitcoin Core Blocks</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">Dev Guide</li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="design-notes.html"><strong aria-hidden="true">2.</strong> Design Notes</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="import-bitcoind-blocks.html"><strong aria-hidden="true">3.</strong> Import Bitcoin Core Blocks</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -215,6 +215,14 @@ the state at a specific block and begins normal block sync from that point.</p>
 <p>This is a minimal Substrate runtime, composed of <code>frame-system</code> and <code>pallet-bitcoin</code>, which defines the core business logic of Subcoin chain.</p>
 <h3 id="cratessubcoin-node"><a class="header" href="#cratessubcoin-node"><code>crates/subcoin-node</code></a></h3>
 <p>The entry point for the Subcoin node is located at <code>crates/subcoin-node/src/bin/subcoin.rs</code>, which initializes and runs the node.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="design-notes"><a class="header" href="#design-notes">Design Notes</a></h1>
+<h2 id="storage"><a class="header" href="#storage">Storage</a></h2>
+<p>By default, Subcoin simply stores Bitcoin data in their original byte order (little-endian). However, displaying Bitcoin block hashes and transaction IDs (txids) in this format is not user-friendly, as the broader Bitcoin ecosystem presents these values in big-endian order. To improve readability on platforms like polkadot.js.org, we will store certain Bitcoin data in big-endian format whenever it needs to be displayed.</p>
+<p>The following data will now be stored in big-endian format to align with Bitcoin ecosystem display conventions:</p>
+<ul>
+<li><code>txid</code> in <code>pallet_bitcoin::Call::transact { btc_tx: Transaction }</code>.</li>
+<li><code>hash</code> in the digest of the block header.</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="import-blocks-from-bitcoin-core-database"><a class="header" href="#import-blocks-from-bitcoin-core-database">Import Blocks from Bitcoin Core Database</a></h1>
 <!-- clap-markdown-toc -->
 <ul>
