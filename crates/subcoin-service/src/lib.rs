@@ -471,3 +471,33 @@ pub fn new_partial(
         other: (telemetry),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{new_node, NodeComponents, SubcoinConfiguration};
+    use subcoin_primitives::extract_bitcoin_block_hash;
+    use tokio::runtime::Handle;
+
+    #[tokio::test]
+    async fn test_bitcoin_block_hash_in_substrate_header() {
+        let runtime_handle = Handle::current();
+        let config = subcoin_test_service::test_configuration(runtime_handle);
+        let NodeComponents { client, .. } =
+            new_node(SubcoinConfiguration::test_config(&config)).expect("Failed to create node");
+
+        let substrate_genesis_header = client.header(client.info().genesis_hash).unwrap().unwrap();
+        let bitcoin_genesis_header =
+            bitcoin::constants::genesis_block(bitcoin::Network::Bitcoin).header;
+
+        let bitcoin_genesis_block_hash = bitcoin_genesis_header.block_hash();
+
+        assert_eq!(
+            extract_bitcoin_block_hash::<subcoin_runtime::interface::OpaqueBlock>(
+                &substrate_genesis_header
+            )
+            .unwrap(),
+            bitcoin_genesis_block_hash,
+        );
+    }
+}

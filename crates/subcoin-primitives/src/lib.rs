@@ -332,7 +332,7 @@ pub enum HeaderError {
     MissingBitcoinBlockHashDigest,
     InvalidBitcoinBlockHashDigest,
     MissingBitcoinBlockHeader,
-    InvalidBitcoinBlockHeader,
+    InvalidBitcoinBlockHeader(String),
 }
 
 /// Extracts the Bitcoin block hash from the given Substrate header.
@@ -385,7 +385,7 @@ pub fn extract_bitcoin_block_header<Block: BlockT>(
     let bitcoin_block_header = pre_digest.ok_or(HeaderError::MissingBitcoinBlockHeader)?;
 
     BitcoinHeader::consensus_decode(&mut bitcoin_block_header.as_slice())
-        .map_err(|_| HeaderError::InvalidBitcoinBlockHeader)
+        .map_err(|err| HeaderError::InvalidBitcoinBlockHeader(err.to_string()))
 }
 
 /// Converts a Substrate block to a Bitcoin block.
