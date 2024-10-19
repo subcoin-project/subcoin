@@ -40,7 +40,7 @@ impl From<LockTime> for absolute::LockTime {
 }
 
 /// Wrapper type for representing [`bitcoin::Txid`] in runtime, stored in reversed byte order.
-#[derive(Clone, TypeInfo, Encode, Decode, MaxEncodedLen, PartialEq)]
+#[derive(Clone, Copy, TypeInfo, Encode, Decode, MaxEncodedLen, PartialEq)]
 pub struct Txid(H256);
 
 impl Txid {
@@ -159,7 +159,11 @@ pub enum TxIn {
     /// Input from a coinbase transaction, which does not reference any previous output.
     Coinbase {
         /// Arbitrary data used in the coinbase transaction, such as extra nonce or miner-specific information.
-        coinbase_data: Vec<u8>,
+        data: Vec<u8>,
+        /// Sequence.
+        ///
+        /// Note that the value of sequence is not always Sequence::MAX, see https://www.blockchain.com/explorer/transactions/btc/0961c660358478829505e16a1f028757e54b5bbf9758341a7546573738f31429
+        sequence: u32,
     },
     /// Input from a regular transaction, which references a previous output (`OutPoint`).
     Regular(RegularTxIn),
@@ -169,7 +173,8 @@ impl From<bitcoin::TxIn> for TxIn {
     fn from(txin: bitcoin::TxIn) -> Self {
         if txin.previous_output.is_null() {
             Self::Coinbase {
-                coinbase_data: txin.script_sig.into_bytes(),
+                data: txin.script_sig.into_bytes(),
+                sequence: txin.sequence.0,
             }
         } else {
             Self::Regular(RegularTxIn {
@@ -185,10 +190,10 @@ impl From<bitcoin::TxIn> for TxIn {
 impl From<TxIn> for bitcoin::TxIn {
     fn from(val: TxIn) -> Self {
         match val {
-            TxIn::Coinbase { coinbase_data } => bitcoin::TxIn {
+            TxIn::Coinbase { data, sequence } => bitcoin::TxIn {
                 previous_output: bitcoin::OutPoint::null(),
-                script_sig: bitcoin::ScriptBuf::from_bytes(coinbase_data),
-                sequence: bitcoin::Sequence::MAX,
+                script_sig: bitcoin::ScriptBuf::from_bytes(data),
+                sequence: bitcoin::Sequence(sequence),
                 witness: bitcoin::Witness::new(),
             },
             TxIn::Regular(RegularTxIn {
