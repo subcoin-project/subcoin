@@ -301,8 +301,12 @@ fn locator_indexes(mut from: Height) -> Vec<Height> {
 }
 
 /// Constructs a Substrate header digest from a Bitcoin header.
+///
+/// NOTE: The bitcoin block hash digest is stored in the reversed byte order, making it
+/// user-friendly on polkadot.js.org.
 pub fn substrate_header_digest(bitcoin_header: &BitcoinHeader) -> Digest {
-    let bitcoin_block_hash = bitcoin_header.block_hash();
+    let mut raw_bitcoin_block_hash = bitcoin_header.block_hash().to_byte_array().to_vec();
+    raw_bitcoin_block_hash.reverse();
 
     let mut encoded_bitcoin_header = Vec::with_capacity(32);
     bitcoin_header
@@ -315,10 +319,7 @@ pub fn substrate_header_digest(bitcoin_header: &BitcoinHeader) -> Digest {
     // decoding the entire bitcoin header later.
     Digest {
         logs: vec![
-            DigestItem::PreRuntime(
-                NAKAMOTO_HASH_ENGINE_ID,
-                bitcoin_block_hash.to_byte_array().to_vec(),
-            ),
+            DigestItem::PreRuntime(NAKAMOTO_HASH_ENGINE_ID, raw_bitcoin_block_hash),
             DigestItem::PreRuntime(NAKAMOTO_HEADER_ENGINE_ID, encoded_bitcoin_header),
         ],
     }
@@ -353,9 +354,12 @@ pub fn extract_bitcoin_block_hash<Block: BlockT>(
         }
     }
 
-    let bitcoin_block_hash = pre_digest.ok_or(HeaderError::MissingBitcoinBlockHashDigest)?;
+    let mut raw_bitcoin_block_hash = pre_digest
+        .ok_or(HeaderError::MissingBitcoinBlockHashDigest)?
+        .to_vec();
+    raw_bitcoin_block_hash.reverse();
 
-    BlockHash::from_slice(bitcoin_block_hash)
+    BlockHash::from_slice(&raw_bitcoin_block_hash)
         .map_err(|_| HeaderError::InvalidBitcoinBlockHashDigest)
 }
 
