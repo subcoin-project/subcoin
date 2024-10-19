@@ -59,13 +59,13 @@ pub(crate) struct IncomingTransaction {
 #[derive(Debug)]
 pub(crate) enum NetworkWorkerMessage {
     /// Request the current network status.
-    NetworkStatus(oneshot::Sender<NetworkStatus>),
+    RequestNetworkStatus(oneshot::Sender<NetworkStatus>),
     /// Request the sync peers.
-    SyncPeers(oneshot::Sender<Vec<PeerSync>>),
+    RequestSyncPeers(oneshot::Sender<Vec<PeerSync>>),
     /// Request the number of inbound connected peers.
-    InboundPeersCount(oneshot::Sender<usize>),
+    RequestInboundPeersCount(oneshot::Sender<usize>),
     /// Request a specific transaction by its Txid.
-    GetTransaction((Txid, oneshot::Sender<Option<Transaction>>)),
+    RequestTransaction((Txid, oneshot::Sender<Option<Transaction>>)),
     /// Submit a transaction to the transaction manager.
     SendTransaction((IncomingTransaction, oneshot::Sender<SendTransactionResult>)),
     /// Enable the block sync within the chain sync component.
@@ -91,7 +91,7 @@ impl NetworkHandle {
         let (sender, receiver) = oneshot::channel();
 
         self.worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::NetworkStatus(sender))
+            .unbounded_send(NetworkWorkerMessage::RequestNetworkStatus(sender))
             .ok();
 
         receiver.await.ok()
@@ -103,7 +103,7 @@ impl NetworkHandle {
 
         if self
             .worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::SyncPeers(sender))
+            .unbounded_send(NetworkWorkerMessage::RequestSyncPeers(sender))
             .is_err()
         {
             return Vec::new();
@@ -118,7 +118,7 @@ impl NetworkHandle {
 
         if self
             .worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::GetTransaction((txid, sender)))
+            .unbounded_send(NetworkWorkerMessage::RequestTransaction((txid, sender)))
             .is_err()
         {
             return None;

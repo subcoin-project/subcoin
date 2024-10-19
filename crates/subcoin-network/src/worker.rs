@@ -243,7 +243,7 @@ where
 
     fn process_worker_message(&mut self, worker_msg: NetworkWorkerMessage, bandwidth: &Bandwidth) {
         match worker_msg {
-            NetworkWorkerMessage::NetworkStatus(result_sender) => {
+            NetworkWorkerMessage::RequestNetworkStatus(result_sender) => {
                 let net_status = NetworkStatus {
                     num_connected_peers: self.peer_manager.connected_peers_count(),
                     total_bytes_inbound: bandwidth.total_bytes_inbound.load(Ordering::Relaxed),
@@ -252,14 +252,14 @@ where
                 };
                 let _ = result_sender.send(net_status);
             }
-            NetworkWorkerMessage::SyncPeers(result_sender) => {
+            NetworkWorkerMessage::RequestSyncPeers(result_sender) => {
                 let sync_peers = self.chain_sync.peers.values().cloned().collect::<Vec<_>>();
                 let _ = result_sender.send(sync_peers);
             }
-            NetworkWorkerMessage::InboundPeersCount(result_sender) => {
+            NetworkWorkerMessage::RequestInboundPeersCount(result_sender) => {
                 let _ = result_sender.send(self.peer_manager.inbound_peers_count());
             }
-            NetworkWorkerMessage::GetTransaction((txid, result_sender)) => {
+            NetworkWorkerMessage::RequestTransaction((txid, result_sender)) => {
                 let _ = result_sender.send(self.transaction_manager.get_transaction(&txid));
             }
             NetworkWorkerMessage::SendTransaction((incoming_transaction, result_sender)) => {
