@@ -21,7 +21,7 @@ members = [
     "crates/subcoin-runtime",
     "crates/subcoin-runtime-primitives",
     "crates/subcoin-service",
-    "crates/subcoin-state-fetcher",
+    "crates/subcoin-state-sync-node",
     "crates/subcoin-test-service",
     "crates/subcoin-utxo-snapshot",
 ]

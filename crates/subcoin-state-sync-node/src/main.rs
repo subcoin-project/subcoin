@@ -14,9 +14,11 @@ use subcoin_runtime::RuntimeApi;
 use subcoin_service::{FullClient, GenesisBlockBuilder, TransactionAdapter};
 
 fn main() -> sc_cli::Result<()> {
-    let command = Command::new(App::parse());
+    let app = App::parse();
 
-    let bitcoin_network = bitcoin::Network::Bitcoin;
+    let bitcoin_network = app.bitcoin_network();
+
+    let command = Command::new(app);
 
     cli::SubstrateCli
         .create_runner(&command)?

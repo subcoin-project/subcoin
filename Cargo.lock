@@ -10595,7 +10595,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "subcoin-state-fetcher"
+name = "subcoin-state-sync-node"
 version = "0.1.0"
 dependencies = [
  "anyhow",

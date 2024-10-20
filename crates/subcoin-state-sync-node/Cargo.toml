@@ -1,5 +1,5 @@
 [package]
-name = "subcoin-state-fetcher"
+name = "subcoin-state-sync-node"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
