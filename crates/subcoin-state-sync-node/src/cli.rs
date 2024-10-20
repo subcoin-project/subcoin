@@ -14,7 +14,7 @@ pub struct SubstrateCli;
 
 impl sc_cli::SubstrateCli for SubstrateCli {
     fn impl_name() -> String {
-        "Subcoin UTXO Set Download Tool".into()
+        "Subcoin State Sync Node".into()
     }
 
     fn impl_version() -> String {
@@ -104,6 +104,16 @@ pub struct App {
     #[allow(missing_docs)]
     #[clap(flatten)]
     pub network_params: NetworkParams,
+}
+
+impl App {
+    pub fn bitcoin_network(&self) -> bitcoin::Network {
+        match self.chain {
+            Chain::BitcoinMainnet => bitcoin::Network::Bitcoin,
+            Chain::BitcoinTestnet => bitcoin::Network::Testnet,
+            Chain::BitcoinSignet => bitcoin::Network::Signet,
+        }
+    }
 }
 
 pub struct Command {
