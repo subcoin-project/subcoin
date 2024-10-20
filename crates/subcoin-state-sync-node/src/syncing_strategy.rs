@@ -2,7 +2,7 @@ use sc_client_api::{BlockBackend, HeaderBackend, ProofProvider};
 use sc_consensus::{BlockImportError, BlockImportStatus};
 use sc_network::config::{FullNetworkConfiguration, ProtocolId};
 use sc_network::service::traits::RequestResponseConfig;
-use sc_network::{NetworkBackend, PeerId, ProtocolName};
+use sc_network::{NetworkBackend, PeerId};
 use sc_network_common::sync::message::{BlockAnnounce, BlockData, BlockRequest};
 use sc_network_common::sync::SyncMode;
 use sc_network_sync::state_request_handler::StateRequestHandler;
@@ -38,8 +38,8 @@ fn chain_sync_mode(sync_mode: SyncMode) -> ChainSyncMode {
     }
 }
 
-/// Build standard polkadot syncing strategy
-pub fn build_polkadot_syncing_strategy<Block, Client, Net>(
+/// Build Subcoin state syncing strategy
+pub fn build_subcoin_syncing_strategy<Block, Client, Net>(
     protocol_id: ProtocolId,
     fork_id: Option<&str>,
     net_config: &mut FullNetworkConfiguration<Block, <Block as BlockT>::Hash, Net>,
@@ -58,8 +58,6 @@ where
 
     Net: NetworkBackend<Block, <Block as BlockT>::Hash>,
 {
-    let genesis_hash = client.info().genesis_hash;
-
     let (state_request_protocol_config, state_request_protocol_name) = {
         let num_peer_hint = net_config.network_config.default_peers_set_num_full as usize
             + net_config
@@ -85,14 +83,14 @@ where
         state_request_protocol_name,
     };
 
-    Ok(Box::new(PolkadotSyncingStrategy::new(
+    Ok(Box::new(SubcoinSyncingStrategy::new(
         syncing_config,
         client,
     )?))
 }
 
 /// Proxy to specific syncing strategies used in Polkadot.
-pub struct PolkadotSyncingStrategy<B: BlockT, Client> {
+pub struct SubcoinSyncingStrategy<B: BlockT, Client> {
     /// Initial syncing configuration.
     config: SyncingConfig,
     /// Client used by syncing strategies.
@@ -102,11 +100,11 @@ pub struct PolkadotSyncingStrategy<B: BlockT, Client> {
     /// `ChainSync` strategy.`
     chain_sync: Option<ChainSync<B, Client>>,
     /// Connected peers and their best blocks used to seed a new strategy when switching to it in
-    /// `PolkadotSyncingStrategy::proceed_to_next`.
+    /// `SubcoinSyncingStrategy::proceed_to_next`.
     peer_best_blocks: HashMap<PeerId, (B::Hash, NumberFor<B>)>,
 }
 
-impl<B: BlockT, Client> SyncingStrategy<B> for PolkadotSyncingStrategy<B, Client>
+impl<B: BlockT, Client> SyncingStrategy<B> for SubcoinSyncingStrategy<B, Client>
 where
     B: BlockT,
     Client: HeaderBackend<B>
@@ -238,9 +236,9 @@ where
 
     fn on_warp_proof_response(
         &mut self,
-        peer_id: &PeerId,
-        key: StrategyKey,
-        response: EncodedProof,
+        _peer_id: &PeerId,
+        _key: StrategyKey,
+        _response: EncodedProof,
     ) {
         unreachable!("Warp sync unsupported")
     }
@@ -331,7 +329,7 @@ where
     }
 }
 
-impl<B: BlockT, Client> PolkadotSyncingStrategy<B, Client>
+impl<B: BlockT, Client> SubcoinSyncingStrategy<B, Client>
 where
     B: BlockT,
     Client: HeaderBackend<B>

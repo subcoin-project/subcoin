@@ -112,8 +112,7 @@ where
         None,
     );
 
-    // TODO: custom syncing strategy.
-    let syncing_strategy = crate::syncing_strategy::build_polkadot_syncing_strategy(
+    let syncing_strategy = crate::syncing_strategy::build_subcoin_syncing_strategy(
         config.protocol_id(),
         config.chain_spec.fork_id(),
         &mut net_config,
