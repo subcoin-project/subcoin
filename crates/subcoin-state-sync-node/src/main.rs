@@ -1,4 +1,5 @@
 mod cli;
+mod syncing_strategy;
 
 use self::cli::{App, Command};
 use clap::Parser;
@@ -111,14 +112,13 @@ where
         None,
     );
 
-    let syncing_strategy = sc_service::build_polkadot_syncing_strategy(
+    // TODO: custom syncing strategy.
+    let syncing_strategy = crate::syncing_strategy::build_polkadot_syncing_strategy(
         config.protocol_id(),
         config.chain_spec.fork_id(),
         &mut net_config,
-        None,
         client.clone(),
         &task_manager.spawn_handle(),
-        None,
     )?;
 
     let metrics = N::register_notification_metrics(config.prometheus_registry());
