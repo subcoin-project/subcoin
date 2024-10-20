@@ -36,6 +36,14 @@ impl<Block, Backend, Client, TransactionAdapter> Clone
     }
 }
 
+#[derive(Debug, Encode, Decode)]
+struct HistoricalIndexing {
+    // inclusive
+    begin: u32,
+    // inclusive
+    end: u32,
+}
+
 impl<Block, Backend, Client, TransactionAdapter>
     TransactionIndexer<Block, Backend, Client, TransactionAdapter>
 where
@@ -47,6 +55,15 @@ where
 {
     /// Creates a new instance of [`TransactionIndexer`].
     pub fn new(network: bitcoin::Network, client: Arc<Client>) -> Self {
+        let best_number = self.client.info().best_number;
+
+        let begin = match load_last_indexed_historical_block(&*self.client)? {
+            Some(last_indexed) => last_indexed,
+            None => begin,
+        };
+
+        let HistoricalIndexing { begin, end } = todo!("load sync range");
+
         Self {
             network,
             client,
@@ -54,6 +71,7 @@ where
         }
     }
 
+    /// Listen for new coming blocks and index them in real-time.
     pub async fn run(mut self) {
         let mut block_import_stream = self.client.every_import_notification_stream();
 
@@ -84,6 +102,35 @@ where
                 self.process_block(block, BlockAction::ApplyNew)
             }
         }
+    }
+
+    fn index_historical_blocks(self) -> sp_blockchain::Result<()> {
+        // TODO: handle the historical blocks' indexing.
+        let HistoricalIndexing { begin, end } = todo!("load sync range");
+
+        let begin = match load_last_indexed_historical_block(&*self.client)? {
+            Some(last_indexed) => last_indexed,
+            None => begin,
+        };
+
+        // Scan backward the unindexed blocks.
+        for block_number in (end..=begin).rev() {
+            let substrate_block_hash =
+                self.client
+                    .hash(block_number.into())?
+                    .ok_or(sp_blockchain::Error::Backend(format!(
+                        "Hash for #{block_number} not found"
+                    )))?;
+            let substrate_block = self.expect_block(substrate_block_hash);
+            self.process_block(substrate_block, BlockAction::ApplyNew);
+            self.write_last_indexed_historical_block(block_number);
+        }
+
+        // Historical sync is complete, remove the stored historical sync state.
+        delete_historical_indexing(&*self.client);
+        delete_last_indexed_historical_block(&*self.client);
+
+        Ok(())
     }
 
     fn expect_block(&self, block_hash: Block::Hash) -> Block {
@@ -173,6 +220,38 @@ fn write_transaction_index_changes<B: AuxStore>(
             )
         }
     }
+}
+
+fn write_last_indexed_historical_block<B: AuxStore>(
+    backend: &B,
+    block_number: u32,
+) -> sp_blockchain::Result<()> {
+    backend.insert_aux(
+        &[(b"last_indexed_historical_block", block_number.encode())],
+        &[],
+    )
+}
+
+fn delete_last_indexed_historical_block<B: AuxStore>(backend: &B) -> sp_blockchain::Result<()> {
+    backend.insert_aux(&[], &[b"last_indexed_historical_block"])
+}
+
+fn load_last_indexed_historical_block<B: AuxStore>(
+    backend: &B,
+) -> sp_blockchain::Result<Option<u32>> {
+    load_decode(backend, b"last_indexed_historical_block")
+}
+
+fn load_historical_indexing<B: AuxStore>(
+    backend: &B,
+) -> sp_blockchain::Result<Option<HistoricalIndexing>> {
+    load_decode(backend, b"historical_indexing")
+}
+
+fn delete_historical_indexing<B: AuxStore>(
+    backend: &B,
+) -> sp_blockchain::Result<Option<HistoricalIndexing>> {
+    backend.insert_aux(&[], &[b"historical_indexing"])
 }
 
 fn load_transaction_index<B: AuxStore>(
