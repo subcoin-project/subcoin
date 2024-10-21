@@ -10595,26 +10595,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "subcoin-state-sync-node"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bitcoin 0.32.2",
- "clap",
- "sc-cli",
- "sc-consensus",
- "sc-consensus-nakamoto",
- "sc-informant",
- "sc-network",
- "sc-service",
- "sc-transaction-pool",
- "sp-runtime",
- "subcoin-runtime",
- "subcoin-service",
- "tokio",
-]
-
-[[package]]
 name = "subcoin-test-service"
 version = "0.1.0"
 dependencies = [

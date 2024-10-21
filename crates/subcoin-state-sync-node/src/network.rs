@@ -25,6 +25,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use subcoin_crypto::muhash::MuHash3072;
 use subcoin_runtime_primitives::Coin;
+use subcoin_utils::UtxoSetBinaryOutput;
 
 const LOG_TARGET: &'static str = "sync";
 
@@ -101,6 +102,9 @@ where
 struct WrappedStateSync<B: BlockT, Client> {
     inner: StateSync<B, Client>,
     muhash: MuHash3072,
+    target_bitcoin_block_hash: bitcoin::BlockHash,
+    utxos: Vec<(bitcoin::Txid, u32, Coin)>,
+    utxo_set_binary_output: UtxoSetBinaryOutput,
 }
 
 impl<B, Client> WrappedStateSync<B, Client>
@@ -109,9 +113,20 @@ where
     Client: ProofProvider<B> + Send + Sync + 'static,
 {
     fn new(client: Arc<Client>, target_header: B::Header, skip_proof: bool) -> Self {
+        let target_block_number = target_header.number();
+        let target_bitcoin_block_hash =
+            subcoin_primitives::extract_bitcoin_block_hash::<B>(&target_header)
+                .expect("Failed to extract bitcoin block hash");
+
+        let file_name = format!("/tmp/{target_block_number}_{target_bitcoin_block_hash}.txoutset");
+        let file = std::fs::File::create(file_name).expect("Failed to create output file");
+
         Self {
             inner: StateSync::new(client, target_header, None, None, skip_proof),
+            target_bitcoin_block_hash,
             muhash: MuHash3072::new(),
+            utxos: Vec::new(),
+            utxo_set_binary_output: UtxoSetBinaryOutput::new(file),
         }
     }
 }
@@ -156,6 +171,7 @@ where
                             .expect("Failed to serialize txout");
 
                     self.muhash.insert(&data);
+                    self.utxos.push((txid, vout, coin));
                 }
             }
         }
@@ -163,15 +179,18 @@ where
         if complete {
             use std::fmt::Write;
 
-            // Hash the combined hash of all UTXOs
-            let finalized = self.muhash.digest();
+            let muhash = self.muhash.txoutset_muhash();
 
-            let utxo_set_hash = finalized.iter().rev().fold(String::new(), |mut output, b| {
-                let _ = write!(output, "{b:02x}");
-                output
-            });
+            let utxos = std::mem::take(&mut self.utxos);
 
-            tracing::debug!(target: "sync", "============== muhash: {:?}", utxo_set_hash);
+            tracing::debug!(
+                target: "sync",
+                "Writing the downloaded UTXO snapshot, muhash: {muhash:?}, {} utxos", utxos.len(),
+            );
+
+            self.utxo_set_binary_output
+                .write_utxo_snapshot(self.target_bitcoin_block_hash, utxos)
+                .expect("Failed to write binary output");
         }
 
         // TODO: handle response
@@ -211,6 +230,7 @@ pub struct SubcoinSyncingStrategy<B: BlockT, Client> {
     pending_header_requests: Vec<(PeerId, BlockRequest<B>)>,
     /// Connected peers and their best headers, used to initiate the state sync.
     best_headers: HashMap<PeerId, B::Header>,
+    state_download_complete: bool,
 }
 
 impl<B: BlockT, Client> SyncingStrategy<B> for SubcoinSyncingStrategy<B, Client>
@@ -440,9 +460,9 @@ where
     }
 
     fn actions(&mut self) -> Result<Vec<SyncingAction<B>>, sp_blockchain::Error> {
-        if self.state.is_none() {
+        if self.state.is_none() && !self.state_download_complete {
             // TODO: find next avaible peer
-            if let Some((peer_id, best_header)) = self.best_headers.iter().next() {
+            if let Some((_peer_id, best_header)) = self.best_headers.iter().next() {
                 let target_header = best_header.clone();
                 let state_sync = StateStrategy::new_with_provider(
                     Box::new(WrappedStateSync::new(
@@ -484,6 +504,7 @@ where
         if state_sync_is_complete {
             tracing::debug!(target: "sync", "State sync is complete, TODO: handle stored state response");
             self.state.take();
+            self.state_download_complete = true;
             return Ok(Vec::new());
         }
 
@@ -537,6 +558,7 @@ where
             peer_best_blocks: Default::default(),
             pending_header_requests: Vec::new(),
             best_headers: HashMap::new(),
+            state_download_complete: false,
         })
     }
 
