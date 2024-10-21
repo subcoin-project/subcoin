@@ -1,0 +1,12 @@
+[package]
+name = "subcoin-utils"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+bitcoin = { workspace = true }
+subcoin-primitives = { workspace = true }
+txoutset = { workspace = true }

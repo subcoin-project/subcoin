@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 use subcoin_primitives::runtime::Coin;
 use subcoin_primitives::{BackendExt, CoinStorageKey};
 use subcoin_service::FullClient;
+use subcoin_utils::UtxoSetBinaryOutput;
 
 const FINAL_STORAGE_PREFIX_LEN: usize = 32;
 
@@ -273,7 +274,6 @@ fn fetch_utxo_set_at(
         client
             .storage_pairs(substrate_block_hash, Some(&storage_key), None)?
             .filter_map(|(key, value)| {
-                tracing::debug!(target: "xlc", "key: {key:?}, value: {value:?}");
                 let (txid, vout) = <(pallet_bitcoin::types::Txid, u32)>::decode(
                     &mut &key.0.as_slice()[FINAL_STORAGE_PREFIX_LEN..],
                 )
@@ -362,19 +362,14 @@ async fn gettxoutsetinfo(
     }
 
     // Hash the combined hash of all UTXOs
-    let finalized = muhash.digest();
-
-    let utxo_set_hash = finalized.iter().rev().fold(String::new(), |mut output, b| {
-        let _ = write!(output, "{b:02x}");
-        output
-    });
+    let muhash = muhash.txoutset_muhash();
 
     let tx_out_set_info = TxOutSetInfo {
         height: block_number,
         bestblock: bitcoin_block_hash,
         txouts,
         bogosize,
-        muhash: utxo_set_hash,
+        muhash,
         total_amount,
     };
 
@@ -479,7 +474,7 @@ async fn dumptxoutset(
 
         let _ = file.write(data.as_slice())?;
 
-        UtxoSetOutput::Binary(file)
+        UtxoSetOutput::Binary(UtxoSetBinaryOutput::new(file))
     } else {
         println!("Dumping UTXO set at #{block_number},{bitcoin_block_hash}");
         UtxoSetOutput::Stdout(std::io::stdout())
@@ -496,42 +491,27 @@ async fn dumptxoutset(
 }
 
 enum UtxoSetOutput {
-    Binary(File),
+    Binary(UtxoSetBinaryOutput),
     Csv(File),
     Stdout(Stdout),
 }
 
 impl UtxoSetOutput {
     fn write(&mut self, txid: bitcoin::Txid, vout: u32, coin: Coin) -> std::io::Result<()> {
-        let Coin {
-            is_coinbase,
-            amount,
-            height,
-            script_pubkey,
-        } = coin;
-
-        let outpoint = bitcoin::OutPoint { txid, vout };
-
         match self {
-            Self::Binary(ref mut file) => {
-                let mut data = Vec::new();
-
-                let amount = txoutset::Amount::new(amount);
-
-                let code = txoutset::Code {
-                    height,
-                    is_coinbase,
-                };
-                let script = txoutset::Script::from_bytes(script_pubkey);
-
-                outpoint.consensus_encode(&mut data)?;
-                code.consensus_encode(&mut data)?;
-                amount.consensus_encode(&mut data)?;
-                script.consensus_encode(&mut data)?;
-
-                let _ = file.write(data.as_slice())?;
+            Self::Binary(binary_output) => {
+                binary_output.write_utxo_entry(txid, vout, coin)?;
             }
             Self::Csv(ref mut file) => {
+                let Coin {
+                    is_coinbase,
+                    amount,
+                    height,
+                    script_pubkey,
+                } = coin;
+
+                let outpoint = bitcoin::OutPoint { txid, vout };
+
                 let script_pubkey = hex::encode(script_pubkey.as_slice());
                 writeln!(
                     file,
@@ -539,6 +519,15 @@ impl UtxoSetOutput {
                 )?;
             }
             Self::Stdout(ref mut stdout) => {
+                let Coin {
+                    is_coinbase,
+                    amount,
+                    height,
+                    script_pubkey,
+                } = coin;
+
+                let outpoint = bitcoin::OutPoint { txid, vout };
+
                 let script_pubkey = hex::encode(script_pubkey.as_slice());
                 writeln!(
                     stdout,
