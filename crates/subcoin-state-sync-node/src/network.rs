@@ -1,3 +1,4 @@
+use codec::Decode;
 use sc_client_api::{BlockBackend, HeaderBackend, ProofProvider};
 use sc_consensus::{BlockImportError, BlockImportStatus};
 use sc_network::config::{FullNetworkConfiguration, ProtocolId};
@@ -9,15 +10,21 @@ use sc_network_common::sync::SyncMode;
 use sc_network_sync::state_request_handler::StateRequestHandler;
 use sc_network_sync::strategy::chain_sync::{ChainSync, ChainSyncMode};
 use sc_network_sync::strategy::state::{StateStrategy, StateStrategyAction};
+use sc_network_sync::strategy::state_sync::{
+    ImportResult, StateSync, StateSyncProgress, StateSyncProvider,
+};
 use sc_network_sync::strategy::warp::EncodedProof;
 use sc_network_sync::strategy::{StrategyKey, SyncingAction, SyncingConfig, SyncingStrategy};
 use sc_network_sync::types::OpaqueStateResponse;
 use sc_network_sync::SyncStatus;
+use sc_network_sync::{StateEntry, StateRequest, StateResponse};
 use sc_service::SpawnTaskHandle;
 use sp_blockchain::HeaderMetadata;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use subcoin_crypto::muhash::MuHash3072;
+use subcoin_runtime_primitives::Coin;
 
 const LOG_TARGET: &'static str = "sync";
 
@@ -88,6 +95,103 @@ where
         syncing_config,
         client,
     )?))
+}
+
+/// Wrapped [`StateSync`] to intercept the state response.
+struct WrappedStateSync<B: BlockT, Client> {
+    inner: StateSync<B, Client>,
+    muhash: MuHash3072,
+}
+
+impl<B, Client> WrappedStateSync<B, Client>
+where
+    B: BlockT,
+    Client: ProofProvider<B> + Send + Sync + 'static,
+{
+    fn new(client: Arc<Client>, target_header: B::Header, skip_proof: bool) -> Self {
+        Self {
+            inner: StateSync::new(client, target_header, None, None, skip_proof),
+            muhash: MuHash3072::new(),
+        }
+    }
+}
+
+impl<B, Client> StateSyncProvider<B> for WrappedStateSync<B, Client>
+where
+    B: BlockT,
+    Client: ProofProvider<B> + Send + Sync + 'static,
+{
+    fn import(&mut self, response: StateResponse) -> ImportResult<B> {
+        let mut complete = false;
+
+        let key_values = response
+            .entries
+            .iter()
+            .flat_map(|key_vlaue_state_entry| {
+                if key_vlaue_state_entry.complete {
+                    complete = true;
+                }
+                key_vlaue_state_entry
+                    .entries
+                    .iter()
+                    .map(|state_entry| (state_entry.key.clone(), state_entry.value.clone()))
+            })
+            .collect::<Vec<_>>();
+
+        for (key, value) in key_values {
+            if key.len() > 32 {
+                // Store the UTXO entries.
+                if let Ok((txid, vout)) =
+                    <(pallet_bitcoin::types::Txid, u32)>::decode(&mut &key.as_slice()[32..])
+                {
+                    let txid = txid.into_bitcoin_txid();
+
+                    let coin = Coin::decode(&mut value.as_slice())
+                        .expect("Coin read from DB must be decoded successfully; qed");
+
+                    // TODO: write utxo to a local file
+
+                    let data =
+                        subcoin_primitives::tx_out_ser(bitcoin::OutPoint { txid, vout }, &coin)
+                            .expect("Failed to serialize txout");
+
+                    self.muhash.insert(&data);
+                }
+            }
+        }
+
+        if complete {
+            use std::fmt::Write;
+
+            // Hash the combined hash of all UTXOs
+            let finalized = self.muhash.digest();
+
+            let utxo_set_hash = finalized.iter().rev().fold(String::new(), |mut output, b| {
+                let _ = write!(output, "{b:02x}");
+                output
+            });
+
+            tracing::debug!(target: "sync", "============== muhash: {:?}", utxo_set_hash);
+        }
+
+        // TODO: handle response
+        self.inner.import(response)
+    }
+    fn next_request(&self) -> StateRequest {
+        self.inner.next_request()
+    }
+    fn is_complete(&self) -> bool {
+        self.inner.is_complete()
+    }
+    fn target_number(&self) -> NumberFor<B> {
+        self.inner.target_number()
+    }
+    fn target_hash(&self) -> B::Hash {
+        self.inner.target_hash()
+    }
+    fn progress(&self) -> StateSyncProgress {
+        self.inner.progress()
+    }
 }
 
 /// Proxy to specific syncing strategies used in Polkadot.
@@ -340,12 +444,12 @@ where
             // TODO: find next avaible peer
             if let Some((peer_id, best_header)) = self.best_headers.iter().next() {
                 let target_header = best_header.clone();
-                let state_sync = StateStrategy::new(
-                    self.client.clone(),
-                    target_header,
-                    None,
-                    None,
-                    false,
+                let state_sync = StateStrategy::new_with_provider(
+                    Box::new(WrappedStateSync::new(
+                        self.client.clone(),
+                        target_header,
+                        true,
+                    )),
                     self.peer_best_blocks
                         .iter()
                         .map(|(peer_id, (_, best_number))| (*peer_id, *best_number)),

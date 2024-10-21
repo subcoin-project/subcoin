@@ -11,7 +11,7 @@ use sp_blockchain::HeaderBackend;
 use sp_runtime::generic::{Digest, DigestItem};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::sync::Arc;
-use subcoin_runtime_primitives::{NAKAMOTO_HASH_ENGINE_ID, NAKAMOTO_HEADER_ENGINE_ID};
+use subcoin_runtime_primitives::{Coin, NAKAMOTO_HASH_ENGINE_ID, NAKAMOTO_HEADER_ENGINE_ID};
 
 pub use subcoin_runtime_primitives as runtime;
 
@@ -323,6 +323,30 @@ pub fn substrate_header_digest(bitcoin_header: &BitcoinHeader) -> Digest {
             DigestItem::PreRuntime(NAKAMOTO_HEADER_ENGINE_ID, encoded_bitcoin_header),
         ],
     }
+}
+
+// Equivalent function in Rust for serializing an OutPoint and Coin
+//
+// https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/kernel/coinstats.cpp#L51
+pub fn tx_out_ser(outpoint: bitcoin::OutPoint, coin: &Coin) -> bitcoin::io::Result<Vec<u8>> {
+    let mut data = Vec::new();
+
+    // Serialize the OutPoint (txid and vout)
+    outpoint.consensus_encode(&mut data)?;
+
+    // Serialize the coin's height and coinbase flag
+    let height_and_coinbase = (coin.height << 1) | (coin.is_coinbase as u32);
+    height_and_coinbase.consensus_encode(&mut data)?;
+
+    let txout = bitcoin::TxOut {
+        value: bitcoin::Amount::from_sat(coin.amount),
+        script_pubkey: bitcoin::ScriptBuf::from_bytes(coin.script_pubkey.clone()),
+    };
+
+    // Serialize the actual UTXO (value and script)
+    txout.consensus_encode(&mut data)?;
+
+    Ok(data)
 }
 
 /// Error type of Subcoin header.
