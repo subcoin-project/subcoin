@@ -29,18 +29,22 @@ fn main() -> sc_cli::Result<()> {
     let app = App::parse();
 
     let bitcoin_network = app.bitcoin_network();
+    let skip_proof = app.skip_proof;
 
     let command = Command::new(app);
 
     cli::SubstrateCli
         .create_runner(&command)?
-        .run_node_until_exit(|config| async move { start_node(bitcoin_network, config) })
+        .run_node_until_exit(
+            |config| async move { start_node(bitcoin_network, config, skip_proof) },
+        )
         .map_err(Into::into)
 }
 
 fn start_node(
     bitcoin_network: bitcoin::Network,
     mut config: Configuration,
+    skip_proof: bool,
 ) -> Result<TaskManager, sc_service::error::Error> {
     let executor = sc_service::new_native_or_wasm_executor(&config);
 
@@ -74,17 +78,22 @@ fn start_node(
     let network_backend = NetworkBackendType::Libp2p;
 
     match network_backend {
-        NetworkBackendType::Libp2p => start_substrate_network::<
-            sc_network::NetworkWorker<Block, <Block as BlockT>::Hash>,
-        >(
-            &mut config, client, &mut task_manager, bitcoin_network
-        )?,
+        NetworkBackendType::Libp2p => {
+            start_substrate_network::<sc_network::NetworkWorker<Block, <Block as BlockT>::Hash>>(
+                &mut config,
+                client,
+                &mut task_manager,
+                bitcoin_network,
+                skip_proof,
+            )?
+        }
         NetworkBackendType::Litep2p => {
             start_substrate_network::<sc_network::Litep2pNetworkBackend>(
                 &mut config,
                 client,
                 &mut task_manager,
                 bitcoin_network,
+                skip_proof,
             )?;
         }
     }
@@ -97,6 +106,7 @@ fn start_substrate_network<N>(
     client: Arc<FullClient>,
     task_manager: &mut sc_service::TaskManager,
     bitcoin_network: bitcoin::Network,
+    skip_proof: bool,
 ) -> Result<(), sc_service::error::Error>
 where
     N: sc_network::NetworkBackend<Block, <Block as BlockT>::Hash>,
@@ -129,6 +139,7 @@ where
         &mut net_config,
         client.clone(),
         &task_manager.spawn_handle(),
+        skip_proof,
     )?;
 
     let metrics = N::register_notification_metrics(config.prometheus_registry());

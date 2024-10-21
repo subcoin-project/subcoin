@@ -4,8 +4,9 @@ use sc_consensus::{BlockImportError, BlockImportStatus};
 use sc_network::config::{FullNetworkConfiguration, ProtocolId};
 use sc_network::service::traits::RequestResponseConfig;
 use sc_network::{NetworkBackend, PeerId};
-use sc_network_common::message::RequestId;
-use sc_network_common::sync::message::{BlockAnnounce, BlockAttributes, BlockData, BlockRequest};
+use sc_network_common::sync::message::{
+    BlockAnnounce, BlockAttributes, BlockData, BlockRequest, Direction, FromBlock,
+};
 use sc_network_common::sync::SyncMode;
 use sc_network_sync::state_request_handler::StateRequestHandler;
 use sc_network_sync::strategy::chain_sync::{ChainSync, ChainSyncMode};
@@ -16,18 +17,17 @@ use sc_network_sync::strategy::state_sync::{
 use sc_network_sync::strategy::warp::EncodedProof;
 use sc_network_sync::strategy::{StrategyKey, SyncingAction, SyncingConfig, SyncingStrategy};
 use sc_network_sync::types::OpaqueStateResponse;
-use sc_network_sync::SyncStatus;
-use sc_network_sync::{StateEntry, StateRequest, StateResponse};
+use sc_network_sync::{StateEntry, StateRequest, StateResponse, SyncStatus};
 use sc_service::SpawnTaskHandle;
 use sp_blockchain::HeaderMetadata;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use subcoin_crypto::muhash::MuHash3072;
 use subcoin_runtime_primitives::Coin;
 use subcoin_utils::UtxoSetBinaryOutput;
 
-const LOG_TARGET: &'static str = "sync";
+const LOG_TARGET: &'static str = "sync::subcoin";
 
 /// Maximum blocks per response.
 const MAX_BLOCKS_IN_RESPONSE: usize = 128;
@@ -47,6 +47,121 @@ fn chain_sync_mode(sync_mode: SyncMode) -> ChainSyncMode {
     }
 }
 
+/// Wrapped [`StateSync`] to intercept the state response.
+struct WrappedStateSync<B: BlockT, Client> {
+    inner: StateSync<B, Client>,
+    muhash: MuHash3072,
+    target_bitcoin_block_hash: bitcoin::BlockHash,
+    utxos: Vec<(bitcoin::Txid, u32, Coin)>,
+    utxo_set_binary_output: UtxoSetBinaryOutput,
+}
+
+impl<B, Client> WrappedStateSync<B, Client>
+where
+    B: BlockT,
+    Client: ProofProvider<B> + Send + Sync + 'static,
+{
+    fn new(client: Arc<Client>, target_header: B::Header, skip_proof: bool) -> Self {
+        let target_block_number = target_header.number();
+        let target_bitcoin_block_hash =
+            subcoin_primitives::extract_bitcoin_block_hash::<B>(&target_header)
+                .expect("Failed to extract bitcoin block hash");
+
+        let file_name = format!("/tmp/{target_block_number}_{target_bitcoin_block_hash}.txoutset");
+        let file = std::fs::File::create(file_name).expect("Failed to create output file");
+
+        Self {
+            inner: StateSync::new(client, target_header, None, None, skip_proof),
+            target_bitcoin_block_hash,
+            muhash: MuHash3072::new(),
+            utxos: Vec::new(),
+            utxo_set_binary_output: UtxoSetBinaryOutput::new(file),
+        }
+    }
+
+    // Find the Coin storage key values and store them locally.
+    fn process_state_response(&mut self, response: &StateResponse) {
+        let mut complete = false;
+
+        let key_values = response.entries.iter().flat_map(|key_vlaue_state_entry| {
+            if key_vlaue_state_entry.complete {
+                complete = true;
+            }
+
+            key_vlaue_state_entry
+                .entries
+                .iter()
+                .map(|state_entry| (&state_entry.key, &state_entry.value))
+        });
+
+        for (key, value) in key_values {
+            if key.len() > 32 {
+                // Store the UTXO entries.
+                if let Ok((txid, vout)) =
+                    <(pallet_bitcoin::types::Txid, u32)>::decode(&mut &key.as_slice()[32..])
+                {
+                    let txid = txid.into_bitcoin_txid();
+
+                    let coin = Coin::decode(&mut value.as_slice())
+                        .expect("Coin in state response must be decoded successfully; qed");
+
+                    // TODO: write utxo to a local file
+
+                    let data =
+                        subcoin_primitives::tx_out_ser(bitcoin::OutPoint { txid, vout }, &coin)
+                            .expect("Failed to serialize txout");
+
+                    self.muhash.insert(&data);
+                    self.utxos.push((txid, vout, coin));
+                }
+            }
+        }
+
+        if complete {
+            let muhash = self.muhash.txoutset_muhash();
+
+            let utxos = std::mem::take(&mut self.utxos);
+
+            tracing::debug!(
+                target: LOG_TARGET,
+                muhash,
+                coins_count = utxos.len(),
+                "💾 State dowload is complete, writing the UTXO snapshot"
+            );
+
+            self.utxo_set_binary_output
+                .write_utxo_snapshot(self.target_bitcoin_block_hash, utxos)
+                .expect("Failed to write binary output");
+        }
+    }
+}
+
+impl<B, Client> StateSyncProvider<B> for WrappedStateSync<B, Client>
+where
+    B: BlockT,
+    Client: ProofProvider<B> + Send + Sync + 'static,
+{
+    fn import(&mut self, response: StateResponse) -> ImportResult<B> {
+        self.process_state_response(&response);
+        self.inner.import(response)
+    }
+    fn next_request(&self) -> StateRequest {
+        self.inner.next_request()
+    }
+    fn is_complete(&self) -> bool {
+        self.inner.is_complete()
+    }
+    fn target_number(&self) -> NumberFor<B> {
+        self.inner.target_number()
+    }
+    fn target_hash(&self) -> B::Hash {
+        self.inner.target_hash()
+    }
+    fn progress(&self) -> StateSyncProgress {
+        self.inner.progress()
+    }
+}
+
 /// Build Subcoin state syncing strategy
 pub fn build_subcoin_syncing_strategy<Block, Client, Net>(
     protocol_id: ProtocolId,
@@ -54,6 +169,7 @@ pub fn build_subcoin_syncing_strategy<Block, Client, Net>(
     net_config: &mut FullNetworkConfiguration<Block, <Block as BlockT>::Hash, Net>,
     client: Arc<Client>,
     spawn_handle: &SpawnTaskHandle,
+    skip_proof: bool,
 ) -> Result<Box<dyn SyncingStrategy<Block>>, sc_service::Error>
 where
     Block: BlockT,
@@ -95,122 +211,8 @@ where
     Ok(Box::new(SubcoinSyncingStrategy::new(
         syncing_config,
         client,
+        skip_proof,
     )?))
-}
-
-/// Wrapped [`StateSync`] to intercept the state response.
-struct WrappedStateSync<B: BlockT, Client> {
-    inner: StateSync<B, Client>,
-    muhash: MuHash3072,
-    target_bitcoin_block_hash: bitcoin::BlockHash,
-    utxos: Vec<(bitcoin::Txid, u32, Coin)>,
-    utxo_set_binary_output: UtxoSetBinaryOutput,
-}
-
-impl<B, Client> WrappedStateSync<B, Client>
-where
-    B: BlockT,
-    Client: ProofProvider<B> + Send + Sync + 'static,
-{
-    fn new(client: Arc<Client>, target_header: B::Header, skip_proof: bool) -> Self {
-        let target_block_number = target_header.number();
-        let target_bitcoin_block_hash =
-            subcoin_primitives::extract_bitcoin_block_hash::<B>(&target_header)
-                .expect("Failed to extract bitcoin block hash");
-
-        let file_name = format!("/tmp/{target_block_number}_{target_bitcoin_block_hash}.txoutset");
-        let file = std::fs::File::create(file_name).expect("Failed to create output file");
-
-        Self {
-            inner: StateSync::new(client, target_header, None, None, skip_proof),
-            target_bitcoin_block_hash,
-            muhash: MuHash3072::new(),
-            utxos: Vec::new(),
-            utxo_set_binary_output: UtxoSetBinaryOutput::new(file),
-        }
-    }
-}
-
-impl<B, Client> StateSyncProvider<B> for WrappedStateSync<B, Client>
-where
-    B: BlockT,
-    Client: ProofProvider<B> + Send + Sync + 'static,
-{
-    fn import(&mut self, response: StateResponse) -> ImportResult<B> {
-        let mut complete = false;
-
-        let key_values = response
-            .entries
-            .iter()
-            .flat_map(|key_vlaue_state_entry| {
-                if key_vlaue_state_entry.complete {
-                    complete = true;
-                }
-                key_vlaue_state_entry
-                    .entries
-                    .iter()
-                    .map(|state_entry| (state_entry.key.clone(), state_entry.value.clone()))
-            })
-            .collect::<Vec<_>>();
-
-        for (key, value) in key_values {
-            if key.len() > 32 {
-                // Store the UTXO entries.
-                if let Ok((txid, vout)) =
-                    <(pallet_bitcoin::types::Txid, u32)>::decode(&mut &key.as_slice()[32..])
-                {
-                    let txid = txid.into_bitcoin_txid();
-
-                    let coin = Coin::decode(&mut value.as_slice())
-                        .expect("Coin read from DB must be decoded successfully; qed");
-
-                    // TODO: write utxo to a local file
-
-                    let data =
-                        subcoin_primitives::tx_out_ser(bitcoin::OutPoint { txid, vout }, &coin)
-                            .expect("Failed to serialize txout");
-
-                    self.muhash.insert(&data);
-                    self.utxos.push((txid, vout, coin));
-                }
-            }
-        }
-
-        if complete {
-            use std::fmt::Write;
-
-            let muhash = self.muhash.txoutset_muhash();
-
-            let utxos = std::mem::take(&mut self.utxos);
-
-            tracing::debug!(
-                target: "sync",
-                "Writing the downloaded UTXO snapshot, muhash: {muhash:?}, {} utxos", utxos.len(),
-            );
-
-            self.utxo_set_binary_output
-                .write_utxo_snapshot(self.target_bitcoin_block_hash, utxos)
-                .expect("Failed to write binary output");
-        }
-
-        // TODO: handle response
-        self.inner.import(response)
-    }
-    fn next_request(&self) -> StateRequest {
-        self.inner.next_request()
-    }
-    fn is_complete(&self) -> bool {
-        self.inner.is_complete()
-    }
-    fn target_number(&self) -> NumberFor<B> {
-        self.inner.target_number()
-    }
-    fn target_hash(&self) -> B::Hash {
-        self.inner.target_hash()
-    }
-    fn progress(&self) -> StateSyncProgress {
-        self.inner.progress()
-    }
 }
 
 /// Proxy to specific syncing strategies used in Polkadot.
@@ -229,8 +231,97 @@ pub struct SubcoinSyncingStrategy<B: BlockT, Client> {
     /// Pending requests for the best headers.
     pending_header_requests: Vec<(PeerId, BlockRequest<B>)>,
     /// Connected peers and their best headers, used to initiate the state sync.
-    best_headers: HashMap<PeerId, B::Header>,
+    peer_best_headers: HashMap<PeerId, B::Header>,
+    /// Whether the state download is finished.
     state_download_complete: bool,
+    /// Whether to skip proof in state sync.
+    skip_proof: bool,
+}
+
+impl<B, Client> SubcoinSyncingStrategy<B, Client>
+where
+    B: BlockT,
+    Client: HeaderBackend<B>
+        + BlockBackend<B>
+        + HeaderMetadata<B, Error = sp_blockchain::Error>
+        + ProofProvider<B>
+        + Send
+        + Sync
+        + 'static,
+{
+    /// Initialize a new syncing strategy.
+    pub fn new(
+        mut config: SyncingConfig,
+        client: Arc<Client>,
+        skip_proof: bool,
+    ) -> Result<Self, sp_blockchain::Error> {
+        if config.max_blocks_per_request > MAX_BLOCKS_IN_RESPONSE as u32 {
+            tracing::info!(
+                target: LOG_TARGET,
+                "clamping maximum blocks per request to {MAX_BLOCKS_IN_RESPONSE}",
+            );
+            config.max_blocks_per_request = MAX_BLOCKS_IN_RESPONSE as u32;
+        }
+
+        let chain_sync = ChainSync::new(
+            chain_sync_mode(config.mode),
+            client.clone(),
+            config.max_parallel_downloads,
+            config.max_blocks_per_request,
+            config.state_request_protocol_name.clone(),
+            config.metrics_registry.as_ref(),
+            std::iter::empty(),
+        )?;
+
+        Ok(Self {
+            config,
+            client,
+            state: None,
+            chain_sync: Some(chain_sync),
+            peer_best_blocks: Default::default(),
+            pending_header_requests: Vec::new(),
+            peer_best_headers: HashMap::new(),
+            state_download_complete: false,
+            skip_proof,
+        })
+    }
+
+    /// Proceed with the next strategy if the active one finished.
+    pub fn proceed_to_next(&mut self) -> Result<(), sp_blockchain::Error> {
+        // The strategies are switched as `WarpSync` -> `StateStrategy` -> `ChainSync`.
+        if let Some(state) = &self.state {
+            if state.is_succeeded() {
+                tracing::info!(target: LOG_TARGET, "State sync is complete, continuing with block sync.");
+            } else {
+                tracing::error!(target: LOG_TARGET, "State sync failed. Falling back to full sync.");
+            }
+            let chain_sync = match ChainSync::new(
+                chain_sync_mode(self.config.mode),
+                self.client.clone(),
+                self.config.max_parallel_downloads,
+                self.config.max_blocks_per_request,
+                self.config.state_request_protocol_name.clone(),
+                self.config.metrics_registry.as_ref(),
+                self.peer_best_blocks
+                    .iter()
+                    .map(|(peer_id, (best_hash, best_number))| {
+                        (*peer_id, *best_hash, *best_number)
+                    }),
+            ) {
+                Ok(chain_sync) => chain_sync,
+                Err(e) => {
+                    tracing::error!(target: LOG_TARGET, "Failed to start `ChainSync`.");
+                    return Err(e);
+                }
+            };
+
+            self.state = None;
+            self.chain_sync = Some(chain_sync);
+            Ok(())
+        } else {
+            unreachable!("Only warp & state strategies can finish; qed")
+        }
+    }
 }
 
 impl<B: BlockT, Client> SyncingStrategy<B> for SubcoinSyncingStrategy<B, Client>
@@ -245,8 +336,6 @@ where
         + 'static,
 {
     fn add_peer(&mut self, peer_id: PeerId, best_hash: B::Hash, best_number: NumberFor<B>) {
-        tracing::debug!(target: "sync::subcoin", "=============== [add_peer] {peer_id:?}, best_hash: {best_hash:?}, best_number: {best_number:?}");
-
         self.peer_best_blocks
             .insert(peer_id, (best_hash, best_number));
 
@@ -260,8 +349,8 @@ where
         let request = BlockRequest::<B> {
             id: 0u64,
             fields: BlockAttributes::HEADER,
-            from: sc_network_common::sync::message::FromBlock::Hash(best_hash),
-            direction: sc_network_common::sync::message::Direction::Descending,
+            from: FromBlock::Hash(best_hash),
+            direction: Direction::Descending,
             max: Some(1),
         };
 
@@ -273,6 +362,7 @@ where
         self.chain_sync.as_mut().map(|s| s.remove_peer(peer_id));
 
         self.peer_best_blocks.remove(peer_id);
+        self.pending_header_requests.retain(|(id, _)| id != peer_id);
     }
 
     fn on_validated_block_announce(
@@ -281,8 +371,6 @@ where
         peer_id: PeerId,
         announce: &BlockAnnounce<B::Header>,
     ) -> Option<(B::Hash, NumberFor<B>)> {
-        tracing::debug!(target: "sync", "==================== [on_validated_block_announce] announce: {announce:?}");
-
         let new_best = if let Some(ref mut state) = self.state {
             state.on_validated_block_announce(is_best, peer_id, announce)
         } else if let Some(ref mut chain_sync) = self.chain_sync {
@@ -343,7 +431,7 @@ where
         request: BlockRequest<B>,
         blocks: Vec<BlockData<B>>,
     ) {
-        if let (StrategyKey::ChainSync, Some(ref mut chain_sync)) = (key, &mut self.chain_sync) {
+        if let (StrategyKey::ChainSync, Some(ref mut _chain_sync)) = (key, &mut self.chain_sync) {
             // Process the header requests only and ignore any other block response.
             if let Some(index) = self
                 .pending_header_requests
@@ -353,7 +441,7 @@ where
                 self.pending_header_requests.remove(index);
                 if let Some(block) = blocks.into_iter().next() {
                     let best_header = block.header.expect("Header must exist as requested");
-                    self.best_headers.insert(peer_id, best_header);
+                    self.peer_best_headers.insert(peer_id, best_header);
                 }
             } else {
                 // Recv unexpected block response, drop peer?
@@ -375,7 +463,6 @@ where
         response: OpaqueStateResponse,
     ) {
         if let (StrategyKey::State, Some(ref mut state)) = (key, &mut self.state) {
-            // TODO: intercept the state response
             state.on_state_response(peer_id, response);
         } else if let (StrategyKey::ChainSync, Some(ref mut chain_sync)) =
             (key, &mut self.chain_sync)
@@ -462,8 +549,13 @@ where
     fn actions(&mut self) -> Result<Vec<SyncingAction<B>>, sp_blockchain::Error> {
         if self.state.is_none() && !self.state_download_complete {
             // TODO: find next avaible peer
-            if let Some((_peer_id, best_header)) = self.best_headers.iter().next() {
+            if let Some((_peer_id, best_header)) = self.peer_best_headers.iter().next() {
                 let target_header = best_header.clone();
+                tracing::debug!(
+                    target: LOG_TARGET,
+                    "⏳ Starting state sync, target block #{},{}",
+                    target_header.number(), target_header.hash(),
+                );
                 let state_sync = StateStrategy::new_with_provider(
                     Box::new(WrappedStateSync::new(
                         self.client.clone(),
@@ -502,7 +594,7 @@ where
             .any(|action| matches!(action, SyncingAction::ImportBlocks { .. }));
 
         if state_sync_is_complete {
-            tracing::debug!(target: "sync", "State sync is complete, TODO: handle stored state response");
+            tracing::debug!(target: "sync", "✅ State sync is complete, TODO: handle stored state response and exit");
             self.state.take();
             self.state_download_complete = true;
             return Ok(Vec::new());
@@ -513,89 +605,5 @@ where
         }
 
         Ok(actions)
-    }
-}
-
-impl<B: BlockT, Client> SubcoinSyncingStrategy<B, Client>
-where
-    B: BlockT,
-    Client: HeaderBackend<B>
-        + BlockBackend<B>
-        + HeaderMetadata<B, Error = sp_blockchain::Error>
-        + ProofProvider<B>
-        + Send
-        + Sync
-        + 'static,
-{
-    /// Initialize a new syncing strategy.
-    pub fn new(
-        mut config: SyncingConfig,
-        client: Arc<Client>,
-    ) -> Result<Self, sp_blockchain::Error> {
-        if config.max_blocks_per_request > MAX_BLOCKS_IN_RESPONSE as u32 {
-            tracing::info!(
-                target: LOG_TARGET,
-                "clamping maximum blocks per request to {MAX_BLOCKS_IN_RESPONSE}",
-            );
-            config.max_blocks_per_request = MAX_BLOCKS_IN_RESPONSE as u32;
-        }
-
-        let chain_sync = ChainSync::new(
-            chain_sync_mode(config.mode),
-            client.clone(),
-            config.max_parallel_downloads,
-            config.max_blocks_per_request,
-            config.state_request_protocol_name.clone(),
-            config.metrics_registry.as_ref(),
-            std::iter::empty(),
-        )?;
-
-        Ok(Self {
-            config,
-            client,
-            state: None,
-            chain_sync: Some(chain_sync),
-            peer_best_blocks: Default::default(),
-            pending_header_requests: Vec::new(),
-            best_headers: HashMap::new(),
-            state_download_complete: false,
-        })
-    }
-
-    /// Proceed with the next strategy if the active one finished.
-    pub fn proceed_to_next(&mut self) -> Result<(), sp_blockchain::Error> {
-        // The strategies are switched as `WarpSync` -> `StateStrategy` -> `ChainSync`.
-        if let Some(state) = &self.state {
-            if state.is_succeeded() {
-                tracing::info!(target: LOG_TARGET, "State sync is complete, continuing with block sync.");
-            } else {
-                tracing::error!(target: LOG_TARGET, "State sync failed. Falling back to full sync.");
-            }
-            let chain_sync = match ChainSync::new(
-                chain_sync_mode(self.config.mode),
-                self.client.clone(),
-                self.config.max_parallel_downloads,
-                self.config.max_blocks_per_request,
-                self.config.state_request_protocol_name.clone(),
-                self.config.metrics_registry.as_ref(),
-                self.peer_best_blocks
-                    .iter()
-                    .map(|(peer_id, (best_hash, best_number))| {
-                        (*peer_id, *best_hash, *best_number)
-                    }),
-            ) {
-                Ok(chain_sync) => chain_sync,
-                Err(e) => {
-                    tracing::error!(target: LOG_TARGET, "Failed to start `ChainSync`.");
-                    return Err(e);
-                }
-            };
-
-            self.state = None;
-            self.chain_sync = Some(chain_sync);
-            Ok(())
-        } else {
-            unreachable!("Only warp & state strategies can finish; qed")
-        }
     }
 }
