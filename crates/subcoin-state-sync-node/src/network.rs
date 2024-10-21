@@ -594,10 +594,11 @@ where
             .any(|action| matches!(action, SyncingAction::ImportBlocks { .. }));
 
         if state_sync_is_complete {
-            tracing::debug!(target: "sync", "✅ State sync is complete, TODO: handle stored state response and exit");
+            tracing::debug!(target: LOG_TARGET, "✅ State sync is complete");
             self.state.take();
             self.state_download_complete = true;
-            return Ok(Vec::new());
+            // Exit the entire program once the state sync is complete.
+            std::process::exit(0);
         }
 
         if actions.iter().any(SyncingAction::is_finished) {
