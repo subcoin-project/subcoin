@@ -3,11 +3,12 @@ use sc_consensus::{BlockImportError, BlockImportStatus};
 use sc_network::config::{FullNetworkConfiguration, ProtocolId};
 use sc_network::service::traits::RequestResponseConfig;
 use sc_network::{NetworkBackend, PeerId};
-use sc_network_common::sync::message::{BlockAnnounce, BlockData, BlockRequest};
+use sc_network_common::message::RequestId;
+use sc_network_common::sync::message::{BlockAnnounce, BlockAttributes, BlockData, BlockRequest};
 use sc_network_common::sync::SyncMode;
 use sc_network_sync::state_request_handler::StateRequestHandler;
 use sc_network_sync::strategy::chain_sync::{ChainSync, ChainSyncMode};
-use sc_network_sync::strategy::state::StateStrategy;
+use sc_network_sync::strategy::state::{StateStrategy, StateStrategyAction};
 use sc_network_sync::strategy::warp::EncodedProof;
 use sc_network_sync::strategy::{StrategyKey, SyncingAction, SyncingConfig, SyncingStrategy};
 use sc_network_sync::types::OpaqueStateResponse;
@@ -15,7 +16,7 @@ use sc_network_sync::SyncStatus;
 use sc_service::SpawnTaskHandle;
 use sp_blockchain::HeaderMetadata;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 const LOG_TARGET: &'static str = "sync";
@@ -102,6 +103,10 @@ pub struct SubcoinSyncingStrategy<B: BlockT, Client> {
     /// Connected peers and their best blocks used to seed a new strategy when switching to it in
     /// `SubcoinSyncingStrategy::proceed_to_next`.
     peer_best_blocks: HashMap<PeerId, (B::Hash, NumberFor<B>)>,
+    /// Pending requests for the best headers.
+    pending_header_requests: Vec<(PeerId, BlockRequest<B>)>,
+    /// Connected peers and their best headers, used to initiate the state sync.
+    best_headers: HashMap<PeerId, B::Header>,
 }
 
 impl<B: BlockT, Client> SyncingStrategy<B> for SubcoinSyncingStrategy<B, Client>
@@ -116,6 +121,8 @@ where
         + 'static,
 {
     fn add_peer(&mut self, peer_id: PeerId, best_hash: B::Hash, best_number: NumberFor<B>) {
+        tracing::debug!(target: "sync::subcoin", "=============== [add_peer] {peer_id:?}, best_hash: {best_hash:?}, best_number: {best_number:?}");
+
         self.peer_best_blocks
             .insert(peer_id, (best_hash, best_number));
 
@@ -125,6 +132,16 @@ where
         self.chain_sync
             .as_mut()
             .map(|s| s.add_peer(peer_id, best_hash, best_number));
+
+        let request = BlockRequest::<B> {
+            id: 0u64,
+            fields: BlockAttributes::HEADER,
+            from: sc_network_common::sync::message::FromBlock::Hash(best_hash),
+            direction: sc_network_common::sync::message::Direction::Descending,
+            max: Some(1),
+        };
+
+        self.pending_header_requests.push((peer_id, request));
     }
 
     fn remove_peer(&mut self, peer_id: &PeerId) {
@@ -140,6 +157,8 @@ where
         peer_id: PeerId,
         announce: &BlockAnnounce<B::Header>,
     ) -> Option<(B::Hash, NumberFor<B>)> {
+        tracing::debug!(target: "sync", "==================== [on_validated_block_announce] announce: {announce:?}");
+
         let new_best = if let Some(ref mut state) = self.state {
             state.on_validated_block_announce(is_best, peer_id, announce)
         } else if let Some(ref mut chain_sync) = self.chain_sync {
@@ -201,7 +220,20 @@ where
         blocks: Vec<BlockData<B>>,
     ) {
         if let (StrategyKey::ChainSync, Some(ref mut chain_sync)) = (key, &mut self.chain_sync) {
-            chain_sync.on_block_response(peer_id, key, request, blocks);
+            // Process the header requests only and ignore any other block response.
+            if let Some(index) = self
+                .pending_header_requests
+                .iter()
+                .position(|x| x.0 == peer_id && x.1 == request)
+            {
+                self.pending_header_requests.remove(index);
+                if let Some(block) = blocks.into_iter().next() {
+                    let best_header = block.header.expect("Header must exist as requested");
+                    self.best_headers.insert(peer_id, best_header);
+                }
+            } else {
+                // Recv unexpected block response, drop peer?
+            }
         } else {
             tracing::error!(
                 target: LOG_TARGET,
@@ -219,6 +251,7 @@ where
         response: OpaqueStateResponse,
     ) {
         if let (StrategyKey::State, Some(ref mut state)) = (key, &mut self.state) {
+            // TODO: intercept the state response
             state.on_state_response(peer_id, response);
         } else if let (StrategyKey::ChainSync, Some(ref mut chain_sync)) =
             (key, &mut self.chain_sync)
@@ -245,26 +278,18 @@ where
 
     fn on_blocks_processed(
         &mut self,
-        imported: usize,
-        count: usize,
-        results: Vec<(
+        _imported: usize,
+        _count: usize,
+        _results: Vec<(
             Result<BlockImportStatus<NumberFor<B>>, BlockImportError>,
             B::Hash,
         )>,
     ) {
-        // Only `StateStrategy` and `ChainSync` are interested in block processing notifications.
-        if let Some(ref mut state) = self.state {
-            state.on_blocks_processed(imported, count, results);
-        } else if let Some(ref mut chain_sync) = self.chain_sync {
-            chain_sync.on_blocks_processed(imported, count, results);
-        }
+        // We are not interested in block processing notifications as we don't process any blocks.
     }
 
-    fn on_block_finalized(&mut self, hash: &B::Hash, number: NumberFor<B>) {
-        // Only `ChainSync` is interested in block finalization notifications.
-        if let Some(ref mut chain_sync) = self.chain_sync {
-            chain_sync.on_block_finalized(hash, number);
-        }
+    fn on_block_finalized(&mut self, _hash: &B::Hash, _number: NumberFor<B>) {
+        // We are not interested in block finalization notifications.
     }
 
     fn update_chain_info(&mut self, best_hash: &B::Hash, best_number: NumberFor<B>) {
@@ -311,15 +336,52 @@ where
     }
 
     fn actions(&mut self) -> Result<Vec<SyncingAction<B>>, sp_blockchain::Error> {
-        // This function presumes that strategies are executed serially and must be refactored once
-        // we have parallel strategies.
-        let actions: Vec<_> = if let Some(ref mut state) = self.state {
+        if self.state.is_none() {
+            // TODO: find next avaible peer
+            if let Some((peer_id, best_header)) = self.best_headers.iter().next() {
+                let target_header = best_header.clone();
+                let state_sync = StateStrategy::new(
+                    self.client.clone(),
+                    target_header,
+                    None,
+                    None,
+                    false,
+                    self.peer_best_blocks
+                        .iter()
+                        .map(|(peer_id, (_, best_number))| (*peer_id, *best_number)),
+                    self.config.state_request_protocol_name.clone(),
+                );
+                self.state.replace(state_sync);
+            }
+        }
+
+        // We only handle the actions of requesting best headers and the actions from state sync.
+        let actions: Vec<_> = if !self.pending_header_requests.is_empty() {
+            self.pending_header_requests
+                .clone()
+                .into_iter()
+                .map(|(peer_id, request)| SyncingAction::SendBlockRequest {
+                    peer_id,
+                    key: StrategyKey::ChainSync,
+                    request,
+                })
+                .collect()
+        } else if let Some(ref mut state) = self.state {
             state.actions().map(Into::into).collect()
-        } else if let Some(ref mut chain_sync) = self.chain_sync {
-            chain_sync.actions()?
         } else {
-            unreachable!("At least one syncing strategy is always active; qed")
+            return Ok(Vec::new());
         };
+
+        // TODO: Better check for the completion of state sync.
+        let state_sync_is_complete = actions
+            .iter()
+            .any(|action| matches!(action, SyncingAction::ImportBlocks { .. }));
+
+        if state_sync_is_complete {
+            tracing::debug!(target: "sync", "State sync is complete, TODO: handle stored state response");
+            self.state.take();
+            return Ok(Vec::new());
+        }
 
         if actions.iter().any(SyncingAction::is_finished) {
             self.proceed_to_next()?;
@@ -369,6 +431,8 @@ where
             state: None,
             chain_sync: Some(chain_sync),
             peer_best_blocks: Default::default(),
+            pending_header_requests: Vec::new(),
+            best_headers: HashMap::new(),
         })
     }
 

@@ -1,5 +1,16 @@
+//! # substrate-state-sync-node
+//!
+//! Substrate State Sync Node is essentially a stripped normal Substrate node with only the network
+//! component for downloading the state directly from the P2P network as requested, the other components
+//! are merely constructed to satisfy the requirement of building an instnace of [`sc_service::Client`].
+//!
+//! ## Custom Syncing Strategy
+//!
+//! [`SubcoinSyncingStrategy`] was modified from the `PolakdotSyncingStrategy`, which will request
+//! the best header of peers and attempt to initiate a state sync targeting the best header.
+
 mod cli;
-mod syncing_strategy;
+mod network;
 
 use self::cli::{App, Command};
 use clap::Parser;
@@ -112,7 +123,7 @@ where
         None,
     );
 
-    let syncing_strategy = crate::syncing_strategy::build_subcoin_syncing_strategy(
+    let syncing_strategy = crate::network::build_subcoin_syncing_strategy(
         config.protocol_id(),
         config.chain_spec.fork_id(),
         &mut net_config,

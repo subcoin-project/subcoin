@@ -39,8 +39,8 @@ impl sc_cli::SubstrateCli for SubstrateCli {
 
     fn load_spec(&self, id: &str) -> Result<Box<dyn sc_service::ChainSpec>, String> {
         let chain_spec = match id {
-            "bitcoin-mainnet" => ChainSpec::from_json_bytes(BITCOIN_MAINNET_CHAIN_SPEC.as_bytes())?,
-            "bitcoin-testnet" | "bitcoin-signet" => {
+            "mainnet" => ChainSpec::from_json_bytes(BITCOIN_MAINNET_CHAIN_SPEC.as_bytes())?,
+            "testnet" | "signet" => {
                 unimplemented!("Bitcoin testnet and signet are unsupported")
             }
             path => ChainSpec::from_json_file(std::path::PathBuf::from(path))?,
@@ -52,37 +52,36 @@ impl sc_cli::SubstrateCli for SubstrateCli {
 
 /// Bitcoin chain type.
 // TODO: This clippy warning will be fixed once more chains are supported.
-#[allow(clippy::enum_variant_names)]
 #[derive(Clone, Copy, Default, Debug, clap::ValueEnum)]
-pub enum Chain {
+pub enum BitcoinChain {
     /// Bitcoin mainnet.
     #[default]
-    BitcoinMainnet,
+    Mainnet,
     /// Bitcoin testnet
-    BitcoinTestnet,
+    Testnet,
     /// Bitcoin signet.
-    BitcoinSignet,
+    Signet,
 }
 
-impl Chain {
+impl BitcoinChain {
     /// Returns the value of `id` in `SubstrateCli::load_spec(id)`.
     pub fn chain_spec_id(&self) -> String {
         // Convert to kebab-case for consistency in CLI.
         match self {
-            Self::BitcoinMainnet => "bitcoin-mainnet".to_string(),
-            Self::BitcoinTestnet => "bitcoin-testnet".to_string(),
-            Self::BitcoinSignet => "bitcoin-signet".to_string(),
+            Self::Mainnet => "mainnet".to_string(),
+            Self::Testnet => "testnet".to_string(),
+            Self::Signet => "signet".to_string(),
         }
     }
 }
 
-/// Subcoin UTXO Set State Download Tool
+/// Subcoin State Sync Node CLI.
 #[derive(Debug, Parser)]
 #[clap(version = "0.1.0")]
 pub struct App {
     /// Specify the chain.
-    #[arg(long, value_name = "CHAIN", default_value = "bitcoin-mainnet")]
-    pub chain: Chain,
+    #[arg(long, value_name = "CHAIN", default_value = "mainnet")]
+    pub chain: BitcoinChain,
 
     /// Specify custom base path.
     #[arg(long, short = 'd', value_name = "PATH")]
@@ -109,9 +108,9 @@ pub struct App {
 impl App {
     pub fn bitcoin_network(&self) -> bitcoin::Network {
         match self.chain {
-            Chain::BitcoinMainnet => bitcoin::Network::Bitcoin,
-            Chain::BitcoinTestnet => bitcoin::Network::Testnet,
-            Chain::BitcoinSignet => bitcoin::Network::Signet,
+            BitcoinChain::Mainnet => bitcoin::Network::Bitcoin,
+            BitcoinChain::Testnet => bitcoin::Network::Testnet,
+            BitcoinChain::Signet => bitcoin::Network::Signet,
         }
     }
 }
@@ -122,6 +121,7 @@ pub struct Command {
 }
 
 impl Command {
+    /// Constructs a new instance of [`Command`].
     pub fn new(app: App) -> Self {
         let App {
             log,
@@ -149,12 +149,29 @@ impl Command {
     }
 }
 
-impl CliConfiguration for Command {
+impl CliConfiguration<ConfigurationValues> for Command {
     fn shared_params(&self) -> &SharedParams {
         &self.shared_params
     }
 
     fn network_params(&self) -> Option<&NetworkParams> {
         Some(&self.network_params)
+    }
+}
+
+/// Custom default configuration values for Subcoin State Sync Node.
+pub struct ConfigurationValues;
+
+impl sc_cli::DefaultConfigurationValues for ConfigurationValues {
+    fn p2p_listen_port() -> u16 {
+        20222
+    }
+
+    fn rpc_listen_port() -> u16 {
+        9944
+    }
+
+    fn prometheus_listen_port() -> u16 {
+        9615
     }
 }
