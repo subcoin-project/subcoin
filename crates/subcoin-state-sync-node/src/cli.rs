@@ -87,6 +87,10 @@ pub struct App {
     #[arg(long, short = 'd', value_name = "PATH")]
     pub base_path: Option<PathBuf>,
 
+    /// Specify whether to skip the state proof in state sync.
+    #[arg(long, default_value = "true")]
+    pub skip_proof: bool,
+
     /// Sets a custom logging filter (syntax: `<target>=<level>`).
     ///
     /// Log levels (least to most verbose) are `error`, `warn`, `info`, `debug`, and `trace`.
@@ -128,6 +132,7 @@ impl Command {
             chain,
             base_path,
             network_params,
+            ..
         } = app;
 
         let shared_params = SharedParams {
