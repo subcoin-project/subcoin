@@ -9,6 +9,8 @@ license.workspace = true
 [dependencies]
 bitcoin = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
+codec = { workspace = true }
+pallet-bitcoin = { workspace = true }
 sc-consensus = { workspace = true }
 sc-cli = { workspace = true }
 sc-client-api = { workspace = true }
@@ -21,7 +23,10 @@ sc-service = { workspace = true }
 sc-transaction-pool = { workspace = true }
 sp-blockchain = { workspace = true }
 sp-runtime = { workspace = true }
+subcoin-crypto = { workspace = true }
+subcoin-primitives = { workspace = true }
 subcoin-runtime = { workspace = true }
+subcoin-runtime-primitives = { workspace = true }
 subcoin-service = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }

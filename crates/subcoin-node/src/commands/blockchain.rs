@@ -273,6 +273,7 @@ fn fetch_utxo_set_at(
         client
             .storage_pairs(substrate_block_hash, Some(&storage_key), None)?
             .filter_map(|(key, value)| {
+                tracing::debug!(target: "xlc", "key: {key:?}, value: {value:?}");
                 let (txid, vout) = <(pallet_bitcoin::types::Txid, u32)>::decode(
                     &mut &key.0.as_slice()[FINAL_STORAGE_PREFIX_LEN..],
                 )
@@ -292,30 +293,6 @@ fn fetch_utxo_set_at(
                 }
             }),
     ))
-}
-
-// Equivalent function in Rust for serializing an OutPoint and Coin
-//
-// https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/kernel/coinstats.cpp#L51
-fn tx_out_ser(outpoint: bitcoin::OutPoint, coin: &Coin) -> bitcoin::io::Result<Vec<u8>> {
-    let mut data = Vec::new();
-
-    // Serialize the OutPoint (txid and vout)
-    outpoint.consensus_encode(&mut data)?;
-
-    // Serialize the coin's height and coinbase flag
-    let height_and_coinbase = (coin.height << 1) | (coin.is_coinbase as u32);
-    height_and_coinbase.consensus_encode(&mut data)?;
-
-    let txout = bitcoin::TxOut {
-        value: bitcoin::Amount::from_sat(coin.amount),
-        script_pubkey: bitcoin::ScriptBuf::from_bytes(coin.script_pubkey.clone()),
-    };
-
-    // Serialize the actual UTXO (value and script)
-    txout.consensus_encode(&mut data)?;
-
-    Ok(data)
 }
 
 // Custom serializer for total_amount to display 8 decimal places
@@ -360,7 +337,7 @@ async fn gettxoutsetinfo(
     let mut muhash = subcoin_crypto::muhash::MuHash3072::new();
 
     for (txid, vout, coin) in utxo_iter {
-        let data = tx_out_ser(bitcoin::OutPoint { txid, vout }, &coin)
+        let data = subcoin_primitives::tx_out_ser(bitcoin::OutPoint { txid, vout }, &coin)
             .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
         muhash.insert(&data);
 
