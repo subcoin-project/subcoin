@@ -1,15 +1,37 @@
-//! # substrate-state-sync-node
+//! # subcoin-snapcake
 //!
-//! Substrate State Sync Node is essentially a stripped-down Substrate node that only includes the
-//! network component for downloading the state directly from the P2P network. Other components are
-//! constructed solely to satisfy the requirements for building an instance of [`sc_service::Client`]
-//! and don't do any substantial work.
+//! `snapcake` is a Decentralized Bitcoin UTXO Set Snapshot Provider. It functions as a lightweight
+//! Substrate-based node specifically designed for downloading the UTXO set directly from the Subcoin
+//! P2P network without requiring the full functionality of a traditional Substrate node. The other
+//! node components are only included to fulfill the structural requirements of building an instance
+//! of [`sc_service::Client`] but do not perform any significant tasks.
+//!
+//! The downloaded UTXO set snapshot is fully compatible with Bitcoin Core, enabling Bitcoin Core's
+//! Fast Sync feature without the need for a trusted snapshot provider. This enhances decentralization
+//! by allowing users to quickly synchronize their Bitcoin Core node without relying on external,
+//! centralized sources for the snapshot.
+//!
+//! ## Features
+//!
+//! - **Decentralized UTXO Set Download:** Fetch the UTXO set from the decentralized Subcoin P2P network,
+//!   removing the need for trusted third-party snapshots.
+//! - **Bitcoin Core Compatibility:** Generate UTXO set snapshots compatible with Bitcoin Core’s `txoutset`,
+//!   allowing for seamless integration with Bitcoin’s Fast Sync functionality.
+//! - **Lightweight Node:** Only includes essential network components for state syncing, reducing
+//!   resource consumption compared to a full regular Substrate node.
 //!
 //! ## Custom Syncing Strategy
 //!
-//! The `SubcoinSyncingStrategy` is adapted from the `PolkadotSyncingStrategy`. It requests the best
-//! header from peers and initiates a state sync targeting the best header. Once the state sync is
-//! complete, a UTXO set snapshot compatiable with Bitcoin Core txoutset will be produced.
+//! The `SnapcakeSyncingStrategy` is a customized version of the `PolkadotSyncingStrategy`. It queries the
+//! best header from connected peers and begins the state sync process targeting the best block header.
+//! During state sync, responses are intercepted to extract UTXO data, which is then saved locally. Once the
+//! state sync completes, a UTXO set snapshot compatible with Bitcoin Core's `txoutset` is generated.
+//!
+//! ## Use Case
+//!
+//! `snapcake` can be used to speed up the synchronization of Bitcoin Core nodes by providing decentralized
+//! UTXO snapshots, thereby reducing the reliance on centralized snapshot providers and enhancing the
+//! decentralization of Bitcoin’s fast sync process.
 
 mod cli;
 mod network;
@@ -20,13 +42,16 @@ use clap::Parser;
 use sc_cli::SubstrateCli;
 use sc_consensus::import_queue::BasicQueue;
 use sc_consensus_nakamoto::SubstrateImportQueueVerifier;
+use sc_executor::WasmExecutor;
 use sc_network::config::NetworkBackendType;
 use sc_service::{Configuration, TaskManager};
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use subcoin_runtime::interface::OpaqueBlock as Block;
 use subcoin_runtime::RuntimeApi;
-use subcoin_service::{FullClient, GenesisBlockBuilder, TransactionAdapter};
+use subcoin_service::{GenesisBlockBuilder, TransactionAdapter};
+
+type FullClient = sc_service::TFullClient<Block, RuntimeApi, WasmExecutor>;
 
 fn main() -> sc_cli::Result<()> {
     let app = App::parse();
@@ -49,12 +74,10 @@ fn start_node(
     mut config: Configuration,
     skip_proof: bool,
 ) -> Result<TaskManager, sc_service::error::Error> {
-    let executor = sc_service::new_native_or_wasm_executor(&config);
-
+    let executor = sc_service::new_wasm_executor(&config.executor);
     let backend = sc_service::new_db_backend(config.db_config())?;
 
     let commit_genesis_state = true;
-
     let genesis_block_builder = GenesisBlockBuilder::<_, _, _, TransactionAdapter>::new(
         bitcoin_network,
         config.chain_spec.as_storage_builder(),
@@ -78,9 +101,7 @@ fn start_node(
 
     let client = Arc::new(client);
 
-    let network_backend = NetworkBackendType::Libp2p;
-
-    match network_backend {
+    match config.network.network_backend {
         NetworkBackendType::Libp2p => {
             start_substrate_network::<sc_network::NetworkWorker<Block, <Block as BlockT>::Hash>>(
                 &mut config,

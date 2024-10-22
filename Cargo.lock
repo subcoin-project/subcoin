@@ -9030,10 +9030,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "subcoin-state-sync-node"
+name = "subcoin-snapcake"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "bitcoin 0.32.2",
  "clap",
  "pallet-bitcoin",
@@ -9042,6 +9041,7 @@ dependencies = [
  "sc-client-api",
  "sc-consensus",
  "sc-consensus-nakamoto",
+ "sc-executor",
  "sc-informant",
  "sc-network",
  "sc-network-common",
