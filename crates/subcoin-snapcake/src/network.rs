@@ -208,7 +208,7 @@ where
         state_request_protocol_name,
     };
 
-    Ok(Box::new(SubcoinSyncingStrategy::new(
+    Ok(Box::new(SnapcakeSyncingStrategy::new(
         syncing_config,
         client,
         skip_proof,
@@ -216,7 +216,7 @@ where
 }
 
 /// Proxy to specific syncing strategies used in Polkadot.
-pub struct SubcoinSyncingStrategy<B: BlockT, Client> {
+pub struct SnapcakeSyncingStrategy<B: BlockT, Client> {
     /// Initial syncing configuration.
     config: SyncingConfig,
     /// Client used by syncing strategies.
@@ -226,7 +226,7 @@ pub struct SubcoinSyncingStrategy<B: BlockT, Client> {
     /// `ChainSync` strategy.`
     chain_sync: Option<ChainSync<B, Client>>,
     /// Connected peers and their best blocks used to seed a new strategy when switching to it in
-    /// `SubcoinSyncingStrategy::proceed_to_next`.
+    /// `SnapcakeSyncingStrategy::proceed_to_next`.
     peer_best_blocks: HashMap<PeerId, (B::Hash, NumberFor<B>)>,
     /// Pending requests for the best headers.
     pending_header_requests: Vec<(PeerId, BlockRequest<B>)>,
@@ -238,7 +238,7 @@ pub struct SubcoinSyncingStrategy<B: BlockT, Client> {
     skip_proof: bool,
 }
 
-impl<B, Client> SubcoinSyncingStrategy<B, Client>
+impl<B, Client> SnapcakeSyncingStrategy<B, Client>
 where
     B: BlockT,
     Client: HeaderBackend<B>
@@ -324,7 +324,7 @@ where
     }
 }
 
-impl<B: BlockT, Client> SyncingStrategy<B> for SubcoinSyncingStrategy<B, Client>
+impl<B: BlockT, Client> SyncingStrategy<B> for SnapcakeSyncingStrategy<B, Client>
 where
     B: BlockT,
     Client: HeaderBackend<B>

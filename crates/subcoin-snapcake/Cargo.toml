@@ -1,10 +1,14 @@
 [package]
-name = "subcoin-state-sync-node"
+name = "subcoin-snapcake"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 repository.workspace = true
 license.workspace = true
+
+[[bin]]
+name = "snapcake"
+path = "src/main.rs"
 
 [dependencies]
 bitcoin = { workspace = true }
@@ -15,6 +19,7 @@ sc-consensus = { workspace = true }
 sc-cli = { workspace = true }
 sc-client-api = { workspace = true }
 sc-consensus-nakamoto = { workspace = true }
+sc-executor = { workspace = true }
 sc-informant = { workspace = true }
 sc-network = { workspace = true }
 sc-network-common = { workspace = true }
@@ -31,4 +36,3 @@ subcoin-service = { workspace = true }
 subcoin-utils = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
-anyhow = "1.0"

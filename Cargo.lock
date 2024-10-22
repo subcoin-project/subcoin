@@ -10595,6 +10595,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "subcoin-snapcake"
+version = "0.1.0"
+dependencies = [
+ "bitcoin 0.32.2",
+ "clap",
+ "pallet-bitcoin",
+ "parity-scale-codec",
+ "sc-cli",
+ "sc-client-api",
+ "sc-consensus",
+ "sc-consensus-nakamoto",
+ "sc-executor",
+ "sc-informant",
+ "sc-network",
+ "sc-network-common",
+ "sc-network-sync",
+ "sc-service",
+ "sc-transaction-pool",
+ "sp-blockchain",
+ "sp-runtime",
+ "subcoin-crypto",
+ "subcoin-primitives",
+ "subcoin-runtime",
+ "subcoin-runtime-primitives",
+ "subcoin-service",
+ "subcoin-utils",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "subcoin-test-service"
 version = "0.1.0"
 dependencies = [
