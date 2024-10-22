@@ -19,13 +19,13 @@ pub struct NetworkPeers {
 
 #[rpc(client, server)]
 pub trait NetworkApi {
-    /// Get overall network status.
-    #[method(name = "network_status")]
-    async fn network_status(&self) -> Result<Option<NetworkStatus>, Error>;
-
     /// Get the sync peers.
     #[method(name = "network_peers")]
     async fn network_peers(&self) -> Result<NetworkPeers, Error>;
+
+    /// Get overall network status.
+    #[method(name = "network_status")]
+    async fn network_status(&self) -> Result<Option<NetworkStatus>, Error>;
 }
 
 /// This struct provides the Network API.

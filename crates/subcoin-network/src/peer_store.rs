@@ -53,6 +53,7 @@ pub struct PeerStore {
 }
 
 impl PeerStore {
+    /// Constructs a new instance of [`PeerStore`].
     pub fn new(base_path: &Path, capacity: usize, good_peer_latency_threshold: u128) -> Self {
         let file_path = base_path.join(PEER_STORE_FILE_NAME);
 

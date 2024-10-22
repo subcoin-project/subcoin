@@ -49,8 +49,9 @@ enum BlockDownloadRange {
     },
 }
 
+/// Download state.
 #[derive(Debug, Clone)]
-enum DownloadState {
+enum State {
     /// Downloading not started yet.
     Idle,
     /// Restarting the download process.
@@ -72,7 +73,7 @@ enum DownloadState {
     Completed,
 }
 
-impl Display for DownloadState {
+impl Display for State {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Idle => write!(f, "Idle"),
@@ -103,7 +104,7 @@ pub struct HeadersFirstDownloader<Block, Client> {
     client: Arc<Client>,
     header_verifier: HeaderVerifier<Block, Client>,
     peer_id: PeerId,
-    download_state: DownloadState,
+    state: State,
     download_manager: BlockDownloadManager,
     // Keep the headers ordered so that fetching the blocks orderly later is possible.
     downloaded_headers: IndexMap<BlockHash, u32>,
@@ -129,7 +130,7 @@ where
             client,
             header_verifier,
             peer_id,
-            download_state: DownloadState::Idle,
+            state: State::Idle,
             downloaded_headers: IndexMap::new(),
             download_manager: BlockDownloadManager::new(),
             last_locator_start: 0u32,
@@ -164,7 +165,7 @@ where
     }
 
     pub(crate) fn on_tick(&mut self) -> SyncAction {
-        if matches!(self.download_state, DownloadState::Restarting) {
+        if matches!(self.state, State::Restarting) {
             return self.prepare_headers_request_action();
         }
 
@@ -176,8 +177,8 @@ where
                 return SyncAction::None;
             } else {
                 // Resume blocks or headers request.
-                match &mut self.download_state {
-                    DownloadState::DownloadingBlocks(BlockDownloadRange::Batches {
+                match &mut self.state {
+                    State::DownloadingBlocks(BlockDownloadRange::Batches {
                         downloaded_batch,
                         waiting,
                         paused,
@@ -221,7 +222,7 @@ where
         self.download_manager.reset();
         self.last_locator_start = 0u32;
         self.target_block_number = peer_best;
-        self.download_state = DownloadState::Restarting;
+        self.state = State::Restarting;
     }
 
     fn prepare_headers_request_action(&mut self) -> SyncAction {
@@ -259,7 +260,7 @@ where
             .block_locator(Some(our_best), |_height: u32| None)
             .locator_hashes;
 
-        self.download_state = DownloadState::DownloadingHeaders { start, end };
+        self.state = State::DownloadingHeaders { start, end };
 
         SyncAction::Request(SyncRequest::Headers(LocatorRequest {
             locator_hashes,
@@ -286,8 +287,8 @@ where
             return SyncAction::None;
         };
 
-        let (start, end) = match &self.download_state {
-            DownloadState::DownloadingHeaders { start, end } => (*start, *end),
+        let (start, end) = match &self.state {
+            State::DownloadingHeaders { start, end } => (*start, *end),
             state => {
                 tracing::debug!(
                     %state,
@@ -311,18 +312,18 @@ where
                 best_number = ?self.client.info().best_number,
                 "Cannot find the parent of the first header in headers, disconnecting"
             );
-            self.download_state = DownloadState::Disconnecting;
+            self.state = State::Disconnecting;
             return SyncAction::Disconnect(self.peer_id, Error::ParentOfFirstHeaderEntryNotFound);
         };
 
         for header in headers {
             if header.prev_blockhash != prev_hash {
-                self.download_state = DownloadState::Disconnecting;
+                self.state = State::Disconnecting;
                 return SyncAction::Disconnect(self.peer_id, Error::HeadersNotInAscendingOrder);
             }
 
             if !self.header_verifier.has_valid_proof_of_work(&header) {
-                self.download_state = DownloadState::Disconnecting;
+                self.state = State::Disconnecting;
                 return SyncAction::Disconnect(from, Error::BadProofOfWork(header.block_hash()));
             }
 
@@ -392,8 +393,7 @@ where
                 "Downloaded headers from {start} to {end}, requesting blocks",
             );
 
-            self.download_state =
-                DownloadState::DownloadingBlocks(BlockDownloadRange::AllBlocks { start, end });
+            self.state = State::DownloadingBlocks(BlockDownloadRange::AllBlocks { start, end });
 
             get_data_msg
         } else {
@@ -433,7 +433,7 @@ where
                 get_data_msg.len(),
             );
 
-            self.download_state = DownloadState::DownloadingBlocks(BlockDownloadRange::Batches {
+            self.state = State::DownloadingBlocks(BlockDownloadRange::Batches {
                 downloaded_batch: 0,
                 waiting: batches,
                 paused: false,
@@ -448,8 +448,8 @@ where
     pub(crate) fn on_block(&mut self, block: BitcoinBlock, from: PeerId) -> SyncAction {
         let block_hash = block.block_hash();
 
-        let block_download_range = match &mut self.download_state {
-            DownloadState::DownloadingBlocks(download_range) => download_range,
+        let block_download_range = match &mut self.state {
+            State::DownloadingBlocks(download_range) => download_range,
             state => {
                 // TODO: we may receive the blocks from a peer that has been considered as stalled,
                 // should we try to cache and use such blocks since the bandwidth has been consumed
@@ -570,7 +570,7 @@ where
 
         match crate::checkpoint::next_checkpoint(block_number + 1) {
             Some(checkpoint) => {
-                self.download_state = DownloadState::DownloadingHeaders {
+                self.state = State::DownloadingHeaders {
                     start: IndexedBlock {
                         number: block_number,
                         hash: block_hash,
@@ -593,7 +593,7 @@ where
                 // We have synced to the last checkpoint, now switch to the Blocks-First
                 // sync to download the remaining blocks.
                 tracing::debug!("No more checkpoint, switching to blocks-first sync");
-                self.download_state = DownloadState::Completed;
+                self.state = State::Completed;
                 SyncAction::SwitchToBlocksFirstSync
             }
         }

@@ -19,8 +19,9 @@ use subcoin_primitives::{BackendExt, BlockLocator, BlockLocatorProvider, ClientE
 // request is [1, 500] when doing the initial sync.
 const MAX_GET_BLOCKS_RESPONSE: u32 = 500;
 
+/// Download state.
 #[derive(Debug, Clone)]
-enum DownloadState {
+enum State {
     /// Downloading not started yet.
     Idle,
     /// Restarting the download process.
@@ -45,7 +46,7 @@ pub struct BlocksFirstDownloader<Block, Client> {
     peer_id: PeerId,
     /// The final block number we are targeting when the download is complete.
     target_block_number: u32,
-    download_state: DownloadState,
+    state: State,
     download_manager: BlockDownloadManager,
     last_locator_start: u32,
     pending_block_requests: Vec<Inventory>,
@@ -64,7 +65,7 @@ where
             peer_id,
             client,
             target_block_number: peer_best,
-            download_state: DownloadState::Idle,
+            state: State::Idle,
             download_manager: BlockDownloadManager::new(),
             last_locator_start: 0u32,
             pending_block_requests: Vec::new(),
@@ -105,7 +106,7 @@ where
     }
 
     pub(crate) fn on_tick(&mut self) -> SyncAction {
-        if matches!(self.download_state, DownloadState::Restarting) {
+        if matches!(self.state, State::Restarting) {
             return SyncAction::Request(self.prepare_blocks_request());
         }
 
@@ -126,7 +127,7 @@ where
         }
 
         if self.client.best_number() == self.target_block_number {
-            self.download_state = DownloadState::Completed;
+            self.state = State::Completed;
             return SyncAction::SwitchToIdle;
         }
 
@@ -142,7 +143,7 @@ where
         self.target_block_number = peer_best;
         self.last_locator_start = 0u32;
         self.download_manager.reset();
-        self.download_state = DownloadState::Restarting;
+        self.state = State::Restarting;
         self.pending_block_requests.clear();
         self.requested_blocks_count = 0;
     }
@@ -167,7 +168,7 @@ where
                 ?from,
                 "Received inv with more than {MAX_GET_BLOCKS_RESPONSE} block entries"
             );
-            self.download_state = DownloadState::Disconnecting;
+            self.state = State::Disconnecting;
             return SyncAction::Disconnect(self.peer_id, Error::InvHasTooManyBlockItems);
         }
 
@@ -225,8 +226,8 @@ where
             return SyncAction::None;
         }
 
-        let last_get_blocks_target = match &self.download_state {
-            DownloadState::DownloadingNew(range) => range.end - 1,
+        let last_get_blocks_target = match &self.state {
+            State::DownloadingNew(range) => range.end - 1,
             state => {
                 tracing::debug!(
                     ?state,
@@ -279,10 +280,10 @@ where
                             target_block_number = self.target_block_number,
                             "Received block #{block_number},{block_hash} higher than the target block"
                         );
-                        self.download_state = DownloadState::Completed;
+                        self.state = State::Completed;
                         SyncAction::SwitchToIdle
                     } else {
-                        self.download_state = DownloadState::Disconnecting;
+                        self.state = State::Disconnecting;
                         SyncAction::Disconnect(
                             self.peer_id,
                             Error::Other(format!(
@@ -315,8 +316,7 @@ where
                         .target_block_number
                         .min(best_queued_number + MAX_GET_BLOCKS_RESPONSE);
 
-                    self.download_state =
-                        DownloadState::DownloadingNew(best_queued_number + 1..end + 1);
+                    self.state = State::DownloadingNew(best_queued_number + 1..end + 1);
 
                     let BlockLocator { locator_hashes, .. } = self
                         .client
@@ -383,7 +383,7 @@ where
             .target_block_number
             .min(latest_block + MAX_GET_BLOCKS_RESPONSE);
 
-        self.download_state = DownloadState::DownloadingNew(latest_block + 1..end + 1);
+        self.state = State::DownloadingNew(latest_block + 1..end + 1);
 
         tracing::debug!(
             latest_block,
