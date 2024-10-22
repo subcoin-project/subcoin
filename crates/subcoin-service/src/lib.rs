@@ -194,10 +194,10 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
     // TODO: frame_benchmarking_cli pulls in rocksdb due to its dep
     // cumulus-client-parachain-inherent.
     // let maybe_hwbench = (!no_hardware_benchmarks)
-    // .then_some(database_path.as_ref().map(|db_path| {
+    // .then(|| {database_path.as_ref().map(|db_path| {
     // let _ = std::fs::create_dir_all(db_path);
     // sc_sysinfo::gather_hwbench(Some(db_path), &frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE)
-    // }))
+    // })})
     // .flatten();
 
     // if let Some(hwbench) = maybe_hwbench {
