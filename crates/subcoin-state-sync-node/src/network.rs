@@ -10,14 +10,14 @@ use sc_network_common::sync::message::{
 use sc_network_common::sync::SyncMode;
 use sc_network_sync::state_request_handler::StateRequestHandler;
 use sc_network_sync::strategy::chain_sync::{ChainSync, ChainSyncMode};
-use sc_network_sync::strategy::state::{StateStrategy, StateStrategyAction};
+use sc_network_sync::strategy::state::StateStrategy;
 use sc_network_sync::strategy::state_sync::{
     ImportResult, StateSync, StateSyncProgress, StateSyncProvider,
 };
 use sc_network_sync::strategy::warp::EncodedProof;
 use sc_network_sync::strategy::{StrategyKey, SyncingAction, SyncingConfig, SyncingStrategy};
 use sc_network_sync::types::OpaqueStateResponse;
-use sc_network_sync::{StateEntry, StateRequest, StateResponse, SyncStatus};
+use sc_network_sync::{StateRequest, StateResponse, SyncStatus};
 use sc_service::SpawnTaskHandle;
 use sp_blockchain::HeaderMetadata;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
@@ -560,7 +560,7 @@ where
                     Box::new(WrappedStateSync::new(
                         self.client.clone(),
                         target_header,
-                        true,
+                        self.skip_proof,
                     )),
                     self.peer_best_blocks
                         .iter()
