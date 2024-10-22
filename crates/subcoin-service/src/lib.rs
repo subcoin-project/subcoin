@@ -192,10 +192,12 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
 
     let database_path = config.database.path().map(Path::to_path_buf);
     let maybe_hwbench = (!no_hardware_benchmarks)
-        .then_some(database_path.as_ref().map(|db_path| {
-            let _ = std::fs::create_dir_all(db_path);
-            sc_sysinfo::gather_hwbench(Some(db_path), &SUBSTRATE_REFERENCE_HARDWARE)
-        }))
+        .then(|| {
+            database_path.as_ref().map(|db_path| {
+                let _ = std::fs::create_dir_all(db_path);
+                sc_sysinfo::gather_hwbench(Some(db_path), &SUBSTRATE_REFERENCE_HARDWARE)
+            })
+        })
         .flatten();
 
     if let Some(hwbench) = maybe_hwbench {
