@@ -49,14 +49,15 @@ enum BlockDownloadRange {
     },
 }
 
-/// Download state.
+/// Represents the current state of the download process.
 #[derive(Debug, Clone)]
 enum State {
     /// Downloading not started yet.
     Idle,
-    /// Restarting the download process.
-    RestartingByRequestingHeaders,
-    RestartingByContinuingBlocksDownload {
+    /// Restarting the download by requesting headers.
+    RestartingHeaders,
+    /// Restarting the download by continuing with block download from the specified range.
+    RestartingBlocks {
         start: IndexedBlock,
         end: IndexedBlock,
     },
@@ -70,7 +71,7 @@ enum State {
         start: IndexedBlock,
         end: IndexedBlock,
     },
-    /// Headers downloaded, Actively downloading the corresponding block data (start, end].
+    /// Actively downloading blocks corresponding to previously downloaded headers (start, end].
     DownloadingBlocks(BlockDownloadRange),
     /// All blocks up to the target block have been successfully
     /// downloaded, the download process has been completed.
@@ -81,12 +82,9 @@ impl Display for State {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Idle => write!(f, "Idle"),
-            Self::RestartingByRequestingHeaders => write!(f, "RestartingByRequestingHeaders"),
-            Self::RestartingByContinuingBlocksDownload { start, end } => {
-                write!(
-                    f,
-                    "RestartingByContinuingBlocksDownload {{ start: {start}, end: {end} }}"
-                )
+            Self::RestartingHeaders => write!(f, "RestartingHeaders"),
+            Self::RestartingBlocks { start, end } => {
+                write!(f, "RestartingBlocks {{ start: {start}, end: {end} }}")
             }
             Self::Disconnecting => write!(f, "Disconnecting"),
             Self::DownloadingHeaders { start, end } => {
@@ -111,13 +109,15 @@ fn block_download_batch_size(height: u32) -> usize {
 
 /// Headers downloaded up to the next checkpoint.
 struct DownloadedHeaders {
-    // Keep the headers ordered so that fetching the blocks orderly later is possible.
+    /// Ordered map of headers, where the key is the block hash and the value is the block number.
+    ///
+    /// Keep the headers ordered so that fetching the blocks orderly later is possible.
     headers: IndexMap<BlockHash, u32>,
-    /// All headers up to the next checkpoint have been downloaded.
-    complete: Option<(IndexedBlock, IndexedBlock)>,
+    /// Optional range of blocks indicating the completed header download up to the next checkpoint (start, end].
+    completed_range: Option<(IndexedBlock, IndexedBlock)>,
 }
 
-/// Headers-First download strategy.
+/// Implements the Headers-First download strategy.
 pub struct HeadersFirstDownloader<Block, Client> {
     client: Arc<Client>,
     header_verifier: HeaderVerifier<Block, Client>,
@@ -150,7 +150,7 @@ where
             state: State::Idle,
             downloaded_headers: DownloadedHeaders {
                 headers: IndexMap::new(),
-                complete: None,
+                completed_range: None,
             },
             download_manager: BlockDownloadManager::new(),
             last_locator_start: 0u32,
@@ -185,11 +185,11 @@ where
     }
 
     pub(crate) fn on_tick(&mut self) -> SyncAction {
-        if matches!(self.state, State::RestartingByRequestingHeaders) {
+        if matches!(self.state, State::RestartingHeaders) {
             return self.prepare_headers_request_action();
         }
 
-        if let State::RestartingByContinuingBlocksDownload { start, end } = self.state {
+        if let State::RestartingBlocks { start, end } = self.state {
             return self.start_block_download(start, end);
         }
 
@@ -245,11 +245,11 @@ where
         self.download_manager.reset();
         self.last_locator_start = 0u32;
         self.target_block_number = peer_best;
-        if let Some((start, end)) = self.downloaded_headers.complete {
-            self.state = State::RestartingByContinuingBlocksDownload { start, end };
+        if let Some((start, end)) = self.downloaded_headers.completed_range {
+            self.state = State::RestartingBlocks { start, end };
         } else {
             self.downloaded_headers.headers.clear();
-            self.state = State::RestartingByRequestingHeaders;
+            self.state = State::RestartingHeaders;
         }
     }
 
@@ -290,8 +290,8 @@ where
 
         self.state = State::DownloadingHeaders { start, end };
         self.downloaded_headers = DownloadedHeaders {
-            headers: IndexMap::new(),
-            complete: None,
+            headers: IndexMap::with_capacity((end.number - start.number) as usize),
+            completed_range: None,
         };
 
         SyncAction::Request(SyncRequest::Headers(LocatorRequest {
@@ -378,7 +378,9 @@ where
         let target_block_hash = end.hash;
 
         if final_block_number == target_block_number {
-            self.downloaded_headers.complete.replace((start, end));
+            self.downloaded_headers
+                .completed_range
+                .replace((start, end));
             self.start_block_download(start, end)
         } else {
             tracing::debug!("📄 Downloaded headers ({final_block_number}/{target_block_number})");
