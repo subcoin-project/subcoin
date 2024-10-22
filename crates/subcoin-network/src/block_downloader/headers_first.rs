@@ -55,7 +55,11 @@ enum State {
     /// Downloading not started yet.
     Idle,
     /// Restarting the download process.
-    Restarting,
+    RestartingByRequestingHeaders,
+    RestartingByContinuingBlocksDownload {
+        start: IndexedBlock,
+        end: IndexedBlock,
+    },
     /// Peer misbehavior detected, will disconnect the peer shortly.
     Disconnecting,
     /// Actively downloading new headers in the specified range (start, end].
@@ -77,7 +81,13 @@ impl Display for State {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Idle => write!(f, "Idle"),
-            Self::Restarting => write!(f, "Restarting"),
+            Self::RestartingByRequestingHeaders => write!(f, "RestartingByRequestingHeaders"),
+            Self::RestartingByContinuingBlocksDownload { start, end } => {
+                write!(
+                    f,
+                    "RestartingByContinuingBlocksDownload {{ start: {start}, end: {end} }}"
+                )
+            }
             Self::Disconnecting => write!(f, "Disconnecting"),
             Self::DownloadingHeaders { start, end } => {
                 write!(f, "DownloadingHeaders {{ start: {start}, end: {end} }}")
@@ -99,6 +109,14 @@ fn block_download_batch_size(height: u32) -> usize {
     }
 }
 
+/// Headers downloaded up to the next checkpoint.
+struct DownloadedHeaders {
+    // Keep the headers ordered so that fetching the blocks orderly later is possible.
+    headers: IndexMap<BlockHash, u32>,
+    /// All headers up to the next checkpoint have been downloaded.
+    complete: Option<(IndexedBlock, IndexedBlock)>,
+}
+
 /// Headers-First download strategy.
 pub struct HeadersFirstDownloader<Block, Client> {
     client: Arc<Client>,
@@ -106,8 +124,7 @@ pub struct HeadersFirstDownloader<Block, Client> {
     peer_id: PeerId,
     state: State,
     download_manager: BlockDownloadManager,
-    // Keep the headers ordered so that fetching the blocks orderly later is possible.
-    downloaded_headers: IndexMap<BlockHash, u32>,
+    downloaded_headers: DownloadedHeaders,
     last_locator_start: u32,
     // TODO: Now it's solely used for the purpose of displaying the sync state.
     // refactor it later.
@@ -131,7 +148,10 @@ where
             header_verifier,
             peer_id,
             state: State::Idle,
-            downloaded_headers: IndexMap::new(),
+            downloaded_headers: DownloadedHeaders {
+                headers: IndexMap::new(),
+                complete: None,
+            },
             download_manager: BlockDownloadManager::new(),
             last_locator_start: 0u32,
             target_block_number,
@@ -165,8 +185,12 @@ where
     }
 
     pub(crate) fn on_tick(&mut self) -> SyncAction {
-        if matches!(self.state, State::Restarting) {
+        if matches!(self.state, State::RestartingByRequestingHeaders) {
             return self.prepare_headers_request_action();
+        }
+
+        if let State::RestartingByContinuingBlocksDownload { start, end } = self.state {
+            return self.start_block_download(start, end);
         }
 
         if self.download_manager.import_queue_is_overloaded {
@@ -218,11 +242,15 @@ where
 
     pub(crate) fn restart(&mut self, new_peer: PeerId, peer_best: u32) {
         self.peer_id = new_peer;
-        self.downloaded_headers.clear();
         self.download_manager.reset();
         self.last_locator_start = 0u32;
         self.target_block_number = peer_best;
-        self.state = State::Restarting;
+        if let Some((start, end)) = self.downloaded_headers.complete {
+            self.state = State::RestartingByContinuingBlocksDownload { start, end };
+        } else {
+            self.downloaded_headers.headers.clear();
+            self.state = State::RestartingByRequestingHeaders;
+        }
     }
 
     fn prepare_headers_request_action(&mut self) -> SyncAction {
@@ -261,6 +289,10 @@ where
             .locator_hashes;
 
         self.state = State::DownloadingHeaders { start, end };
+        self.downloaded_headers = DownloadedHeaders {
+            headers: IndexMap::new(),
+            complete: None,
+        };
 
         SyncAction::Request(SyncRequest::Headers(LocatorRequest {
             locator_hashes,
@@ -302,7 +334,8 @@ where
 
         let mut prev_number = if prev_hash == start.hash {
             start.number
-        } else if let Some(block_number) = self.downloaded_headers.get(&prev_hash).copied() {
+        } else if let Some(block_number) = self.downloaded_headers.headers.get(&prev_hash).copied()
+        {
             block_number
         } else if let Some(block_number) = self.client.block_number(prev_hash) {
             block_number
@@ -332,7 +365,9 @@ where
 
             // We can't import the header directly at this moment since creating a Substrate
             // header requires the full block data.
-            self.downloaded_headers.insert(block_hash, block_number);
+            self.downloaded_headers
+                .headers
+                .insert(block_hash, block_number);
 
             prev_hash = block_hash;
             prev_number = block_number;
@@ -343,6 +378,7 @@ where
         let target_block_hash = end.hash;
 
         if final_block_number == target_block_number {
+            self.downloaded_headers.complete.replace((start, end));
             self.start_block_download(start, end)
         } else {
             tracing::debug!("📄 Downloaded headers ({final_block_number}/{target_block_number})");
@@ -363,6 +399,7 @@ where
 
         let missing_blocks =
             self.downloaded_headers
+                .headers
                 .iter()
                 .filter_map(|(block_hash, block_number)| {
                     let block_hash = *block_hash;
@@ -389,7 +426,7 @@ where
                 best_number,
                 best_queued_number = self.download_manager.best_queued_number,
                 requested_blocks_count = get_data_msg.len(),
-                downloaded_headers = self.downloaded_headers.len(),
+                downloaded_headers = self.downloaded_headers.headers.len(),
                 "Downloaded headers from {start} to {end}, requesting blocks",
             );
 
@@ -414,8 +451,10 @@ where
                 return SyncAction::None;
             };
 
-            let get_data_msg =
-                prepare_ordered_block_data_request(initial_batch.clone(), &self.downloaded_headers);
+            let get_data_msg = prepare_ordered_block_data_request(
+                initial_batch.clone(),
+                &self.downloaded_headers.headers,
+            );
 
             let old_requested =
                 std::mem::replace(&mut self.download_manager.requested_blocks, initial_batch);
@@ -428,7 +467,7 @@ where
             tracing::debug!(
                 best_number,
                 best_queued_number = self.download_manager.best_queued_number,
-                downloaded_headers = self.downloaded_headers.len(),
+                downloaded_headers = self.downloaded_headers.headers.len(),
                 "Headers downloaded, requesting {} blocks in batches (1/{total_batches})",
                 get_data_msg.len(),
             );
@@ -547,8 +586,10 @@ where
     }
 
     fn blocks_request_action(&self, blocks_to_download: HashSet<BlockHash>) -> SyncAction {
-        let get_data_msg =
-            prepare_ordered_block_data_request(blocks_to_download, &self.downloaded_headers);
+        let get_data_msg = prepare_ordered_block_data_request(
+            blocks_to_download,
+            &self.downloaded_headers.headers,
+        );
         SyncAction::Request(SyncRequest::Data(get_data_msg, self.peer_id))
     }
 
