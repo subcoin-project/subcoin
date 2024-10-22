@@ -1,16 +1,19 @@
 //! # substrate-state-sync-node
 //!
-//! Substrate State Sync Node is essentially a stripped normal Substrate node with only the network
-//! component for downloading the state directly from the P2P network as requested, the other components
-//! are merely constructed to satisfy the requirement of building an instnace of [`sc_service::Client`].
+//! Substrate State Sync Node is essentially a stripped-down Substrate node that only includes the
+//! network component for downloading the state directly from the P2P network. Other components are
+//! constructed solely to satisfy the requirements for building an instance of [`sc_service::Client`]
+//! and don't do any substantial work.
 //!
 //! ## Custom Syncing Strategy
 //!
-//! [`SubcoinSyncingStrategy`] was modified from the `PolakdotSyncingStrategy`, which will request
-//! the best header of peers and attempt to initiate a state sync targeting the best header.
+//! The `SubcoinSyncingStrategy` is adapted from the `PolkadotSyncingStrategy`. It requests the best
+//! header from peers and initiates a state sync targeting the best header. Once the state sync is
+//! complete, a UTXO set snapshot compatiable with Bitcoin Core txoutset will be produced.
 
 mod cli;
 mod network;
+mod params;
 
 use self::cli::{App, Command};
 use clap::Parser;
@@ -28,7 +31,7 @@ use subcoin_service::{FullClient, GenesisBlockBuilder, TransactionAdapter};
 fn main() -> sc_cli::Result<()> {
     let app = App::parse();
 
-    let bitcoin_network = app.bitcoin_network();
+    let bitcoin_network = app.chain.bitcoin_network();
     let skip_proof = app.skip_proof;
 
     let command = Command::new(app);

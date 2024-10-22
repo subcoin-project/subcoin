@@ -1,10 +1,10 @@
-use bitcoin::consensus::encode::{Decodable, Encodable};
+use bitcoin::consensus::encode::Encodable;
 use bitcoin::BlockHash;
 use std::fs::File;
 use std::io::Write;
 use subcoin_primitives::runtime::Coin;
 
-/// Responsible for producing a txoutset file compatible with Bitcoin Core.
+/// Responsible for dumping the UTXO set snapshot compatible with Bitcoin Core.
 pub struct UtxoSetBinaryOutput {
     output_file: File,
 }

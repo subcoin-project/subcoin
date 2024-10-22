@@ -1,3 +1,4 @@
+use crate::params::{BitcoinChain, StateSyncNetworkParams};
 use clap::Parser;
 use sc_cli::{CliConfiguration, NetworkParams, SharedParams};
 use std::path::PathBuf;
@@ -50,31 +51,6 @@ impl sc_cli::SubstrateCli for SubstrateCli {
     }
 }
 
-/// Bitcoin chain type.
-// TODO: This clippy warning will be fixed once more chains are supported.
-#[derive(Clone, Copy, Default, Debug, clap::ValueEnum)]
-pub enum BitcoinChain {
-    /// Bitcoin mainnet.
-    #[default]
-    Mainnet,
-    /// Bitcoin testnet
-    Testnet,
-    /// Bitcoin signet.
-    Signet,
-}
-
-impl BitcoinChain {
-    /// Returns the value of `id` in `SubstrateCli::load_spec(id)`.
-    pub fn chain_spec_id(&self) -> String {
-        // Convert to kebab-case for consistency in CLI.
-        match self {
-            Self::Mainnet => "mainnet".to_string(),
-            Self::Testnet => "testnet".to_string(),
-            Self::Signet => "signet".to_string(),
-        }
-    }
-}
-
 /// Subcoin State Sync Node CLI.
 #[derive(Debug, Parser)]
 #[clap(version = "0.1.0")]
@@ -87,7 +63,7 @@ pub struct App {
     #[arg(long, short = 'd', value_name = "PATH")]
     pub base_path: Option<PathBuf>,
 
-    /// Specify whether to skip the state proof in state sync.
+    /// Whether to skip the state proof in state sync.
     #[arg(long, default_value = "true")]
     pub skip_proof: bool,
 
@@ -106,17 +82,7 @@ pub struct App {
 
     #[allow(missing_docs)]
     #[clap(flatten)]
-    pub network_params: NetworkParams,
-}
-
-impl App {
-    pub fn bitcoin_network(&self) -> bitcoin::Network {
-        match self.chain {
-            BitcoinChain::Mainnet => bitcoin::Network::Bitcoin,
-            BitcoinChain::Testnet => bitcoin::Network::Testnet,
-            BitcoinChain::Signet => bitcoin::Network::Signet,
-        }
-    }
+    pub network_params: StateSyncNetworkParams,
 }
 
 pub struct Command {
@@ -149,7 +115,7 @@ impl Command {
 
         Self {
             shared_params,
-            network_params,
+            network_params: network_params.into_network_params(),
         }
     }
 }
