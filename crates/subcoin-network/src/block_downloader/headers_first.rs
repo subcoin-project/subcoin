@@ -399,6 +399,8 @@ where
 
         let best_number = self.client.best_number();
 
+        let mut missing_blocks_count = 0usize;
+
         let missing_blocks =
             self.downloaded_headers
                 .headers
@@ -407,12 +409,14 @@ where
                     let block_hash = *block_hash;
 
                     if *block_number > best_number {
+                        missing_blocks_count += 1;
                         return Some(block_hash);
                     }
 
                     if self.client.block_exists(block_hash) {
                         None
                     } else {
+                        missing_blocks_count += 1;
                         Some(block_hash)
                     }
                 });
@@ -428,6 +432,7 @@ where
                 best_number,
                 best_queued_number = self.download_manager.best_queued_number,
                 requested_blocks_count = get_data_msg.len(),
+                missing_blocks_count,
                 downloaded_headers = self.downloaded_headers.headers.len(),
                 "Downloaded headers from {start} to {end}, requesting blocks",
             );
@@ -469,6 +474,7 @@ where
             tracing::debug!(
                 best_number,
                 best_queued_number = self.download_manager.best_queued_number,
+                missing_blocks_count,
                 downloaded_headers = self.downloaded_headers.headers.len(),
                 "Headers downloaded, requesting {} blocks in batches (1/{total_batches})",
                 get_data_msg.len(),
