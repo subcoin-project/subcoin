@@ -64,7 +64,7 @@ pub struct PeerSync {
 pub(crate) struct LocatorRequest {
     pub locator_hashes: Vec<BlockHash>,
     pub stop_hash: BlockHash,
-    pub from: PeerId,
+    pub to: PeerId,
 }
 
 /// Represents different kinds of sync requests.

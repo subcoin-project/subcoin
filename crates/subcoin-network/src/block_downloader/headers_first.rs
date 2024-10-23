@@ -301,7 +301,7 @@ where
         SyncAction::Request(SyncRequest::Headers(LocatorRequest {
             locator_hashes,
             stop_hash: checkpoint.hash,
-            from: self.peer_id,
+            to: self.peer_id,
         }))
     }
 
@@ -388,7 +388,7 @@ where
             SyncAction::Request(SyncRequest::Headers(LocatorRequest {
                 locator_hashes: vec![prev_hash],
                 stop_hash: target_block_hash,
-                from: self.peer_id,
+                to: self.peer_id,
             }))
         }
     }
@@ -637,7 +637,7 @@ where
                 SyncAction::Request(SyncRequest::Headers(LocatorRequest {
                     locator_hashes: vec![block_hash],
                     stop_hash: checkpoint.hash,
-                    from: self.peer_id,
+                    to: self.peer_id,
                 }))
             }
             None => {

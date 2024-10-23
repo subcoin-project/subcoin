@@ -3,7 +3,7 @@ use crate::metrics::Metrics;
 use crate::network::{
     IncomingTransaction, NetworkStatus, NetworkWorkerMessage, SendTransactionResult,
 };
-use crate::peer_manager::{Config, NewPeer, PeerManager, SlowPeer, LATENCY_THRESHOLD};
+use crate::peer_manager::{Config, NewPeer, PeerManager, SlowPeer, PEER_LATENCY_THRESHOLD};
 use crate::peer_store::PeerStore;
 use crate::sync::{ChainSync, LocatorRequest, SyncAction, SyncRequest};
 use crate::transaction_manager::TransactionManager;
@@ -344,7 +344,7 @@ where
                 match self.peer_manager.on_pong(from, nonce) {
                     Ok(avg_latency) => {
                         // Disconnect the peer directly if the latency is higher than the threshold.
-                        if avg_latency > LATENCY_THRESHOLD {
+                        if avg_latency > PEER_LATENCY_THRESHOLD {
                             self.peer_manager
                                 .disconnect(from, Error::PingLatencyTooHigh);
                             self.chain_sync.remove_peer(from);
@@ -423,7 +423,7 @@ where
                     let LocatorRequest {
                         locator_hashes,
                         stop_hash,
-                        from,
+                        to,
                     } = request;
 
                     if !locator_hashes.is_empty() {
@@ -432,15 +432,15 @@ where
                             locator_hashes,
                             stop_hash,
                         };
-                        let _ = self.send(from, NetworkMessage::GetHeaders(msg));
+                        let _ = self.send(to, NetworkMessage::GetHeaders(msg));
                     }
                 }
                 SyncRequest::Blocks(request) => {
                     self.send_get_blocks_request(request);
                 }
-                SyncRequest::Data(invs, from) => {
+                SyncRequest::Data(invs, to) => {
                     if !invs.is_empty() {
-                        let _ = self.send(from, NetworkMessage::GetData(invs));
+                        let _ = self.send(to, NetworkMessage::GetData(invs));
                     }
                 }
             },
@@ -471,7 +471,7 @@ where
         let LocatorRequest {
             locator_hashes,
             stop_hash,
-            from,
+            to,
         } = request;
 
         if !locator_hashes.is_empty() {
@@ -480,7 +480,7 @@ where
                 locator_hashes,
                 stop_hash,
             };
-            let _ = self.send(from, NetworkMessage::GetBlocks(msg));
+            let _ = self.send(to, NetworkMessage::GetBlocks(msg));
         }
     }
 

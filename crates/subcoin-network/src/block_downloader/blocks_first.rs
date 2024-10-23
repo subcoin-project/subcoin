@@ -327,7 +327,7 @@ where
                     SyncAction::Request(SyncRequest::Blocks(LocatorRequest {
                         locator_hashes,
                         stop_hash: BlockHash::all_zeros(),
-                        from: self.peer_id,
+                        to: self.peer_id,
                     }))
                 }
             }
@@ -393,7 +393,7 @@ where
         SyncRequest::Blocks(LocatorRequest {
             locator_hashes,
             stop_hash: BlockHash::all_zeros(),
-            from: self.peer_id,
+            to: self.peer_id,
         })
     }
 

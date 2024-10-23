@@ -65,11 +65,7 @@ impl PeerStore {
 
         let peers = load_peers(&file_path)
             .map_err(|err| {
-                tracing::error!(
-                    ?err,
-                    "Error occurred when loading peers from {}",
-                    file_path.display()
-                );
+                tracing::error!(?err, "Failed to load peers from {}", file_path.display());
             })
             .unwrap_or_default();
 

@@ -26,15 +26,20 @@ const MAX_AVAILABLE_ADDRESSES: usize = 2000;
 pub const PROTOCOL_VERSION: u32 = 70016;
 
 /// Minimum supported peer protocol version.
+///
 /// This version includes support for the `sendheaders` feature.
 pub const MIN_PROTOCOL_VERSION: u32 = 70012;
 
-/// Peer is considered as a slow one if the average ping latency is higher than 500ms.
-const SLOW_PEER_LATENCY: Latency = 500;
+/// The maximum allowable peer latency in milliseconds before disconnection.
+///
+/// If a peer's latency exceeds this threshold (1000ms), it will be disconnected immediately.
+pub const PEER_LATENCY_THRESHOLD: Latency = 1000;
 
-/// Threshold for peer latency in milliseconds, the default is 1000ms.
-/// If a peer's latency exceeds this value, it will be considered a slow peer and may be evicted.
-pub const LATENCY_THRESHOLD: Latency = 1000;
+/// The threshold for classifying a peer as "slow", based on average ping latency in milliseconds.
+///
+/// A peer is considered slow if its average latency exceeds 500ms. Slow peers may be evicted from
+/// the network to maintain overall performance.
+const SLOW_PEER_LATENCY: Latency = 500;
 
 /// Interval for evicting the slowest peer, 10 minutes.
 ///
@@ -138,22 +143,26 @@ impl HandshakeState {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct PingLatency {
-    pub received_pongs: u64,
-    pub total_latency: Latency,
+pub struct LatencyTracker {
+    /// Number of ping responses received.
+    received_pongs: u64,
+    /// Accumulated total latency in milliseconds.
+    total_latency: Latency,
 }
 
-impl PingLatency {
-    fn on_pong(&mut self, latency: Latency) {
+impl LatencyTracker {
+    /// Updates the ping latency data and returns the latest average latency.
+    fn record_pong(&mut self, latency: Latency) -> Latency {
         self.received_pongs = self.received_pongs.saturating_add(1);
         self.total_latency = self.total_latency.saturating_add(latency);
+        self.total_latency / self.received_pongs as u128
     }
 
-    fn average(&self) -> Latency {
+    fn calc_average(&self) -> Option<Latency> {
         if self.received_pongs == 0 {
-            return u128::MAX;
+            return None;
         }
-        self.total_latency / self.received_pongs as u128
+        Some(self.total_latency / self.received_pongs as u128)
     }
 }
 
@@ -187,6 +196,12 @@ impl PingState {
             Self::AwaitingPong { last_ping_at, .. } => last_ping_at.elapsed() >= Self::PING_TIMEOUT,
         }
     }
+
+    fn idle() -> Self {
+        Self::Idle {
+            last_pong_at: Instant::now(),
+        }
+    }
 }
 
 /// A peer with protocol information.
@@ -218,7 +233,7 @@ pub struct PeerInfo {
     /// receive them instead of `addr`.
     pub want_addrv2: bool,
     /// Latency of performed pings.
-    pub ping_latency: PingLatency,
+    pub ping_latency: LatencyTracker,
     /// Current ping state.
     pub ping_state: PingState,
     /// Whether the ping has ever sent to the peer.
@@ -240,10 +255,8 @@ impl PeerInfo {
             nonce: msg.nonce,
             prefer_headers: false,
             want_addrv2: false,
-            ping_latency: PingLatency::default(),
-            ping_state: PingState::Idle {
-                last_pong_at: Instant::now(),
-            },
+            ping_latency: LatencyTracker::default(),
+            ping_state: PingState::idle(),
             has_sent_ping: false,
             direction,
         }
@@ -370,7 +383,7 @@ where
                 self.connected_peers
                     .iter()
                     .filter_map(|(peer_id, peer_info)| {
-                        let avg_latency = peer_info.ping_latency.average();
+                        let avg_latency = peer_info.ping_latency.calc_average()?;
 
                         if avg_latency > SLOW_PEER_LATENCY {
                             Some((peer_id, avg_latency))
@@ -749,12 +762,8 @@ where
             }
         };
 
-        peer_info.ping_latency.on_pong(latency);
-        peer_info.ping_state = PingState::Idle {
-            last_pong_at: Instant::now(),
-        };
-
-        let avg_latency = peer_info.ping_latency.average();
+        let avg_latency = peer_info.ping_latency.record_pong(latency);
+        peer_info.ping_state = PingState::idle();
 
         tracing::trace!("Received pong from {peer_id} (Avg. Latency: {avg_latency}ms)");
 
