@@ -5,6 +5,8 @@ pub use self::blocks_first::BlocksFirstDownloader;
 pub use self::headers_first::HeadersFirstDownloader;
 
 use crate::orphan_blocks_pool::OrphanBlocksPool;
+use crate::peer_store::PeerStoreHandle;
+use crate::PeerId;
 use bitcoin::{Block as BitcoinBlock, BlockHash};
 use sc_consensus::BlockImportError;
 use sc_consensus_nakamoto::ImportManyBlocksResult;
@@ -87,10 +89,11 @@ pub(crate) struct BlockDownloadManager {
     import_queue_is_overloaded: bool,
     /// Last time the log of too many blocks in the queue was printed.
     last_overloaded_queue_log_time: Option<Instant>,
+    peer_store_handle: PeerStoreHandle,
 }
 
 impl BlockDownloadManager {
-    fn new() -> Self {
+    fn new(peer_store_handle: PeerStoreHandle) -> Self {
         Self {
             requested_blocks: HashSet::new(),
             downloaded_blocks: Vec::new(),
@@ -101,6 +104,7 @@ impl BlockDownloadManager {
             last_progress_time: Instant::now(),
             import_queue_is_overloaded: false,
             last_overloaded_queue_log_time: None,
+            peer_store_handle,
         }
     }
 
@@ -117,7 +121,7 @@ impl BlockDownloadManager {
     ///   increases, resulting in longer network response times for block retrieval.
     ///
     /// The timeout values are configurated arbitrarily.
-    fn is_stalled(&self) -> bool {
+    fn is_stalled(&self, peer_id: PeerId) -> bool {
         let stall_timeout = match self.best_queued_number {
             0..300_000 => 60,        // Standard timeout, 1 minute
             300_000..600_000 => 120, // Extended timeout, 2 minutes
@@ -125,7 +129,13 @@ impl BlockDownloadManager {
             _ => 300,
         };
 
-        self.last_progress_time.elapsed().as_secs() > stall_timeout
+        let stalled = self.last_progress_time.elapsed().as_secs() > stall_timeout;
+
+        if stalled {
+            self.peer_store_handle.increment_failure_count(peer_id);
+        }
+
+        stalled
     }
 
     fn block_exists(&self, block_hash: BlockHash) -> bool {
@@ -254,8 +264,14 @@ impl BlockDownloadManager {
             .unzip()
     }
 
-    /// Add the block the queue that is ready to be imported.
-    fn add_block(&mut self, block_number: u32, block_hash: BlockHash, block: BitcoinBlock) {
+    /// Add the block that is ready to be imported.
+    fn add_block(
+        &mut self,
+        block_number: u32,
+        block_hash: BlockHash,
+        block: BitcoinBlock,
+        from: PeerId,
+    ) {
         let mut insert_block = |block_number, block_hash, block| {
             self.downloaded_blocks.push(block);
             self.queued_blocks.insert(block_number, block_hash);
@@ -275,6 +291,9 @@ impl BlockDownloadManager {
                 insert_block(number, hash, child_block);
             }
         }
+
+        self.peer_store_handle
+            .increment_downloaded_blocks_count(from);
     }
 
     fn add_orphan_block(&mut self, block_hash: BlockHash, orphan_block: BitcoinBlock) {

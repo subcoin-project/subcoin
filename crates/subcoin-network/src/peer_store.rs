@@ -2,6 +2,8 @@
 //! to good peers without a long discovery process.
 
 use crate::{Latency, PeerId};
+use futures::StreamExt;
+use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -30,37 +32,97 @@ struct PeerStats {
 }
 
 impl PeerStats {
-    /// Returns true if `self` is a better peer than `other`.
+    /// Compares `self` with `other` to determine which peer is better.
+    ///
+    /// A peer is considered better based on the following criteria (in order):
+    /// 1. Fewer failures (disconnections, timeouts).
+    /// 2. More blocks successfully downloaded.
+    /// 3. Lower latency (better response time).
+    /// 4. More recent interaction (newer `last_seen` timestamp).
     fn is_better_than(&self, other: &Self) -> bool {
-        // First, compare latency (lower latency is better)
-        if self.latency < other.latency {
-            return true;
+        // 1. Prioritize peers with fewer failures.
+        if self.failure_count != other.failure_count {
+            return self.failure_count < other.failure_count;
         }
 
-        if self.latency > other.latency {
-            return false;
+        // 2. Next, prioritize peers with more blocks downloaded.
+        if self.downloaded_blocks_count != other.downloaded_blocks_count {
+            return self.downloaded_blocks_count > other.downloaded_blocks_count;
         }
 
-        // If latencies are the same, compare last_seen (newer is better)
+        // 3. Then, prioritize peers with lower latency.
+        if self.latency != other.latency {
+            return self.latency < other.latency;
+        }
+
+        // 4. Finally, if all else is equal, prefer peers that were seen more recently.
         self.last_seen > other.last_seen
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum PeerStoreMessage {
+    UpdatePeer(PeerId, Latency, SystemTime),
+    RemovePeer(PeerId),
+    IncrementDownloadedBlocksCount(PeerId),
+    IncrementFailureCount(PeerId),
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct PeerStoreHandle {
+    persistent_peer_latency_threshold: u128,
+    sender: TracingUnboundedSender<PeerStoreMessage>,
+}
+
+impl PeerStoreHandle {
+    /// Adds or updates a peer in the store if its latency is below the configured threshold.
+    pub(crate) fn add_peer_if_latency_acceptable(&self, peer_id: PeerId, latency: Latency) {
+        if latency < self.persistent_peer_latency_threshold {
+            let _ = self.sender.unbounded_send(PeerStoreMessage::UpdatePeer(
+                peer_id,
+                latency,
+                SystemTime::now(),
+            ));
+        }
+    }
+
+    pub(crate) fn remove_peer(&self, peer_id: PeerId) {
+        let _ = self
+            .sender
+            .unbounded_send(PeerStoreMessage::RemovePeer(peer_id));
+    }
+
+    pub(crate) fn increment_downloaded_blocks_count(&self, peer_id: PeerId) {
+        let _ = self
+            .sender
+            .unbounded_send(PeerStoreMessage::IncrementDownloadedBlocksCount(peer_id));
+    }
+
+    pub(crate) fn increment_failure_count(&self, peer_id: PeerId) {
+        let _ = self
+            .sender
+            .unbounded_send(PeerStoreMessage::IncrementFailureCount(peer_id));
     }
 }
 
 /// Manages a set of high-quality peers and periodically persists them to disk.
 #[derive(Debug)]
-pub struct PeerStore {
+pub(crate) struct PeerStore {
     peers: HashMap<PeerId, PeerStats>,
     sorted_peers: Vec<PeerId>,
     peers_changed: bool,
     capacity: usize,
-    good_peer_latency_threshold: u128,
     file_path: PathBuf,
     last_saved_at: Instant,
+    receiver: TracingUnboundedReceiver<PeerStoreMessage>,
 }
 
 impl PeerStore {
-    /// Constructs a new instance of [`PeerStore`].
-    pub fn new(base_path: &Path, capacity: usize, good_peer_latency_threshold: u128) -> Self {
+    pub(crate) fn new(
+        base_path: &Path,
+        capacity: usize,
+        persistent_peer_latency_threshold: u128,
+    ) -> (Self, Vec<PeerId>, PeerStoreHandle) {
         let file_path = base_path.join(PEER_STORE_FILE_NAME);
 
         let peers = load_peers(&file_path)
@@ -69,27 +131,54 @@ impl PeerStore {
             })
             .unwrap_or_default();
 
-        let sorted_peers = peers.keys().cloned().collect();
+        let persistent_peers = peers.keys().cloned().collect::<Vec<_>>();
 
-        Self {
+        let (sender, receiver) = tracing_unbounded("mpsc_subcoin_peer_store", 10_000);
+
+        let peer_store = Self {
             peers,
-            sorted_peers,
+            sorted_peers: persistent_peers.clone(),
             capacity: capacity.min(MAX_CAPACITY),
             file_path,
             peers_changed: false,
-            good_peer_latency_threshold,
             last_saved_at: Instant::now(),
-        }
+            receiver,
+        };
+
+        (
+            peer_store,
+            persistent_peers,
+            PeerStoreHandle {
+                persistent_peer_latency_threshold,
+                sender,
+            },
+        )
     }
 
-    pub fn peer_set(&self) -> Vec<PeerId> {
-        self.peers.keys().cloned().collect()
-    }
-
-    /// Adds or updates a peer in the store if its latency is below the configured threshold.
-    pub fn add_peer_if_latency_acceptable(&mut self, peer_id: PeerId, latency: Latency) {
-        if latency < self.good_peer_latency_threshold {
-            self.add_or_update_peer(peer_id, latency, SystemTime::now());
+    pub(crate) async fn run(mut self) {
+        while let Some(msg) = self.receiver.next().await {
+            match msg {
+                PeerStoreMessage::UpdatePeer(peer_id, latency, last_seen) => {
+                    self.add_or_update_peer(peer_id, latency, last_seen);
+                }
+                PeerStoreMessage::RemovePeer(peer_id) => {
+                    self.remove_peer(peer_id);
+                }
+                PeerStoreMessage::IncrementDownloadedBlocksCount(peer_id) => {
+                    if let Some(peer) = self.peers.get_mut(&peer_id) {
+                        peer.downloaded_blocks_count += 1;
+                        self.peers_changed = true;
+                        self.process_peer_changes();
+                    }
+                }
+                PeerStoreMessage::IncrementFailureCount(peer_id) => {
+                    if let Some(peer) = self.peers.get_mut(&peer_id) {
+                        peer.failure_count += 1;
+                        self.peers_changed = true;
+                        self.process_peer_changes();
+                    }
+                }
+            }
         }
     }
 
@@ -128,8 +217,8 @@ impl PeerStore {
         }
 
         self.peers.insert(peer_id, new_peer);
-        self.peers_changed = true;
 
+        self.peers_changed = true;
         self.process_peer_changes();
     }
 
@@ -149,7 +238,7 @@ impl PeerStore {
         if self.peers_changed && self.last_saved_at.elapsed().as_secs() > SAVE_INTERVAL {
             match self.save_peers() {
                 Ok(()) => {
-                    self.last_saved_at = std::time::Instant::now();
+                    self.last_saved_at = Instant::now();
                     self.peers_changed = false;
                 }
                 Err(err) => {

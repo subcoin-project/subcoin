@@ -1,4 +1,5 @@
 use crate::block_downloader::BlockDownloadManager;
+use crate::peer_store::PeerStoreHandle;
 use crate::sync::{LocatorRequest, SyncAction, SyncRequest};
 use crate::{Error, PeerId, SyncStatus};
 use bitcoin::blockdata::block::Header as BitcoinHeader;
@@ -142,6 +143,7 @@ where
         header_verifier: HeaderVerifier<Block, Client>,
         peer_id: PeerId,
         target_block_number: u32,
+        peer_store_handle: PeerStoreHandle,
     ) -> (Self, SyncAction) {
         let mut headers_first_sync = Self {
             client,
@@ -152,7 +154,7 @@ where
                 headers: IndexMap::new(),
                 completed_range: None,
             },
-            download_manager: BlockDownloadManager::new(),
+            download_manager: BlockDownloadManager::new(peer_store_handle),
             last_locator_start: 0u32,
             target_block_number,
             _phantom: Default::default(),
@@ -237,7 +239,7 @@ where
             }
         }
 
-        if self.download_manager.is_stalled() {
+        if self.download_manager.is_stalled(self.peer_id) {
             return SyncAction::RestartSyncWithStalledPeer(self.peer_id);
         }
 
@@ -526,7 +528,7 @@ where
             tracing::trace!("Add pending block #{block_number},{block_hash}");
 
             self.download_manager
-                .add_block(block_number, block_hash, block);
+                .add_block(block_number, block_hash, block, from);
 
             let should_request_more_headers = match block_download {
                 BlockDownload::AllBlocks { start, end } => {

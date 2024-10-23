@@ -4,7 +4,7 @@ use crate::network::{
     IncomingTransaction, NetworkStatus, NetworkWorkerMessage, SendTransactionResult,
 };
 use crate::peer_manager::{Config, NewPeer, PeerManager, SlowPeer, PEER_LATENCY_THRESHOLD};
-use crate::peer_store::PeerStore;
+use crate::peer_store::PeerStoreHandle;
 use crate::sync::{ChainSync, LocatorRequest, SyncAction, SyncRequest};
 use crate::transaction_manager::TransactionManager;
 use crate::{Bandwidth, Error, PeerId, SyncStrategy};
@@ -55,7 +55,7 @@ pub struct Params<Block, Client> {
     pub max_outbound_peers: usize,
     /// Whether to enable block sync on start.
     pub enable_block_sync: bool,
-    pub peer_store: PeerStore,
+    pub peer_store_handle: PeerStoreHandle,
 }
 
 /// [`NetworkWorker`] is responsible for processing the network events.
@@ -63,7 +63,7 @@ pub struct NetworkWorker<Block, Client> {
     config: Config,
     network_event_receiver: UnboundedReceiver<Event>,
     peer_manager: PeerManager<Block, Client>,
-    peer_store: PeerStore,
+    peer_store_handle: PeerStoreHandle,
     transaction_manager: TransactionManager,
     chain_sync: ChainSync<Block, Client>,
     metrics: Option<Metrics>,
@@ -86,7 +86,7 @@ where
             connection_initiator,
             max_outbound_peers,
             enable_block_sync,
-            peer_store,
+            peer_store_handle,
         } = params;
 
         let config = Config::new();
@@ -113,12 +113,13 @@ where
             sync_strategy,
             is_major_syncing,
             enable_block_sync,
+            peer_store_handle.clone(),
         );
 
         Self {
             network_event_receiver,
             peer_manager,
-            peer_store,
+            peer_store_handle,
             transaction_manager: TransactionManager::new(),
             chain_sync,
             metrics,
@@ -177,12 +178,12 @@ where
             Event::OutboundConnectionFailure { peer_addr, reason } => {
                 self.peer_manager
                     .on_outbound_connection_failure(peer_addr, reason);
-                self.peer_store.remove_peer(peer_addr);
+                self.peer_store_handle.remove_peer(peer_addr);
             }
             Event::Disconnect { peer_addr, reason } => {
                 self.peer_manager.disconnect(peer_addr, reason);
                 self.chain_sync.remove_peer(peer_addr);
-                self.peer_store.remove_peer(peer_addr);
+                self.peer_store_handle.remove_peer(peer_addr);
             }
             Event::PeerMessage {
                 from,
@@ -348,7 +349,7 @@ where
                             self.peer_manager
                                 .disconnect(from, Error::PingLatencyTooHigh);
                             self.chain_sync.remove_peer(from);
-                            self.peer_store.remove_peer(from);
+                            self.peer_store_handle.remove_peer(from);
                         } else {
                             if self.chain_sync.peers.contains_key(&from) {
                                 self.chain_sync.update_peer_latency(from, avg_latency);
@@ -362,14 +363,14 @@ where
                                     latency: avg_latency,
                                 });
                             }
-                            self.peer_store
+                            self.peer_store_handle
                                 .add_peer_if_latency_acceptable(from, avg_latency);
                         }
                     }
                     Err(err) => {
                         self.peer_manager.disconnect(from, err);
                         self.chain_sync.remove_peer(from);
-                        self.peer_store.remove_peer(from);
+                        self.peer_store_handle.remove_peer(from);
                     }
                 }
                 Ok(SyncAction::None)

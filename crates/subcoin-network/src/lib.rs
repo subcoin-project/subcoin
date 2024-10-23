@@ -358,13 +358,13 @@ where
             tracing::info!("Subcoin block sync is disabled until Substrate fast sync is complete");
         }
 
-        let peer_store = PeerStore::new(
+        let (peer_store, persistent_peers, peer_store_handle) = PeerStore::new(
             &config.base_path,
             config.max_outbound_peers,
             config.persistent_peer_latency_threshold,
         );
 
-        let persistent_peers = peer_store.peer_set();
+        spawn_handle.spawn("peer-store", None, peer_store.run());
 
         let network_worker = NetworkWorker::new(
             worker::Params {
@@ -380,7 +380,7 @@ where
                 connection_initiator: connection_initiator.clone(),
                 max_outbound_peers: config.max_outbound_peers,
                 enable_block_sync: config.enable_block_sync_on_startup,
-                peer_store,
+                peer_store_handle,
             },
             registry.as_ref(),
         );

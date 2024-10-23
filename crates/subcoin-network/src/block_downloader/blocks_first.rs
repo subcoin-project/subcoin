@@ -1,4 +1,5 @@
 use crate::block_downloader::BlockDownloadManager;
+use crate::peer_store::PeerStoreHandle;
 use crate::sync::{LocatorRequest, SyncAction, SyncRequest};
 use crate::{Error, PeerId, SyncStatus};
 use bitcoin::hashes::Hash;
@@ -60,13 +61,18 @@ where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore,
 {
-    pub(crate) fn new(client: Arc<Client>, peer_id: PeerId, peer_best: u32) -> (Self, SyncRequest) {
+    pub(crate) fn new(
+        client: Arc<Client>,
+        peer_id: PeerId,
+        peer_best: u32,
+        peer_store_handle: PeerStoreHandle,
+    ) -> (Self, SyncRequest) {
         let mut blocks_first_sync = Self {
             peer_id,
             client,
             target_block_number: peer_best,
             state: State::Idle,
-            download_manager: BlockDownloadManager::new(),
+            download_manager: BlockDownloadManager::new(peer_store_handle),
             last_locator_start: 0u32,
             pending_block_requests: Vec::new(),
             requested_blocks_count: 0,
@@ -131,7 +137,7 @@ where
             return SyncAction::SwitchToIdle;
         }
 
-        if self.download_manager.is_stalled() {
+        if self.download_manager.is_stalled(self.peer_id) {
             return SyncAction::RestartSyncWithStalledPeer(self.peer_id);
         }
 
@@ -264,7 +270,7 @@ where
             tracing::trace!("Add pending block #{block_number},{block_hash}");
 
             self.download_manager
-                .add_block(block_number, block_hash, block);
+                .add_block(block_number, block_hash, block, from);
 
             self.requested_blocks_count -= 1;
 
