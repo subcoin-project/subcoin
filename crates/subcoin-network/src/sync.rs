@@ -474,7 +474,7 @@ where
     pub(super) fn switch_to_idle(&mut self) {
         tracing::debug!(
             best_number = self.client.best_number(),
-            "Blocks-First sync completed, switching to Idle"
+            "Blocks-First sync completed, switching to Syncing::Idle"
         );
         self.update_syncing_state(Syncing::Idle);
     }
@@ -520,6 +520,9 @@ where
                     if let Inventory::Block(block_hash) = inventories[0] {
                         if !self.inflight_announced_blocks.contains(&block_hash) {
                             // A new block maybe broadcasted via `inv` message.
+                            tracing::trace!(
+                                "Requesting a new block {block_hash} announced from {from:?}"
+                            );
                             return self.announced_blocks_request(vec![block_hash], from);
                         }
                     }

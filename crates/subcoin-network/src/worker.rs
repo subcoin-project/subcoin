@@ -3,11 +3,11 @@ use crate::metrics::Metrics;
 use crate::network::{
     IncomingTransaction, NetworkStatus, NetworkWorkerMessage, SendTransactionResult,
 };
-use crate::peer_manager::{Config, NewPeer, PeerManager, SlowPeer};
+use crate::peer_manager::{Config, NewPeer, PeerManager, SlowPeer, LATENCY_THRESHOLD};
 use crate::peer_store::PeerStore;
 use crate::sync::{ChainSync, LocatorRequest, SyncAction, SyncRequest};
 use crate::transaction_manager::TransactionManager;
-use crate::{Bandwidth, Error, Latency, PeerId, SyncStrategy};
+use crate::{Bandwidth, Error, PeerId, SyncStrategy};
 use bitcoin::p2p::message::{NetworkMessage, MAX_INV_SIZE};
 use bitcoin::p2p::message_blockdata::{GetBlocksMessage, GetHeadersMessage, Inventory};
 use futures::stream::FusedStream;
@@ -25,10 +25,6 @@ use tokio::time::MissedTickBehavior;
 
 /// Interval at which we perform time based maintenance
 const TICK_TIMEOUT: Duration = Duration::from_millis(1100);
-
-/// Threshold for peer latency in milliseconds, the default is 10 seconds.
-/// If a peer's latency exceeds this value, it will be considered a slow peer and may be evicted.
-const LATENCY_THRESHOLD: Latency = 1000;
 
 /// Network event.
 #[derive(Debug)]

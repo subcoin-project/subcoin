@@ -29,8 +29,12 @@ pub const PROTOCOL_VERSION: u32 = 70016;
 /// This version includes support for the `sendheaders` feature.
 pub const MIN_PROTOCOL_VERSION: u32 = 70012;
 
-/// Peer is considered as a slow one if the average ping latency is higher than 5 seconds.
-const SLOW_PEER_LATENCY: Latency = 5_000;
+/// Peer is considered as a slow one if the average ping latency is higher than 500ms.
+const SLOW_PEER_LATENCY: Latency = 500;
+
+/// Threshold for peer latency in milliseconds, the default is 1000ms.
+/// If a peer's latency exceeds this value, it will be considered a slow peer and may be evicted.
+pub const LATENCY_THRESHOLD: Latency = 1000;
 
 /// Interval for evicting the slowest peer, 10 minutes.
 ///
@@ -167,8 +171,8 @@ pub enum PingState {
 }
 
 impl PingState {
-    const PING_INTERVAL: Duration = Duration::from_secs(120);
     const PING_TIMEOUT: Duration = Duration::from_secs(30);
+    const PING_INTERVAL: Duration = Duration::from_secs(120);
 
     fn should_ping(&self) -> bool {
         match self {
@@ -366,15 +370,15 @@ where
                 self.connected_peers
                     .iter()
                     .filter_map(|(peer_id, peer_info)| {
-                        let average_latency = peer_info.ping_latency.average();
+                        let avg_latency = peer_info.ping_latency.average();
 
-                        if average_latency > SLOW_PEER_LATENCY {
-                            Some((peer_id, average_latency))
+                        if avg_latency > SLOW_PEER_LATENCY {
+                            Some((peer_id, avg_latency))
                         } else {
                             None
                         }
                     })
-                    .max_by_key(|(_peer_id, average_latency)| *average_latency)
+                    .max_by_key(|(_peer_id, avg_latency)| *avg_latency)
                     .map(|(peer_id, peer_latency)| SlowPeer {
                         peer_id: *peer_id,
                         peer_latency,
