@@ -50,6 +50,7 @@ use bitcoin::p2p::ServiceFlags;
 use bitcoin::{BlockHash, Network as BitcoinNetwork};
 use chrono::prelude::{DateTime, Local};
 use peer_manager::HandshakeState;
+use peer_store::PeerStoreHandle;
 use sc_client_api::{AuxStore, HeaderBackend};
 use sc_consensus_nakamoto::{BlockImportQueue, ChainParams, HeaderVerifier};
 use sc_service::SpawnTaskHandle;
@@ -358,13 +359,13 @@ where
             tracing::info!("Subcoin block sync is disabled until Substrate fast sync is complete");
         }
 
-        let (peer_store, persistent_peers, peer_store_handle) = PeerStore::new(
-            &config.base_path,
-            config.max_outbound_peers,
-            config.persistent_peer_latency_threshold,
-        );
+        let (sender, receiver) = tracing_unbounded("mpsc_subcoin_peer_store", 10_000);
+        let (peer_store, persistent_peers) =
+            PeerStore::new(&config.base_path, config.max_outbound_peers);
+        let peer_store_handle =
+            PeerStoreHandle::new(config.persistent_peer_latency_threshold, sender);
 
-        spawn_handle.spawn("peer-store", None, peer_store.run());
+        spawn_handle.spawn("peer-store", None, peer_store.run(receiver));
 
         let network_worker = NetworkWorker::new(
             worker::Params {

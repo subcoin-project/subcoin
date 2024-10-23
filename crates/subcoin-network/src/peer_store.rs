@@ -3,7 +3,7 @@
 
 use crate::{Latency, PeerId};
 use futures::StreamExt;
-use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
+use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -75,6 +75,16 @@ pub(crate) struct PeerStoreHandle {
 }
 
 impl PeerStoreHandle {
+    pub(crate) fn new(
+        persistent_peer_latency_threshold: u128,
+        sender: TracingUnboundedSender<PeerStoreMessage>,
+    ) -> Self {
+        Self {
+            persistent_peer_latency_threshold,
+            sender,
+        }
+    }
+
     /// Adds or updates a peer in the store if its latency is below the configured threshold.
     pub(crate) fn add_peer_if_latency_acceptable(&self, peer_id: PeerId, latency: Latency) {
         if latency < self.persistent_peer_latency_threshold {
@@ -114,15 +124,10 @@ pub(crate) struct PeerStore {
     capacity: usize,
     file_path: PathBuf,
     last_saved_at: Instant,
-    receiver: TracingUnboundedReceiver<PeerStoreMessage>,
 }
 
 impl PeerStore {
-    pub(crate) fn new(
-        base_path: &Path,
-        capacity: usize,
-        persistent_peer_latency_threshold: u128,
-    ) -> (Self, Vec<PeerId>, PeerStoreHandle) {
+    pub(crate) fn new(base_path: &Path, capacity: usize) -> (Self, Vec<PeerId>) {
         let file_path = base_path.join(PEER_STORE_FILE_NAME);
 
         let peers = load_peers(&file_path)
@@ -133,8 +138,6 @@ impl PeerStore {
 
         let persistent_peers = peers.keys().cloned().collect::<Vec<_>>();
 
-        let (sender, receiver) = tracing_unbounded("mpsc_subcoin_peer_store", 10_000);
-
         let peer_store = Self {
             peers,
             sorted_peers: persistent_peers.clone(),
@@ -142,21 +145,13 @@ impl PeerStore {
             file_path,
             peers_changed: false,
             last_saved_at: Instant::now(),
-            receiver,
         };
 
-        (
-            peer_store,
-            persistent_peers,
-            PeerStoreHandle {
-                persistent_peer_latency_threshold,
-                sender,
-            },
-        )
+        (peer_store, persistent_peers)
     }
 
-    pub(crate) async fn run(mut self) {
-        while let Some(msg) = self.receiver.next().await {
+    pub(crate) async fn run(mut self, mut receiver: TracingUnboundedReceiver<PeerStoreMessage>) {
+        while let Some(msg) = receiver.next().await {
             match msg {
                 PeerStoreMessage::UpdatePeer(peer_id, latency, last_seen) => {
                     self.add_or_update_peer(peer_id, latency, last_seen);
@@ -298,7 +293,7 @@ mod tests {
 
     #[test]
     fn test_peer_store() {
-        let mut peer_store = PeerStore::new(&PathBuf::from("/"), 10, 200);
+        let (mut peer_store, _) = PeerStore::new(&PathBuf::from("/"), 10, 200);
 
         let now = SystemTime::now();
         let peer1: PeerId = "127.0.0.1:8001".parse().unwrap();

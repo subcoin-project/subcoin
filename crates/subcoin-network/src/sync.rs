@@ -27,7 +27,7 @@ const LATENCY_IMPROVEMENT_THRESHOLD: u128 = 4;
 const LOW_LATENCY_CUTOFF: Latency = 20;
 
 /// The state of syncing between a Peer and ourselves.
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "camelCase")]
 pub enum PeerSyncState {
     /// Available for sync requests.
