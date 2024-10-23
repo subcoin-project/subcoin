@@ -306,12 +306,6 @@ where
 
                     let best_queued_number = self.download_manager.best_queued_number;
 
-                    tracing::debug!(
-                        best_number,
-                        best_queued_number,
-                        "Last getblocks finished, requesting more blocks",
-                    );
-
                     let end = self
                         .target_block_number
                         .min(best_queued_number + MAX_GET_BLOCKS_RESPONSE);
@@ -324,7 +318,12 @@ where
                             self.download_manager.queued_blocks.block_hash(height)
                         });
 
-                    // Last `getblocks` finished, fetch more blocks by sending a new `getblocks` request.
+                    tracing::debug!(
+                        best_number,
+                        best_queued_number,
+                        "Last `getblocks` finished, fetching more blocks",
+                    );
+
                     SyncAction::Request(SyncRequest::Blocks(LocatorRequest {
                         locator_hashes,
                         stop_hash: BlockHash::all_zeros(),

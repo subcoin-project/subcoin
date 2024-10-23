@@ -101,9 +101,9 @@ pub(crate) enum SyncAction {
 // might be in during the sync process.
 enum Syncing<Block, Client> {
     /// Blocks-First sync.
-    BlocksFirstSync(Box<BlocksFirstDownloader<Block, Client>>),
+    BlocksFirst(Box<BlocksFirstDownloader<Block, Client>>),
     /// Headers-First sync.
-    HeadersFirstSync(Box<HeadersFirstDownloader<Block, Client>>),
+    HeadersFirst(Box<HeadersFirstDownloader<Block, Client>>),
     /// Not syncing.
     ///
     /// This could indicate that the node is either fully synced
@@ -113,7 +113,7 @@ enum Syncing<Block, Client> {
 
 impl<Block, Client> Syncing<Block, Client> {
     fn is_major_syncing(&self) -> bool {
-        matches!(self, Self::BlocksFirstSync(_) | Self::HeadersFirstSync(_))
+        matches!(self, Self::BlocksFirst(_) | Self::HeadersFirst(_))
     }
 }
 
@@ -125,6 +125,7 @@ pub(crate) struct ChainSync<Block, Client> {
     header_verifier: HeaderVerifier<Block, Client>,
     /// The active peers that we are using to sync and their PeerSync status
     pub(crate) peers: HashMap<PeerId, PeerSync>,
+    /// Current syncing state.
     syncing: Syncing<Block, Client>,
     /// Handle of the import queue.
     import_queue: BlockImportQueue,
@@ -137,7 +138,7 @@ pub(crate) struct ChainSync<Block, Client> {
     /// Randomness generator.
     rng: fastrand::Rng,
     /// Broadcasted blocks that are being requested.
-    broadcasted_blocks: HashSet<BlockHash>,
+    inflight_announced_blocks: HashSet<BlockHash>,
     _phantom: PhantomData<Block>,
 }
 
@@ -159,13 +160,13 @@ where
             client,
             header_verifier,
             peers: HashMap::new(),
-            import_queue,
             syncing: Syncing::Idle,
+            import_queue,
             sync_strategy,
             is_major_syncing,
             enable_block_sync,
             rng: fastrand::Rng::new(),
-            broadcasted_blocks: HashSet::new(),
+            inflight_announced_blocks: HashSet::new(),
             _phantom: Default::default(),
         }
     }
@@ -173,16 +174,16 @@ where
     pub(super) fn sync_status(&self) -> SyncStatus {
         match &self.syncing {
             Syncing::Idle => SyncStatus::Idle,
-            Syncing::BlocksFirstSync(downloader) => downloader.sync_status(),
-            Syncing::HeadersFirstSync(downloader) => downloader.sync_status(),
+            Syncing::BlocksFirst(downloader) => downloader.sync_status(),
+            Syncing::HeadersFirst(downloader) => downloader.sync_status(),
         }
     }
 
     pub(super) fn on_tick(&mut self) -> SyncAction {
         match &mut self.syncing {
             Syncing::Idle => SyncAction::None,
-            Syncing::BlocksFirstSync(downloader) => downloader.on_tick(),
-            Syncing::HeadersFirstSync(downloader) => downloader.on_tick(),
+            Syncing::BlocksFirst(downloader) => downloader.on_tick(),
+            Syncing::HeadersFirst(downloader) => downloader.on_tick(),
         }
     }
 
@@ -255,11 +256,11 @@ where
         new_peer.state = PeerSyncState::DownloadingNew { start: our_best };
 
         match &mut self.syncing {
-            Syncing::BlocksFirstSync(downloader) => {
+            Syncing::BlocksFirst(downloader) => {
                 downloader.restart(new_peer.peer_id, new_peer.best_number);
                 true
             }
-            Syncing::HeadersFirstSync(downloader) => {
+            Syncing::HeadersFirst(downloader) => {
                 downloader.restart(new_peer.peer_id, new_peer.best_number);
                 true
             }
@@ -304,8 +305,8 @@ where
 
     pub(super) fn update_sync_peer_on_lower_latency(&mut self) {
         let current_sync_peer_id = match &self.syncing {
-            Syncing::BlocksFirstSync(downloader) => downloader.sync_peer(),
-            Syncing::HeadersFirstSync(downloader) => downloader.sync_peer(),
+            Syncing::BlocksFirst(downloader) => downloader.sync_peer(),
+            Syncing::HeadersFirst(downloader) => downloader.sync_peer(),
             Syncing::Idle => return,
         };
 
@@ -348,10 +349,10 @@ where
             let target_block_number = best_sync_peer.best_number;
 
             match &mut self.syncing {
-                Syncing::BlocksFirstSync(downloader) => {
+                Syncing::BlocksFirst(downloader) => {
                     downloader.update_sync_peer(peer_id, target_block_number);
                 }
-                Syncing::HeadersFirstSync(downloader) => {
+                Syncing::HeadersFirst(downloader) => {
                     downloader.update_sync_peer(peer_id, target_block_number);
                 }
                 Syncing::Idle => unreachable!("Must not be Idle as checked; qed"),
@@ -434,7 +435,7 @@ where
                     let (downloader, blocks_request) =
                         BlocksFirstDownloader::new(self.client.clone(), sync_peer, peer_best);
                     (
-                        Syncing::BlocksFirstSync(Box::new(downloader)),
+                        Syncing::BlocksFirst(Box::new(downloader)),
                         SyncAction::Request(blocks_request),
                     )
                 } else {
@@ -444,13 +445,13 @@ where
                         sync_peer,
                         peer_best,
                     );
-                    (Syncing::HeadersFirstSync(Box::new(downloader)), sync_action)
+                    (Syncing::HeadersFirst(Box::new(downloader)), sync_action)
                 }
             } else {
                 let (downloader, blocks_request) =
                     BlocksFirstDownloader::new(self.client.clone(), sync_peer, peer_best);
                 (
-                    Syncing::BlocksFirstSync(Box::new(downloader)),
+                    Syncing::BlocksFirst(Box::new(downloader)),
                     SyncAction::Request(blocks_request),
                 )
             };
@@ -498,40 +499,40 @@ where
             return None;
         };
 
-        let (blocks_first_downloader, blocks_sync_request) = BlocksFirstDownloader::new(
+        let (blocks_first_downloader, blocks_request) = BlocksFirstDownloader::new(
             self.client.clone(),
             best_peer.peer_id,
             best_peer.best_number,
         );
 
-        tracing::debug!("Headers-first sync is complete, continuing with blocks-first sync");
-        self.update_syncing_state(Syncing::BlocksFirstSync(Box::new(blocks_first_downloader)));
+        tracing::debug!("Headers-First sync completed, continuing with blocks-first sync");
+        self.update_syncing_state(Syncing::BlocksFirst(Box::new(blocks_first_downloader)));
 
-        Some(blocks_sync_request)
+        Some(blocks_request)
     }
 
     // NOTE: `inv` can be received unsolicited as an announcement of a new block,
     // or in reply to `getblocks`.
     pub(super) fn on_inv(&mut self, inventories: Vec<Inventory>, from: PeerId) -> SyncAction {
         match &mut self.syncing {
-            Syncing::BlocksFirstSync(downloader) => downloader.on_inv(inventories, from),
-            Syncing::HeadersFirstSync(_) => SyncAction::None,
             Syncing::Idle => {
                 if inventories.len() == 1 {
                     if let Inventory::Block(block_hash) = inventories[0] {
-                        if !self.broadcasted_blocks.contains(&block_hash) {
+                        if !self.inflight_announced_blocks.contains(&block_hash) {
                             // A new block maybe broadcasted via `inv` message.
-                            return self.prepare_broadcasted_blocks_request(vec![block_hash], from);
+                            return self.announced_blocks_request(vec![block_hash], from);
                         }
                     }
                 }
                 SyncAction::None
             }
+            Syncing::BlocksFirst(downloader) => downloader.on_inv(inventories, from),
+            Syncing::HeadersFirst(_) => SyncAction::None,
         }
     }
 
     pub(super) fn on_block(&mut self, block: BitcoinBlock, from: PeerId) -> SyncAction {
-        if self.broadcasted_blocks.remove(&block.block_hash()) {
+        if self.inflight_announced_blocks.remove(&block.block_hash()) {
             self.import_queue.import_blocks(ImportBlocks {
                 origin: BlockOrigin::NetworkBroadcast,
                 blocks: vec![block],
@@ -541,12 +542,12 @@ where
 
         match &mut self.syncing {
             Syncing::Idle => SyncAction::None,
-            Syncing::BlocksFirstSync(downloader) => downloader.on_block(block, from),
-            Syncing::HeadersFirstSync(downloader) => downloader.on_block(block, from),
+            Syncing::BlocksFirst(downloader) => downloader.on_block(block, from),
+            Syncing::HeadersFirst(downloader) => downloader.on_block(block, from),
         }
     }
 
-    fn prepare_broadcasted_blocks_request(
+    fn announced_blocks_request(
         &mut self,
         block_hashes: impl IntoIterator<Item = BlockHash>,
         from: PeerId,
@@ -555,7 +556,7 @@ where
             block_hashes
                 .into_iter()
                 .map(|block_hash| {
-                    self.broadcasted_blocks.insert(block_hash);
+                    self.inflight_announced_blocks.insert(block_hash);
                     Inventory::Block(block_hash)
                 })
                 .collect(),
@@ -567,8 +568,8 @@ where
 
     pub(super) fn on_headers(&mut self, headers: Vec<BitcoinHeader>, from: PeerId) -> SyncAction {
         match &mut self.syncing {
-            Syncing::HeadersFirstSync(downloader) => downloader.on_headers(headers, from),
-            Syncing::BlocksFirstSync(_) | Syncing::Idle => {
+            Syncing::HeadersFirst(downloader) => downloader.on_headers(headers, from),
+            Syncing::BlocksFirst(_) | Syncing::Idle => {
                 if headers.is_empty() {
                     return SyncAction::None;
                 }
@@ -582,9 +583,7 @@ where
                 if headers[0].prev_blockhash == best_hash {
                     for (index, header) in headers.iter().enumerate() {
                         if !self.header_verifier.has_valid_proof_of_work(header) {
-                            tracing::error!(
-                                "Invalid header at index {index} in headers message from {from:?}"
-                            );
+                            tracing::error!(?from, "Invalid header at index {index} in headers");
                             return SyncAction::Disconnect(
                                 from,
                                 Error::BadProofOfWork(header.block_hash()),
@@ -592,7 +591,7 @@ where
                         }
                     }
 
-                    return self.prepare_broadcasted_blocks_request(
+                    return self.announced_blocks_request(
                         headers.into_iter().map(|header| header.block_hash()),
                         from,
                     );
@@ -615,8 +614,8 @@ where
     pub(super) fn on_blocks_processed(&mut self, results: ImportManyBlocksResult) {
         let download_manager = match &mut self.syncing {
             Syncing::Idle => return,
-            Syncing::BlocksFirstSync(downloader) => downloader.download_manager(),
-            Syncing::HeadersFirstSync(downloader) => downloader.download_manager(),
+            Syncing::BlocksFirst(downloader) => downloader.download_manager(),
+            Syncing::HeadersFirst(downloader) => downloader.download_manager(),
         };
         download_manager.handle_processed_blocks(results);
     }
@@ -624,8 +623,8 @@ where
     pub(super) fn import_pending_blocks(&mut self) {
         let download_manager = match &mut self.syncing {
             Syncing::Idle => return,
-            Syncing::BlocksFirstSync(downloader) => downloader.download_manager(),
-            Syncing::HeadersFirstSync(downloader) => downloader.download_manager(),
+            Syncing::BlocksFirst(downloader) => downloader.download_manager(),
+            Syncing::HeadersFirst(downloader) => downloader.download_manager(),
         };
 
         if !download_manager.has_pending_blocks() {

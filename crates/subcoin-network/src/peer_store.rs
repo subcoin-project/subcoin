@@ -18,12 +18,18 @@ const MAX_CAPACITY: usize = 20;
 const SAVE_INTERVAL: u64 = 60 * 5;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-struct GoodPeer {
+struct PeerStats {
+    /// The current latency to the peer, in milliseconds.
     latency: Latency,
+    /// Timestamp when the peer was last seen.
     last_seen: SystemTime,
+    /// Number of blocks successfully downloaded from the peer.
+    downloaded_blocks_count: usize,
+    /// The number of failed interactions (e.g., disconnections, timeouts).
+    failure_count: usize,
 }
 
-impl GoodPeer {
+impl PeerStats {
     /// Returns true if `self` is a better peer than `other`.
     fn is_better_than(&self, other: &Self) -> bool {
         // First, compare latency (lower latency is better)
@@ -43,7 +49,7 @@ impl GoodPeer {
 /// Manages a set of high-quality peers and periodically persists them to disk.
 #[derive(Debug)]
 pub struct PeerStore {
-    peers: HashMap<PeerId, GoodPeer>,
+    peers: HashMap<PeerId, PeerStats>,
     sorted_peers: Vec<PeerId>,
     peers_changed: bool,
     capacity: usize,
@@ -72,11 +78,7 @@ impl PeerStore {
         Self {
             peers,
             sorted_peers,
-            capacity: if capacity > MAX_CAPACITY {
-                MAX_CAPACITY
-            } else {
-                capacity
-            },
+            capacity: capacity.min(MAX_CAPACITY),
             file_path,
             peers_changed: false,
             good_peer_latency_threshold,
@@ -96,7 +98,12 @@ impl PeerStore {
     }
 
     fn add_or_update_peer(&mut self, peer_id: PeerId, latency: Latency, last_seen: SystemTime) {
-        let new_peer = GoodPeer { latency, last_seen };
+        let new_peer = PeerStats {
+            latency,
+            last_seen,
+            downloaded_blocks_count: 0,
+            failure_count: 0,
+        };
 
         if let Some(peer) = self.peers.get_mut(&peer_id) {
             peer.latency = latency;
@@ -180,7 +187,7 @@ impl PeerStore {
     }
 }
 
-fn load_peers(file_path: &Path) -> std::io::Result<HashMap<PeerId, GoodPeer>> {
+fn load_peers(file_path: &Path) -> std::io::Result<HashMap<PeerId, PeerStats>> {
     match std::fs::File::open(file_path) {
         Ok(mut file) => {
             let mut data = String::new();

@@ -27,7 +27,7 @@ const MAX_HEADERS_SIZE: usize = 2000;
 /// this does not guarantee the block responses from peers are ordered, but it's helpful
 /// for the peers with good connections (i.e., when syncing from a local node).
 #[derive(Debug, Clone)]
-enum BlockDownloadRange {
+enum BlockDownload {
     /// Request all blocks within the specified range in a single `getdata` message.
     ///
     /// This option is only used when the sync node is a local node.
@@ -72,7 +72,7 @@ enum State {
         end: IndexedBlock,
     },
     /// Actively downloading blocks corresponding to previously downloaded headers (start, end].
-    DownloadingBlocks(BlockDownloadRange),
+    DownloadingBlocks(BlockDownload),
     /// All blocks up to the target block have been successfully
     /// downloaded, the download process has been completed.
     Completed,
@@ -157,7 +157,7 @@ where
             target_block_number,
             _phantom: Default::default(),
         };
-        let sync_action = headers_first_sync.prepare_headers_request_action();
+        let sync_action = headers_first_sync.headers_request_action();
         (headers_first_sync, sync_action)
     }
 
@@ -179,6 +179,10 @@ where
         self.peer_id
     }
 
+    pub(crate) fn download_manager(&mut self) -> &mut BlockDownloadManager {
+        &mut self.download_manager
+    }
+
     pub(crate) fn update_sync_peer(&mut self, peer_id: PeerId, target_block_number: u32) {
         self.peer_id = peer_id;
         self.target_block_number = target_block_number;
@@ -186,7 +190,7 @@ where
 
     pub(crate) fn on_tick(&mut self) -> SyncAction {
         if matches!(self.state, State::RestartingHeaders) {
-            return self.prepare_headers_request_action();
+            return self.headers_request_action();
         }
 
         if let State::RestartingBlocks { start, end } = self.state {
@@ -202,7 +206,7 @@ where
             } else {
                 // Resume blocks or headers request.
                 match &mut self.state {
-                    State::DownloadingBlocks(BlockDownloadRange::Batches {
+                    State::DownloadingBlocks(BlockDownload::Batches {
                         downloaded_batch,
                         waiting,
                         paused,
@@ -223,11 +227,11 @@ where
                                 .clone_from(&next_batch);
                             return self.blocks_request_action(next_batch);
                         } else {
-                            return self.prepare_headers_request_action();
+                            return self.headers_request_action();
                         }
                     }
                     _ => {
-                        return self.prepare_headers_request_action();
+                        return self.headers_request_action();
                     }
                 }
             }
@@ -253,7 +257,7 @@ where
         }
     }
 
-    fn prepare_headers_request_action(&mut self) -> SyncAction {
+    fn headers_request_action(&mut self) -> SyncAction {
         let our_best = self.client.best_number();
 
         let Some(checkpoint) = crate::checkpoint::next_checkpoint(our_best + 1) else {
@@ -299,10 +303,6 @@ where
             stop_hash: checkpoint.hash,
             from: self.peer_id,
         }))
-    }
-
-    pub(crate) fn download_manager(&mut self) -> &mut BlockDownloadManager {
-        &mut self.download_manager
     }
 
     // Handle `headers` message.
@@ -433,11 +433,11 @@ where
                 best_queued_number = self.download_manager.best_queued_number,
                 requested_blocks_count = get_data_msg.len(),
                 missing_blocks_count,
-                downloaded_headers = self.downloaded_headers.headers.len(),
+                downloaded_headers_count = self.downloaded_headers.headers.len(),
                 "Downloaded headers from {start} to {end}, requesting blocks",
             );
 
-            self.state = State::DownloadingBlocks(BlockDownloadRange::AllBlocks { start, end });
+            self.state = State::DownloadingBlocks(BlockDownload::AllBlocks { start, end });
 
             get_data_msg
         } else {
@@ -475,12 +475,12 @@ where
                 best_number,
                 best_queued_number = self.download_manager.best_queued_number,
                 missing_blocks_count,
-                downloaded_headers = self.downloaded_headers.headers.len(),
+                downloaded_headers_count = self.downloaded_headers.headers.len(),
                 "Headers downloaded, requesting {} blocks in batches (1/{total_batches})",
                 get_data_msg.len(),
             );
 
-            self.state = State::DownloadingBlocks(BlockDownloadRange::Batches {
+            self.state = State::DownloadingBlocks(BlockDownload::Batches {
                 downloaded_batch: 0,
                 waiting: batches,
                 paused: false,
@@ -495,8 +495,8 @@ where
     pub(crate) fn on_block(&mut self, block: BitcoinBlock, from: PeerId) -> SyncAction {
         let block_hash = block.block_hash();
 
-        let block_download_range = match &mut self.state {
-            State::DownloadingBlocks(download_range) => download_range,
+        let block_download = match &mut self.state {
+            State::DownloadingBlocks(block_download) => block_download,
             state => {
                 // TODO: we may receive the blocks from a peer that has been considered as stalled,
                 // should we try to cache and use such blocks since the bandwidth has been consumed
@@ -528,8 +528,8 @@ where
             self.download_manager
                 .add_block(block_number, block_hash, block);
 
-            let should_request_more_headers = match block_download_range {
-                BlockDownloadRange::AllBlocks { start, end } => {
+            let should_request_more_headers = match block_download {
+                BlockDownload::AllBlocks { start, end } => {
                     if end.hash == block_hash {
                         tracing::debug!("Downloaded blocks in ({start}, {end}]");
                         true
@@ -537,7 +537,7 @@ where
                         false
                     }
                 }
-                BlockDownloadRange::Batches {
+                BlockDownload::Batches {
                     downloaded_batch,
                     waiting,
                     paused,
@@ -545,9 +545,11 @@ where
                     if self.download_manager.requested_blocks.is_empty() {
                         *downloaded_batch += 1;
 
+                        let best_number = self.client.best_number();
+
                         if self
                             .download_manager
-                            .update_and_check_queue_status(self.client.best_number())
+                            .update_and_check_queue_status(best_number)
                         {
                             *paused = true;
                             return SyncAction::None;
@@ -555,7 +557,7 @@ where
 
                         if let Some(next_batch) = waiting.pop_front() {
                             tracing::debug!(
-                                best_number = self.client.best_number(),
+                                best_number,
                                 best_queued_number = self.download_manager.best_queued_number,
                                 "📦 Downloaded {} blocks in batches ({}/{})",
                                 next_batch.len(),
