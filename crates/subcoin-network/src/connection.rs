@@ -1,5 +1,5 @@
 use crate::worker::Event;
-use crate::{Bandwidth, Error, Latency, PeerId};
+use crate::{Bandwidth, Error, PeerId};
 use bitcoin::consensus::{encode, Decodable, Encodable};
 use bitcoin::p2p::message::{NetworkMessage, RawNetworkMessage, MAX_MSG_SIZE};
 use futures::FutureExt;
@@ -56,10 +56,6 @@ pub struct NewConnection {
     /// Indicates whether the connection was initiated by the
     /// local node (`Outbound`) or by the remote peer (`Inbound`).
     pub direction: Direction,
-    /// Time took to make the connection.
-    ///
-    /// Only make sense for the outbound connection.
-    pub connect_latency: Latency,
     /// Channel for sending messages to the peer over this connection.
     ///
     /// This `ConnectionWriter` enables the local node to transmit data
@@ -218,7 +214,6 @@ impl ConnectionInitiator {
                 peer_addr,
                 local_addr,
                 direction,
-                connect_latency,
                 writer: network_message_sender,
                 disconnect_signal: disconnect_signal.clone(),
             }))

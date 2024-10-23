@@ -11,7 +11,6 @@ use sc_consensus_nakamoto::{
 use serde::{Deserialize, Serialize};
 use sp_consensus::BlockOrigin;
 use sp_runtime::traits::Block as BlockT;
-use std::cmp::Ordering as CmpOrdering;
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -21,7 +20,7 @@ use subcoin_primitives::{BackendExt, ClientExt};
 // Do major sync when the current tip falls behind the network by 144 blocks (roughly one day).
 const MAJOR_SYNC_GAP: u32 = 144;
 
-const LATENCY_IMPROVEMENT_THRESHOLD: f64 = 1.2;
+const LATENCY_IMPROVEMENT_THRESHOLD: u128 = 4;
 
 // Define a constant for the low ping latency cutoff, in milliseconds.
 const LOW_LATENCY_CUTOFF: Latency = 20;
@@ -45,38 +44,6 @@ impl PeerSyncState {
     }
 }
 
-/// Letency of the peer.
-///
-/// The initial connection time is used as the baseline, the ping mechanism is
-/// used for more accurate latency estimate after the connection is established.
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum PeerLatency {
-    /// Connection latency.
-    ///
-    /// Only make sense for the outbound connection.
-    Connect(Latency),
-    /// Average ping latency.
-    Ping(Latency),
-}
-
-impl Ord for PeerLatency {
-    fn cmp(&self, other: &Self) -> CmpOrdering {
-        match (self, other) {
-            (Self::Connect(a), Self::Connect(b)) => a.cmp(b),
-            (Self::Connect(_), Self::Ping(_)) => CmpOrdering::Less,
-            (Self::Ping(_), Self::Connect(_)) => CmpOrdering::Greater,
-            (Self::Ping(a), Self::Ping(b)) => a.cmp(b),
-        }
-    }
-}
-
-impl PartialOrd for PeerLatency {
-    fn partial_cmp(&self, other: &Self) -> Option<CmpOrdering> {
-        Some(self.cmp(other))
-    }
-}
-
 /// Contains all the data about a Peer that we are trying to sync with.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -86,7 +53,7 @@ pub struct PeerSync {
     /// The number of the best block that we've seen for this peer.
     pub best_number: u32,
     /// Latency of connection to this peer.
-    pub latency: PeerLatency,
+    pub latency: Latency,
     /// The state of syncing this peer is in for us, generally categories
     /// into `Available` or "busy" with something as defined by `PeerSyncState`.
     pub state: PeerSyncState,
@@ -328,10 +295,11 @@ where
         self.peers.remove(&peer_id);
     }
 
-    pub(super) fn set_peer_latency(&mut self, peer_id: PeerId, avg_latency: Latency) {
+    pub(super) fn update_peer_latency(&mut self, peer_id: PeerId, avg_latency: Latency) {
         self.peers.entry(peer_id).and_modify(|peer| {
-            peer.latency = PeerLatency::Ping(avg_latency);
+            peer.latency = avg_latency;
         });
+        self.update_sync_peer_on_lower_latency();
     }
 
     pub(super) fn update_sync_peer_on_lower_latency(&mut self) {
@@ -341,7 +309,7 @@ where
             Syncing::Idle => return,
         };
 
-        let Some(PeerLatency::Ping(current_latency)) = self
+        let Some(current_latency) = self
             .peers
             .get(&current_sync_peer_id)
             .map(|peer| peer.latency)
@@ -372,28 +340,28 @@ where
             return;
         };
 
-        if let PeerLatency::Ping(best_latency) = best_sync_peer.latency {
-            // Update sync peer if the latency improvement is significant.
-            if current_latency as f64 / best_latency as f64 > LATENCY_IMPROVEMENT_THRESHOLD {
-                let peer_id = best_sync_peer.peer_id;
-                let target_block_number = best_sync_peer.best_number;
+        let best_latency = best_sync_peer.latency;
 
-                match &mut self.syncing {
-                    Syncing::BlocksFirstSync(downloader) => {
-                        downloader.update_sync_peer(peer_id, target_block_number);
-                    }
-                    Syncing::HeadersFirstSync(downloader) => {
-                        downloader.update_sync_peer(peer_id, target_block_number);
-                    }
-                    Syncing::Idle => unreachable!("Must not be Idle as checked; qed"),
+        // Update sync peer if the latency improvement is significant.
+        if current_latency / best_latency > LATENCY_IMPROVEMENT_THRESHOLD {
+            let peer_id = best_sync_peer.peer_id;
+            let target_block_number = best_sync_peer.best_number;
+
+            match &mut self.syncing {
+                Syncing::BlocksFirstSync(downloader) => {
+                    downloader.update_sync_peer(peer_id, target_block_number);
                 }
-
-                tracing::debug!(
-                    old_peer_id = ?current_sync_peer_id,
-                    new_peer_id = ?peer_id,
-                    "🔧 Sync peer ({current_latency} ms) updated to a new peer with lower latency ({best_latency} ms)",
-                );
+                Syncing::HeadersFirstSync(downloader) => {
+                    downloader.update_sync_peer(peer_id, target_block_number);
+                }
+                Syncing::Idle => unreachable!("Must not be Idle as checked; qed"),
             }
+
+            tracing::debug!(
+                old_peer_id = ?current_sync_peer_id,
+                new_peer_id = ?peer_id,
+                "🔧 Sync peer ({current_latency} ms) updated to a new peer with lower latency ({best_latency} ms)",
+            );
         }
     }
 
@@ -402,13 +370,13 @@ where
         let NewPeer {
             peer_id,
             best_number,
-            connect_latency,
+            latency,
         } = new_peer;
 
         let new_peer = PeerSync {
             peer_id,
             best_number,
-            latency: PeerLatency::Connect(connect_latency),
+            latency,
             state: PeerSyncState::Available,
         };
 

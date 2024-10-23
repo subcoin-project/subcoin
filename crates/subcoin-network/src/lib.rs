@@ -65,7 +65,7 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
 pub use crate::network::{NetworkHandle, NetworkStatus, SendTransactionResult, SyncStatus};
-pub use crate::sync::{PeerLatency, PeerSync, PeerSyncState};
+pub use crate::sync::{PeerSync, PeerSyncState};
 
 /// Identifies a peer.
 pub type PeerId = SocketAddr;

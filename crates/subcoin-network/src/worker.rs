@@ -3,7 +3,7 @@ use crate::metrics::Metrics;
 use crate::network::{
     IncomingTransaction, NetworkStatus, NetworkWorkerMessage, SendTransactionResult,
 };
-use crate::peer_manager::{Config, PeerManager, SlowPeer};
+use crate::peer_manager::{Config, NewPeer, PeerManager, SlowPeer};
 use crate::peer_store::PeerStore;
 use crate::sync::{ChainSync, LocatorRequest, SyncAction, SyncRequest};
 use crate::transaction_manager::TransactionManager;
@@ -28,7 +28,7 @@ const TICK_TIMEOUT: Duration = Duration::from_millis(1100);
 
 /// Threshold for peer latency in milliseconds, the default is 10 seconds.
 /// If a peer's latency exceeds this value, it will be considered a slow peer and may be evicted.
-const LATENCY_THRESHOLD: Latency = 10_000;
+const LATENCY_THRESHOLD: Latency = 1000;
 
 /// Network event.
 #[derive(Debug)]
@@ -301,16 +301,10 @@ where
                     tracing::debug!(?from, "Ignoring redundant verack");
                     return Ok(SyncAction::None);
                 }
-
-                let new_peer = match self.peer_manager.on_verack(from, direction) {
-                    Ok(new_peer) => new_peer,
-                    Err(err) => {
-                        self.peer_manager.disconnect(from, err);
-                        return Ok(SyncAction::None);
-                    }
-                };
-
-                Ok(self.chain_sync.add_new_peer(new_peer))
+                if let Err(err) = self.peer_manager.on_verack(from, direction) {
+                    self.peer_manager.disconnect(from, err);
+                }
+                Ok(SyncAction::None)
             }
             NetworkMessage::Addr(addresses) => {
                 self.peer_manager.on_addr(from, addresses);
@@ -352,18 +346,28 @@ where
             }
             NetworkMessage::Pong(nonce) => {
                 match self.peer_manager.on_pong(from, nonce) {
-                    Ok(avg_ping_latency) => {
+                    Ok(avg_latency) => {
                         // Disconnect the peer directly if the latency is higher than the threshold.
-                        if avg_ping_latency > LATENCY_THRESHOLD {
+                        if avg_latency > LATENCY_THRESHOLD {
                             self.peer_manager
                                 .disconnect(from, Error::PingLatencyTooHigh);
                             self.chain_sync.remove_peer(from);
                             self.peer_store.remove_peer(from);
                         } else {
-                            self.chain_sync.set_peer_latency(from, avg_ping_latency);
-                            self.chain_sync.update_sync_peer_on_lower_latency();
+                            if self.chain_sync.peers.contains_key(&from) {
+                                self.chain_sync.update_peer_latency(from, avg_latency);
+                            } else {
+                                self.chain_sync.add_new_peer(NewPeer {
+                                    peer_id: from,
+                                    best_number: self
+                                        .peer_manager
+                                        .peer_best_number(from)
+                                        .ok_or(Error::ConnectionNotFound(from))?,
+                                    latency: avg_latency,
+                                });
+                            }
                             self.peer_store
-                                .add_peer_if_latency_acceptable(from, avg_ping_latency);
+                                .add_peer_if_latency_acceptable(from, avg_latency);
                         }
                     }
                     Err(err) => {
