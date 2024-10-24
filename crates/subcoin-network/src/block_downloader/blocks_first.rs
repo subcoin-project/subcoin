@@ -1,5 +1,5 @@
 use crate::block_downloader::BlockDownloadManager;
-use crate::peer_store::PeerStoreHandle;
+use crate::peer_store::PeerStore;
 use crate::sync::{LocatorRequest, SyncAction, SyncRequest};
 use crate::{Error, PeerId, SyncStatus};
 use bitcoin::hashes::Hash;
@@ -41,7 +41,7 @@ enum State {
 }
 
 /// Download blocks using the Blocks-First strategy.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct BlocksFirstDownloader<Block, Client> {
     client: Arc<Client>,
     peer_id: PeerId,
@@ -65,14 +65,14 @@ where
         client: Arc<Client>,
         peer_id: PeerId,
         peer_best: u32,
-        peer_store_handle: PeerStoreHandle,
+        peer_store: Arc<dyn PeerStore>,
     ) -> (Self, SyncRequest) {
         let mut blocks_first_sync = Self {
             peer_id,
             client,
             target_block_number: peer_best,
             state: State::Idle,
-            download_manager: BlockDownloadManager::new(peer_store_handle),
+            download_manager: BlockDownloadManager::new(peer_store),
             last_locator_start: 0u32,
             pending_block_requests: Vec::new(),
             requested_blocks_count: 0,
@@ -442,6 +442,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::peer_store::NoPeerStore;
     use subcoin_test_service::block_data;
 
     #[test]
@@ -456,7 +457,7 @@ mod tests {
 
         let peer_id: PeerId = "0.0.0.0:0".parse().unwrap();
         let (mut downloader, _initial_request) =
-            BlocksFirstDownloader::new(client, peer_id, 800000);
+            BlocksFirstDownloader::new(client, peer_id, 800000, Arc::new(NoPeerStore));
 
         let block = block_data()[3].clone();
         let block_hash = block.block_hash();

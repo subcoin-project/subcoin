@@ -1,5 +1,5 @@
 use crate::block_downloader::BlockDownloadManager;
-use crate::peer_store::PeerStoreHandle;
+use crate::peer_store::PeerStore;
 use crate::sync::{LocatorRequest, SyncAction, SyncRequest};
 use crate::{Error, PeerId, SyncStatus};
 use bitcoin::blockdata::block::Header as BitcoinHeader;
@@ -143,7 +143,7 @@ where
         header_verifier: HeaderVerifier<Block, Client>,
         peer_id: PeerId,
         target_block_number: u32,
-        peer_store_handle: PeerStoreHandle,
+        peer_store: Arc<dyn PeerStore>,
     ) -> (Self, SyncAction) {
         let mut headers_first_sync = Self {
             client,
@@ -154,7 +154,7 @@ where
                 headers: IndexMap::new(),
                 completed_range: None,
             },
-            download_manager: BlockDownloadManager::new(peer_store_handle),
+            download_manager: BlockDownloadManager::new(peer_store),
             last_locator_start: 0u32,
             target_block_number,
             _phantom: Default::default(),

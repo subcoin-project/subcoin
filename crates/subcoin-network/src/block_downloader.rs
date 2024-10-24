@@ -5,12 +5,13 @@ pub use self::blocks_first::BlocksFirstDownloader;
 pub use self::headers_first::HeadersFirstDownloader;
 
 use crate::orphan_blocks_pool::OrphanBlocksPool;
-use crate::peer_store::PeerStoreHandle;
+use crate::peer_store::PeerStore;
 use crate::PeerId;
 use bitcoin::{Block as BitcoinBlock, BlockHash};
 use sc_consensus::BlockImportError;
 use sc_consensus_nakamoto::ImportManyBlocksResult;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// Interval for logging when the block import queue is too busy.
@@ -60,7 +61,7 @@ impl QueuedBlocks {
 /// [`BlockDownloadManager`] is designed to be used in both Blocks-First and
 /// Headers-First sync strategies, providing a common component for managing
 /// the state of blocks during the sync process.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct BlockDownloadManager {
     /// A set of block hashes that have been requested from the network.
     ///
@@ -89,11 +90,11 @@ pub(crate) struct BlockDownloadManager {
     import_queue_is_overloaded: bool,
     /// Last time the log of too many blocks in the queue was printed.
     last_overloaded_queue_log_time: Option<Instant>,
-    peer_store_handle: PeerStoreHandle,
+    peer_store: Arc<dyn PeerStore>,
 }
 
 impl BlockDownloadManager {
-    fn new(peer_store_handle: PeerStoreHandle) -> Self {
+    fn new(peer_store: Arc<dyn PeerStore>) -> Self {
         Self {
             requested_blocks: HashSet::new(),
             downloaded_blocks: Vec::new(),
@@ -104,7 +105,7 @@ impl BlockDownloadManager {
             last_progress_time: Instant::now(),
             import_queue_is_overloaded: false,
             last_overloaded_queue_log_time: None,
-            peer_store_handle,
+            peer_store,
         }
     }
 
@@ -132,7 +133,7 @@ impl BlockDownloadManager {
         let stalled = self.last_progress_time.elapsed().as_secs() > stall_timeout;
 
         if stalled {
-            self.peer_store_handle.increment_failure_count(peer_id);
+            self.peer_store.record_failure(peer_id);
         }
 
         stalled
@@ -292,8 +293,7 @@ impl BlockDownloadManager {
             }
         }
 
-        self.peer_store_handle
-            .increment_downloaded_blocks_count(from);
+        self.peer_store.record_block_download(from);
     }
 
     fn add_orphan_block(&mut self, block_hash: BlockHash, orphan_block: BitcoinBlock) {

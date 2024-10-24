@@ -44,13 +44,12 @@ mod worker;
 use crate::connection::ConnectionInitiator;
 use crate::metrics::BandwidthMetrics;
 use crate::network::NetworkWorkerMessage;
-use crate::peer_store::PeerStore;
+use crate::peer_store::{PersistentPeerStore, PersistentPeerStoreHandle};
 use crate::worker::NetworkWorker;
 use bitcoin::p2p::ServiceFlags;
 use bitcoin::{BlockHash, Network as BitcoinNetwork};
 use chrono::prelude::{DateTime, Local};
 use peer_manager::HandshakeState;
-use peer_store::PeerStoreHandle;
 use sc_client_api::{AuxStore, HeaderBackend};
 use sc_consensus_nakamoto::{BlockImportQueue, ChainParams, HeaderVerifier};
 use sc_service::SpawnTaskHandle;
@@ -360,12 +359,12 @@ where
         }
 
         let (sender, receiver) = tracing_unbounded("mpsc_subcoin_peer_store", 10_000);
-        let (peer_store, persistent_peers) =
-            PeerStore::new(&config.base_path, config.max_outbound_peers);
-        let peer_store_handle =
-            PeerStoreHandle::new(config.persistent_peer_latency_threshold, sender);
+        let (persistent_peer_store, persistent_peers) =
+            PersistentPeerStore::new(&config.base_path, config.max_outbound_peers);
+        let persistent_peer_store_handle =
+            PersistentPeerStoreHandle::new(config.persistent_peer_latency_threshold, sender);
 
-        spawn_handle.spawn("peer-store", None, peer_store.run(receiver));
+        spawn_handle.spawn("peer-store", None, persistent_peer_store.run(receiver));
 
         let network_worker = NetworkWorker::new(
             worker::Params {
@@ -381,7 +380,7 @@ where
                 connection_initiator: connection_initiator.clone(),
                 max_outbound_peers: config.max_outbound_peers,
                 enable_block_sync: config.enable_block_sync_on_startup,
-                peer_store_handle,
+                peer_store: Arc::new(persistent_peer_store_handle),
             },
             registry.as_ref(),
         );

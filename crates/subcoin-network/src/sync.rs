@@ -1,6 +1,6 @@
 use crate::block_downloader::{BlocksFirstDownloader, HeadersFirstDownloader};
 use crate::peer_manager::NewPeer;
-use crate::peer_store::PeerStoreHandle;
+use crate::peer_store::PeerStore;
 use crate::{Error, Latency, PeerId, SyncStatus, SyncStrategy};
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::p2p::message_blockdata::Inventory;
@@ -141,7 +141,7 @@ pub(crate) struct ChainSync<Block, Client> {
     /// Broadcasted blocks that are being requested.
     inflight_announced_blocks: HashSet<BlockHash>,
     /// Handle of peer store.
-    peer_store_handle: PeerStoreHandle,
+    peer_store: Arc<dyn PeerStore>,
     _phantom: PhantomData<Block>,
 }
 
@@ -158,7 +158,7 @@ where
         sync_strategy: SyncStrategy,
         is_major_syncing: Arc<AtomicBool>,
         enable_block_sync: bool,
-        peer_store_handle: PeerStoreHandle,
+        peer_store: Arc<dyn PeerStore>,
     ) -> Self {
         Self {
             client,
@@ -171,7 +171,7 @@ where
             enable_block_sync,
             rng: fastrand::Rng::new(),
             inflight_announced_blocks: HashSet::new(),
-            peer_store_handle,
+            peer_store,
             _phantom: Default::default(),
         }
     }
@@ -426,7 +426,7 @@ where
             let require_major_sync = peer_best - our_best > MAJOR_SYNC_GAP;
 
             let client = self.client.clone();
-            let peer_store_handle = self.peer_store_handle.clone();
+            let peer_store = self.peer_store.clone();
 
             // Start major syncing if the gap is significant.
             let (new_syncing, sync_action) = if require_major_sync {
@@ -441,7 +441,7 @@ where
 
                 if blocks_first {
                     let (downloader, blocks_request) =
-                        BlocksFirstDownloader::new(client, sync_peer, peer_best, peer_store_handle);
+                        BlocksFirstDownloader::new(client, sync_peer, peer_best, peer_store);
                     (
                         Syncing::BlocksFirst(Box::new(downloader)),
                         SyncAction::Request(blocks_request),
@@ -452,13 +452,13 @@ where
                         self.header_verifier.clone(),
                         sync_peer,
                         peer_best,
-                        peer_store_handle,
+                        peer_store,
                     );
                     (Syncing::HeadersFirst(Box::new(downloader)), sync_action)
                 }
             } else {
                 let (downloader, blocks_request) =
-                    BlocksFirstDownloader::new(client, sync_peer, peer_best, peer_store_handle);
+                    BlocksFirstDownloader::new(client, sync_peer, peer_best, peer_store);
                 (
                     Syncing::BlocksFirst(Box::new(downloader)),
                     SyncAction::Request(blocks_request),
@@ -512,7 +512,7 @@ where
             self.client.clone(),
             best_peer.peer_id,
             best_peer.best_number,
-            self.peer_store_handle.clone(),
+            self.peer_store.clone(),
         );
 
         tracing::debug!("Headers-First sync completed, continuing with blocks-first sync");
