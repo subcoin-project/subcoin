@@ -116,8 +116,8 @@ pub enum Error {
     PingTimeout,
     #[error("Ping latency exceeds the threshold")]
     PingLatencyTooHigh,
-    #[error("Peer is deprioritized and has encountered multiple syncing failures")]
-    UnreliableSyncPeer,
+    #[error("Peer is deprioritized for syncing and has encountered multiple failures")]
+    UnreliablePeer,
     #[error("Peer's latency ({0} ms) is too high")]
     SlowPeer(Latency),
     #[error("Unexpected pong message")]

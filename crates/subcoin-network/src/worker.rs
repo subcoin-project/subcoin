@@ -215,29 +215,20 @@ where
         let sync_action = self.chain_sync.on_tick();
         self.do_sync_action(sync_action);
 
-        let unreliable_peers = self.chain_sync.unreliable_peers();
-        for peer in unreliable_peers {
-            self.peer_manager
-                .disconnect(peer, Error::UnreliableSyncPeer);
+        for peer in self.chain_sync.unreliable_peers() {
+            self.peer_manager.disconnect(peer, Error::UnreliablePeer);
             self.chain_sync.remove_peer(peer);
             self.peer_store.remove_peer(peer);
         }
 
-        if let Some(SlowPeer {
-            peer_id,
-            peer_latency,
-        }) = self.peer_manager.on_tick()
-        {
-            self.peer_manager
-                .disconnect(peer_id, Error::SlowPeer(peer_latency));
-            self.peer_manager.update_last_eviction();
+        if let Some(SlowPeer { peer_id, latency }) = self.peer_manager.on_tick() {
+            self.peer_manager.evict(peer_id, Error::SlowPeer(latency));
             self.chain_sync.remove_peer(peer_id);
         }
 
-        for (peer, txids) in self
-            .transaction_manager
-            .on_tick(self.peer_manager.connected_peers())
-        {
+        let connected_peers = self.peer_manager.connected_peers();
+
+        for (peer, txids) in self.transaction_manager.on_tick(connected_peers) {
             tracing::debug!("Broadcasting transaction IDs {txids:?} to {peer:?}");
             let msg = NetworkMessage::Inv(txids.into_iter().map(Inventory::Transaction).collect());
             if let Err(err) = self.send(peer, msg) {

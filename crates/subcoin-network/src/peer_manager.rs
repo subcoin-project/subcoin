@@ -266,7 +266,7 @@ impl PeerInfo {
 #[derive(Debug)]
 pub(crate) struct SlowPeer {
     pub(crate) peer_id: PeerId,
-    pub(crate) peer_latency: Latency,
+    pub(crate) latency: Latency,
 }
 
 /// Manages the peers in the network.
@@ -392,9 +392,9 @@ where
                         }
                     })
                     .max_by_key(|(_peer_id, avg_latency)| *avg_latency)
-                    .map(|(peer_id, peer_latency)| SlowPeer {
+                    .map(|(peer_id, latency)| SlowPeer {
                         peer_id: *peer_id,
-                        peer_latency,
+                        latency,
                     })
             } else {
                 None
@@ -479,7 +479,8 @@ where
         });
     }
 
-    pub(crate) fn update_last_eviction(&mut self) {
+    pub(crate) fn evict(&mut self, peer_id: PeerId, reason: Error) {
+        self.peer_manager.disconnect(peer_id, reason);
         self.last_eviction = Instant::now();
     }
 
