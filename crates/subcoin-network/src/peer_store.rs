@@ -293,7 +293,7 @@ mod tests {
 
     #[test]
     fn test_peer_store() {
-        let (mut peer_store, _) = PeerStore::new(&PathBuf::from("/"), 10, 200);
+        let (mut peer_store, _) = PeerStore::new(&PathBuf::from("/"), 10);
 
         let now = SystemTime::now();
         let peer1: PeerId = "127.0.0.1:8001".parse().unwrap();
