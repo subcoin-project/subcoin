@@ -201,6 +201,8 @@ impl BlockDownloadManager {
                 );
                 self.last_overloaded_queue_log_time.replace(Instant::now());
             }
+        } else {
+            self.queue_status = ImportQueueStatus::Ready;
         }
 
         self.queue_status

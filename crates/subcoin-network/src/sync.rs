@@ -411,7 +411,7 @@ where
                     new_peer_id = ?peer_id,
                     "🔧 Sync peer ({current_latency} ms) updated to a new peer with lower latency ({best_latency} ms)",
                 );
-                self.peers.entry(replaced_peer_id).and_modify(|peer| {
+                self.peers.entry(current_sync_peer_id).and_modify(|peer| {
                     peer.state = PeerSyncState::Available;
                 });
             }

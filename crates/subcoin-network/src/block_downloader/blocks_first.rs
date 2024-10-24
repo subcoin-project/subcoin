@@ -104,7 +104,7 @@ where
         if self.downloaded_blocks_count > 0 {
             None
         } else {
-            self.peer_id
+            Some(self.peer_id)
         }
     }
 
