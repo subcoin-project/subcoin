@@ -50,6 +50,20 @@ impl QueuedBlocks {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ImportQueueStatus {
+    /// Queue is ready to accept more blocks for import.
+    Ready,
+    /// The queue is overloaded and cannot accept more blocks at the moment.
+    Overloaded,
+}
+
+impl ImportQueueStatus {
+    fn is_overloaded(&self) -> bool {
+        matches!(self, Self::Overloaded)
+    }
+}
+
 /// Manages the of blocks downloaded from the Bitcoin network.
 ///
 /// This struct keeps track of:
@@ -86,10 +100,11 @@ pub(crate) struct BlockDownloadManager {
     /// when the results of processed blocks are notified. It helps track
     /// the most recent activity related to block processing.
     last_progress_time: Instant,
-    /// Whether there are too many blocks in the queue.
-    import_queue_is_overloaded: bool,
+    /// Import queue status.
+    queue_status: ImportQueueStatus,
     /// Last time the log of too many blocks in the queue was printed.
     last_overloaded_queue_log_time: Option<Instant>,
+    /// Peer store.
     peer_store: Arc<dyn PeerStore>,
 }
 
@@ -103,7 +118,7 @@ impl BlockDownloadManager {
             best_queued_number: 0u32,
             orphan_blocks_pool: OrphanBlocksPool::new(),
             last_progress_time: Instant::now(),
-            import_queue_is_overloaded: false,
+            queue_status: ImportQueueStatus::Ready,
             last_overloaded_queue_log_time: None,
             peer_store,
         }
@@ -159,7 +174,7 @@ impl BlockDownloadManager {
     }
 
     /// Checks if the import queue is overloaded and updates the internal state.
-    fn update_and_check_queue_status(&mut self, best_number: u32) -> bool {
+    fn evaluate_queue_status(&mut self, best_number: u32) -> ImportQueueStatus {
         // Maximum number of pending blocks in the import queue.
         let max_queued_blocks = match best_number {
             0..=100_000 => 8192,
@@ -171,25 +186,24 @@ impl BlockDownloadManager {
 
         let queued_blocks = self.best_queued_number - best_number;
 
-        let import_queue_is_overloaded = queued_blocks > max_queued_blocks;
+        if queued_blocks > max_queued_blocks {
+            self.queue_status = ImportQueueStatus::Overloaded;
 
-        if import_queue_is_overloaded
-            && self
+            if self
                 .last_overloaded_queue_log_time
                 .map(|last_time| last_time.elapsed() > BUSY_QUEUE_LOG_INTERVAL)
                 .unwrap_or(true)
-        {
-            tracing::debug!(
-                best_number,
-                best_queued_number = self.best_queued_number,
-                "⏸️ Pausing download: too many blocks ({queued_blocks}) in the queue",
-            );
-            self.last_overloaded_queue_log_time.replace(Instant::now());
+            {
+                tracing::debug!(
+                    best_number,
+                    best_queued_number = self.best_queued_number,
+                    "⏸️ Pausing download: too many blocks ({queued_blocks}) in the queue",
+                );
+                self.last_overloaded_queue_log_time.replace(Instant::now());
+            }
         }
 
-        self.import_queue_is_overloaded = import_queue_is_overloaded;
-
-        self.import_queue_is_overloaded
+        self.queue_status
     }
 
     fn reset(&mut self) {
@@ -200,7 +214,7 @@ impl BlockDownloadManager {
         self.best_queued_number = 0u32;
         self.orphan_blocks_pool.clear();
         self.last_progress_time = Instant::now();
-        self.import_queue_is_overloaded = false;
+        self.queue_status = ImportQueueStatus::Ready;
     }
 
     /// Checks if there are blocks ready to be imported.

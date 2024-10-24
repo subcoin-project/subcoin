@@ -85,7 +85,7 @@ where
     }
 
     pub(crate) fn sync_status(&self) -> SyncStatus {
-        if self.download_manager.import_queue_is_overloaded {
+        if self.download_manager.queue_status.is_overloaded() {
             SyncStatus::Importing {
                 target: self.target_block_number,
                 peers: vec![self.peer_id],
@@ -116,11 +116,14 @@ where
             return SyncAction::Request(self.prepare_blocks_request());
         }
 
-        if self.download_manager.import_queue_is_overloaded {
-            if self
+        let best_number = self.client.best_number();
+
+        if self.download_manager.queue_status.is_overloaded() {
+            let still_overloaded = self
                 .download_manager
-                .update_and_check_queue_status(self.client.best_number())
-            {
+                .evaluate_queue_status(best_number)
+                .is_overloaded();
+            if still_overloaded {
                 return SyncAction::None;
             } else {
                 return SyncAction::Request(self.prepare_blocks_request());
@@ -132,7 +135,7 @@ where
             return self.truncate_and_prepare_block_data_request(block_data_request);
         }
 
-        if self.client.best_number() == self.target_block_number {
+        if best_number == self.target_block_number {
             self.state = State::Completed;
             return SyncAction::SwitchToIdle;
         }
@@ -305,7 +308,8 @@ where
                     // No more new blocks request as there are enough ongoing blocks in the queue.
                     if self
                         .download_manager
-                        .update_and_check_queue_status(best_number)
+                        .evaluate_queue_status(best_number)
+                        .is_overloaded()
                     {
                         return SyncAction::None;
                     }
@@ -367,7 +371,8 @@ where
 
                 if self
                     .download_manager
-                    .update_and_check_queue_status(self.client.best_number())
+                    .evaluate_queue_status(self.client.best_number())
+                    .is_overloaded()
                 {
                     SyncAction::None
                 } else {

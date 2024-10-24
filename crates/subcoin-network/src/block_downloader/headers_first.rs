@@ -164,7 +164,7 @@ where
     }
 
     pub(crate) fn sync_status(&self) -> SyncStatus {
-        if self.download_manager.import_queue_is_overloaded {
+        if self.download_manager.queue_status.is_overloaded() {
             SyncStatus::Importing {
                 target: self.target_block_number,
                 peers: vec![self.peer_id],
@@ -199,11 +199,12 @@ where
             return self.start_block_download(start, end);
         }
 
-        if self.download_manager.import_queue_is_overloaded {
-            let import_queue_still_busy = self
+        if self.download_manager.queue_status.is_overloaded() {
+            let still_overloaded = self
                 .download_manager
-                .update_and_check_queue_status(self.client.best_number());
-            if import_queue_still_busy {
+                .evaluate_queue_status(self.client.best_number())
+                .is_overloaded();
+            if still_overloaded {
                 return SyncAction::None;
             } else {
                 // Resume blocks or headers request.
@@ -551,7 +552,8 @@ where
 
                         if self
                             .download_manager
-                            .update_and_check_queue_status(best_number)
+                            .evaluate_queue_status(best_number)
+                            .is_overloaded()
                         {
                             *paused = true;
                             return SyncAction::None;
@@ -616,7 +618,8 @@ where
 
         if self
             .download_manager
-            .update_and_check_queue_status(best_number)
+            .evaluate_queue_status(best_number)
+            .is_overloaded()
         {
             return SyncAction::None;
         }
