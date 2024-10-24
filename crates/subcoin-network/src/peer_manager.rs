@@ -480,7 +480,7 @@ where
     }
 
     pub(crate) fn evict(&mut self, peer_id: PeerId, reason: Error) {
-        self.peer_manager.disconnect(peer_id, reason);
+        self.disconnect(peer_id, reason);
         self.last_eviction = Instant::now();
     }
 
