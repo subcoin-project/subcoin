@@ -79,11 +79,8 @@ pub struct NoPeerStore;
 
 impl PeerStore for NoPeerStore {
     fn try_add_peer(&self, _peer_id: PeerId, _latency: Latency) {}
-
     fn remove_peer(&self, _peer_id: PeerId) {}
-
     fn record_block_download(&self, _peer_id: PeerId) {}
-
     fn record_failure(&self, _peer_id: PeerId) {}
 }
 
