@@ -32,8 +32,8 @@ pub const MIN_PROTOCOL_VERSION: u32 = 70012;
 
 /// The maximum allowable peer latency in milliseconds before disconnection.
 ///
-/// If a peer's latency exceeds this threshold (1000ms), it will be disconnected immediately.
-pub const PEER_LATENCY_THRESHOLD: Latency = 1000;
+/// If a peer's latency exceeds this threshold (2000ms), it will be disconnected immediately.
+pub const PEER_LATENCY_THRESHOLD: Latency = 2000;
 
 /// The threshold for classifying a peer as "slow", based on average ping latency in milliseconds.
 ///
