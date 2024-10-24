@@ -89,34 +89,66 @@
 <a href="#89" id="89">89</a>
 <a href="#90" id="90">90</a>
 <a href="#91" id="91">91</a>
+<a href="#92" id="92">92</a>
+<a href="#93" id="93">93</a>
+<a href="#94" id="94">94</a>
+<a href="#95" id="95">95</a>
+<a href="#96" id="96">96</a>
+<a href="#97" id="97">97</a>
+<a href="#98" id="98">98</a>
+<a href="#99" id="99">99</a>
+<a href="#100" id="100">100</a>
+<a href="#101" id="101">101</a>
+<a href="#102" id="102">102</a>
+<a href="#103" id="103">103</a>
+<a href="#104" id="104">104</a>
+<a href="#105" id="105">105</a>
+<a href="#106" id="106">106</a>
+<a href="#107" id="107">107</a>
+<a href="#108" id="108">108</a>
+<a href="#109" id="109">109</a>
+<a href="#110" id="110">110</a>
+<a href="#111" id="111">111</a>
+<a href="#112" id="112">112</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::error::Error;
 <span class="kw">use </span>jsonrpsee::proc_macros::rpc;
 <span class="kw">use </span>sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 <span class="kw">use </span>serde::{Deserialize, Serialize};
 <span class="kw">use </span>sp_runtime::traits::Block <span class="kw">as </span>BlockT;
+<span class="kw">use </span>std::collections::BTreeMap;
 <span class="kw">use </span>std::marker::PhantomData;
 <span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>subcoin_network::{NetworkHandle, NetworkStatus, PeerSync, PeerSyncState};
 
+<span class="doccomment">/// The state of syncing between a Peer and ourselves.
+</span><span class="attr">#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize, Hash)]
+#[serde(rename_all = <span class="string">"camelCase"</span>)]
+</span><span class="kw">pub enum </span>SyncState {
+    Available,
+    Deprioritized,
+    DownloadingNew,
+}
+
 <span class="attr">#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = <span class="string">"camelCase"</span>)]
 </span><span class="kw">pub struct </span>NetworkPeers {
-    total: usize,
-    available: usize,
-    discouraged: usize,
-    peer_best: <span class="prelude-ty">Option</span>&lt;u32&gt;,
-    sync_peers: Vec&lt;PeerSync&gt;,
+    <span class="doccomment">/// A map containing the count of peers in each sync state (e.g., syncing, idle).
+    </span>sync_state_counts: BTreeMap&lt;SyncState, usize&gt;,
+    <span class="doccomment">/// The highest block height known across all peers in the network.
+    </span>best_known_block: <span class="prelude-ty">Option</span>&lt;u32&gt;,
+    <span class="doccomment">/// Detailed synchronization information for each peer.
+    </span>peer_sync_details: Vec&lt;PeerSync&gt;,
 }
 
 <span class="attr">#[rpc(client, server)]
 </span><span class="kw">pub trait </span>NetworkApi {
-    <span class="doccomment">/// Get overall network status.
-    </span><span class="attr">#[method(name = <span class="string">"network_status"</span>)]
-    </span><span class="kw">async fn </span>network_status(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;NetworkStatus&gt;, Error&gt;;
-
     <span class="doccomment">/// Get the sync peers.
     </span><span class="attr">#[method(name = <span class="string">"network_peers"</span>)]
     </span><span class="kw">async fn </span>network_peers(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;NetworkPeers, Error&gt;;
+
+    <span class="doccomment">/// Get overall network status.
+    </span><span class="attr">#[method(name = <span class="string">"network_status"</span>)]
+    </span><span class="kw">async fn </span>network_status(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;NetworkStatus&gt;, Error&gt;;
 }
 
 <span class="doccomment">/// This struct provides the Network API.
@@ -149,30 +181,40 @@
     Client: HeaderBackend&lt;Block&gt; + BlockBackend&lt;Block&gt; + AuxStore + <span class="lifetime">'static</span>,
 {
     <span class="kw">async fn </span>network_peers(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;NetworkPeers, Error&gt; {
-        <span class="kw">let </span>sync_peers = <span class="self">self</span>.network_handle.sync_peers().<span class="kw">await</span>;
-        <span class="kw">let </span>total = sync_peers.len();
+        <span class="kw">let </span><span class="kw-2">mut </span>sync_peers = <span class="self">self</span>.network_handle.sync_peers().<span class="kw">await</span>;
+
         <span class="kw">let </span><span class="kw-2">mut </span>available = <span class="number">0</span>;
-        <span class="kw">let </span><span class="kw-2">mut </span>discouraged = <span class="number">0</span>;
-        <span class="kw">let </span><span class="kw-2">mut </span>peer_best = <span class="number">0</span>;
+        <span class="kw">let </span><span class="kw-2">mut </span>deprioritized = <span class="number">0</span>;
+        <span class="kw">let </span><span class="kw-2">mut </span>downloading_new = <span class="number">0</span>;
+
+        <span class="kw">let </span><span class="kw-2">mut </span>best_known_block = <span class="number">0</span>;
 
         <span class="kw">for </span>peer <span class="kw">in </span><span class="kw-2">&amp;</span>sync_peers {
             <span class="kw">match </span>peer.state {
                 PeerSyncState::Available =&gt; available += <span class="number">1</span>,
-                PeerSyncState::Discouraged =&gt; discouraged += <span class="number">1</span>,
-                <span class="kw">_ </span>=&gt; {}
+                PeerSyncState::Deprioritized { .. } =&gt; deprioritized += <span class="number">1</span>,
+                PeerSyncState::DownloadingNew { .. } =&gt; downloading_new += <span class="number">1</span>,
             }
 
-            <span class="kw">if </span>peer.best_number &gt; peer_best {
-                peer_best = peer.best_number;
+            <span class="kw">if </span>peer.best_number &gt; best_known_block {
+                best_known_block = peer.best_number;
             }
         }
 
+        sync_peers.sort_by_key(|x| x.latency);
+
         <span class="prelude-val">Ok</span>(NetworkPeers {
-            total,
-            available,
-            discouraged,
-            peer_best: <span class="kw">if </span>peer_best &gt; <span class="number">0 </span>{ <span class="prelude-val">Some</span>(peer_best) } <span class="kw">else </span>{ <span class="prelude-val">None </span>},
-            sync_peers,
+            sync_state_counts: BTreeMap::from([
+                (SyncState::Available, available),
+                (SyncState::Deprioritized, deprioritized),
+                (SyncState::DownloadingNew, downloading_new),
+            ]),
+            best_known_block: <span class="kw">if </span>best_known_block &gt; <span class="number">0 </span>{
+                <span class="prelude-val">Some</span>(best_known_block)
+            } <span class="kw">else </span>{
+                <span class="prelude-val">None
+            </span>},
+            peer_sync_details: sync_peers,
         })
     }
 

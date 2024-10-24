@@ -497,7 +497,28 @@
 <a href="#497" id="497">497</a>
 <a href="#498" id="498">498</a>
 <a href="#499" id="499">499</a>
+<a href="#500" id="500">500</a>
+<a href="#501" id="501">501</a>
+<a href="#502" id="502">502</a>
+<a href="#503" id="503">503</a>
+<a href="#504" id="504">504</a>
+<a href="#505" id="505">505</a>
+<a href="#506" id="506">506</a>
+<a href="#507" id="507">507</a>
+<a href="#508" id="508">508</a>
+<a href="#509" id="509">509</a>
+<a href="#510" id="510">510</a>
+<a href="#511" id="511">511</a>
+<a href="#512" id="512">512</a>
+<a href="#513" id="513">513</a>
+<a href="#514" id="514">514</a>
+<a href="#515" id="515">515</a>
+<a href="#516" id="516">516</a>
+<a href="#517" id="517">517</a>
+<a href="#518" id="518">518</a>
+<a href="#519" id="519">519</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::block_downloader::BlockDownloadManager;
+<span class="kw">use </span><span class="kw">crate</span>::peer_store::PeerStore;
 <span class="kw">use </span><span class="kw">crate</span>::sync::{LocatorRequest, SyncAction, SyncRequest};
 <span class="kw">use crate</span>::{Error, PeerId, SyncStatus};
 <span class="kw">use </span>bitcoin::hashes::Hash;
@@ -518,8 +539,9 @@
 // request is [1, 500] when doing the initial sync.
 </span><span class="kw">const </span>MAX_GET_BLOCKS_RESPONSE: u32 = <span class="number">500</span>;
 
-<span class="attr">#[derive(Debug, Clone)]
-</span><span class="kw">enum </span>DownloadState {
+<span class="doccomment">/// Download state.
+</span><span class="attr">#[derive(Debug, Clone)]
+</span><span class="kw">enum </span>State {
     <span class="doccomment">/// Downloading not started yet.
     </span>Idle,
     <span class="doccomment">/// Restarting the download process.
@@ -538,18 +560,19 @@
 }
 
 <span class="doccomment">/// Download blocks using the Blocks-First strategy.
-</span><span class="attr">#[derive(Debug, Clone)]
+</span><span class="attr">#[derive(Clone)]
 </span><span class="kw">pub struct </span>BlocksFirstDownloader&lt;Block, Client&gt; {
     client: Arc&lt;Client&gt;,
     peer_id: PeerId,
     <span class="doccomment">/// The final block number we are targeting when the download is complete.
     </span>target_block_number: u32,
-    download_state: DownloadState,
+    state: State,
     download_manager: BlockDownloadManager,
+    downloaded_blocks_count: usize,
     last_locator_start: u32,
     pending_block_requests: Vec&lt;Inventory&gt;,
     <span class="doccomment">/// Number of blocks' data requested but not yet received.
-    </span>requested_blocks_count: usize,
+    </span>inflight_blocks_count: usize,
     _phantom: PhantomData&lt;Block&gt;,
 }
 
@@ -558,16 +581,22 @@
     </span>Block: BlockT,
     Client: HeaderBackend&lt;Block&gt; + AuxStore,
 {
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>new(client: Arc&lt;Client&gt;, peer_id: PeerId, peer_best: u32) -&gt; (<span class="self">Self</span>, SyncRequest) {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>new(
+        client: Arc&lt;Client&gt;,
+        peer_id: PeerId,
+        peer_best: u32,
+        peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;,
+    ) -&gt; (<span class="self">Self</span>, SyncRequest) {
         <span class="kw">let </span><span class="kw-2">mut </span>blocks_first_sync = <span class="self">Self </span>{
             peer_id,
             client,
             target_block_number: peer_best,
-            download_state: DownloadState::Idle,
-            download_manager: BlockDownloadManager::new(),
+            state: State::Idle,
+            download_manager: BlockDownloadManager::new(peer_store),
+            downloaded_blocks_count: <span class="number">0</span>,
             last_locator_start: <span class="number">0u32</span>,
             pending_block_requests: Vec::new(),
-            requested_blocks_count: <span class="number">0</span>,
+            inflight_blocks_count: <span class="number">0</span>,
             _phantom: Default::default(),
         };
 
@@ -577,7 +606,7 @@
     }
 
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>sync_status(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; SyncStatus {
-        <span class="kw">if </span><span class="self">self</span>.download_manager.import_queue_is_overloaded {
+        <span class="kw">if </span><span class="self">self</span>.download_manager.queue_status.is_overloaded() {
             SyncStatus::Importing {
                 target: <span class="self">self</span>.target_block_number,
                 peers: <span class="macro">vec!</span>[<span class="self">self</span>.peer_id],
@@ -590,13 +619,18 @@
         }
     }
 
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>sync_peer(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; PeerId {
-        <span class="self">self</span>.peer_id
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>replaceable_sync_peer(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;PeerId&gt; {
+        <span class="kw">if </span><span class="self">self</span>.downloaded_blocks_count &gt; <span class="number">0 </span>{
+            <span class="prelude-val">None
+        </span>} <span class="kw">else </span>{
+            <span class="prelude-val">Some</span>(<span class="self">self</span>.peer_id)
+        }
     }
 
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>update_sync_peer(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_id: PeerId, target_block_number: u32) {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>replace_sync_peer(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_id: PeerId, target_block_number: u32) {
         <span class="self">self</span>.peer_id = peer_id;
         <span class="self">self</span>.target_block_number = target_block_number;
+        <span class="self">self</span>.downloaded_blocks_count = <span class="number">0</span>;
     }
 
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>download_manager(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;mut </span>BlockDownloadManager {
@@ -604,32 +638,35 @@
     }
 
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>on_tick(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; SyncAction {
-        <span class="kw">if </span><span class="macro">matches!</span>(<span class="self">self</span>.download_state, DownloadState::Restarting) {
+        <span class="kw">if </span><span class="macro">matches!</span>(<span class="self">self</span>.state, State::Restarting) {
             <span class="kw">return </span>SyncAction::Request(<span class="self">self</span>.prepare_blocks_request());
         }
 
-        <span class="kw">if </span><span class="self">self</span>.download_manager.import_queue_is_overloaded {
-            <span class="kw">if </span><span class="self">self
+        <span class="kw">let </span>best_number = <span class="self">self</span>.client.best_number();
+
+        <span class="kw">if </span><span class="self">self</span>.download_manager.queue_status.is_overloaded() {
+            <span class="kw">let </span>still_overloaded = <span class="self">self
                 </span>.download_manager
-                .update_and_check_queue_status(<span class="self">self</span>.client.best_number())
-            {
+                .evaluate_queue_status(best_number)
+                .is_overloaded();
+            <span class="kw">if </span>still_overloaded {
                 <span class="kw">return </span>SyncAction::None;
             } <span class="kw">else </span>{
                 <span class="kw">return </span>SyncAction::Request(<span class="self">self</span>.prepare_blocks_request());
             }
         }
 
-        <span class="kw">if </span>!<span class="self">self</span>.pending_block_requests.is_empty() &amp;&amp; <span class="self">self</span>.requested_blocks_count == <span class="number">0 </span>{
+        <span class="kw">if </span>!<span class="self">self</span>.pending_block_requests.is_empty() &amp;&amp; <span class="self">self</span>.inflight_blocks_count == <span class="number">0 </span>{
             <span class="kw">let </span>block_data_request = std::mem::take(<span class="kw-2">&amp;mut </span><span class="self">self</span>.pending_block_requests);
             <span class="kw">return </span><span class="self">self</span>.truncate_and_prepare_block_data_request(block_data_request);
         }
 
-        <span class="kw">if </span><span class="self">self</span>.client.best_number() == <span class="self">self</span>.target_block_number {
-            <span class="self">self</span>.download_state = DownloadState::Completed;
+        <span class="kw">if </span>best_number == <span class="self">self</span>.target_block_number {
+            <span class="self">self</span>.state = State::Completed;
             <span class="kw">return </span>SyncAction::SwitchToIdle;
         }
 
-        <span class="kw">if </span><span class="self">self</span>.download_manager.is_stalled() {
+        <span class="kw">if </span><span class="self">self</span>.download_manager.is_stalled(<span class="self">self</span>.peer_id) {
             <span class="kw">return </span>SyncAction::RestartSyncWithStalledPeer(<span class="self">self</span>.peer_id);
         }
 
@@ -638,12 +675,13 @@
 
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>restart(<span class="kw-2">&amp;mut </span><span class="self">self</span>, new_peer: PeerId, peer_best: u32) {
         <span class="self">self</span>.peer_id = new_peer;
+        <span class="self">self</span>.downloaded_blocks_count = <span class="number">0</span>;
         <span class="self">self</span>.target_block_number = peer_best;
         <span class="self">self</span>.last_locator_start = <span class="number">0u32</span>;
         <span class="self">self</span>.download_manager.reset();
-        <span class="self">self</span>.download_state = DownloadState::Restarting;
+        <span class="self">self</span>.state = State::Restarting;
         <span class="self">self</span>.pending_block_requests.clear();
-        <span class="self">self</span>.requested_blocks_count = <span class="number">0</span>;
+        <span class="self">self</span>.inflight_blocks_count = <span class="number">0</span>;
     }
 
     <span class="comment">// Handle `inv` message.
@@ -666,7 +704,7 @@
                 <span class="question-mark">?</span>from,
                 <span class="string">"Received inv with more than {MAX_GET_BLOCKS_RESPONSE} block entries"
             </span>);
-            <span class="self">self</span>.download_state = DownloadState::Disconnecting;
+            <span class="self">self</span>.state = State::Disconnecting;
             <span class="kw">return </span>SyncAction::Disconnect(<span class="self">self</span>.peer_id, Error::InvHasTooManyBlockItems);
         }
 
@@ -706,13 +744,13 @@
             <span class="self">self</span>.pending_block_requests = block_data_request.split_off(max_request_size);
         }
 
-        <span class="self">self</span>.requested_blocks_count = block_data_request.len();
+        <span class="self">self</span>.inflight_blocks_count = block_data_request.len();
 
         <span class="macro">tracing::debug!</span>(
             from = <span class="question-mark">?</span><span class="self">self</span>.peer_id,
             pending_block_data_request = <span class="self">self</span>.pending_block_requests.len(),
             <span class="string">"📦 Downloading {} blocks"</span>,
-            <span class="self">self</span>.requested_blocks_count,
+            <span class="self">self</span>.inflight_blocks_count,
         );
 
         SyncAction::Request(SyncRequest::Data(block_data_request, <span class="self">self</span>.peer_id))
@@ -724,8 +762,8 @@
             <span class="kw">return </span>SyncAction::None;
         }
 
-        <span class="kw">let </span>last_get_blocks_target = <span class="kw">match </span><span class="kw-2">&amp;</span><span class="self">self</span>.download_state {
-            DownloadState::DownloadingNew(range) =&gt; range.end - <span class="number">1</span>,
+        <span class="kw">let </span>last_get_blocks_target = <span class="kw">match </span><span class="kw-2">&amp;</span><span class="self">self</span>.state {
+            State::DownloadingNew(range) =&gt; range.end - <span class="number">1</span>,
             state =&gt; {
                 <span class="macro">tracing::debug!</span>(
                     <span class="question-mark">?</span>state,
@@ -762,9 +800,10 @@
             <span class="macro">tracing::trace!</span>(<span class="string">"Add pending block #{block_number},{block_hash}"</span>);
 
             <span class="self">self</span>.download_manager
-                .add_block(block_number, block_hash, block);
+                .add_block(block_number, block_hash, block, from);
 
-            <span class="self">self</span>.requested_blocks_count -= <span class="number">1</span>;
+            <span class="self">self</span>.inflight_blocks_count -= <span class="number">1</span>;
+            <span class="self">self</span>.downloaded_blocks_count += <span class="number">1</span>;
 
             <span class="kw">match </span>block_number.cmp(<span class="kw-2">&amp;</span>last_get_blocks_target) {
                 CmpOrdering::Less =&gt; {
@@ -778,10 +817,10 @@
                             target_block_number = <span class="self">self</span>.target_block_number,
                             <span class="string">"Received block #{block_number},{block_hash} higher than the target block"
                         </span>);
-                        <span class="self">self</span>.download_state = DownloadState::Completed;
+                        <span class="self">self</span>.state = State::Completed;
                         SyncAction::SwitchToIdle
                     } <span class="kw">else </span>{
-                        <span class="self">self</span>.download_state = DownloadState::Disconnecting;
+                        <span class="self">self</span>.state = State::Disconnecting;
                         SyncAction::Disconnect(
                             <span class="self">self</span>.peer_id,
                             Error::Other(<span class="macro">format!</span>(
@@ -797,25 +836,19 @@
                     <span class="comment">// No more new blocks request as there are enough ongoing blocks in the queue.
                     </span><span class="kw">if </span><span class="self">self
                         </span>.download_manager
-                        .update_and_check_queue_status(best_number)
+                        .evaluate_queue_status(best_number)
+                        .is_overloaded()
                     {
                         <span class="kw">return </span>SyncAction::None;
                     }
 
                     <span class="kw">let </span>best_queued_number = <span class="self">self</span>.download_manager.best_queued_number;
 
-                    <span class="macro">tracing::debug!</span>(
-                        best_number,
-                        best_queued_number,
-                        <span class="string">"Last getblocks finished, requesting more blocks"</span>,
-                    );
-
                     <span class="kw">let </span>end = <span class="self">self
                         </span>.target_block_number
                         .min(best_queued_number + MAX_GET_BLOCKS_RESPONSE);
 
-                    <span class="self">self</span>.download_state =
-                        DownloadState::DownloadingNew(best_queued_number + <span class="number">1</span>..end + <span class="number">1</span>);
+                    <span class="self">self</span>.state = State::DownloadingNew(best_queued_number + <span class="number">1</span>..end + <span class="number">1</span>);
 
                     <span class="kw">let </span>BlockLocator { locator_hashes, .. } = <span class="self">self
                         </span>.client
@@ -823,11 +856,16 @@
                             <span class="self">self</span>.download_manager.queued_blocks.block_hash(height)
                         });
 
-                    <span class="comment">// Last `getblocks` finished, fetch more blocks by sending a new `getblocks` request.
-                    </span>SyncAction::Request(SyncRequest::Blocks(LocatorRequest {
+                    <span class="macro">tracing::debug!</span>(
+                        best_number,
+                        best_queued_number,
+                        <span class="string">"Last `getblocks` finished, fetching more blocks"</span>,
+                    );
+
+                    SyncAction::Request(SyncRequest::Blocks(LocatorRequest {
                         locator_hashes,
                         stop_hash: BlockHash::all_zeros(),
-                        from: <span class="self">self</span>.peer_id,
+                        to: <span class="self">self</span>.peer_id,
                     }))
                 }
             }
@@ -861,7 +899,8 @@
 
                 <span class="kw">if </span><span class="self">self
                     </span>.download_manager
-                    .update_and_check_queue_status(<span class="self">self</span>.client.best_number())
+                    .evaluate_queue_status(<span class="self">self</span>.client.best_number())
+                    .is_overloaded()
                 {
                     SyncAction::None
                 } <span class="kw">else </span>{
@@ -882,7 +921,7 @@
             </span>.target_block_number
             .min(latest_block + MAX_GET_BLOCKS_RESPONSE);
 
-        <span class="self">self</span>.download_state = DownloadState::DownloadingNew(latest_block + <span class="number">1</span>..end + <span class="number">1</span>);
+        <span class="self">self</span>.state = State::DownloadingNew(latest_block + <span class="number">1</span>..end + <span class="number">1</span>);
 
         <span class="macro">tracing::debug!</span>(
             latest_block,
@@ -893,7 +932,7 @@
         SyncRequest::Blocks(LocatorRequest {
             locator_hashes,
             stop_hash: BlockHash::all_zeros(),
-            from: <span class="self">self</span>.peer_id,
+            to: <span class="self">self</span>.peer_id,
         })
     }
 
@@ -936,6 +975,7 @@
 <span class="attr">#[cfg(test)]
 </span><span class="kw">mod </span>tests {
     <span class="kw">use super</span>::<span class="kw-2">*</span>;
+    <span class="kw">use </span><span class="kw">crate</span>::peer_store::NoPeerStore;
     <span class="kw">use </span>subcoin_test_service::block_data;
 
     <span class="attr">#[test]
@@ -950,7 +990,7 @@
 
         <span class="kw">let </span>peer_id: PeerId = <span class="string">"0.0.0.0:0"</span>.parse().unwrap();
         <span class="kw">let </span>(<span class="kw-2">mut </span>downloader, _initial_request) =
-            BlocksFirstDownloader::new(client, peer_id, <span class="number">800000</span>);
+            BlocksFirstDownloader::new(client, peer_id, <span class="number">800000</span>, Arc::new(NoPeerStore));
 
         <span class="kw">let </span>block = block_data()[<span class="number">3</span>].clone();
         <span class="kw">let </span>block_hash = block.block_hash();

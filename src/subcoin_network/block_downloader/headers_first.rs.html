@@ -628,7 +628,74 @@
 <a href="#628" id="628">628</a>
 <a href="#629" id="629">629</a>
 <a href="#630" id="630">630</a>
+<a href="#631" id="631">631</a>
+<a href="#632" id="632">632</a>
+<a href="#633" id="633">633</a>
+<a href="#634" id="634">634</a>
+<a href="#635" id="635">635</a>
+<a href="#636" id="636">636</a>
+<a href="#637" id="637">637</a>
+<a href="#638" id="638">638</a>
+<a href="#639" id="639">639</a>
+<a href="#640" id="640">640</a>
+<a href="#641" id="641">641</a>
+<a href="#642" id="642">642</a>
+<a href="#643" id="643">643</a>
+<a href="#644" id="644">644</a>
+<a href="#645" id="645">645</a>
+<a href="#646" id="646">646</a>
+<a href="#647" id="647">647</a>
+<a href="#648" id="648">648</a>
+<a href="#649" id="649">649</a>
+<a href="#650" id="650">650</a>
+<a href="#651" id="651">651</a>
+<a href="#652" id="652">652</a>
+<a href="#653" id="653">653</a>
+<a href="#654" id="654">654</a>
+<a href="#655" id="655">655</a>
+<a href="#656" id="656">656</a>
+<a href="#657" id="657">657</a>
+<a href="#658" id="658">658</a>
+<a href="#659" id="659">659</a>
+<a href="#660" id="660">660</a>
+<a href="#661" id="661">661</a>
+<a href="#662" id="662">662</a>
+<a href="#663" id="663">663</a>
+<a href="#664" id="664">664</a>
+<a href="#665" id="665">665</a>
+<a href="#666" id="666">666</a>
+<a href="#667" id="667">667</a>
+<a href="#668" id="668">668</a>
+<a href="#669" id="669">669</a>
+<a href="#670" id="670">670</a>
+<a href="#671" id="671">671</a>
+<a href="#672" id="672">672</a>
+<a href="#673" id="673">673</a>
+<a href="#674" id="674">674</a>
+<a href="#675" id="675">675</a>
+<a href="#676" id="676">676</a>
+<a href="#677" id="677">677</a>
+<a href="#678" id="678">678</a>
+<a href="#679" id="679">679</a>
+<a href="#680" id="680">680</a>
+<a href="#681" id="681">681</a>
+<a href="#682" id="682">682</a>
+<a href="#683" id="683">683</a>
+<a href="#684" id="684">684</a>
+<a href="#685" id="685">685</a>
+<a href="#686" id="686">686</a>
+<a href="#687" id="687">687</a>
+<a href="#688" id="688">688</a>
+<a href="#689" id="689">689</a>
+<a href="#690" id="690">690</a>
+<a href="#691" id="691">691</a>
+<a href="#692" id="692">692</a>
+<a href="#693" id="693">693</a>
+<a href="#694" id="694">694</a>
+<a href="#695" id="695">695</a>
+<a href="#696" id="696">696</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::block_downloader::BlockDownloadManager;
+<span class="kw">use </span><span class="kw">crate</span>::peer_store::PeerStore;
 <span class="kw">use </span><span class="kw">crate</span>::sync::{LocatorRequest, SyncAction, SyncRequest};
 <span class="kw">use crate</span>::{Error, PeerId, SyncStatus};
 <span class="kw">use </span>bitcoin::blockdata::block::Header <span class="kw">as </span>BitcoinHeader;
@@ -657,7 +724,7 @@
 /// this does not guarantee the block responses from peers are ordered, but it's helpful
 /// for the peers with good connections (i.e., when syncing from a local node).
 </span><span class="attr">#[derive(Debug, Clone)]
-</span><span class="kw">enum </span>BlockDownloadRange {
+</span><span class="kw">enum </span>BlockDownload {
     <span class="doccomment">/// Request all blocks within the specified range in a single `getdata` message.
     ///
     /// This option is only used when the sync node is a local node.
@@ -679,12 +746,18 @@
     },
 }
 
-<span class="attr">#[derive(Debug, Clone)]
-</span><span class="kw">enum </span>DownloadState {
+<span class="doccomment">/// Represents the current state of the download process.
+</span><span class="attr">#[derive(Debug, Clone)]
+</span><span class="kw">enum </span>State {
     <span class="doccomment">/// Downloading not started yet.
     </span>Idle,
-    <span class="doccomment">/// Restarting the download process.
-    </span>Restarting,
+    <span class="doccomment">/// Restarting the download by requesting headers.
+    </span>RestartingHeaders,
+    <span class="doccomment">/// Restarting the download by continuing with block download from the specified range.
+    </span>RestartingBlocks {
+        start: IndexedBlock,
+        end: IndexedBlock,
+    },
     <span class="doccomment">/// Peer misbehavior detected, will disconnect the peer shortly.
     </span>Disconnecting,
     <span class="doccomment">/// Actively downloading new headers in the specified range (start, end].
@@ -695,18 +768,21 @@
         start: IndexedBlock,
         end: IndexedBlock,
     },
-    <span class="doccomment">/// Headers downloaded, Actively downloading the corresponding block data (start, end].
-    </span>DownloadingBlocks(BlockDownloadRange),
+    <span class="doccomment">/// Actively downloading blocks corresponding to previously downloaded headers (start, end].
+    </span>DownloadingBlocks(BlockDownload),
     <span class="doccomment">/// All blocks up to the target block have been successfully
     /// downloaded, the download process has been completed.
     </span>Completed,
 }
 
-<span class="kw">impl </span>Display <span class="kw">for </span>DownloadState {
+<span class="kw">impl </span>Display <span class="kw">for </span>State {
     <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>std::fmt::Formatter&lt;<span class="lifetime">'_</span>&gt;) -&gt; std::fmt::Result {
         <span class="kw">match </span><span class="self">self </span>{
             <span class="self">Self</span>::Idle =&gt; <span class="macro">write!</span>(f, <span class="string">"Idle"</span>),
-            <span class="self">Self</span>::Restarting =&gt; <span class="macro">write!</span>(f, <span class="string">"Restarting"</span>),
+            <span class="self">Self</span>::RestartingHeaders =&gt; <span class="macro">write!</span>(f, <span class="string">"RestartingHeaders"</span>),
+            <span class="self">Self</span>::RestartingBlocks { start, end } =&gt; {
+                <span class="macro">write!</span>(f, <span class="string">"RestartingBlocks {{ start: {start}, end: {end} }}"</span>)
+            }
             <span class="self">Self</span>::Disconnecting =&gt; <span class="macro">write!</span>(f, <span class="string">"Disconnecting"</span>),
             <span class="self">Self</span>::DownloadingHeaders { start, end } =&gt; {
                 <span class="macro">write!</span>(f, <span class="string">"DownloadingHeaders {{ start: {start}, end: {end} }}"</span>)
@@ -722,21 +798,31 @@
         <span class="number">0</span>..=<span class="number">99_999 </span>=&gt; <span class="number">1024</span>,
         <span class="number">100_000</span>..=<span class="number">199_999 </span>=&gt; <span class="number">512</span>,
         <span class="number">200_000</span>..=<span class="number">299_999 </span>=&gt; <span class="number">128</span>,
-        <span class="number">300_000</span>..=<span class="number">399_999 </span>=&gt; <span class="number">64</span>,
-        <span class="number">400_000</span>..=<span class="number">499_999 </span>=&gt; <span class="number">32</span>,
-        <span class="kw">_ </span>=&gt; <span class="number">16</span>,
+        <span class="number">300_000</span>..=<span class="number">399_999 </span>=&gt; <span class="number">32</span>,
+        <span class="number">400_000</span>..=<span class="number">499_999 </span>=&gt; <span class="number">16</span>,
+        <span class="kw">_ </span>=&gt; <span class="number">8</span>,
     }
 }
 
-<span class="doccomment">/// Headers-First download strategy.
+<span class="doccomment">/// Headers downloaded up to the next checkpoint.
+</span><span class="kw">struct </span>DownloadedHeaders {
+    <span class="doccomment">/// Ordered map of headers, where the key is the block hash and the value is the block number.
+    ///
+    /// Keep the headers ordered so that fetching the blocks orderly later is possible.
+    </span>headers: IndexMap&lt;BlockHash, u32&gt;,
+    <span class="doccomment">/// Optional range of blocks indicating the completed header download up to the next checkpoint (start, end].
+    </span>completed_range: <span class="prelude-ty">Option</span>&lt;(IndexedBlock, IndexedBlock)&gt;,
+}
+
+<span class="doccomment">/// Implements the Headers-First download strategy.
 </span><span class="kw">pub struct </span>HeadersFirstDownloader&lt;Block, Client&gt; {
     client: Arc&lt;Client&gt;,
     header_verifier: HeaderVerifier&lt;Block, Client&gt;,
     peer_id: PeerId,
-    download_state: DownloadState,
+    state: State,
     download_manager: BlockDownloadManager,
-    <span class="comment">// Keep the headers ordered so that fetching the blocks orderly later is possible.
-    </span>downloaded_headers: IndexMap&lt;BlockHash, u32&gt;,
+    downloaded_headers: DownloadedHeaders,
+    downloaded_blocks_count: usize,
     last_locator_start: u32,
     <span class="comment">// TODO: Now it's solely used for the purpose of displaying the sync state.
     // refactor it later.
@@ -754,24 +840,29 @@
         header_verifier: HeaderVerifier&lt;Block, Client&gt;,
         peer_id: PeerId,
         target_block_number: u32,
+        peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;,
     ) -&gt; (<span class="self">Self</span>, SyncAction) {
         <span class="kw">let </span><span class="kw-2">mut </span>headers_first_sync = <span class="self">Self </span>{
             client,
             header_verifier,
             peer_id,
-            download_state: DownloadState::Idle,
-            downloaded_headers: IndexMap::new(),
-            download_manager: BlockDownloadManager::new(),
+            state: State::Idle,
+            downloaded_headers: DownloadedHeaders {
+                headers: IndexMap::new(),
+                completed_range: <span class="prelude-val">None</span>,
+            },
+            download_manager: BlockDownloadManager::new(peer_store),
+            downloaded_blocks_count: <span class="number">0</span>,
             last_locator_start: <span class="number">0u32</span>,
             target_block_number,
             _phantom: Default::default(),
         };
-        <span class="kw">let </span>sync_action = headers_first_sync.prepare_headers_request_action();
+        <span class="kw">let </span>sync_action = headers_first_sync.headers_request_action();
         (headers_first_sync, sync_action)
     }
 
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>sync_status(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; SyncStatus {
-        <span class="kw">if </span><span class="self">self</span>.download_manager.import_queue_is_overloaded {
+        <span class="kw">if </span><span class="self">self</span>.download_manager.queue_status.is_overloaded() {
             SyncStatus::Importing {
                 target: <span class="self">self</span>.target_block_number,
                 peers: <span class="macro">vec!</span>[<span class="self">self</span>.peer_id],
@@ -784,30 +875,44 @@
         }
     }
 
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>sync_peer(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; PeerId {
-        <span class="self">self</span>.peer_id
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>replaceable_sync_peer(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;PeerId&gt; {
+        <span class="kw">if </span><span class="self">self</span>.downloaded_blocks_count &gt; <span class="number">0 </span>{
+            <span class="prelude-val">None
+        </span>} <span class="kw">else </span>{
+            <span class="prelude-val">Some</span>(<span class="self">self</span>.peer_id)
+        }
     }
 
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>update_sync_peer(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_id: PeerId, target_block_number: u32) {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>replace_sync_peer(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_id: PeerId, target_block_number: u32) {
         <span class="self">self</span>.peer_id = peer_id;
+        <span class="self">self</span>.downloaded_blocks_count = <span class="number">0</span>;
         <span class="self">self</span>.target_block_number = target_block_number;
     }
 
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>download_manager(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;mut </span>BlockDownloadManager {
+        <span class="kw-2">&amp;mut </span><span class="self">self</span>.download_manager
+    }
+
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>on_tick(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; SyncAction {
-        <span class="kw">if </span><span class="macro">matches!</span>(<span class="self">self</span>.download_state, DownloadState::Restarting) {
-            <span class="kw">return </span><span class="self">self</span>.prepare_headers_request_action();
+        <span class="kw">if </span><span class="macro">matches!</span>(<span class="self">self</span>.state, State::RestartingHeaders) {
+            <span class="kw">return </span><span class="self">self</span>.headers_request_action();
         }
 
-        <span class="kw">if </span><span class="self">self</span>.download_manager.import_queue_is_overloaded {
-            <span class="kw">let </span>import_queue_still_busy = <span class="self">self
+        <span class="kw">if let </span>State::RestartingBlocks { start, end } = <span class="self">self</span>.state {
+            <span class="kw">return </span><span class="self">self</span>.start_block_download(start, end);
+        }
+
+        <span class="kw">if </span><span class="self">self</span>.download_manager.queue_status.is_overloaded() {
+            <span class="kw">let </span>still_overloaded = <span class="self">self
                 </span>.download_manager
-                .update_and_check_queue_status(<span class="self">self</span>.client.best_number());
-            <span class="kw">if </span>import_queue_still_busy {
+                .evaluate_queue_status(<span class="self">self</span>.client.best_number())
+                .is_overloaded();
+            <span class="kw">if </span>still_overloaded {
                 <span class="kw">return </span>SyncAction::None;
             } <span class="kw">else </span>{
                 <span class="comment">// Resume blocks or headers request.
-                </span><span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.download_state {
-                    DownloadState::DownloadingBlocks(BlockDownloadRange::Batches {
+                </span><span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.state {
+                    State::DownloadingBlocks(BlockDownload::Batches {
                         downloaded_batch,
                         waiting,
                         paused,
@@ -828,17 +933,17 @@
                                 .clone_from(<span class="kw-2">&amp;</span>next_batch);
                             <span class="kw">return </span><span class="self">self</span>.blocks_request_action(next_batch);
                         } <span class="kw">else </span>{
-                            <span class="kw">return </span><span class="self">self</span>.prepare_headers_request_action();
+                            <span class="kw">return </span><span class="self">self</span>.headers_request_action();
                         }
                     }
                     <span class="kw">_ </span>=&gt; {
-                        <span class="kw">return </span><span class="self">self</span>.prepare_headers_request_action();
+                        <span class="kw">return </span><span class="self">self</span>.headers_request_action();
                     }
                 }
             }
         }
 
-        <span class="kw">if </span><span class="self">self</span>.download_manager.is_stalled() {
+        <span class="kw">if </span><span class="self">self</span>.download_manager.is_stalled(<span class="self">self</span>.peer_id) {
             <span class="kw">return </span>SyncAction::RestartSyncWithStalledPeer(<span class="self">self</span>.peer_id);
         }
 
@@ -847,14 +952,19 @@
 
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>restart(<span class="kw-2">&amp;mut </span><span class="self">self</span>, new_peer: PeerId, peer_best: u32) {
         <span class="self">self</span>.peer_id = new_peer;
-        <span class="self">self</span>.downloaded_headers.clear();
         <span class="self">self</span>.download_manager.reset();
+        <span class="self">self</span>.downloaded_blocks_count = <span class="number">0</span>;
         <span class="self">self</span>.last_locator_start = <span class="number">0u32</span>;
         <span class="self">self</span>.target_block_number = peer_best;
-        <span class="self">self</span>.download_state = DownloadState::Restarting;
+        <span class="kw">if let </span><span class="prelude-val">Some</span>((start, end)) = <span class="self">self</span>.downloaded_headers.completed_range {
+            <span class="self">self</span>.state = State::RestartingBlocks { start, end };
+        } <span class="kw">else </span>{
+            <span class="self">self</span>.downloaded_headers.headers.clear();
+            <span class="self">self</span>.state = State::RestartingHeaders;
+        }
     }
 
-    <span class="kw">fn </span>prepare_headers_request_action(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; SyncAction {
+    <span class="kw">fn </span>headers_request_action(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; SyncAction {
         <span class="kw">let </span>our_best = <span class="self">self</span>.client.best_number();
 
         <span class="kw">let </span><span class="prelude-val">Some</span>(checkpoint) = <span class="kw">crate</span>::checkpoint::next_checkpoint(our_best + <span class="number">1</span>) <span class="kw">else </span>{
@@ -889,17 +999,17 @@
             .block_locator(<span class="prelude-val">Some</span>(our_best), |_height: u32| <span class="prelude-val">None</span>)
             .locator_hashes;
 
-        <span class="self">self</span>.download_state = DownloadState::DownloadingHeaders { start, end };
+        <span class="self">self</span>.state = State::DownloadingHeaders { start, end };
+        <span class="self">self</span>.downloaded_headers = DownloadedHeaders {
+            headers: IndexMap::with_capacity((end.number - start.number) <span class="kw">as </span>usize),
+            completed_range: <span class="prelude-val">None</span>,
+        };
 
         SyncAction::Request(SyncRequest::Headers(LocatorRequest {
             locator_hashes,
             stop_hash: checkpoint.hash,
-            from: <span class="self">self</span>.peer_id,
+            to: <span class="self">self</span>.peer_id,
         }))
-    }
-
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>download_manager(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;mut </span>BlockDownloadManager {
-        <span class="kw-2">&amp;mut </span><span class="self">self</span>.download_manager
     }
 
     <span class="comment">// Handle `headers` message.
@@ -916,8 +1026,8 @@
             <span class="kw">return </span>SyncAction::None;
         };
 
-        <span class="kw">let </span>(start, end) = <span class="kw">match </span><span class="kw-2">&amp;</span><span class="self">self</span>.download_state {
-            DownloadState::DownloadingHeaders { start, end } =&gt; (<span class="kw-2">*</span>start, <span class="kw-2">*</span>end),
+        <span class="kw">let </span>(start, end) = <span class="kw">match </span><span class="kw-2">&amp;</span><span class="self">self</span>.state {
+            State::DownloadingHeaders { start, end } =&gt; (<span class="kw-2">*</span>start, <span class="kw-2">*</span>end),
             state =&gt; {
                 <span class="macro">tracing::debug!</span>(
                     %state,
@@ -931,7 +1041,8 @@
 
         <span class="kw">let </span><span class="kw-2">mut </span>prev_number = <span class="kw">if </span>prev_hash == start.hash {
             start.number
-        } <span class="kw">else if let </span><span class="prelude-val">Some</span>(block_number) = <span class="self">self</span>.downloaded_headers.get(<span class="kw-2">&amp;</span>prev_hash).copied() {
+        } <span class="kw">else if let </span><span class="prelude-val">Some</span>(block_number) = <span class="self">self</span>.downloaded_headers.headers.get(<span class="kw-2">&amp;</span>prev_hash).copied()
+        {
             block_number
         } <span class="kw">else if let </span><span class="prelude-val">Some</span>(block_number) = <span class="self">self</span>.client.block_number(prev_hash) {
             block_number
@@ -941,18 +1052,18 @@
                 best_number = <span class="question-mark">?</span><span class="self">self</span>.client.info().best_number,
                 <span class="string">"Cannot find the parent of the first header in headers, disconnecting"
             </span>);
-            <span class="self">self</span>.download_state = DownloadState::Disconnecting;
+            <span class="self">self</span>.state = State::Disconnecting;
             <span class="kw">return </span>SyncAction::Disconnect(<span class="self">self</span>.peer_id, Error::ParentOfFirstHeaderEntryNotFound);
         };
 
         <span class="kw">for </span>header <span class="kw">in </span>headers {
             <span class="kw">if </span>header.prev_blockhash != prev_hash {
-                <span class="self">self</span>.download_state = DownloadState::Disconnecting;
+                <span class="self">self</span>.state = State::Disconnecting;
                 <span class="kw">return </span>SyncAction::Disconnect(<span class="self">self</span>.peer_id, Error::HeadersNotInAscendingOrder);
             }
 
             <span class="kw">if </span>!<span class="self">self</span>.header_verifier.has_valid_proof_of_work(<span class="kw-2">&amp;</span>header) {
-                <span class="self">self</span>.download_state = DownloadState::Disconnecting;
+                <span class="self">self</span>.state = State::Disconnecting;
                 <span class="kw">return </span>SyncAction::Disconnect(from, Error::BadProofOfWork(header.block_hash()));
             }
 
@@ -961,7 +1072,9 @@
 
             <span class="comment">// We can't import the header directly at this moment since creating a Substrate
             // header requires the full block data.
-            </span><span class="self">self</span>.downloaded_headers.insert(block_hash, block_number);
+            </span><span class="self">self</span>.downloaded_headers
+                .headers
+                .insert(block_hash, block_number);
 
             prev_hash = block_hash;
             prev_number = block_number;
@@ -972,6 +1085,9 @@
         <span class="kw">let </span>target_block_hash = end.hash;
 
         <span class="kw">if </span>final_block_number == target_block_number {
+            <span class="self">self</span>.downloaded_headers
+                .completed_range
+                .replace((start, end));
             <span class="self">self</span>.start_block_download(start, end)
         } <span class="kw">else </span>{
             <span class="macro">tracing::debug!</span>(<span class="string">"📄 Downloaded headers ({final_block_number}/{target_block_number})"</span>);
@@ -979,7 +1095,7 @@
             SyncAction::Request(SyncRequest::Headers(LocatorRequest {
                 locator_hashes: <span class="macro">vec!</span>[prev_hash],
                 stop_hash: target_block_hash,
-                from: <span class="self">self</span>.peer_id,
+                to: <span class="self">self</span>.peer_id,
             }))
         }
     }
@@ -990,19 +1106,24 @@
 
         </span><span class="kw">let </span>best_number = <span class="self">self</span>.client.best_number();
 
+        <span class="kw">let </span><span class="kw-2">mut </span>missing_blocks_count = <span class="number">0usize</span>;
+
         <span class="kw">let </span>missing_blocks =
             <span class="self">self</span>.downloaded_headers
+                .headers
                 .iter()
                 .filter_map(|(block_hash, block_number)| {
                     <span class="kw">let </span>block_hash = <span class="kw-2">*</span>block_hash;
 
                     <span class="kw">if </span><span class="kw-2">*</span>block_number &gt; best_number {
+                        missing_blocks_count += <span class="number">1</span>;
                         <span class="kw">return </span><span class="prelude-val">Some</span>(block_hash);
                     }
 
                     <span class="kw">if </span><span class="self">self</span>.client.block_exists(block_hash) {
                         <span class="prelude-val">None
                     </span>} <span class="kw">else </span>{
+                        missing_blocks_count += <span class="number">1</span>;
                         <span class="prelude-val">Some</span>(block_hash)
                     }
                 });
@@ -1018,12 +1139,12 @@
                 best_number,
                 best_queued_number = <span class="self">self</span>.download_manager.best_queued_number,
                 requested_blocks_count = get_data_msg.len(),
-                downloaded_headers = <span class="self">self</span>.downloaded_headers.len(),
+                missing_blocks_count,
+                downloaded_headers_count = <span class="self">self</span>.downloaded_headers.headers.len(),
                 <span class="string">"Downloaded headers from {start} to {end}, requesting blocks"</span>,
             );
 
-            <span class="self">self</span>.download_state =
-                DownloadState::DownloadingBlocks(BlockDownloadRange::AllBlocks { start, end });
+            <span class="self">self</span>.state = State::DownloadingBlocks(BlockDownload::AllBlocks { start, end });
 
             get_data_msg
         } <span class="kw">else </span>{
@@ -1044,8 +1165,10 @@
                 <span class="kw">return </span>SyncAction::None;
             };
 
-            <span class="kw">let </span>get_data_msg =
-                prepare_ordered_block_data_request(initial_batch.clone(), <span class="kw-2">&amp;</span><span class="self">self</span>.downloaded_headers);
+            <span class="kw">let </span>get_data_msg = prepare_ordered_block_data_request(
+                initial_batch.clone(),
+                <span class="kw-2">&amp;</span><span class="self">self</span>.downloaded_headers.headers,
+            );
 
             <span class="kw">let </span>old_requested =
                 std::mem::replace(<span class="kw-2">&amp;mut </span><span class="self">self</span>.download_manager.requested_blocks, initial_batch);
@@ -1058,12 +1181,13 @@
             <span class="macro">tracing::debug!</span>(
                 best_number,
                 best_queued_number = <span class="self">self</span>.download_manager.best_queued_number,
-                downloaded_headers = <span class="self">self</span>.downloaded_headers.len(),
+                missing_blocks_count,
+                downloaded_headers_count = <span class="self">self</span>.downloaded_headers.headers.len(),
                 <span class="string">"Headers downloaded, requesting {} blocks in batches (1/{total_batches})"</span>,
                 get_data_msg.len(),
             );
 
-            <span class="self">self</span>.download_state = DownloadState::DownloadingBlocks(BlockDownloadRange::Batches {
+            <span class="self">self</span>.state = State::DownloadingBlocks(BlockDownload::Batches {
                 downloaded_batch: <span class="number">0</span>,
                 waiting: batches,
                 paused: <span class="bool-val">false</span>,
@@ -1078,8 +1202,8 @@
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>on_block(<span class="kw-2">&amp;mut </span><span class="self">self</span>, block: BitcoinBlock, from: PeerId) -&gt; SyncAction {
         <span class="kw">let </span>block_hash = block.block_hash();
 
-        <span class="kw">let </span>block_download_range = <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.download_state {
-            DownloadState::DownloadingBlocks(download_range) =&gt; download_range,
+        <span class="kw">let </span>block_download = <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.state {
+            State::DownloadingBlocks(block_download) =&gt; block_download,
             state =&gt; {
                 <span class="comment">// TODO: we may receive the blocks from a peer that has been considered as stalled,
                 // should we try to cache and use such blocks since the bandwidth has been consumed
@@ -1109,10 +1233,12 @@
             <span class="macro">tracing::trace!</span>(<span class="string">"Add pending block #{block_number},{block_hash}"</span>);
 
             <span class="self">self</span>.download_manager
-                .add_block(block_number, block_hash, block);
+                .add_block(block_number, block_hash, block, from);
 
-            <span class="kw">let </span>should_request_more_headers = <span class="kw">match </span>block_download_range {
-                BlockDownloadRange::AllBlocks { start, end } =&gt; {
+            <span class="self">self</span>.downloaded_blocks_count += <span class="number">1</span>;
+
+            <span class="kw">let </span>should_request_more_headers = <span class="kw">match </span>block_download {
+                BlockDownload::AllBlocks { start, end } =&gt; {
                     <span class="kw">if </span>end.hash == block_hash {
                         <span class="macro">tracing::debug!</span>(<span class="string">"Downloaded blocks in ({start}, {end}]"</span>);
                         <span class="bool-val">true
@@ -1120,7 +1246,7 @@
                         <span class="bool-val">false
                     </span>}
                 }
-                BlockDownloadRange::Batches {
+                BlockDownload::Batches {
                     downloaded_batch,
                     waiting,
                     paused,
@@ -1128,9 +1254,12 @@
                     <span class="kw">if </span><span class="self">self</span>.download_manager.requested_blocks.is_empty() {
                         <span class="kw-2">*</span>downloaded_batch += <span class="number">1</span>;
 
+                        <span class="kw">let </span>best_number = <span class="self">self</span>.client.best_number();
+
                         <span class="kw">if </span><span class="self">self
                             </span>.download_manager
-                            .update_and_check_queue_status(<span class="self">self</span>.client.best_number())
+                            .evaluate_queue_status(best_number)
+                            .is_overloaded()
                         {
                             <span class="kw-2">*</span>paused = <span class="bool-val">true</span>;
                             <span class="kw">return </span>SyncAction::None;
@@ -1138,7 +1267,7 @@
 
                         <span class="kw">if let </span><span class="prelude-val">Some</span>(next_batch) = waiting.pop_front() {
                             <span class="macro">tracing::debug!</span>(
-                                best_number = <span class="self">self</span>.client.best_number(),
+                                best_number,
                                 best_queued_number = <span class="self">self</span>.download_manager.best_queued_number,
                                 <span class="string">"📦 Downloaded {} blocks in batches ({}/{})"</span>,
                                 next_batch.len(),
@@ -1177,8 +1306,10 @@
     }
 
     <span class="kw">fn </span>blocks_request_action(<span class="kw-2">&amp;</span><span class="self">self</span>, blocks_to_download: HashSet&lt;BlockHash&gt;) -&gt; SyncAction {
-        <span class="kw">let </span>get_data_msg =
-            prepare_ordered_block_data_request(blocks_to_download, <span class="kw-2">&amp;</span><span class="self">self</span>.downloaded_headers);
+        <span class="kw">let </span>get_data_msg = prepare_ordered_block_data_request(
+            blocks_to_download,
+            <span class="kw-2">&amp;</span><span class="self">self</span>.downloaded_headers.headers,
+        );
         SyncAction::Request(SyncRequest::Data(get_data_msg, <span class="self">self</span>.peer_id))
     }
 
@@ -1193,14 +1324,15 @@
 
         <span class="kw">if </span><span class="self">self
             </span>.download_manager
-            .update_and_check_queue_status(best_number)
+            .evaluate_queue_status(best_number)
+            .is_overloaded()
         {
             <span class="kw">return </span>SyncAction::None;
         }
 
         <span class="kw">match </span><span class="kw">crate</span>::checkpoint::next_checkpoint(block_number + <span class="number">1</span>) {
             <span class="prelude-val">Some</span>(checkpoint) =&gt; {
-                <span class="self">self</span>.download_state = DownloadState::DownloadingHeaders {
+                <span class="self">self</span>.state = State::DownloadingHeaders {
                     start: IndexedBlock {
                         number: block_number,
                         hash: block_hash,
@@ -1216,14 +1348,14 @@
                 SyncAction::Request(SyncRequest::Headers(LocatorRequest {
                     locator_hashes: <span class="macro">vec!</span>[block_hash],
                     stop_hash: checkpoint.hash,
-                    from: <span class="self">self</span>.peer_id,
+                    to: <span class="self">self</span>.peer_id,
                 }))
             }
             <span class="prelude-val">None </span>=&gt; {
                 <span class="comment">// We have synced to the last checkpoint, now switch to the Blocks-First
                 // sync to download the remaining blocks.
                 </span><span class="macro">tracing::debug!</span>(<span class="string">"No more checkpoint, switching to blocks-first sync"</span>);
-                <span class="self">self</span>.download_state = DownloadState::Completed;
+                <span class="self">self</span>.state = State::Completed;
                 SyncAction::SwitchToBlocksFirstSync
             }
         }

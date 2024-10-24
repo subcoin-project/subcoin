@@ -468,6 +468,8 @@
 <a href="#468" id="468">468</a>
 <a href="#469" id="469">469</a>
 <a href="#470" id="470">470</a>
+<a href="#471" id="471">471</a>
+<a href="#472" id="472">472</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # Bitcoin Network
 //!
 //! This crate facilitates communication with other nodes in the Bitcoin P2P network. It handles
@@ -514,7 +516,7 @@
 <span class="kw">use </span><span class="kw">crate</span>::connection::ConnectionInitiator;
 <span class="kw">use </span><span class="kw">crate</span>::metrics::BandwidthMetrics;
 <span class="kw">use </span><span class="kw">crate</span>::network::NetworkWorkerMessage;
-<span class="kw">use </span><span class="kw">crate</span>::peer_store::PeerStore;
+<span class="kw">use </span><span class="kw">crate</span>::peer_store::{PersistentPeerStore, PersistentPeerStoreHandle};
 <span class="kw">use </span><span class="kw">crate</span>::worker::NetworkWorker;
 <span class="kw">use </span>bitcoin::p2p::ServiceFlags;
 <span class="kw">use </span>bitcoin::{BlockHash, Network <span class="kw">as </span>BitcoinNetwork};
@@ -535,7 +537,7 @@
 <span class="kw">use </span>tokio::sync::oneshot;
 
 <span class="kw">pub use </span><span class="kw">crate</span>::network::{NetworkHandle, NetworkStatus, SendTransactionResult, SyncStatus};
-<span class="kw">pub use </span><span class="kw">crate</span>::sync::{PeerLatency, PeerSync, PeerSyncState};
+<span class="kw">pub use </span><span class="kw">crate</span>::sync::{PeerSync, PeerSyncState};
 
 <span class="doccomment">/// Identifies a peer.
 </span><span class="kw">pub type </span>PeerId = SocketAddr;
@@ -584,8 +586,10 @@
     </span>TooManyInventoryItems,
     <span class="attr">#[error(<span class="string">"Ping timeout"</span>)]
     </span>PingTimeout,
-    <span class="attr">#[error(<span class="string">"Ping latency exceeds the threshold"</span>)]
-    </span>PingLatencyTooHigh,
+    <span class="attr">#[error(<span class="string">"Ping latency ({0}) exceeds the threshold"</span>)]
+    </span>PingLatencyTooHigh(Latency),
+    <span class="attr">#[error(<span class="string">"Peer is deprioritized for syncing and has encountered multiple failures"</span>)]
+    </span>UnreliablePeer,
     <span class="attr">#[error(<span class="string">"Peer's latency ({0} ms) is too high"</span>)]
     </span>SlowPeer(Latency),
     <span class="attr">#[error(<span class="string">"Unexpected pong message"</span>)]
@@ -828,13 +832,13 @@
             <span class="macro">tracing::info!</span>(<span class="string">"Subcoin block sync is disabled until Substrate fast sync is complete"</span>);
         }
 
-        <span class="kw">let </span>peer_store = PeerStore::new(
-            <span class="kw-2">&amp;</span>config.base_path,
-            config.max_outbound_peers,
-            config.persistent_peer_latency_threshold,
-        );
+        <span class="kw">let </span>(sender, receiver) = tracing_unbounded(<span class="string">"mpsc_subcoin_peer_store"</span>, <span class="number">10_000</span>);
+        <span class="kw">let </span>(persistent_peer_store, persistent_peers) =
+            PersistentPeerStore::new(<span class="kw-2">&amp;</span>config.base_path, config.max_outbound_peers);
+        <span class="kw">let </span>persistent_peer_store_handle =
+            PersistentPeerStoreHandle::new(config.persistent_peer_latency_threshold, sender);
 
-        <span class="kw">let </span>persistent_peers = peer_store.peer_set();
+        spawn_handle.spawn(<span class="string">"peer-store"</span>, <span class="prelude-val">None</span>, persistent_peer_store.run(receiver));
 
         <span class="kw">let </span>network_worker = NetworkWorker::new(
             worker::Params {
@@ -850,7 +854,7 @@
                 connection_initiator: connection_initiator.clone(),
                 max_outbound_peers: config.max_outbound_peers,
                 enable_block_sync: config.enable_block_sync_on_startup,
-                peer_store,
+                peer_store: Arc::new(persistent_peer_store_handle),
             },
             registry.as_ref(),
         );

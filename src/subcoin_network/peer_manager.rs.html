@@ -766,6 +766,11 @@
 <a href="#766" id="766">766</a>
 <a href="#767" id="767">767</a>
 <a href="#768" id="768">768</a>
+<a href="#769" id="769">769</a>
+<a href="#770" id="770">770</a>
+<a href="#771" id="771">771</a>
+<a href="#772" id="772">772</a>
+<a href="#773" id="773">773</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::address_book::AddressBook;
 <span class="kw">use </span><span class="kw">crate</span>::connection::{ConnectionInitiator, ConnectionWriter, Direction, NewConnection};
 <span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
@@ -794,11 +799,20 @@
 </span><span class="kw">pub const </span>PROTOCOL_VERSION: u32 = <span class="number">70016</span>;
 
 <span class="doccomment">/// Minimum supported peer protocol version.
+///
 /// This version includes support for the `sendheaders` feature.
 </span><span class="kw">pub const </span>MIN_PROTOCOL_VERSION: u32 = <span class="number">70012</span>;
 
-<span class="doccomment">/// Peer is considered as a slow one if the average ping latency is higher than 5 seconds.
-</span><span class="kw">const </span>SLOW_PEER_LATENCY: Latency = <span class="number">5_000</span>;
+<span class="doccomment">/// The maximum allowable peer latency in milliseconds before disconnection.
+///
+/// If a peer's latency exceeds this threshold (2000ms), it will be disconnected immediately.
+</span><span class="kw">pub const </span>PEER_LATENCY_THRESHOLD: Latency = <span class="number">2000</span>;
+
+<span class="doccomment">/// The threshold for classifying a peer as "slow", based on average ping latency in milliseconds.
+///
+/// A peer is considered slow if its average latency exceeds 500ms. Slow peers may be evicted from
+/// the network to maintain overall performance.
+</span><span class="kw">const </span>SLOW_PEER_LATENCY: Latency = <span class="number">500</span>;
 
 <span class="doccomment">/// Interval for evicting the slowest peer, 10 minutes.
 ///
@@ -858,7 +872,7 @@
 </span><span class="kw">pub struct </span>NewPeer {
     <span class="kw">pub </span>peer_id: PeerId,
     <span class="kw">pub </span>best_number: u32,
-    <span class="kw">pub </span>connect_latency: Latency,
+    <span class="kw">pub </span>latency: Latency,
 }
 
 <span class="doccomment">/// Handshake state.
@@ -902,22 +916,26 @@
 }
 
 <span class="attr">#[derive(Debug, Clone, Default)]
-</span><span class="kw">pub struct </span>PingLatency {
-    <span class="kw">pub </span>received_pongs: u64,
-    <span class="kw">pub </span>total_latency: Latency,
+</span><span class="kw">pub struct </span>LatencyTracker {
+    <span class="doccomment">/// Number of ping responses received.
+    </span>received_pongs: u64,
+    <span class="doccomment">/// Accumulated total latency in milliseconds.
+    </span>total_latency: Latency,
 }
 
-<span class="kw">impl </span>PingLatency {
-    <span class="kw">fn </span>on_pong(<span class="kw-2">&amp;mut </span><span class="self">self</span>, latency: Latency) {
+<span class="kw">impl </span>LatencyTracker {
+    <span class="doccomment">/// Updates the ping latency data and returns the latest average latency.
+    </span><span class="kw">fn </span>record_pong(<span class="kw-2">&amp;mut </span><span class="self">self</span>, latency: Latency) -&gt; Latency {
         <span class="self">self</span>.received_pongs = <span class="self">self</span>.received_pongs.saturating_add(<span class="number">1</span>);
         <span class="self">self</span>.total_latency = <span class="self">self</span>.total_latency.saturating_add(latency);
+        <span class="self">self</span>.total_latency / <span class="self">self</span>.received_pongs <span class="kw">as </span>u128
     }
 
-    <span class="kw">fn </span>average(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Latency {
+    <span class="kw">fn </span>calc_average(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;Latency&gt; {
         <span class="kw">if </span><span class="self">self</span>.received_pongs == <span class="number">0 </span>{
-            <span class="kw">return </span>u128::MAX;
+            <span class="kw">return </span><span class="prelude-val">None</span>;
         }
-        <span class="self">self</span>.total_latency / <span class="self">self</span>.received_pongs <span class="kw">as </span>u128
+        <span class="prelude-val">Some</span>(<span class="self">self</span>.total_latency / <span class="self">self</span>.received_pongs <span class="kw">as </span>u128)
     }
 }
 
@@ -935,8 +953,8 @@
 }
 
 <span class="kw">impl </span>PingState {
-    <span class="kw">const </span>PING_INTERVAL: Duration = Duration::from_secs(<span class="number">120</span>);
     <span class="kw">const </span>PING_TIMEOUT: Duration = Duration::from_secs(<span class="number">30</span>);
+    <span class="kw">const </span>PING_INTERVAL: Duration = Duration::from_secs(<span class="number">120</span>);
 
     <span class="kw">fn </span>should_ping(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
         <span class="kw">match </span><span class="self">self </span>{
@@ -949,6 +967,12 @@
         <span class="kw">match </span><span class="self">self </span>{
             <span class="self">Self</span>::Idle { .. } =&gt; <span class="bool-val">false</span>,
             <span class="self">Self</span>::AwaitingPong { last_ping_at, .. } =&gt; last_ping_at.elapsed() &gt;= <span class="self">Self</span>::PING_TIMEOUT,
+        }
+    }
+
+    <span class="kw">fn </span>idle() -&gt; <span class="self">Self </span>{
+        <span class="self">Self</span>::Idle {
+            last_pong_at: Instant::now(),
         }
     }
 }
@@ -982,7 +1006,7 @@
     /// receive them instead of `addr`.
     </span><span class="kw">pub </span>want_addrv2: bool,
     <span class="doccomment">/// Latency of performed pings.
-    </span><span class="kw">pub </span>ping_latency: PingLatency,
+    </span><span class="kw">pub </span>ping_latency: LatencyTracker,
     <span class="doccomment">/// Current ping state.
     </span><span class="kw">pub </span>ping_state: PingState,
     <span class="doccomment">/// Whether the ping has ever sent to the peer.
@@ -1004,10 +1028,8 @@
             nonce: msg.nonce,
             prefer_headers: <span class="bool-val">false</span>,
             want_addrv2: <span class="bool-val">false</span>,
-            ping_latency: PingLatency::default(),
-            ping_state: PingState::Idle {
-                last_pong_at: Instant::now(),
-            },
+            ping_latency: LatencyTracker::default(),
+            ping_state: PingState::idle(),
             has_sent_ping: <span class="bool-val">false</span>,
             direction,
         }
@@ -1017,7 +1039,7 @@
 <span class="attr">#[derive(Debug)]
 </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">struct </span>SlowPeer {
     <span class="kw">pub</span>(<span class="kw">crate</span>) peer_id: PeerId,
-    <span class="kw">pub</span>(<span class="kw">crate</span>) peer_latency: Latency,
+    <span class="kw">pub</span>(<span class="kw">crate</span>) latency: Latency,
 }
 
 <span class="doccomment">/// Manages the peers in the network.
@@ -1027,7 +1049,6 @@
     address_book: AddressBook,
     handshaking_peers: HashMap&lt;PeerId, HandshakeState&gt;,
     connections: HashMap&lt;PeerId, Connection&gt;,
-    connection_latencies: HashMap&lt;PeerId, Latency&gt;,
     connected_peers: HashMap&lt;PeerId, PeerInfo&gt;,
     max_outbound_peers: usize,
     connection_initiator: ConnectionInitiator,
@@ -1057,7 +1078,6 @@
             address_book: AddressBook::new(<span class="bool-val">true</span>, MAX_AVAILABLE_ADDRESSES),
             handshaking_peers: HashMap::new(),
             connections: HashMap::new(),
-            connection_latencies: HashMap::new(),
             connected_peers: HashMap::new(),
             max_outbound_peers,
             connection_initiator,
@@ -1136,18 +1156,18 @@
                 </span><span class="self">self</span>.connected_peers
                     .iter()
                     .filter_map(|(peer_id, peer_info)| {
-                        <span class="kw">let </span>average_latency = peer_info.ping_latency.average();
+                        <span class="kw">let </span>avg_latency = peer_info.ping_latency.calc_average()<span class="question-mark">?</span>;
 
-                        <span class="kw">if </span>average_latency &gt; SLOW_PEER_LATENCY {
-                            <span class="prelude-val">Some</span>((peer_id, average_latency))
+                        <span class="kw">if </span>avg_latency &gt; SLOW_PEER_LATENCY {
+                            <span class="prelude-val">Some</span>((peer_id, avg_latency))
                         } <span class="kw">else </span>{
                             <span class="prelude-val">None
                         </span>}
                     })
-                    .max_by_key(|(_peer_id, average_latency)| <span class="kw-2">*</span>average_latency)
-                    .map(|(peer_id, peer_latency)| SlowPeer {
+                    .max_by_key(|(_peer_id, avg_latency)| <span class="kw-2">*</span>avg_latency)
+                    .map(|(peer_id, latency)| SlowPeer {
                         peer_id: <span class="kw-2">*</span>peer_id,
-                        peer_latency,
+                        latency,
                     })
             } <span class="kw">else </span>{
                 <span class="prelude-val">None
@@ -1216,7 +1236,6 @@
         <span class="self">self</span>.address_book.mark_disconnected(<span class="kw-2">&amp;</span>peer_id);
         <span class="self">self</span>.handshaking_peers.remove(<span class="kw-2">&amp;</span>peer_id);
         <span class="self">self</span>.connected_peers.remove(<span class="kw-2">&amp;</span>peer_id);
-        <span class="self">self</span>.connection_latencies.remove(<span class="kw-2">&amp;</span>peer_id);
     }
 
     <span class="doccomment">/// Sets the prefer addrv2 flag for a peer.
@@ -1233,7 +1252,8 @@
         });
     }
 
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>update_last_eviction(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>evict(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_id: PeerId, reason: Error) {
+        <span class="self">self</span>.disconnect(peer_id, reason);
         <span class="self">self</span>.last_eviction = Instant::now();
     }
 
@@ -1260,13 +1280,18 @@
             .count()
     }
 
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>peer_best_number(<span class="kw-2">&amp;</span><span class="self">self</span>, peer_id: PeerId) -&gt; <span class="prelude-ty">Option</span>&lt;u32&gt; {
+        <span class="self">self</span>.connected_peers
+            .get(<span class="kw-2">&amp;</span>peer_id)
+            .map(|peer_info| peer_info.best_height)
+    }
+
     <span class="doccomment">/// Handles a new connection.
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>on_new_connection(<span class="kw-2">&amp;mut </span><span class="self">self</span>, new_connection: NewConnection) {
         <span class="kw">let </span>NewConnection {
             peer_addr,
             local_addr,
             direction,
-            connect_latency,
             writer,
             disconnect_signal,
         } = new_connection;
@@ -1325,7 +1350,6 @@
         }
 
         <span class="self">self</span>.connections.insert(peer_addr, connection);
-        <span class="self">self</span>.connection_latencies.insert(peer_addr, connect_latency);
         <span class="self">self</span>.handshaking_peers.insert(peer_addr, handshake_state);
     }
 
@@ -1421,11 +1445,7 @@
     }
 
     <span class="doccomment">/// Handles receiving a verack message.
-    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>on_verack(
-        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
-        peer_id: PeerId,
-        direction: Direction,
-    ) -&gt; <span class="prelude-ty">Result</span>&lt;NewPeer, Error&gt; {
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>on_verack(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_id: PeerId, direction: Direction) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
         <span class="kw">let </span><span class="prelude-val">Some</span>(handshake_state) = <span class="self">self</span>.handshaking_peers.remove(<span class="kw-2">&amp;</span>peer_id) <span class="kw">else </span>{
             <span class="kw">return </span><span class="prelude-val">Err</span>(Error::PeerNotFound(peer_id));
         };
@@ -1436,15 +1456,6 @@
         };
 
         <span class="kw">let </span>peer_info = PeerInfo::new(version, direction);
-
-        <span class="kw">let </span>new_peer = NewPeer {
-            peer_id,
-            best_number: peer_info.best_height,
-            connect_latency: <span class="self">self
-                </span>.connection_latencies
-                .remove(<span class="kw-2">&amp;</span>peer_id)
-                .ok_or(Error::PeerNotFound(peer_id))<span class="question-mark">?</span>,
-        };
 
         <span class="self">self</span>.connected_peers.insert(peer_id, peer_info);
 
@@ -1464,7 +1475,10 @@
             <span class="self">self</span>.send(peer_id, NetworkMessage::GetAddr)<span class="question-mark">?</span>;
         }
 
-        <span class="prelude-val">Ok</span>(new_peer)
+        <span class="comment">// Immediately ping the peer on ack.
+        </span><span class="self">self</span>.send_pings(<span class="macro">vec!</span>[peer_id]);
+
+        <span class="prelude-val">Ok</span>(())
     }
 
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>on_addr(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_id: PeerId, addresses: Vec&lt;(u32, Address)&gt;) {
@@ -1522,16 +1536,12 @@
             }
         };
 
-        peer_info.ping_latency.on_pong(latency);
-        peer_info.ping_state = PingState::Idle {
-            last_pong_at: Instant::now(),
-        };
+        <span class="kw">let </span>avg_latency = peer_info.ping_latency.record_pong(latency);
+        peer_info.ping_state = PingState::idle();
 
-        <span class="kw">let </span>average_latency = peer_info.ping_latency.average();
+        <span class="macro">tracing::trace!</span>(<span class="string">"Received pong from {peer_id} (Avg. Latency: {avg_latency}ms)"</span>);
 
-        <span class="macro">tracing::trace!</span>(<span class="string">"Received pong from {peer_id} (Avg. Latency: {average_latency}ms)"</span>);
-
-        <span class="prelude-val">Ok</span>(average_latency)
+        <span class="prelude-val">Ok</span>(avg_latency)
     }
 }
 </code></pre></div></section></main></body></html>

@@ -206,10 +206,10 @@
 
     <span class="doccomment">/// Persistent peer latency threshold in milliseconds (ms).
     ///
-    /// Only peers with a latency lower than this threshold can be saved to disk.
+    /// Only peers with a latency lower than this threshold can possibly be saved to disk.
     ///
-    /// Default value is 200 ms
-    </span><span class="attr">#[clap(long, default_value_t = <span class="number">200</span>)]
+    /// Default value is 500 ms
+    </span><span class="attr">#[clap(long, default_value_t = <span class="number">500</span>)]
     </span><span class="kw">pub </span>persistent_peer_latency_threshold: u128,
 }
 

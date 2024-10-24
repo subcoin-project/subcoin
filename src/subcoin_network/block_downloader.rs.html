@@ -292,6 +292,42 @@
 <a href="#292" id="292">292</a>
 <a href="#293" id="293">293</a>
 <a href="#294" id="294">294</a>
+<a href="#295" id="295">295</a>
+<a href="#296" id="296">296</a>
+<a href="#297" id="297">297</a>
+<a href="#298" id="298">298</a>
+<a href="#299" id="299">299</a>
+<a href="#300" id="300">300</a>
+<a href="#301" id="301">301</a>
+<a href="#302" id="302">302</a>
+<a href="#303" id="303">303</a>
+<a href="#304" id="304">304</a>
+<a href="#305" id="305">305</a>
+<a href="#306" id="306">306</a>
+<a href="#307" id="307">307</a>
+<a href="#308" id="308">308</a>
+<a href="#309" id="309">309</a>
+<a href="#310" id="310">310</a>
+<a href="#311" id="311">311</a>
+<a href="#312" id="312">312</a>
+<a href="#313" id="313">313</a>
+<a href="#314" id="314">314</a>
+<a href="#315" id="315">315</a>
+<a href="#316" id="316">316</a>
+<a href="#317" id="317">317</a>
+<a href="#318" id="318">318</a>
+<a href="#319" id="319">319</a>
+<a href="#320" id="320">320</a>
+<a href="#321" id="321">321</a>
+<a href="#322" id="322">322</a>
+<a href="#323" id="323">323</a>
+<a href="#324" id="324">324</a>
+<a href="#325" id="325">325</a>
+<a href="#326" id="326">326</a>
+<a href="#327" id="327">327</a>
+<a href="#328" id="328">328</a>
+<a href="#329" id="329">329</a>
+<a href="#330" id="330">330</a>
 </pre></div><pre class="rust"><code><span class="kw">mod </span>blocks_first;
 <span class="kw">mod </span>headers_first;
 
@@ -299,10 +335,13 @@
 <span class="kw">pub use </span><span class="self">self</span>::headers_first::HeadersFirstDownloader;
 
 <span class="kw">use </span><span class="kw">crate</span>::orphan_blocks_pool::OrphanBlocksPool;
+<span class="kw">use </span><span class="kw">crate</span>::peer_store::PeerStore;
+<span class="kw">use </span><span class="kw">crate</span>::PeerId;
 <span class="kw">use </span>bitcoin::{Block <span class="kw">as </span>BitcoinBlock, BlockHash};
 <span class="kw">use </span>sc_consensus::BlockImportError;
 <span class="kw">use </span>sc_consensus_nakamoto::ImportManyBlocksResult;
 <span class="kw">use </span>std::collections::{HashMap, HashSet};
+<span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>std::time::{Duration, Instant};
 
 <span class="doccomment">/// Interval for logging when the block import queue is too busy.
@@ -341,6 +380,20 @@
     }
 }
 
+<span class="attr">#[derive(Debug, Clone, Copy)]
+</span><span class="kw">enum </span>ImportQueueStatus {
+    <span class="doccomment">/// Queue is ready to accept more blocks for import.
+    </span>Ready,
+    <span class="doccomment">/// The queue is overloaded and cannot accept more blocks at the moment.
+    </span>Overloaded,
+}
+
+<span class="kw">impl </span>ImportQueueStatus {
+    <span class="kw">fn </span>is_overloaded(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+        <span class="macro">matches!</span>(<span class="self">self</span>, <span class="self">Self</span>::Overloaded)
+    }
+}
+
 <span class="doccomment">/// Manages the of blocks downloaded from the Bitcoin network.
 ///
 /// This struct keeps track of:
@@ -352,7 +405,7 @@
 /// [`BlockDownloadManager`] is designed to be used in both Blocks-First and
 /// Headers-First sync strategies, providing a common component for managing
 /// the state of blocks during the sync process.
-</span><span class="attr">#[derive(Debug, Clone)]
+</span><span class="attr">#[derive(Clone)]
 </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">struct </span>BlockDownloadManager {
     <span class="doccomment">/// A set of block hashes that have been requested from the network.
     ///
@@ -377,14 +430,16 @@
     /// when the results of processed blocks are notified. It helps track
     /// the most recent activity related to block processing.
     </span>last_progress_time: Instant,
-    <span class="doccomment">/// Whether there are too many blocks in the queue.
-    </span>import_queue_is_overloaded: bool,
+    <span class="doccomment">/// Import queue status.
+    </span>queue_status: ImportQueueStatus,
     <span class="doccomment">/// Last time the log of too many blocks in the queue was printed.
     </span>last_overloaded_queue_log_time: <span class="prelude-ty">Option</span>&lt;Instant&gt;,
+    <span class="doccomment">/// Peer store.
+    </span>peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;,
 }
 
 <span class="kw">impl </span>BlockDownloadManager {
-    <span class="kw">fn </span>new() -&gt; <span class="self">Self </span>{
+    <span class="kw">fn </span>new(peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;) -&gt; <span class="self">Self </span>{
         <span class="self">Self </span>{
             requested_blocks: HashSet::new(),
             downloaded_blocks: Vec::new(),
@@ -393,8 +448,9 @@
             best_queued_number: <span class="number">0u32</span>,
             orphan_blocks_pool: OrphanBlocksPool::new(),
             last_progress_time: Instant::now(),
-            import_queue_is_overloaded: <span class="bool-val">false</span>,
+            queue_status: ImportQueueStatus::Ready,
             last_overloaded_queue_log_time: <span class="prelude-val">None</span>,
+            peer_store,
         }
     }
 
@@ -411,7 +467,7 @@
     ///   increases, resulting in longer network response times for block retrieval.
     ///
     /// The timeout values are configurated arbitrarily.
-    </span><span class="kw">fn </span>is_stalled(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+    </span><span class="kw">fn </span>is_stalled(<span class="kw-2">&amp;</span><span class="self">self</span>, peer_id: PeerId) -&gt; bool {
         <span class="kw">let </span>stall_timeout = <span class="kw">match </span><span class="self">self</span>.best_queued_number {
             <span class="number">0</span>..<span class="number">300_000 </span>=&gt; <span class="number">60</span>,        <span class="comment">// Standard timeout, 1 minute
             </span><span class="number">300_000</span>..<span class="number">600_000 </span>=&gt; <span class="number">120</span>, <span class="comment">// Extended timeout, 2 minutes
@@ -419,7 +475,13 @@
             </span><span class="kw">_ </span>=&gt; <span class="number">300</span>,
         };
 
-        <span class="self">self</span>.last_progress_time.elapsed().as_secs() &gt; stall_timeout
+        <span class="kw">let </span>stalled = <span class="self">self</span>.last_progress_time.elapsed().as_secs() &gt; stall_timeout;
+
+        <span class="kw">if </span>stalled {
+            <span class="self">self</span>.peer_store.record_failure(peer_id);
+        }
+
+        stalled
     }
 
     <span class="kw">fn </span>block_exists(<span class="kw-2">&amp;</span><span class="self">self</span>, block_hash: BlockHash) -&gt; bool {
@@ -442,36 +504,38 @@
     }
 
     <span class="doccomment">/// Checks if the import queue is overloaded and updates the internal state.
-    </span><span class="kw">fn </span>update_and_check_queue_status(<span class="kw-2">&amp;mut </span><span class="self">self</span>, best_number: u32) -&gt; bool {
+    </span><span class="kw">fn </span>evaluate_queue_status(<span class="kw-2">&amp;mut </span><span class="self">self</span>, best_number: u32) -&gt; ImportQueueStatus {
         <span class="comment">// Maximum number of pending blocks in the import queue.
         </span><span class="kw">let </span>max_queued_blocks = <span class="kw">match </span>best_number {
             <span class="number">0</span>..=<span class="number">100_000 </span>=&gt; <span class="number">8192</span>,
             <span class="number">100_001</span>..=<span class="number">200_000 </span>=&gt; <span class="number">4096</span>,
             <span class="number">200_001</span>..=<span class="number">300_000 </span>=&gt; <span class="number">2048</span>,
+            <span class="number">300_001</span>..=<span class="number">600_000 </span>=&gt; <span class="number">1024</span>,
             <span class="kw">_ </span>=&gt; <span class="number">512</span>,
         };
 
         <span class="kw">let </span>queued_blocks = <span class="self">self</span>.best_queued_number - best_number;
 
-        <span class="kw">let </span>import_queue_is_overloaded = queued_blocks &gt; max_queued_blocks;
+        <span class="kw">if </span>queued_blocks &gt; max_queued_blocks {
+            <span class="self">self</span>.queue_status = ImportQueueStatus::Overloaded;
 
-        <span class="kw">if </span>import_queue_is_overloaded
-            &amp;&amp; <span class="self">self
+            <span class="kw">if </span><span class="self">self
                 </span>.last_overloaded_queue_log_time
                 .map(|last_time| last_time.elapsed() &gt; BUSY_QUEUE_LOG_INTERVAL)
                 .unwrap_or(<span class="bool-val">true</span>)
-        {
-            <span class="macro">tracing::debug!</span>(
-                best_number,
-                best_queued_number = <span class="self">self</span>.best_queued_number,
-                <span class="string">"⏸️ Pausing download: too many blocks ({queued_blocks}) in the queue"</span>,
-            );
-            <span class="self">self</span>.last_overloaded_queue_log_time.replace(Instant::now());
+            {
+                <span class="macro">tracing::debug!</span>(
+                    best_number,
+                    best_queued_number = <span class="self">self</span>.best_queued_number,
+                    <span class="string">"⏸️ Pausing download: too many blocks ({queued_blocks}) in the queue"</span>,
+                );
+                <span class="self">self</span>.last_overloaded_queue_log_time.replace(Instant::now());
+            }
+        } <span class="kw">else </span>{
+            <span class="self">self</span>.queue_status = ImportQueueStatus::Ready;
         }
 
-        <span class="self">self</span>.import_queue_is_overloaded = import_queue_is_overloaded;
-
-        <span class="self">self</span>.import_queue_is_overloaded
+        <span class="self">self</span>.queue_status
     }
 
     <span class="kw">fn </span>reset(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
@@ -482,7 +546,7 @@
         <span class="self">self</span>.best_queued_number = <span class="number">0u32</span>;
         <span class="self">self</span>.orphan_blocks_pool.clear();
         <span class="self">self</span>.last_progress_time = Instant::now();
-        <span class="self">self</span>.import_queue_is_overloaded = <span class="bool-val">false</span>;
+        <span class="self">self</span>.queue_status = ImportQueueStatus::Ready;
     }
 
     <span class="doccomment">/// Checks if there are blocks ready to be imported.
@@ -547,8 +611,14 @@
             .unzip()
     }
 
-    <span class="doccomment">/// Add the block the queue that is ready to be imported.
-    </span><span class="kw">fn </span>add_block(<span class="kw-2">&amp;mut </span><span class="self">self</span>, block_number: u32, block_hash: BlockHash, block: BitcoinBlock) {
+    <span class="doccomment">/// Add the block that is ready to be imported.
+    </span><span class="kw">fn </span>add_block(
+        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
+        block_number: u32,
+        block_hash: BlockHash,
+        block: BitcoinBlock,
+        from: PeerId,
+    ) {
         <span class="kw">let </span><span class="kw-2">mut </span>insert_block = |block_number, block_hash, block| {
             <span class="self">self</span>.downloaded_blocks.push(block);
             <span class="self">self</span>.queued_blocks.insert(block_number, block_hash);
@@ -568,6 +638,8 @@
                 insert_block(number, hash, child_block);
             }
         }
+
+        <span class="self">self</span>.peer_store.record_block_download(from);
     }
 
     <span class="kw">fn </span>add_orphan_block(<span class="kw-2">&amp;mut </span><span class="self">self</span>, block_hash: BlockHash, orphan_block: BitcoinBlock) {

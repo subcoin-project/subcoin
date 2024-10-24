@@ -530,17 +530,16 @@
 <a href="#530" id="530">530</a>
 <a href="#531" id="531">531</a>
 <a href="#532" id="532">532</a>
-<a href="#533" id="533">533</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::connection::{ConnectionInitiator, Direction, NewConnection};
 <span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
 <span class="kw">use </span><span class="kw">crate</span>::network::{
     IncomingTransaction, NetworkStatus, NetworkWorkerMessage, SendTransactionResult,
 };
-<span class="kw">use </span><span class="kw">crate</span>::peer_manager::{Config, PeerManager, SlowPeer};
+<span class="kw">use </span><span class="kw">crate</span>::peer_manager::{Config, NewPeer, PeerManager, SlowPeer, PEER_LATENCY_THRESHOLD};
 <span class="kw">use </span><span class="kw">crate</span>::peer_store::PeerStore;
 <span class="kw">use </span><span class="kw">crate</span>::sync::{ChainSync, LocatorRequest, SyncAction, SyncRequest};
 <span class="kw">use </span><span class="kw">crate</span>::transaction_manager::TransactionManager;
-<span class="kw">use crate</span>::{Bandwidth, Error, Latency, PeerId, SyncStrategy};
+<span class="kw">use crate</span>::{Bandwidth, Error, PeerId, SyncStrategy};
 <span class="kw">use </span>bitcoin::p2p::message::{NetworkMessage, MAX_INV_SIZE};
 <span class="kw">use </span>bitcoin::p2p::message_blockdata::{GetBlocksMessage, GetHeadersMessage, Inventory};
 <span class="kw">use </span>futures::stream::FusedStream;
@@ -558,10 +557,6 @@
 
 <span class="doccomment">/// Interval at which we perform time based maintenance
 </span><span class="kw">const </span>TICK_TIMEOUT: Duration = Duration::from_millis(<span class="number">1100</span>);
-
-<span class="doccomment">/// Threshold for peer latency in milliseconds, the default is 10 seconds.
-/// If a peer's latency exceeds this value, it will be considered a slow peer and may be evicted.
-</span><span class="kw">const </span>LATENCY_THRESHOLD: Latency = <span class="number">10_000</span>;
 
 <span class="doccomment">/// Network event.
 </span><span class="attr">#[derive(Debug)]
@@ -592,7 +587,7 @@
     <span class="kw">pub </span>max_outbound_peers: usize,
     <span class="doccomment">/// Whether to enable block sync on start.
     </span><span class="kw">pub </span>enable_block_sync: bool,
-    <span class="kw">pub </span>peer_store: PeerStore,
+    <span class="kw">pub </span>peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;,
 }
 
 <span class="doccomment">/// [`NetworkWorker`] is responsible for processing the network events.
@@ -600,7 +595,7 @@
     config: Config,
     network_event_receiver: UnboundedReceiver&lt;Event&gt;,
     peer_manager: PeerManager&lt;Block, Client&gt;,
-    peer_store: PeerStore,
+    peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;,
     transaction_manager: TransactionManager,
     chain_sync: ChainSync&lt;Block, Client&gt;,
     metrics: <span class="prelude-ty">Option</span>&lt;Metrics&gt;,
@@ -650,6 +645,7 @@
             sync_strategy,
             is_major_syncing,
             enable_block_sync,
+            peer_store.clone(),
         );
 
         <span class="self">Self </span>{
@@ -751,21 +747,20 @@
         <span class="kw">let </span>sync_action = <span class="self">self</span>.chain_sync.on_tick();
         <span class="self">self</span>.do_sync_action(sync_action);
 
-        <span class="kw">if let </span><span class="prelude-val">Some</span>(SlowPeer {
-            peer_id,
-            peer_latency,
-        }) = <span class="self">self</span>.peer_manager.on_tick()
-        {
-            <span class="self">self</span>.peer_manager
-                .disconnect(peer_id, Error::SlowPeer(peer_latency));
-            <span class="self">self</span>.peer_manager.update_last_eviction();
+        <span class="kw">for </span>peer <span class="kw">in </span><span class="self">self</span>.chain_sync.unreliable_peers() {
+            <span class="self">self</span>.peer_manager.disconnect(peer, Error::UnreliablePeer);
+            <span class="self">self</span>.chain_sync.remove_peer(peer);
+            <span class="self">self</span>.peer_store.remove_peer(peer);
+        }
+
+        <span class="kw">if let </span><span class="prelude-val">Some</span>(SlowPeer { peer_id, latency }) = <span class="self">self</span>.peer_manager.on_tick() {
+            <span class="self">self</span>.peer_manager.evict(peer_id, Error::SlowPeer(latency));
             <span class="self">self</span>.chain_sync.remove_peer(peer_id);
         }
 
-        <span class="kw">for </span>(peer, txids) <span class="kw">in </span><span class="self">self
-            </span>.transaction_manager
-            .on_tick(<span class="self">self</span>.peer_manager.connected_peers())
-        {
+        <span class="kw">let </span>connected_peers = <span class="self">self</span>.peer_manager.connected_peers();
+
+        <span class="kw">for </span>(peer, txids) <span class="kw">in </span><span class="self">self</span>.transaction_manager.on_tick(connected_peers) {
             <span class="macro">tracing::debug!</span>(<span class="string">"Broadcasting transaction IDs {txids:?} to {peer:?}"</span>);
             <span class="kw">let </span>msg = NetworkMessage::Inv(txids.into_iter().map(Inventory::Transaction).collect());
             <span class="kw">if let </span><span class="prelude-val">Err</span>(err) = <span class="self">self</span>.send(peer, msg) {
@@ -834,16 +829,10 @@
                     <span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>from, <span class="string">"Ignoring redundant verack"</span>);
                     <span class="kw">return </span><span class="prelude-val">Ok</span>(SyncAction::None);
                 }
-
-                <span class="kw">let </span>new_peer = <span class="kw">match </span><span class="self">self</span>.peer_manager.on_verack(from, direction) {
-                    <span class="prelude-val">Ok</span>(new_peer) =&gt; new_peer,
-                    <span class="prelude-val">Err</span>(err) =&gt; {
-                        <span class="self">self</span>.peer_manager.disconnect(from, err);
-                        <span class="kw">return </span><span class="prelude-val">Ok</span>(SyncAction::None);
-                    }
-                };
-
-                <span class="prelude-val">Ok</span>(<span class="self">self</span>.chain_sync.add_new_peer(new_peer))
+                <span class="kw">if let </span><span class="prelude-val">Err</span>(err) = <span class="self">self</span>.peer_manager.on_verack(from, direction) {
+                    <span class="self">self</span>.peer_manager.disconnect(from, err);
+                }
+                <span class="prelude-val">Ok</span>(SyncAction::None)
             }
             NetworkMessage::Addr(addresses) =&gt; {
                 <span class="self">self</span>.peer_manager.on_addr(from, addresses);
@@ -885,18 +874,27 @@
             }
             NetworkMessage::Pong(nonce) =&gt; {
                 <span class="kw">match </span><span class="self">self</span>.peer_manager.on_pong(from, nonce) {
-                    <span class="prelude-val">Ok</span>(avg_ping_latency) =&gt; {
+                    <span class="prelude-val">Ok</span>(avg_latency) =&gt; {
                         <span class="comment">// Disconnect the peer directly if the latency is higher than the threshold.
-                        </span><span class="kw">if </span>avg_ping_latency &gt; LATENCY_THRESHOLD {
+                        </span><span class="kw">if </span>avg_latency &gt; PEER_LATENCY_THRESHOLD {
                             <span class="self">self</span>.peer_manager
-                                .disconnect(from, Error::PingLatencyTooHigh);
+                                .disconnect(from, Error::PingLatencyTooHigh(avg_latency));
                             <span class="self">self</span>.chain_sync.remove_peer(from);
                             <span class="self">self</span>.peer_store.remove_peer(from);
                         } <span class="kw">else </span>{
-                            <span class="self">self</span>.chain_sync.set_peer_latency(from, avg_ping_latency);
-                            <span class="self">self</span>.chain_sync.update_sync_peer_on_lower_latency();
-                            <span class="self">self</span>.peer_store
-                                .add_peer_if_latency_acceptable(from, avg_ping_latency);
+                            <span class="kw">if </span><span class="self">self</span>.chain_sync.peers.contains_key(<span class="kw-2">&amp;</span>from) {
+                                <span class="self">self</span>.chain_sync.update_peer_latency(from, avg_latency);
+                            } <span class="kw">else </span>{
+                                <span class="self">self</span>.chain_sync.add_new_peer(NewPeer {
+                                    peer_id: from,
+                                    best_number: <span class="self">self
+                                        </span>.peer_manager
+                                        .peer_best_number(from)
+                                        .ok_or(Error::ConnectionNotFound(from))<span class="question-mark">?</span>,
+                                    latency: avg_latency,
+                                });
+                            }
+                            <span class="self">self</span>.peer_store.try_add_peer(from, avg_latency);
                         }
                     }
                     <span class="prelude-val">Err</span>(err) =&gt; {
@@ -956,7 +954,7 @@
                     <span class="kw">let </span>LocatorRequest {
                         locator_hashes,
                         stop_hash,
-                        from,
+                        to,
                     } = request;
 
                     <span class="kw">if </span>!locator_hashes.is_empty() {
@@ -965,15 +963,15 @@
                             locator_hashes,
                             stop_hash,
                         };
-                        <span class="kw">let _ </span>= <span class="self">self</span>.send(from, NetworkMessage::GetHeaders(msg));
+                        <span class="kw">let _ </span>= <span class="self">self</span>.send(to, NetworkMessage::GetHeaders(msg));
                     }
                 }
                 SyncRequest::Blocks(request) =&gt; {
                     <span class="self">self</span>.send_get_blocks_request(request);
                 }
-                SyncRequest::Data(invs, from) =&gt; {
+                SyncRequest::Data(invs, to) =&gt; {
                     <span class="kw">if </span>!invs.is_empty() {
-                        <span class="kw">let _ </span>= <span class="self">self</span>.send(from, NetworkMessage::GetData(invs));
+                        <span class="kw">let _ </span>= <span class="self">self</span>.send(to, NetworkMessage::GetData(invs));
                     }
                 }
             },
@@ -989,7 +987,7 @@
             }
             SyncAction::RestartSyncWithStalledPeer(stalled_peer_id) =&gt; {
                 <span class="kw">if </span><span class="self">self</span>.chain_sync.restart_sync(stalled_peer_id) {
-                    <span class="self">self</span>.chain_sync.mark_peer_as_discouraged(stalled_peer_id);
+                    <span class="self">self</span>.chain_sync.note_peer_stalled(stalled_peer_id);
                 }
             }
             SyncAction::Disconnect(peer_id, reason) =&gt; {
@@ -1004,7 +1002,7 @@
         <span class="kw">let </span>LocatorRequest {
             locator_hashes,
             stop_hash,
-            from,
+            to,
         } = request;
 
         <span class="kw">if </span>!locator_hashes.is_empty() {
@@ -1013,7 +1011,7 @@
                 locator_hashes,
                 stop_hash,
             };
-            <span class="kw">let _ </span>= <span class="self">self</span>.send(from, NetworkMessage::GetBlocks(msg));
+            <span class="kw">let _ </span>= <span class="self">self</span>.send(to, NetworkMessage::GetBlocks(msg));
         }
     }
 

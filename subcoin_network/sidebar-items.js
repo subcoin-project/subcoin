@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["Error","PeerLatency","PeerSyncState","SendTransactionResult","SyncStatus","SyncStrategy"],"struct":["Config","Network","NetworkHandle","NetworkStatus","PeerSync"],"type":["Latency","PeerId"]};
+window.SIDEBAR_ITEMS = {"enum":["Error","PeerSyncState","SendTransactionResult","SyncStatus","SyncStrategy"],"struct":["Config","Network","NetworkHandle","NetworkStatus","PeerSync"],"type":["Latency","PeerId"]};

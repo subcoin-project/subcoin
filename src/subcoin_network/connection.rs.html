@@ -424,13 +424,8 @@
 <a href="#424" id="424">424</a>
 <a href="#425" id="425">425</a>
 <a href="#426" id="426">426</a>
-<a href="#427" id="427">427</a>
-<a href="#428" id="428">428</a>
-<a href="#429" id="429">429</a>
-<a href="#430" id="430">430</a>
-<a href="#431" id="431">431</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::worker::Event;
-<span class="kw">use crate</span>::{Bandwidth, Error, Latency, PeerId};
+<span class="kw">use crate</span>::{Bandwidth, Error, PeerId};
 <span class="kw">use </span>bitcoin::consensus::{encode, Decodable, Encodable};
 <span class="kw">use </span>bitcoin::p2p::message::{NetworkMessage, RawNetworkMessage, MAX_MSG_SIZE};
 <span class="kw">use </span>futures::FutureExt;
@@ -487,10 +482,6 @@
     /// Indicates whether the connection was initiated by the
     /// local node (`Outbound`) or by the remote peer (`Inbound`).
     </span><span class="kw">pub </span>direction: Direction,
-    <span class="doccomment">/// Time took to make the connection.
-    ///
-    /// Only make sense for the outbound connection.
-    </span><span class="kw">pub </span>connect_latency: Latency,
     <span class="doccomment">/// Channel for sending messages to the peer over this connection.
     ///
     /// This `ConnectionWriter` enables the local node to transmit data
@@ -649,7 +640,6 @@
                 peer_addr,
                 local_addr,
                 direction,
-                connect_latency,
                 writer: network_message_sender,
                 disconnect_signal: disconnect_signal.clone(),
             }))
