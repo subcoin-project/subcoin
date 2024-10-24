@@ -114,8 +114,8 @@ pub enum Error {
     TooManyInventoryItems,
     #[error("Ping timeout")]
     PingTimeout,
-    #[error("Ping latency exceeds the threshold")]
-    PingLatencyTooHigh,
+    #[error("Ping latency ({0}) exceeds the threshold")]
+    PingLatencyTooHigh(Latency),
     #[error("Peer is deprioritized for syncing and has encountered multiple failures")]
     UnreliablePeer,
     #[error("Peer's latency ({0} ms) is too high")]

@@ -346,7 +346,7 @@ where
                         // Disconnect the peer directly if the latency is higher than the threshold.
                         if avg_latency > PEER_LATENCY_THRESHOLD {
                             self.peer_manager
-                                .disconnect(from, Error::PingLatencyTooHigh);
+                                .disconnect(from, Error::PingLatencyTooHigh(avg_latency));
                             self.chain_sync.remove_peer(from);
                             self.peer_store.remove_peer(from);
                         } else {
