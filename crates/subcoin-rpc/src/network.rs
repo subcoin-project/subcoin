@@ -3,13 +3,13 @@ use jsonrpsee::proc_macros::rpc;
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 use serde::{Deserialize, Serialize};
 use sp_runtime::traits::Block as BlockT;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subcoin_network::{NetworkHandle, NetworkStatus, PeerSync, PeerSyncState};
 
 /// The state of syncing between a Peer and ourselves.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "camelCase")]
 pub enum SyncState {
     Available,
@@ -21,7 +21,7 @@ pub enum SyncState {
 #[serde(rename_all = "camelCase")]
 pub struct NetworkPeers {
     /// A map containing the count of peers in each sync state (e.g., syncing, idle).
-    sync_state_counts: HashMap<SyncState, usize>,
+    sync_state_counts: BTreeMap<SyncState, usize>,
     /// The highest block height known across all peers in the network.
     best_known_block: Option<u32>,
     /// Detailed synchronization information for each peer.
@@ -92,7 +92,7 @@ where
         sync_peers.sort_by_key(|x| x.latency);
 
         Ok(NetworkPeers {
-            sync_state_counts: HashMap::from([
+            sync_state_counts: BTreeMap::from([
                 (SyncState::Available, available),
                 (SyncState::Deprioritized, deprioritized),
                 (SyncState::DownloadingNew, downloading_new),
