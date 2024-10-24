@@ -1,5 +1,6 @@
 use crate::block_downloader::{BlocksFirstDownloader, HeadersFirstDownloader};
 use crate::peer_manager::NewPeer;
+use crate::peer_store::PeerStore;
 use crate::{Error, Latency, PeerId, SyncStatus, SyncStrategy};
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::p2p::message_blockdata::Inventory;
@@ -11,7 +12,6 @@ use sc_consensus_nakamoto::{
 use serde::{Deserialize, Serialize};
 use sp_consensus::BlockOrigin;
 use sp_runtime::traits::Block as BlockT;
-use std::cmp::Ordering as CmpOrdering;
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -21,19 +21,25 @@ use subcoin_primitives::{BackendExt, ClientExt};
 // Do major sync when the current tip falls behind the network by 144 blocks (roughly one day).
 const MAJOR_SYNC_GAP: u32 = 144;
 
-const LATENCY_IMPROVEMENT_THRESHOLD: f64 = 1.2;
+const LATENCY_IMPROVEMENT_THRESHOLD: u128 = 4;
 
 // Define a constant for the low ping latency cutoff, in milliseconds.
 const LOW_LATENCY_CUTOFF: Latency = 20;
 
+/// Maximum number of syncing retries for a deprioritized peer.
+const MAX_STALLS: usize = 5;
+
 /// The state of syncing between a Peer and ourselves.
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "camelCase")]
 pub enum PeerSyncState {
     /// Available for sync requests.
     Available,
-    /// The peer has been discouraged due to syncing from this peer was stalled before.
-    Discouraged,
+    /// The peer has been deprioritized due to past syncing issues (e.g., stalling).
+    Deprioritized {
+        /// Number of times the peer has stalled.
+        stalled_count: usize,
+    },
     /// Actively downloading new blocks, starting from the given Number.
     DownloadingNew { start: u32 },
 }
@@ -43,37 +49,20 @@ impl PeerSyncState {
     pub fn is_available(&self) -> bool {
         matches!(self, Self::Available)
     }
-}
 
-/// Letency of the peer.
-///
-/// The initial connection time is used as the baseline, the ping mechanism is
-/// used for more accurate latency estimate after the connection is established.
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum PeerLatency {
-    /// Connection latency.
-    ///
-    /// Only make sense for the outbound connection.
-    Connect(Latency),
-    /// Average ping latency.
-    Ping(Latency),
-}
-
-impl Ord for PeerLatency {
-    fn cmp(&self, other: &Self) -> CmpOrdering {
-        match (self, other) {
-            (Self::Connect(a), Self::Connect(b)) => a.cmp(b),
-            (Self::Connect(_), Self::Ping(_)) => CmpOrdering::Less,
-            (Self::Ping(_), Self::Connect(_)) => CmpOrdering::Greater,
-            (Self::Ping(a), Self::Ping(b)) => a.cmp(b),
+    fn stalled_count(&self) -> usize {
+        match self {
+            Self::Deprioritized { stalled_count } => *stalled_count,
+            _ => 0,
         }
     }
-}
 
-impl PartialOrd for PeerLatency {
-    fn partial_cmp(&self, other: &Self) -> Option<CmpOrdering> {
-        Some(self.cmp(other))
+    /// Determines if the peer is permanently deprioritized based on the stall count.
+    fn is_permanently_deprioritized(&self) -> bool {
+        match self {
+            PeerSyncState::Deprioritized { stalled_count } => *stalled_count > MAX_STALLS,
+            _ => false,
+        }
     }
 }
 
@@ -86,7 +75,7 @@ pub struct PeerSync {
     /// The number of the best block that we've seen for this peer.
     pub best_number: u32,
     /// Latency of connection to this peer.
-    pub latency: PeerLatency,
+    pub latency: Latency,
     /// The state of syncing this peer is in for us, generally categories
     /// into `Available` or "busy" with something as defined by `PeerSyncState`.
     pub state: PeerSyncState,
@@ -97,7 +86,7 @@ pub struct PeerSync {
 pub(crate) struct LocatorRequest {
     pub locator_hashes: Vec<BlockHash>,
     pub stop_hash: BlockHash,
-    pub from: PeerId,
+    pub to: PeerId,
 }
 
 /// Represents different kinds of sync requests.
@@ -121,7 +110,7 @@ pub(crate) enum SyncAction {
     SwitchToBlocksFirstSync,
     /// Disconnect from the peer for the given reason.
     Disconnect(PeerId, Error),
-    /// Make this peer as discouraged and restart the current syncing
+    /// Make this peer as deprioritized and restart the current syncing
     /// process using other sync candidates if there are any.
     RestartSyncWithStalledPeer(PeerId),
     /// Blocks-First sync finished, switch syncing state to idle.
@@ -134,9 +123,9 @@ pub(crate) enum SyncAction {
 // might be in during the sync process.
 enum Syncing<Block, Client> {
     /// Blocks-First sync.
-    BlocksFirstSync(Box<BlocksFirstDownloader<Block, Client>>),
+    BlocksFirst(Box<BlocksFirstDownloader<Block, Client>>),
     /// Headers-First sync.
-    HeadersFirstSync(Box<HeadersFirstDownloader<Block, Client>>),
+    HeadersFirst(Box<HeadersFirstDownloader<Block, Client>>),
     /// Not syncing.
     ///
     /// This could indicate that the node is either fully synced
@@ -146,7 +135,7 @@ enum Syncing<Block, Client> {
 
 impl<Block, Client> Syncing<Block, Client> {
     fn is_major_syncing(&self) -> bool {
-        matches!(self, Self::BlocksFirstSync(_) | Self::HeadersFirstSync(_))
+        matches!(self, Self::BlocksFirst(_) | Self::HeadersFirst(_))
     }
 }
 
@@ -158,6 +147,7 @@ pub(crate) struct ChainSync<Block, Client> {
     header_verifier: HeaderVerifier<Block, Client>,
     /// The active peers that we are using to sync and their PeerSync status
     pub(crate) peers: HashMap<PeerId, PeerSync>,
+    /// Current syncing state.
     syncing: Syncing<Block, Client>,
     /// Handle of the import queue.
     import_queue: BlockImportQueue,
@@ -170,7 +160,9 @@ pub(crate) struct ChainSync<Block, Client> {
     /// Randomness generator.
     rng: fastrand::Rng,
     /// Broadcasted blocks that are being requested.
-    broadcasted_blocks: HashSet<BlockHash>,
+    inflight_announced_blocks: HashSet<BlockHash>,
+    /// Handle of peer store.
+    peer_store: Arc<dyn PeerStore>,
     _phantom: PhantomData<Block>,
 }
 
@@ -187,18 +179,20 @@ where
         sync_strategy: SyncStrategy,
         is_major_syncing: Arc<AtomicBool>,
         enable_block_sync: bool,
+        peer_store: Arc<dyn PeerStore>,
     ) -> Self {
         Self {
             client,
             header_verifier,
             peers: HashMap::new(),
-            import_queue,
             syncing: Syncing::Idle,
+            import_queue,
             sync_strategy,
             is_major_syncing,
             enable_block_sync,
             rng: fastrand::Rng::new(),
-            broadcasted_blocks: HashSet::new(),
+            inflight_announced_blocks: HashSet::new(),
+            peer_store,
             _phantom: Default::default(),
         }
     }
@@ -206,21 +200,33 @@ where
     pub(super) fn sync_status(&self) -> SyncStatus {
         match &self.syncing {
             Syncing::Idle => SyncStatus::Idle,
-            Syncing::BlocksFirstSync(downloader) => downloader.sync_status(),
-            Syncing::HeadersFirstSync(downloader) => downloader.sync_status(),
+            Syncing::BlocksFirst(downloader) => downloader.sync_status(),
+            Syncing::HeadersFirst(downloader) => downloader.sync_status(),
         }
     }
 
     pub(super) fn on_tick(&mut self) -> SyncAction {
         match &mut self.syncing {
             Syncing::Idle => SyncAction::None,
-            Syncing::BlocksFirstSync(downloader) => downloader.on_tick(),
-            Syncing::HeadersFirstSync(downloader) => downloader.on_tick(),
+            Syncing::BlocksFirst(downloader) => downloader.on_tick(),
+            Syncing::HeadersFirst(downloader) => downloader.on_tick(),
         }
     }
 
     pub(super) async fn wait_for_block_import_results(&mut self) -> ImportManyBlocksResult {
         self.import_queue.block_import_results().await
+    }
+
+    pub(super) fn unreliable_peers(&self) -> Vec<PeerId> {
+        self.peers
+            .iter()
+            .filter_map(|(peer_id, peer)| {
+                peer.state
+                    .is_permanently_deprioritized()
+                    .then_some(peer_id)
+                    .copied()
+            })
+            .collect()
     }
 
     /// Attempts to restart the sync due to the stalled peer.
@@ -276,7 +282,7 @@ where
                     return false;
                 }
 
-                // Pick a random peer, even if it's marked as discouraged.
+                // Pick a random peer, even if it's marked as deprioritized.
                 self.rng
                     .choice(sync_candidates)
                     .expect("Sync candidates must be non-empty as checked; qed")
@@ -288,11 +294,11 @@ where
         new_peer.state = PeerSyncState::DownloadingNew { start: our_best };
 
         match &mut self.syncing {
-            Syncing::BlocksFirstSync(downloader) => {
+            Syncing::BlocksFirst(downloader) => {
                 downloader.restart(new_peer.peer_id, new_peer.best_number);
                 true
             }
-            Syncing::HeadersFirstSync(downloader) => {
+            Syncing::HeadersFirst(downloader) => {
                 downloader.restart(new_peer.peer_id, new_peer.best_number);
                 true
             }
@@ -317,10 +323,13 @@ where
         }
     }
 
-    pub(super) fn mark_peer_as_discouraged(&mut self, stalled_peer: PeerId) {
-        self.peers
-            .entry(stalled_peer)
-            .and_modify(|p| p.state = PeerSyncState::Discouraged);
+    pub(super) fn note_peer_stalled(&mut self, stalled_peer: PeerId) {
+        self.peers.entry(stalled_peer).and_modify(|p| {
+            let current_stalled_count = p.state.stalled_count();
+            p.state = PeerSyncState::Deprioritized {
+                stalled_count: current_stalled_count + 1,
+            };
+        });
     }
 
     pub(super) fn remove_peer(&mut self, peer_id: PeerId) {
@@ -328,20 +337,25 @@ where
         self.peers.remove(&peer_id);
     }
 
-    pub(super) fn set_peer_latency(&mut self, peer_id: PeerId, avg_latency: Latency) {
+    pub(super) fn update_peer_latency(&mut self, peer_id: PeerId, avg_latency: Latency) {
         self.peers.entry(peer_id).and_modify(|peer| {
-            peer.latency = PeerLatency::Ping(avg_latency);
+            peer.latency = avg_latency;
         });
+        self.update_sync_peer_on_lower_latency();
     }
 
     pub(super) fn update_sync_peer_on_lower_latency(&mut self) {
-        let current_sync_peer_id = match &self.syncing {
-            Syncing::BlocksFirstSync(downloader) => downloader.sync_peer(),
-            Syncing::HeadersFirstSync(downloader) => downloader.sync_peer(),
+        let maybe_sync_peer_id = match &self.syncing {
+            Syncing::BlocksFirst(downloader) => downloader.replaceable_sync_peer(),
+            Syncing::HeadersFirst(downloader) => downloader.replaceable_sync_peer(),
             Syncing::Idle => return,
         };
 
-        let Some(PeerLatency::Ping(current_latency)) = self
+        let Some(current_sync_peer_id) = maybe_sync_peer_id else {
+            return;
+        };
+
+        let Some(current_latency) = self
             .peers
             .get(&current_sync_peer_id)
             .map(|peer| peer.latency)
@@ -372,27 +386,34 @@ where
             return;
         };
 
-        if let PeerLatency::Ping(best_latency) = best_sync_peer.latency {
-            // Update sync peer if the latency improvement is significant.
-            if current_latency as f64 / best_latency as f64 > LATENCY_IMPROVEMENT_THRESHOLD {
-                let peer_id = best_sync_peer.peer_id;
-                let target_block_number = best_sync_peer.best_number;
+        let best_latency = best_sync_peer.latency;
 
-                match &mut self.syncing {
-                    Syncing::BlocksFirstSync(downloader) => {
-                        downloader.update_sync_peer(peer_id, target_block_number);
-                    }
-                    Syncing::HeadersFirstSync(downloader) => {
-                        downloader.update_sync_peer(peer_id, target_block_number);
-                    }
-                    Syncing::Idle => unreachable!("Must not be Idle as checked; qed"),
+        // Update sync peer if the latency improvement is significant.
+        if current_latency / best_latency > LATENCY_IMPROVEMENT_THRESHOLD {
+            let peer_id = best_sync_peer.peer_id;
+            let target_block_number = best_sync_peer.best_number;
+
+            let sync_peer_updated = match &mut self.syncing {
+                Syncing::BlocksFirst(downloader) => {
+                    downloader.replace_sync_peer(peer_id, target_block_number);
+                    true
                 }
+                Syncing::HeadersFirst(downloader) => {
+                    downloader.replace_sync_peer(peer_id, target_block_number);
+                    true
+                }
+                Syncing::Idle => unreachable!("Must not be Idle as checked; qed"),
+            };
 
+            if sync_peer_updated {
                 tracing::debug!(
                     old_peer_id = ?current_sync_peer_id,
                     new_peer_id = ?peer_id,
                     "🔧 Sync peer ({current_latency} ms) updated to a new peer with lower latency ({best_latency} ms)",
                 );
+                self.peers.entry(current_sync_peer_id).and_modify(|peer| {
+                    peer.state = PeerSyncState::Available;
+                });
             }
         }
     }
@@ -402,13 +423,13 @@ where
         let NewPeer {
             peer_id,
             best_number,
-            connect_latency,
+            latency,
         } = new_peer;
 
         let new_peer = PeerSync {
             peer_id,
             best_number,
-            latency: PeerLatency::Connect(connect_latency),
+            latency,
             state: PeerSyncState::Available,
         };
 
@@ -433,66 +454,99 @@ where
 
         let our_best = self.client.best_number();
 
-        let Some(best_peer) = self
-            .peers
-            .values_mut()
-            .filter(|peer| peer.best_number > our_best && peer.state.is_available())
-            .min_by_key(|peer| peer.latency)
+        let find_best_available_peer = || {
+            self.peers
+                .iter()
+                .filter(|(_peer_id, peer)| peer.best_number > our_best && peer.state.is_available())
+                .min_by_key(|(_peer_id, peer)| peer.latency)
+                .map(|(peer_id, _peer)| peer_id)
+        };
+
+        let find_best_deprioritized_peer = || {
+            self.peers
+                .iter()
+                .filter(|(_peer_id, peer)| peer.best_number > our_best)
+                .filter_map(|(peer_id, peer)| {
+                    if let PeerSyncState::Deprioritized { stalled_count } = peer.state {
+                        if stalled_count > MAX_STALLS {
+                            None
+                        } else {
+                            Some((peer_id, stalled_count, peer.latency))
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .min_by(
+                    |(_, stalled_count_a, latency_a), (_, stalled_count_b, latency_b)| {
+                        // First, compare stalled_count, then latency if stalled_count is equal
+                        match stalled_count_a.cmp(stalled_count_b) {
+                            std::cmp::Ordering::Equal => latency_a.cmp(latency_b), // compare latency if stalled_count is the same
+                            other => other, // otherwise, return the comparison of stalled_count
+                        }
+                    },
+                )
+                .map(|(peer_id, _stalled_count, _latency)| peer_id)
+        };
+
+        let Some(next_peer_id) = find_best_available_peer()
+            .or_else(find_best_deprioritized_peer)
+            .copied()
         else {
             return SyncAction::None;
         };
 
-        let peer_best = best_peer.best_number;
+        let Some(next_peer) = self.peers.get_mut(&next_peer_id) else {
+            return SyncAction::None;
+        };
 
-        if peer_best > our_best {
-            let sync_peer = best_peer.peer_id;
+        let client = self.client.clone();
+        let peer_store = self.peer_store.clone();
 
-            best_peer.state = PeerSyncState::DownloadingNew { start: our_best };
+        let peer_best = next_peer.best_number;
+        let require_major_sync = peer_best - our_best > MAJOR_SYNC_GAP;
 
-            let require_major_sync = peer_best - our_best > MAJOR_SYNC_GAP;
+        // Start major syncing if the gap is significant.
+        let (new_syncing, sync_action) = if require_major_sync {
+            let blocks_first = our_best >= crate::checkpoint::last_checkpoint_height()
+                || matches!(self.sync_strategy, SyncStrategy::BlocksFirst);
 
-            // Start major syncing if the gap is significant.
-            let (new_syncing, sync_action) = if require_major_sync {
-                let blocks_first = our_best >= crate::checkpoint::last_checkpoint_height()
-                    || matches!(self.sync_strategy, SyncStrategy::BlocksFirst);
+            tracing::debug!(
+                latency = ?next_peer.latency,
+                "⏩ Starting major sync ({}) from {next_peer_id:?} at #{our_best}",
+                if blocks_first { "blocks-first" } else { "headers-first" }
+            );
 
-                tracing::debug!(
-                    latency = ?best_peer.latency,
-                    "⏩ Starting major sync ({}) from {sync_peer:?} at #{our_best}",
-                    if blocks_first { "blocks-first" } else { "headers-first" }
-                );
-
-                if blocks_first {
-                    let (downloader, blocks_request) =
-                        BlocksFirstDownloader::new(self.client.clone(), sync_peer, peer_best);
-                    (
-                        Syncing::BlocksFirstSync(Box::new(downloader)),
-                        SyncAction::Request(blocks_request),
-                    )
-                } else {
-                    let (downloader, sync_action) = HeadersFirstDownloader::new(
-                        self.client.clone(),
-                        self.header_verifier.clone(),
-                        sync_peer,
-                        peer_best,
-                    );
-                    (Syncing::HeadersFirstSync(Box::new(downloader)), sync_action)
-                }
-            } else {
+            if blocks_first {
                 let (downloader, blocks_request) =
-                    BlocksFirstDownloader::new(self.client.clone(), sync_peer, peer_best);
+                    BlocksFirstDownloader::new(client, next_peer_id, peer_best, peer_store);
                 (
-                    Syncing::BlocksFirstSync(Box::new(downloader)),
+                    Syncing::BlocksFirst(Box::new(downloader)),
                     SyncAction::Request(blocks_request),
                 )
-            };
+            } else {
+                let (downloader, sync_action) = HeadersFirstDownloader::new(
+                    client,
+                    self.header_verifier.clone(),
+                    next_peer_id,
+                    peer_best,
+                    peer_store,
+                );
+                (Syncing::HeadersFirst(Box::new(downloader)), sync_action)
+            }
+        } else {
+            let (downloader, blocks_request) =
+                BlocksFirstDownloader::new(client, next_peer_id, peer_best, peer_store);
+            (
+                Syncing::BlocksFirst(Box::new(downloader)),
+                SyncAction::Request(blocks_request),
+            )
+        };
 
-            self.update_syncing_state(new_syncing);
+        next_peer.state = PeerSyncState::DownloadingNew { start: our_best };
+        self.update_syncing_state(new_syncing);
 
-            return sync_action;
-        }
-
-        SyncAction::None
+        sync_action
     }
 
     fn update_syncing_state(&mut self, new: Syncing<Block, Client>) {
@@ -505,7 +559,7 @@ where
     pub(super) fn switch_to_idle(&mut self) {
         tracing::debug!(
             best_number = self.client.best_number(),
-            "Blocks-First sync completed, switching to Idle"
+            "Blocks-First sync completed, switching to Syncing::Idle"
         );
         self.update_syncing_state(Syncing::Idle);
     }
@@ -530,40 +584,44 @@ where
             return None;
         };
 
-        let (blocks_first_downloader, blocks_sync_request) = BlocksFirstDownloader::new(
+        let (blocks_first_downloader, blocks_request) = BlocksFirstDownloader::new(
             self.client.clone(),
             best_peer.peer_id,
             best_peer.best_number,
+            self.peer_store.clone(),
         );
 
-        tracing::debug!("Headers-first sync is complete, continuing with blocks-first sync");
-        self.update_syncing_state(Syncing::BlocksFirstSync(Box::new(blocks_first_downloader)));
+        tracing::debug!("Headers-First sync completed, continuing with blocks-first sync");
+        self.update_syncing_state(Syncing::BlocksFirst(Box::new(blocks_first_downloader)));
 
-        Some(blocks_sync_request)
+        Some(blocks_request)
     }
 
     // NOTE: `inv` can be received unsolicited as an announcement of a new block,
     // or in reply to `getblocks`.
     pub(super) fn on_inv(&mut self, inventories: Vec<Inventory>, from: PeerId) -> SyncAction {
         match &mut self.syncing {
-            Syncing::BlocksFirstSync(downloader) => downloader.on_inv(inventories, from),
-            Syncing::HeadersFirstSync(_) => SyncAction::None,
             Syncing::Idle => {
                 if inventories.len() == 1 {
                     if let Inventory::Block(block_hash) = inventories[0] {
-                        if !self.broadcasted_blocks.contains(&block_hash) {
+                        if !self.inflight_announced_blocks.contains(&block_hash) {
                             // A new block maybe broadcasted via `inv` message.
-                            return self.prepare_broadcasted_blocks_request(vec![block_hash], from);
+                            tracing::trace!(
+                                "Requesting a new block {block_hash} announced from {from:?}"
+                            );
+                            return self.announced_blocks_request(vec![block_hash], from);
                         }
                     }
                 }
                 SyncAction::None
             }
+            Syncing::BlocksFirst(downloader) => downloader.on_inv(inventories, from),
+            Syncing::HeadersFirst(_) => SyncAction::None,
         }
     }
 
     pub(super) fn on_block(&mut self, block: BitcoinBlock, from: PeerId) -> SyncAction {
-        if self.broadcasted_blocks.remove(&block.block_hash()) {
+        if self.inflight_announced_blocks.remove(&block.block_hash()) {
             self.import_queue.import_blocks(ImportBlocks {
                 origin: BlockOrigin::NetworkBroadcast,
                 blocks: vec![block],
@@ -573,12 +631,12 @@ where
 
         match &mut self.syncing {
             Syncing::Idle => SyncAction::None,
-            Syncing::BlocksFirstSync(downloader) => downloader.on_block(block, from),
-            Syncing::HeadersFirstSync(downloader) => downloader.on_block(block, from),
+            Syncing::BlocksFirst(downloader) => downloader.on_block(block, from),
+            Syncing::HeadersFirst(downloader) => downloader.on_block(block, from),
         }
     }
 
-    fn prepare_broadcasted_blocks_request(
+    fn announced_blocks_request(
         &mut self,
         block_hashes: impl IntoIterator<Item = BlockHash>,
         from: PeerId,
@@ -587,7 +645,7 @@ where
             block_hashes
                 .into_iter()
                 .map(|block_hash| {
-                    self.broadcasted_blocks.insert(block_hash);
+                    self.inflight_announced_blocks.insert(block_hash);
                     Inventory::Block(block_hash)
                 })
                 .collect(),
@@ -599,8 +657,8 @@ where
 
     pub(super) fn on_headers(&mut self, headers: Vec<BitcoinHeader>, from: PeerId) -> SyncAction {
         match &mut self.syncing {
-            Syncing::HeadersFirstSync(downloader) => downloader.on_headers(headers, from),
-            Syncing::BlocksFirstSync(_) | Syncing::Idle => {
+            Syncing::HeadersFirst(downloader) => downloader.on_headers(headers, from),
+            Syncing::BlocksFirst(_) | Syncing::Idle => {
                 if headers.is_empty() {
                     return SyncAction::None;
                 }
@@ -614,9 +672,7 @@ where
                 if headers[0].prev_blockhash == best_hash {
                     for (index, header) in headers.iter().enumerate() {
                         if !self.header_verifier.has_valid_proof_of_work(header) {
-                            tracing::error!(
-                                "Invalid header at index {index} in headers message from {from:?}"
-                            );
+                            tracing::error!(?from, "Invalid header at index {index} in headers");
                             return SyncAction::Disconnect(
                                 from,
                                 Error::BadProofOfWork(header.block_hash()),
@@ -624,7 +680,7 @@ where
                         }
                     }
 
-                    return self.prepare_broadcasted_blocks_request(
+                    return self.announced_blocks_request(
                         headers.into_iter().map(|header| header.block_hash()),
                         from,
                     );
@@ -647,8 +703,8 @@ where
     pub(super) fn on_blocks_processed(&mut self, results: ImportManyBlocksResult) {
         let download_manager = match &mut self.syncing {
             Syncing::Idle => return,
-            Syncing::BlocksFirstSync(downloader) => downloader.download_manager(),
-            Syncing::HeadersFirstSync(downloader) => downloader.download_manager(),
+            Syncing::BlocksFirst(downloader) => downloader.download_manager(),
+            Syncing::HeadersFirst(downloader) => downloader.download_manager(),
         };
         download_manager.handle_processed_blocks(results);
     }
@@ -656,8 +712,8 @@ where
     pub(super) fn import_pending_blocks(&mut self) {
         let download_manager = match &mut self.syncing {
             Syncing::Idle => return,
-            Syncing::BlocksFirstSync(downloader) => downloader.download_manager(),
-            Syncing::HeadersFirstSync(downloader) => downloader.download_manager(),
+            Syncing::BlocksFirst(downloader) => downloader.download_manager(),
+            Syncing::HeadersFirst(downloader) => downloader.download_manager(),
         };
 
         if !download_manager.has_pending_blocks() {

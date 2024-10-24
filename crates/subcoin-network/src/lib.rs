@@ -44,7 +44,7 @@ mod worker;
 use crate::connection::ConnectionInitiator;
 use crate::metrics::BandwidthMetrics;
 use crate::network::NetworkWorkerMessage;
-use crate::peer_store::PeerStore;
+use crate::peer_store::{PersistentPeerStore, PersistentPeerStoreHandle};
 use crate::worker::NetworkWorker;
 use bitcoin::p2p::ServiceFlags;
 use bitcoin::{BlockHash, Network as BitcoinNetwork};
@@ -65,7 +65,7 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
 pub use crate::network::{NetworkHandle, NetworkStatus, SendTransactionResult, SyncStatus};
-pub use crate::sync::{PeerLatency, PeerSync, PeerSyncState};
+pub use crate::sync::{PeerSync, PeerSyncState};
 
 /// Identifies a peer.
 pub type PeerId = SocketAddr;
@@ -114,8 +114,10 @@ pub enum Error {
     TooManyInventoryItems,
     #[error("Ping timeout")]
     PingTimeout,
-    #[error("Ping latency exceeds the threshold")]
-    PingLatencyTooHigh,
+    #[error("Ping latency ({0}) exceeds the threshold")]
+    PingLatencyTooHigh(Latency),
+    #[error("Peer is deprioritized for syncing and has encountered multiple failures")]
+    UnreliablePeer,
     #[error("Peer's latency ({0} ms) is too high")]
     SlowPeer(Latency),
     #[error("Unexpected pong message")]
@@ -358,13 +360,13 @@ where
             tracing::info!("Subcoin block sync is disabled until Substrate fast sync is complete");
         }
 
-        let peer_store = PeerStore::new(
-            &config.base_path,
-            config.max_outbound_peers,
-            config.persistent_peer_latency_threshold,
-        );
+        let (sender, receiver) = tracing_unbounded("mpsc_subcoin_peer_store", 10_000);
+        let (persistent_peer_store, persistent_peers) =
+            PersistentPeerStore::new(&config.base_path, config.max_outbound_peers);
+        let persistent_peer_store_handle =
+            PersistentPeerStoreHandle::new(config.persistent_peer_latency_threshold, sender);
 
-        let persistent_peers = peer_store.peer_set();
+        spawn_handle.spawn("peer-store", None, persistent_peer_store.run(receiver));
 
         let network_worker = NetworkWorker::new(
             worker::Params {
@@ -380,7 +382,7 @@ where
                 connection_initiator: connection_initiator.clone(),
                 max_outbound_peers: config.max_outbound_peers,
                 enable_block_sync: config.enable_block_sync_on_startup,
-                peer_store,
+                peer_store: Arc::new(persistent_peer_store_handle),
             },
             registry.as_ref(),
         );

@@ -3,11 +3,11 @@ use crate::metrics::Metrics;
 use crate::network::{
     IncomingTransaction, NetworkStatus, NetworkWorkerMessage, SendTransactionResult,
 };
-use crate::peer_manager::{Config, PeerManager, SlowPeer};
+use crate::peer_manager::{Config, NewPeer, PeerManager, SlowPeer, PEER_LATENCY_THRESHOLD};
 use crate::peer_store::PeerStore;
 use crate::sync::{ChainSync, LocatorRequest, SyncAction, SyncRequest};
 use crate::transaction_manager::TransactionManager;
-use crate::{Bandwidth, Error, Latency, PeerId, SyncStrategy};
+use crate::{Bandwidth, Error, PeerId, SyncStrategy};
 use bitcoin::p2p::message::{NetworkMessage, MAX_INV_SIZE};
 use bitcoin::p2p::message_blockdata::{GetBlocksMessage, GetHeadersMessage, Inventory};
 use futures::stream::FusedStream;
@@ -25,10 +25,6 @@ use tokio::time::MissedTickBehavior;
 
 /// Interval at which we perform time based maintenance
 const TICK_TIMEOUT: Duration = Duration::from_millis(1100);
-
-/// Threshold for peer latency in milliseconds, the default is 10 seconds.
-/// If a peer's latency exceeds this value, it will be considered a slow peer and may be evicted.
-const LATENCY_THRESHOLD: Latency = 10_000;
 
 /// Network event.
 #[derive(Debug)]
@@ -59,7 +55,7 @@ pub struct Params<Block, Client> {
     pub max_outbound_peers: usize,
     /// Whether to enable block sync on start.
     pub enable_block_sync: bool,
-    pub peer_store: PeerStore,
+    pub peer_store: Arc<dyn PeerStore>,
 }
 
 /// [`NetworkWorker`] is responsible for processing the network events.
@@ -67,7 +63,7 @@ pub struct NetworkWorker<Block, Client> {
     config: Config,
     network_event_receiver: UnboundedReceiver<Event>,
     peer_manager: PeerManager<Block, Client>,
-    peer_store: PeerStore,
+    peer_store: Arc<dyn PeerStore>,
     transaction_manager: TransactionManager,
     chain_sync: ChainSync<Block, Client>,
     metrics: Option<Metrics>,
@@ -117,6 +113,7 @@ where
             sync_strategy,
             is_major_syncing,
             enable_block_sync,
+            peer_store.clone(),
         );
 
         Self {
@@ -218,21 +215,20 @@ where
         let sync_action = self.chain_sync.on_tick();
         self.do_sync_action(sync_action);
 
-        if let Some(SlowPeer {
-            peer_id,
-            peer_latency,
-        }) = self.peer_manager.on_tick()
-        {
-            self.peer_manager
-                .disconnect(peer_id, Error::SlowPeer(peer_latency));
-            self.peer_manager.update_last_eviction();
+        for peer in self.chain_sync.unreliable_peers() {
+            self.peer_manager.disconnect(peer, Error::UnreliablePeer);
+            self.chain_sync.remove_peer(peer);
+            self.peer_store.remove_peer(peer);
+        }
+
+        if let Some(SlowPeer { peer_id, latency }) = self.peer_manager.on_tick() {
+            self.peer_manager.evict(peer_id, Error::SlowPeer(latency));
             self.chain_sync.remove_peer(peer_id);
         }
 
-        for (peer, txids) in self
-            .transaction_manager
-            .on_tick(self.peer_manager.connected_peers())
-        {
+        let connected_peers = self.peer_manager.connected_peers();
+
+        for (peer, txids) in self.transaction_manager.on_tick(connected_peers) {
             tracing::debug!("Broadcasting transaction IDs {txids:?} to {peer:?}");
             let msg = NetworkMessage::Inv(txids.into_iter().map(Inventory::Transaction).collect());
             if let Err(err) = self.send(peer, msg) {
@@ -301,16 +297,10 @@ where
                     tracing::debug!(?from, "Ignoring redundant verack");
                     return Ok(SyncAction::None);
                 }
-
-                let new_peer = match self.peer_manager.on_verack(from, direction) {
-                    Ok(new_peer) => new_peer,
-                    Err(err) => {
-                        self.peer_manager.disconnect(from, err);
-                        return Ok(SyncAction::None);
-                    }
-                };
-
-                Ok(self.chain_sync.add_new_peer(new_peer))
+                if let Err(err) = self.peer_manager.on_verack(from, direction) {
+                    self.peer_manager.disconnect(from, err);
+                }
+                Ok(SyncAction::None)
             }
             NetworkMessage::Addr(addresses) => {
                 self.peer_manager.on_addr(from, addresses);
@@ -352,18 +342,27 @@ where
             }
             NetworkMessage::Pong(nonce) => {
                 match self.peer_manager.on_pong(from, nonce) {
-                    Ok(avg_ping_latency) => {
+                    Ok(avg_latency) => {
                         // Disconnect the peer directly if the latency is higher than the threshold.
-                        if avg_ping_latency > LATENCY_THRESHOLD {
+                        if avg_latency > PEER_LATENCY_THRESHOLD {
                             self.peer_manager
-                                .disconnect(from, Error::PingLatencyTooHigh);
+                                .disconnect(from, Error::PingLatencyTooHigh(avg_latency));
                             self.chain_sync.remove_peer(from);
                             self.peer_store.remove_peer(from);
                         } else {
-                            self.chain_sync.set_peer_latency(from, avg_ping_latency);
-                            self.chain_sync.update_sync_peer_on_lower_latency();
-                            self.peer_store
-                                .add_peer_if_latency_acceptable(from, avg_ping_latency);
+                            if self.chain_sync.peers.contains_key(&from) {
+                                self.chain_sync.update_peer_latency(from, avg_latency);
+                            } else {
+                                self.chain_sync.add_new_peer(NewPeer {
+                                    peer_id: from,
+                                    best_number: self
+                                        .peer_manager
+                                        .peer_best_number(from)
+                                        .ok_or(Error::ConnectionNotFound(from))?,
+                                    latency: avg_latency,
+                                });
+                            }
+                            self.peer_store.try_add_peer(from, avg_latency);
                         }
                     }
                     Err(err) => {
@@ -423,7 +422,7 @@ where
                     let LocatorRequest {
                         locator_hashes,
                         stop_hash,
-                        from,
+                        to,
                     } = request;
 
                     if !locator_hashes.is_empty() {
@@ -432,15 +431,15 @@ where
                             locator_hashes,
                             stop_hash,
                         };
-                        let _ = self.send(from, NetworkMessage::GetHeaders(msg));
+                        let _ = self.send(to, NetworkMessage::GetHeaders(msg));
                     }
                 }
                 SyncRequest::Blocks(request) => {
                     self.send_get_blocks_request(request);
                 }
-                SyncRequest::Data(invs, from) => {
+                SyncRequest::Data(invs, to) => {
                     if !invs.is_empty() {
-                        let _ = self.send(from, NetworkMessage::GetData(invs));
+                        let _ = self.send(to, NetworkMessage::GetData(invs));
                     }
                 }
             },
@@ -456,7 +455,7 @@ where
             }
             SyncAction::RestartSyncWithStalledPeer(stalled_peer_id) => {
                 if self.chain_sync.restart_sync(stalled_peer_id) {
-                    self.chain_sync.mark_peer_as_discouraged(stalled_peer_id);
+                    self.chain_sync.note_peer_stalled(stalled_peer_id);
                 }
             }
             SyncAction::Disconnect(peer_id, reason) => {
@@ -471,7 +470,7 @@ where
         let LocatorRequest {
             locator_hashes,
             stop_hash,
-            from,
+            to,
         } = request;
 
         if !locator_hashes.is_empty() {
@@ -480,7 +479,7 @@ where
                 locator_hashes,
                 stop_hash,
             };
-            let _ = self.send(from, NetworkMessage::GetBlocks(msg));
+            let _ = self.send(to, NetworkMessage::GetBlocks(msg));
         }
     }
 

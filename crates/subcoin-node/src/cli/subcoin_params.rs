@@ -62,10 +62,10 @@ pub struct NetworkParams {
 
     /// Persistent peer latency threshold in milliseconds (ms).
     ///
-    /// Only peers with a latency lower than this threshold can be saved to disk.
+    /// Only peers with a latency lower than this threshold can possibly be saved to disk.
     ///
-    /// Default value is 200 ms
-    #[clap(long, default_value_t = 200)]
+    /// Default value is 500 ms
+    #[clap(long, default_value_t = 500)]
     pub persistent_peer_latency_threshold: u128,
 }
 

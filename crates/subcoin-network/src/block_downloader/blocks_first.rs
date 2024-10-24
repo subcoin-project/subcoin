@@ -1,4 +1,5 @@
 use crate::block_downloader::BlockDownloadManager;
+use crate::peer_store::PeerStore;
 use crate::sync::{LocatorRequest, SyncAction, SyncRequest};
 use crate::{Error, PeerId, SyncStatus};
 use bitcoin::hashes::Hash;
@@ -19,8 +20,9 @@ use subcoin_primitives::{BackendExt, BlockLocator, BlockLocatorProvider, ClientE
 // request is [1, 500] when doing the initial sync.
 const MAX_GET_BLOCKS_RESPONSE: u32 = 500;
 
+/// Download state.
 #[derive(Debug, Clone)]
-enum DownloadState {
+enum State {
     /// Downloading not started yet.
     Idle,
     /// Restarting the download process.
@@ -39,18 +41,19 @@ enum DownloadState {
 }
 
 /// Download blocks using the Blocks-First strategy.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct BlocksFirstDownloader<Block, Client> {
     client: Arc<Client>,
     peer_id: PeerId,
     /// The final block number we are targeting when the download is complete.
     target_block_number: u32,
-    download_state: DownloadState,
+    state: State,
     download_manager: BlockDownloadManager,
+    downloaded_blocks_count: usize,
     last_locator_start: u32,
     pending_block_requests: Vec<Inventory>,
     /// Number of blocks' data requested but not yet received.
-    requested_blocks_count: usize,
+    inflight_blocks_count: usize,
     _phantom: PhantomData<Block>,
 }
 
@@ -59,16 +62,22 @@ where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore,
 {
-    pub(crate) fn new(client: Arc<Client>, peer_id: PeerId, peer_best: u32) -> (Self, SyncRequest) {
+    pub(crate) fn new(
+        client: Arc<Client>,
+        peer_id: PeerId,
+        peer_best: u32,
+        peer_store: Arc<dyn PeerStore>,
+    ) -> (Self, SyncRequest) {
         let mut blocks_first_sync = Self {
             peer_id,
             client,
             target_block_number: peer_best,
-            download_state: DownloadState::Idle,
-            download_manager: BlockDownloadManager::new(),
+            state: State::Idle,
+            download_manager: BlockDownloadManager::new(peer_store),
+            downloaded_blocks_count: 0,
             last_locator_start: 0u32,
             pending_block_requests: Vec::new(),
-            requested_blocks_count: 0,
+            inflight_blocks_count: 0,
             _phantom: Default::default(),
         };
 
@@ -78,7 +87,7 @@ where
     }
 
     pub(crate) fn sync_status(&self) -> SyncStatus {
-        if self.download_manager.import_queue_is_overloaded {
+        if self.download_manager.queue_status.is_overloaded() {
             SyncStatus::Importing {
                 target: self.target_block_number,
                 peers: vec![self.peer_id],
@@ -91,13 +100,18 @@ where
         }
     }
 
-    pub(crate) fn sync_peer(&self) -> PeerId {
-        self.peer_id
+    pub(crate) fn replaceable_sync_peer(&self) -> Option<PeerId> {
+        if self.downloaded_blocks_count > 0 {
+            None
+        } else {
+            Some(self.peer_id)
+        }
     }
 
-    pub(crate) fn update_sync_peer(&mut self, peer_id: PeerId, target_block_number: u32) {
+    pub(crate) fn replace_sync_peer(&mut self, peer_id: PeerId, target_block_number: u32) {
         self.peer_id = peer_id;
         self.target_block_number = target_block_number;
+        self.downloaded_blocks_count = 0;
     }
 
     pub(crate) fn download_manager(&mut self) -> &mut BlockDownloadManager {
@@ -105,32 +119,35 @@ where
     }
 
     pub(crate) fn on_tick(&mut self) -> SyncAction {
-        if matches!(self.download_state, DownloadState::Restarting) {
+        if matches!(self.state, State::Restarting) {
             return SyncAction::Request(self.prepare_blocks_request());
         }
 
-        if self.download_manager.import_queue_is_overloaded {
-            if self
+        let best_number = self.client.best_number();
+
+        if self.download_manager.queue_status.is_overloaded() {
+            let still_overloaded = self
                 .download_manager
-                .update_and_check_queue_status(self.client.best_number())
-            {
+                .evaluate_queue_status(best_number)
+                .is_overloaded();
+            if still_overloaded {
                 return SyncAction::None;
             } else {
                 return SyncAction::Request(self.prepare_blocks_request());
             }
         }
 
-        if !self.pending_block_requests.is_empty() && self.requested_blocks_count == 0 {
+        if !self.pending_block_requests.is_empty() && self.inflight_blocks_count == 0 {
             let block_data_request = std::mem::take(&mut self.pending_block_requests);
             return self.truncate_and_prepare_block_data_request(block_data_request);
         }
 
-        if self.client.best_number() == self.target_block_number {
-            self.download_state = DownloadState::Completed;
+        if best_number == self.target_block_number {
+            self.state = State::Completed;
             return SyncAction::SwitchToIdle;
         }
 
-        if self.download_manager.is_stalled() {
+        if self.download_manager.is_stalled(self.peer_id) {
             return SyncAction::RestartSyncWithStalledPeer(self.peer_id);
         }
 
@@ -139,12 +156,13 @@ where
 
     pub(crate) fn restart(&mut self, new_peer: PeerId, peer_best: u32) {
         self.peer_id = new_peer;
+        self.downloaded_blocks_count = 0;
         self.target_block_number = peer_best;
         self.last_locator_start = 0u32;
         self.download_manager.reset();
-        self.download_state = DownloadState::Restarting;
+        self.state = State::Restarting;
         self.pending_block_requests.clear();
-        self.requested_blocks_count = 0;
+        self.inflight_blocks_count = 0;
     }
 
     // Handle `inv` message.
@@ -167,7 +185,7 @@ where
                 ?from,
                 "Received inv with more than {MAX_GET_BLOCKS_RESPONSE} block entries"
             );
-            self.download_state = DownloadState::Disconnecting;
+            self.state = State::Disconnecting;
             return SyncAction::Disconnect(self.peer_id, Error::InvHasTooManyBlockItems);
         }
 
@@ -207,13 +225,13 @@ where
             self.pending_block_requests = block_data_request.split_off(max_request_size);
         }
 
-        self.requested_blocks_count = block_data_request.len();
+        self.inflight_blocks_count = block_data_request.len();
 
         tracing::debug!(
             from = ?self.peer_id,
             pending_block_data_request = self.pending_block_requests.len(),
             "📦 Downloading {} blocks",
-            self.requested_blocks_count,
+            self.inflight_blocks_count,
         );
 
         SyncAction::Request(SyncRequest::Data(block_data_request, self.peer_id))
@@ -225,8 +243,8 @@ where
             return SyncAction::None;
         }
 
-        let last_get_blocks_target = match &self.download_state {
-            DownloadState::DownloadingNew(range) => range.end - 1,
+        let last_get_blocks_target = match &self.state {
+            State::DownloadingNew(range) => range.end - 1,
             state => {
                 tracing::debug!(
                     ?state,
@@ -263,9 +281,10 @@ where
             tracing::trace!("Add pending block #{block_number},{block_hash}");
 
             self.download_manager
-                .add_block(block_number, block_hash, block);
+                .add_block(block_number, block_hash, block, from);
 
-            self.requested_blocks_count -= 1;
+            self.inflight_blocks_count -= 1;
+            self.downloaded_blocks_count += 1;
 
             match block_number.cmp(&last_get_blocks_target) {
                 CmpOrdering::Less => {
@@ -279,10 +298,10 @@ where
                             target_block_number = self.target_block_number,
                             "Received block #{block_number},{block_hash} higher than the target block"
                         );
-                        self.download_state = DownloadState::Completed;
+                        self.state = State::Completed;
                         SyncAction::SwitchToIdle
                     } else {
-                        self.download_state = DownloadState::Disconnecting;
+                        self.state = State::Disconnecting;
                         SyncAction::Disconnect(
                             self.peer_id,
                             Error::Other(format!(
@@ -298,25 +317,19 @@ where
                     // No more new blocks request as there are enough ongoing blocks in the queue.
                     if self
                         .download_manager
-                        .update_and_check_queue_status(best_number)
+                        .evaluate_queue_status(best_number)
+                        .is_overloaded()
                     {
                         return SyncAction::None;
                     }
 
                     let best_queued_number = self.download_manager.best_queued_number;
 
-                    tracing::debug!(
-                        best_number,
-                        best_queued_number,
-                        "Last getblocks finished, requesting more blocks",
-                    );
-
                     let end = self
                         .target_block_number
                         .min(best_queued_number + MAX_GET_BLOCKS_RESPONSE);
 
-                    self.download_state =
-                        DownloadState::DownloadingNew(best_queued_number + 1..end + 1);
+                    self.state = State::DownloadingNew(best_queued_number + 1..end + 1);
 
                     let BlockLocator { locator_hashes, .. } = self
                         .client
@@ -324,11 +337,16 @@ where
                             self.download_manager.queued_blocks.block_hash(height)
                         });
 
-                    // Last `getblocks` finished, fetch more blocks by sending a new `getblocks` request.
+                    tracing::debug!(
+                        best_number,
+                        best_queued_number,
+                        "Last `getblocks` finished, fetching more blocks",
+                    );
+
                     SyncAction::Request(SyncRequest::Blocks(LocatorRequest {
                         locator_hashes,
                         stop_hash: BlockHash::all_zeros(),
-                        from: self.peer_id,
+                        to: self.peer_id,
                     }))
                 }
             }
@@ -362,7 +380,8 @@ where
 
                 if self
                     .download_manager
-                    .update_and_check_queue_status(self.client.best_number())
+                    .evaluate_queue_status(self.client.best_number())
+                    .is_overloaded()
                 {
                     SyncAction::None
                 } else {
@@ -383,7 +402,7 @@ where
             .target_block_number
             .min(latest_block + MAX_GET_BLOCKS_RESPONSE);
 
-        self.download_state = DownloadState::DownloadingNew(latest_block + 1..end + 1);
+        self.state = State::DownloadingNew(latest_block + 1..end + 1);
 
         tracing::debug!(
             latest_block,
@@ -394,7 +413,7 @@ where
         SyncRequest::Blocks(LocatorRequest {
             locator_hashes,
             stop_hash: BlockHash::all_zeros(),
-            from: self.peer_id,
+            to: self.peer_id,
         })
     }
 
@@ -437,6 +456,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::peer_store::NoPeerStore;
     use subcoin_test_service::block_data;
 
     #[test]
@@ -451,7 +471,7 @@ mod tests {
 
         let peer_id: PeerId = "0.0.0.0:0".parse().unwrap();
         let (mut downloader, _initial_request) =
-            BlocksFirstDownloader::new(client, peer_id, 800000);
+            BlocksFirstDownloader::new(client, peer_id, 800000, Arc::new(NoPeerStore));
 
         let block = block_data()[3].clone();
         let block_hash = block.block_hash();
