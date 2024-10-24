@@ -126,6 +126,7 @@ pub struct HeadersFirstDownloader<Block, Client> {
     state: State,
     download_manager: BlockDownloadManager,
     downloaded_headers: DownloadedHeaders,
+    downloaded_blocks_count: usize,
     last_locator_start: u32,
     // TODO: Now it's solely used for the purpose of displaying the sync state.
     // refactor it later.
@@ -155,6 +156,7 @@ where
                 completed_range: None,
             },
             download_manager: BlockDownloadManager::new(peer_store),
+            downloaded_blocks_count: 0,
             last_locator_start: 0u32,
             target_block_number,
             _phantom: Default::default(),
@@ -177,17 +179,22 @@ where
         }
     }
 
-    pub(crate) fn sync_peer(&self) -> PeerId {
-        self.peer_id
+    pub(crate) fn replaceable_sync_peer(&self) -> Option<PeerId> {
+        if self.downloaded_blocks_count > 0 {
+            None
+        } else {
+            Some(self.peer_id)
+        }
+    }
+
+    pub(crate) fn replace_sync_peer(&mut self, peer_id: PeerId, target_block_number: u32) {
+        self.peer_id = peer_id;
+        self.downloaded_blocks_count = 0;
+        self.target_block_number = target_block_number;
     }
 
     pub(crate) fn download_manager(&mut self) -> &mut BlockDownloadManager {
         &mut self.download_manager
-    }
-
-    pub(crate) fn update_sync_peer(&mut self, peer_id: PeerId, target_block_number: u32) {
-        self.peer_id = peer_id;
-        self.target_block_number = target_block_number;
     }
 
     pub(crate) fn on_tick(&mut self) -> SyncAction {
@@ -250,6 +257,7 @@ where
     pub(crate) fn restart(&mut self, new_peer: PeerId, peer_best: u32) {
         self.peer_id = new_peer;
         self.download_manager.reset();
+        self.downloaded_blocks_count = 0;
         self.last_locator_start = 0u32;
         self.target_block_number = peer_best;
         if let Some((start, end)) = self.downloaded_headers.completed_range {
@@ -530,6 +538,8 @@ where
 
             self.download_manager
                 .add_block(block_number, block_hash, block, from);
+
+            self.downloaded_blocks_count += 1;
 
             let should_request_more_headers = match block_download {
                 BlockDownload::AllBlocks { start, end } => {

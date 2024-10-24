@@ -345,10 +345,14 @@ where
     }
 
     pub(super) fn update_sync_peer_on_lower_latency(&mut self) {
-        let current_sync_peer_id = match &self.syncing {
-            Syncing::BlocksFirst(downloader) => downloader.sync_peer(),
-            Syncing::HeadersFirst(downloader) => downloader.sync_peer(),
+        let maybe_sync_peer_id = match &self.syncing {
+            Syncing::BlocksFirst(downloader) => downloader.replaceable_sync_peer(),
+            Syncing::HeadersFirst(downloader) => downloader.replaceable_sync_peer(),
             Syncing::Idle => return,
+        };
+
+        let Some(current_sync_peer_id) = maybe_sync_peer_id else {
+            return;
         };
 
         let Some(current_latency) = self
@@ -389,21 +393,28 @@ where
             let peer_id = best_sync_peer.peer_id;
             let target_block_number = best_sync_peer.best_number;
 
-            match &mut self.syncing {
+            let sync_peer_updated = match &mut self.syncing {
                 Syncing::BlocksFirst(downloader) => {
-                    downloader.update_sync_peer(peer_id, target_block_number);
+                    downloader.replace_sync_peer(peer_id, target_block_number);
+                    true
                 }
                 Syncing::HeadersFirst(downloader) => {
-                    downloader.update_sync_peer(peer_id, target_block_number);
+                    downloader.replace_sync_peer(peer_id, target_block_number);
+                    true
                 }
                 Syncing::Idle => unreachable!("Must not be Idle as checked; qed"),
-            }
+            };
 
-            tracing::debug!(
-                old_peer_id = ?current_sync_peer_id,
-                new_peer_id = ?peer_id,
-                "🔧 Sync peer ({current_latency} ms) updated to a new peer with lower latency ({best_latency} ms)",
-            );
+            if sync_peer_updated {
+                tracing::debug!(
+                    old_peer_id = ?current_sync_peer_id,
+                    new_peer_id = ?peer_id,
+                    "🔧 Sync peer ({current_latency} ms) updated to a new peer with lower latency ({best_latency} ms)",
+                );
+                self.peers.entry(replaced_peer_id).and_modify(|peer| {
+                    peer.state = PeerSyncState::Available;
+                });
+            }
         }
     }
 

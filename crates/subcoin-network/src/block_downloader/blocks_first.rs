@@ -49,10 +49,11 @@ pub struct BlocksFirstDownloader<Block, Client> {
     target_block_number: u32,
     state: State,
     download_manager: BlockDownloadManager,
+    downloaded_blocks_count: usize,
     last_locator_start: u32,
     pending_block_requests: Vec<Inventory>,
     /// Number of blocks' data requested but not yet received.
-    requested_blocks_count: usize,
+    inflight_blocks_count: usize,
     _phantom: PhantomData<Block>,
 }
 
@@ -73,9 +74,10 @@ where
             target_block_number: peer_best,
             state: State::Idle,
             download_manager: BlockDownloadManager::new(peer_store),
+            downloaded_blocks_count: 0,
             last_locator_start: 0u32,
             pending_block_requests: Vec::new(),
-            requested_blocks_count: 0,
+            inflight_blocks_count: 0,
             _phantom: Default::default(),
         };
 
@@ -98,13 +100,18 @@ where
         }
     }
 
-    pub(crate) fn sync_peer(&self) -> PeerId {
-        self.peer_id
+    pub(crate) fn replaceable_sync_peer(&self) -> Option<PeerId> {
+        if self.downloaded_blocks_count > 0 {
+            None
+        } else {
+            self.peer_id
+        }
     }
 
-    pub(crate) fn update_sync_peer(&mut self, peer_id: PeerId, target_block_number: u32) {
+    pub(crate) fn replace_sync_peer(&mut self, peer_id: PeerId, target_block_number: u32) {
         self.peer_id = peer_id;
         self.target_block_number = target_block_number;
+        self.downloaded_blocks_count = 0;
     }
 
     pub(crate) fn download_manager(&mut self) -> &mut BlockDownloadManager {
@@ -130,7 +137,7 @@ where
             }
         }
 
-        if !self.pending_block_requests.is_empty() && self.requested_blocks_count == 0 {
+        if !self.pending_block_requests.is_empty() && self.inflight_blocks_count == 0 {
             let block_data_request = std::mem::take(&mut self.pending_block_requests);
             return self.truncate_and_prepare_block_data_request(block_data_request);
         }
@@ -149,12 +156,13 @@ where
 
     pub(crate) fn restart(&mut self, new_peer: PeerId, peer_best: u32) {
         self.peer_id = new_peer;
+        self.downloaded_blocks_count = 0;
         self.target_block_number = peer_best;
         self.last_locator_start = 0u32;
         self.download_manager.reset();
         self.state = State::Restarting;
         self.pending_block_requests.clear();
-        self.requested_blocks_count = 0;
+        self.inflight_blocks_count = 0;
     }
 
     // Handle `inv` message.
@@ -217,13 +225,13 @@ where
             self.pending_block_requests = block_data_request.split_off(max_request_size);
         }
 
-        self.requested_blocks_count = block_data_request.len();
+        self.inflight_blocks_count = block_data_request.len();
 
         tracing::debug!(
             from = ?self.peer_id,
             pending_block_data_request = self.pending_block_requests.len(),
             "📦 Downloading {} blocks",
-            self.requested_blocks_count,
+            self.inflight_blocks_count,
         );
 
         SyncAction::Request(SyncRequest::Data(block_data_request, self.peer_id))
@@ -275,7 +283,8 @@ where
             self.download_manager
                 .add_block(block_number, block_hash, block, from);
 
-            self.requested_blocks_count -= 1;
+            self.inflight_blocks_count -= 1;
+            self.downloaded_blocks_count += 1;
 
             match block_number.cmp(&last_get_blocks_target) {
                 CmpOrdering::Less => {
