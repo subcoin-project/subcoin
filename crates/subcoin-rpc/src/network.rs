@@ -13,7 +13,7 @@ use subcoin_network::{NetworkHandle, NetworkStatus, PeerSync, PeerSyncState};
 #[serde(rename_all = "camelCase")]
 pub enum SyncState {
     Available,
-    Discouraged,
+    Deprioritized,
     DownloadingNew,
 }
 
@@ -72,7 +72,7 @@ where
         let mut sync_peers = self.network_handle.sync_peers().await;
 
         let mut available = 0;
-        let mut discouraged = 0;
+        let mut deprioritized = 0;
         let mut downloading_new = 0;
 
         let mut best_known_block = 0;
@@ -80,7 +80,7 @@ where
         for peer in &sync_peers {
             match peer.state {
                 PeerSyncState::Available => available += 1,
-                PeerSyncState::Discouraged => discouraged += 1,
+                PeerSyncState::Deprioritized { .. } => deprioritized += 1,
                 PeerSyncState::DownloadingNew { .. } => downloading_new += 1,
             }
 
@@ -94,7 +94,7 @@ where
         Ok(NetworkPeers {
             sync_state_counts: HashMap::from([
                 (SyncState::Available, available),
-                (SyncState::Discouraged, discouraged),
+                (SyncState::Deprioritized, deprioritized),
                 (SyncState::DownloadingNew, downloading_new),
             ]),
             best_known_block: if best_known_block > 0 {

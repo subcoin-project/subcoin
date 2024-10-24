@@ -215,6 +215,14 @@ where
         let sync_action = self.chain_sync.on_tick();
         self.do_sync_action(sync_action);
 
+        let unreliable_peers = self.chain_sync.unreliable_peers();
+        for peer in unreliable_peers {
+            self.peer_manager
+                .disconnect(peer, Error::UnreliableSyncPeer);
+            self.chain_sync.remove_peer(peer);
+            self.peer_store.remove_peer(peer);
+        }
+
         if let Some(SlowPeer {
             peer_id,
             peer_latency,
@@ -456,7 +464,7 @@ where
             }
             SyncAction::RestartSyncWithStalledPeer(stalled_peer_id) => {
                 if self.chain_sync.restart_sync(stalled_peer_id) {
-                    self.chain_sync.mark_peer_as_discouraged(stalled_peer_id);
+                    self.chain_sync.note_peer_stalled(stalled_peer_id);
                 }
             }
             SyncAction::Disconnect(peer_id, reason) => {
