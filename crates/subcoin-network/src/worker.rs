@@ -221,7 +221,12 @@ where
             self.peer_store.remove_peer(peer);
         }
 
-        if let Some(SlowPeer { peer_id, latency }) = self.peer_manager.on_tick() {
+        let (timeout_peers, maybe_slow_peer) = self.peer_manager.on_tick();
+        timeout_peers.into_iter().for_each(|peer_id| {
+            self.peer_manager.disconnect(peer_id, Error::PingTimeout);
+            self.chain_sync.remove_peer(peer_id);
+        });
+        if let Some(SlowPeer { peer_id, latency }) = maybe_slow_peer {
             self.peer_manager.evict(peer_id, Error::SlowPeer(latency));
             self.chain_sync.remove_peer(peer_id);
         }

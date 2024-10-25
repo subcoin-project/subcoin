@@ -315,7 +315,7 @@ where
         }
     }
 
-    pub(crate) fn on_tick(&mut self) -> Option<SlowPeer> {
+    pub(crate) fn on_tick(&mut self) -> (Vec<PeerId>, Option<SlowPeer>) {
         let mut timeout_peers = vec![];
         let mut should_ping_peers = vec![];
 
@@ -332,10 +332,6 @@ where
 
         if !should_ping_peers.is_empty() {
             self.send_pings(should_ping_peers);
-        }
-
-        for peer_id in timeout_peers {
-            self.disconnect(peer_id, Error::PingTimeout);
         }
 
         let outbound_peers_count = self
@@ -360,6 +356,13 @@ where
                 .set(self.address_book.available_addresses_count() as u64);
         }
 
+        let maybe_slow_peer = self.manage_outbound_connections(outbound_peers_count);
+
+        (timeout_peers, maybe_slow_peer)
+    }
+
+    /// Manages outbound connections by initiating new connections or evicting slow peers.
+    fn manage_outbound_connections(&mut self, outbound_peers_count: usize) -> Option<SlowPeer> {
         if outbound_peers_count < self.max_outbound_peers {
             if let Some(addr) = self.address_book.pop() {
                 if !self.connections.contains_key(&addr) {
@@ -442,7 +445,19 @@ where
         }
     }
 
-    /// Disconnect from a peer with given reason, do nothing if the peer is persistent.
+    /// Disconnects from a specified peer, unless it is designated as persistent, with a given reason.
+    ///
+    /// # Important Notes
+    ///
+    /// - **Syncing Components:** This function, as well as [`Self::evict`], should not be invoked
+    ///   directly within the peer manager module without triggering a notification. For example,
+    ///   chain sync might depend on receiving a disconnect notification to correctly update their
+    ///   internal state, which helps maintain a consistent peer set between the peer manager and
+    ///   other modules.
+    ///
+    /// - **Potential for Inconsistent State:** Bypassing notifications may lead to inconsistency
+    ///   between the peer manager and modules that rely on peer status, resulting in unexpected
+    ///   issues in the peer set or other connected components.
     pub(crate) fn disconnect(&mut self, peer_id: PeerId, reason: Error) {
         if self.config.persistent.contains(&peer_id) {
             return;
@@ -465,6 +480,20 @@ where
         self.connected_peers.remove(&peer_id);
     }
 
+    /// Evicts a peer, disconnecting it with a specified reason and updating the eviction timestamp.
+    ///
+    /// This function internally calls [`Self::disconnect`] to carry out the disconnection
+    /// process and subsequently records the current time as the `last_eviction` timestamp.
+    ///
+    /// # Important Note
+    ///
+    /// Just like with `disconnect`, any call to `evict` should be accompanied by necessary
+    /// notifications to avoid state inconsistencies.
+    pub(crate) fn evict(&mut self, peer_id: PeerId, reason: Error) {
+        self.disconnect(peer_id, reason);
+        self.last_eviction = Instant::now();
+    }
+
     /// Sets the prefer addrv2 flag for a peer.
     pub(crate) fn set_want_addrv2(&mut self, peer_id: PeerId) {
         self.connected_peers.entry(peer_id).and_modify(|info| {
@@ -477,11 +506,6 @@ where
         self.connected_peers.entry(peer_id).and_modify(|info| {
             info.prefer_headers = true;
         });
-    }
-
-    pub(crate) fn evict(&mut self, peer_id: PeerId, reason: Error) {
-        self.disconnect(peer_id, reason);
-        self.last_eviction = Instant::now();
     }
 
     /// Checks if a peer is connected.

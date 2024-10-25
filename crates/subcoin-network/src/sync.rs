@@ -414,6 +414,9 @@ where
                 self.peers.entry(current_sync_peer_id).and_modify(|peer| {
                     peer.state = PeerSyncState::Available;
                 });
+                self.peers.entry(peer_id).and_modify(|peer| {
+                    peer.state = PeerSyncState::DownloadingNew { start: our_best };
+                });
             }
         }
     }
