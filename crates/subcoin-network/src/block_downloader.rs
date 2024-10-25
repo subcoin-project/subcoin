@@ -184,7 +184,7 @@ impl BlockDownloadManager {
             _ => 512,
         };
 
-        let queued_blocks = self.best_queued_number - best_number;
+        let queued_blocks = self.best_queued_number.saturating_sub(best_number);
 
         if queued_blocks > max_queued_blocks {
             self.queue_status = ImportQueueStatus::Overloaded;
