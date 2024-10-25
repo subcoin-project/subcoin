@@ -5,7 +5,7 @@ use crate::network::{
 };
 use crate::peer_manager::{Config, NewPeer, PeerManager, SlowPeer, PEER_LATENCY_THRESHOLD};
 use crate::peer_store::PeerStore;
-use crate::sync::{ChainSync, LocatorRequest, SyncAction, SyncRequest};
+use crate::sync::{ChainSync, LocatorRequest, RestartReason, SyncAction, SyncRequest};
 use crate::transaction_manager::TransactionManager;
 use crate::{Bandwidth, Error, PeerId, SyncStrategy};
 use bitcoin::p2p::message::{NetworkMessage, MAX_INV_SIZE};
@@ -459,7 +459,8 @@ where
                 self.chain_sync.switch_to_idle();
             }
             SyncAction::RestartSyncWithStalledPeer(stalled_peer_id) => {
-                self.chain_sync.restart_sync(stalled_peer_id);
+                self.chain_sync
+                    .restart_sync(stalled_peer_id, RestartReason::Stalled);
             }
             SyncAction::Disconnect(peer_id, reason) => {
                 self.peer_manager.disconnect(peer_id, reason);

@@ -119,6 +119,11 @@ pub(crate) enum SyncAction {
     None,
 }
 
+pub(crate) enum RestartReason {
+    Stalled,
+    Disconnected,
+}
+
 // This enum encapsulates the various strategies and states a node
 // might be in during the sync process.
 enum Syncing<Block, Client> {
@@ -229,6 +234,14 @@ where
             .collect()
     }
 
+    pub(super) fn remove_peer(&mut self, peer_id: PeerId) {
+        if let Some(removed_peer) = self.peers.remove(&peer_id) {
+            if matches!(removed_peer.state, PeerSyncState::DownloadingNew { .. }) {
+                self.restart_sync(removed_peer.peer_id, RestartReason::Disconnected);
+            }
+        }
+    }
+
     /// Attempt to find the best available peer, falling back to a random choice if needed
     fn select_next_peer_for_sync(
         &mut self,
@@ -256,15 +269,13 @@ where
             })
     }
 
-    /// Attempts to restart the sync due to a dropped peer.
+    /// Attempts to restart the sync based on the reason provided.
     ///
     /// Returns `true` if the sync is restarted with a new peer.
-    pub(super) fn restart_sync(&mut self, prior_peer_id: PeerId) {
+    pub(super) fn restart_sync(&mut self, prior_peer_id: PeerId, reason: RestartReason) {
         let our_best = self.client.best_number();
 
-        let maybe_next_sync_peer = self.select_next_peer_for_sync(our_best, prior_peer_id);
-
-        let Some(new_peer_id) = maybe_next_sync_peer else {
+        let Some(new_peer_id) = self.select_next_peer_for_sync(our_best, prior_peer_id) else {
             if let Some(median_seen_block) = self.median_seen() {
                 if median_seen_block <= our_best {
                     let best_seen_block = self.peers.values().map(|p| p.best_number).max();
@@ -296,7 +307,7 @@ where
 
         {
             let Some(new_peer) = self.peers.get_mut(&new_peer_id) else {
-                tracing::error!("Next peer {new_peer_id} missing from peer list");
+                tracing::error!("Corrupted state, next peer {new_peer_id} missing from peer list");
                 return;
             };
 
@@ -314,12 +325,19 @@ where
             }
         }
 
-        self.peers.entry(prior_peer_id).and_modify(|p| {
-            let current_stalled_count = p.state.stalled_count();
-            p.state = PeerSyncState::Deprioritized {
-                stalled_count: current_stalled_count + 1,
-            };
-        });
+        match reason {
+            RestartReason::Stalled => {
+                self.peers.entry(prior_peer_id).and_modify(|p| {
+                    let current_stalled_count = p.state.stalled_count();
+                    p.state = PeerSyncState::Deprioritized {
+                        stalled_count: current_stalled_count + 1,
+                    };
+                });
+            }
+            RestartReason::Disconnected => {
+                // Nothing to be done, peer is already removed from the peer list.
+            }
+        }
     }
 
     /// Returns the median block number advertised by our peers.
@@ -337,11 +355,6 @@ where
 
             Some(*best_seens.select_nth_unstable(middle).1)
         }
-    }
-
-    pub(super) fn remove_peer(&mut self, peer_id: PeerId) {
-        // TODO: handle the situation that the peer is being involved in the downloader.
-        self.peers.remove(&peer_id);
     }
 
     pub(super) fn update_peer_latency(&mut self, peer_id: PeerId, avg_latency: Latency) {
