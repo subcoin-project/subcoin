@@ -459,9 +459,7 @@ where
                 self.chain_sync.switch_to_idle();
             }
             SyncAction::RestartSyncWithStalledPeer(stalled_peer_id) => {
-                if self.chain_sync.restart_sync(stalled_peer_id) {
-                    self.chain_sync.note_peer_stalled(stalled_peer_id);
-                }
+                self.chain_sync.restart_sync(stalled_peer_id);
             }
             SyncAction::Disconnect(peer_id, reason) => {
                 self.peer_manager.disconnect(peer_id, reason);

@@ -259,7 +259,7 @@ where
     /// Attempts to restart the sync due to a dropped peer.
     ///
     /// Returns `true` if the sync is restarted with a new peer.
-    pub(super) fn restart_sync(&mut self, prior_peer_id: PeerId) -> bool {
+    pub(super) fn restart_sync(&mut self, prior_peer_id: PeerId) {
         let our_best = self.client.best_number();
 
         let maybe_next_sync_peer = self.select_next_peer_for_sync(our_best, prior_peer_id);
@@ -280,7 +280,7 @@ where
                         "Synced to the majority of peers, switching to Idle"
                     );
                     self.syncing = Syncing::Idle;
-                    return false;
+                    return;
                 }
             }
 
@@ -291,29 +291,35 @@ where
                 "⚠️ Attempting to restart sync, but no new sync candidate available"
             );
 
-            return false;
+            return;
         };
 
-        let Some(new_peer) = self.peers.get_mut(&new_peer_id) else {
-            tracing::error!("Next peer {new_peer_id} missing from peer list");
-            return false;
-        };
+        {
+            let Some(new_peer) = self.peers.get_mut(&new_peer_id) else {
+                tracing::error!("Next peer {new_peer_id} missing from peer list");
+                return;
+            };
 
-        tracing::debug!(?prior_peer_id, ?new_peer, "🔄 Sync restarted");
+            tracing::debug!(?prior_peer_id, ?new_peer, "🔄 Sync restarted");
+            new_peer.state = PeerSyncState::DownloadingNew { start: our_best };
 
-        new_peer.state = PeerSyncState::DownloadingNew { start: our_best };
-
-        match &mut self.syncing {
-            Syncing::BlocksFirst(downloader) => {
-                downloader.restart(new_peer.peer_id, new_peer.best_number);
-                true
+            match &mut self.syncing {
+                Syncing::BlocksFirst(downloader) => {
+                    downloader.restart(new_peer.peer_id, new_peer.best_number);
+                }
+                Syncing::HeadersFirst(downloader) => {
+                    downloader.restart(new_peer.peer_id, new_peer.best_number);
+                }
+                Syncing::Idle => {}
             }
-            Syncing::HeadersFirst(downloader) => {
-                downloader.restart(new_peer.peer_id, new_peer.best_number);
-                true
-            }
-            Syncing::Idle => false,
         }
+
+        self.peers.entry(prior_peer_id).and_modify(|p| {
+            let current_stalled_count = p.state.stalled_count();
+            p.state = PeerSyncState::Deprioritized {
+                stalled_count: current_stalled_count + 1,
+            };
+        });
     }
 
     /// Returns the median block number advertised by our peers.
@@ -331,15 +337,6 @@ where
 
             Some(*best_seens.select_nth_unstable(middle).1)
         }
-    }
-
-    pub(super) fn note_peer_stalled(&mut self, stalled_peer: PeerId) {
-        self.peers.entry(stalled_peer).and_modify(|p| {
-            let current_stalled_count = p.state.stalled_count();
-            p.state = PeerSyncState::Deprioritized {
-                stalled_count: current_stalled_count + 1,
-            };
-        });
     }
 
     pub(super) fn remove_peer(&mut self, peer_id: PeerId) {
