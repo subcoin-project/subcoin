@@ -182,7 +182,7 @@ where
             }
             Event::Disconnect { peer_addr, reason } => {
                 self.peer_manager.disconnect(peer_addr, reason);
-                self.chain_sync.remove_peer(peer_addr);
+                self.chain_sync.disconnect(peer_addr);
                 self.peer_store.remove_peer(peer_addr);
             }
             Event::PeerMessage {
@@ -217,18 +217,18 @@ where
 
         for peer in self.chain_sync.unreliable_peers() {
             self.peer_manager.disconnect(peer, Error::UnreliablePeer);
-            self.chain_sync.remove_peer(peer);
+            self.chain_sync.disconnect(peer);
             self.peer_store.remove_peer(peer);
         }
 
         let (timeout_peers, maybe_slow_peer) = self.peer_manager.on_tick();
         timeout_peers.into_iter().for_each(|peer_id| {
             self.peer_manager.disconnect(peer_id, Error::PingTimeout);
-            self.chain_sync.remove_peer(peer_id);
+            self.chain_sync.disconnect(peer_id);
         });
         if let Some(SlowPeer { peer_id, latency }) = maybe_slow_peer {
             self.peer_manager.evict(peer_id, Error::SlowPeer(latency));
-            self.chain_sync.remove_peer(peer_id);
+            self.chain_sync.disconnect(peer_id);
         }
 
         let connected_peers = self.peer_manager.connected_peers();
@@ -352,7 +352,7 @@ where
                         if avg_latency > PEER_LATENCY_THRESHOLD {
                             self.peer_manager
                                 .disconnect(from, Error::PingLatencyTooHigh(avg_latency));
-                            self.chain_sync.remove_peer(from);
+                            self.chain_sync.disconnect(from);
                             self.peer_store.remove_peer(from);
                         } else {
                             if self.chain_sync.peers.contains_key(&from) {
@@ -372,7 +372,7 @@ where
                     }
                     Err(err) => {
                         self.peer_manager.disconnect(from, err);
-                        self.chain_sync.remove_peer(from);
+                        self.chain_sync.disconnect(from);
                         self.peer_store.remove_peer(from);
                     }
                 }
@@ -464,7 +464,7 @@ where
             }
             SyncAction::Disconnect(peer_id, reason) => {
                 self.peer_manager.disconnect(peer_id, reason);
-                self.chain_sync.remove_peer(peer_id);
+                self.chain_sync.disconnect(peer_id);
             }
             SyncAction::None => {}
         }

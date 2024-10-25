@@ -119,6 +119,7 @@ pub(crate) enum SyncAction {
     None,
 }
 
+#[derive(Debug)]
 pub(crate) enum RestartReason {
     Stalled,
     Disconnected,
@@ -234,8 +235,11 @@ where
             .collect()
     }
 
-    pub(super) fn remove_peer(&mut self, peer_id: PeerId) {
+    /// Removes the given peer from peers of chain sync.
+    pub(super) fn disconnect(&mut self, peer_id: PeerId) {
         if let Some(removed_peer) = self.peers.remove(&peer_id) {
+            // We currently support only one syncing peer, this logic needs to be
+            // refactored once multiple syncing peers are supported.
             if matches!(removed_peer.state, PeerSyncState::DownloadingNew { .. }) {
                 self.restart_sync(removed_peer.peer_id, RestartReason::Disconnected);
             }
@@ -311,7 +315,7 @@ where
                 return;
             };
 
-            tracing::debug!(?prior_peer_id, ?new_peer, "🔄 Sync restarted");
+            tracing::debug!(?reason, ?prior_peer_id, ?new_peer, "🔄 Sync restarted");
             new_peer.state = PeerSyncState::DownloadingNew { start: our_best };
 
             match &mut self.syncing {
