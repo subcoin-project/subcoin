@@ -229,67 +229,77 @@ where
             .collect()
     }
 
-    /// Attempts to restart the sync due to the stalled peer.
-    ///
-    /// Returns `true` if the sync is restarted with a new peer.
-    pub(super) fn restart_sync(&mut self, stalled_peer: PeerId) -> bool {
-        let our_best = self.client.best_number();
-
-        // First, try to find the best available peer for syncing.
-        let new_available_peer = self
-            .peers
-            .values_mut()
+    /// Attempt to find the best available peer, falling back to a random choice if needed
+    fn select_next_peer_for_sync(
+        &mut self,
+        our_best: u32,
+        excluded_peer: PeerId,
+    ) -> Option<PeerId> {
+        self.peers
+            .values()
             .filter(|peer| {
-                peer.peer_id != stalled_peer
+                peer.peer_id != excluded_peer
                     && peer.best_number > our_best
                     && peer.state.is_available()
             })
-            .max_by_key(|peer| peer.best_number);
-
-        let new_peer = match new_available_peer {
-            Some(peer) => peer,
-            None => {
+            .max_by_key(|peer| peer.best_number)
+            .map(|peer| peer.peer_id)
+            .or_else(|| {
                 let sync_candidates = self
                     .peers
-                    .values_mut()
-                    .filter(|peer| peer.peer_id != stalled_peer && peer.best_number > our_best)
+                    .values()
+                    .filter(|peer| peer.peer_id != excluded_peer && peer.best_number > our_best)
                     .collect::<Vec<_>>();
 
-                if sync_candidates.is_empty() {
-                    if let Some(median_seen_block) = self.median_seen() {
-                        let best_seen_block = self.peers.values().map(|p| p.best_number).max();
+                // Pick a random peer, even if it's marked as deprioritized.
+                self.rng.choice(sync_candidates).map(|peer| peer.peer_id)
+            })
+    }
 
-                        if median_seen_block <= our_best {
-                            // We are synced to the median block seen by our peers, but this may
-                            // not be the network's tip.
-                            //
-                            // Transition to idle unless more blocks are announced.
-                            tracing::debug!(
-                                best_seen_block,
-                                median_seen_block,
-                                our_best,
-                                "Synced to the majority of peers, no new blocks to sync"
-                            );
-                            self.syncing = Syncing::Idle;
-                            return false;
-                        }
-                    }
+    /// Attempts to restart the sync due to a dropped peer.
+    ///
+    /// Returns `true` if the sync is restarted with a new peer.
+    pub(super) fn restart_sync(&mut self, prior_peer_id: PeerId) -> bool {
+        let our_best = self.client.best_number();
 
-                    // No new sync candidate, keep it as is.
-                    // TODO: handle this properly.
-                    tracing::debug!(?stalled_peer, "⚠️ Sync stalled, but no new sync candidates");
+        let maybe_next_sync_peer = self.select_next_peer_for_sync(our_best, prior_peer_id);
 
+        let Some(new_peer_id) = maybe_next_sync_peer else {
+            if let Some(median_seen_block) = self.median_seen() {
+                if median_seen_block <= our_best {
+                    let best_seen_block = self.peers.values().map(|p| p.best_number).max();
+
+                    // We are synced to the median block seen by our peers, but this may
+                    // not be the network's tip.
+                    //
+                    // Transition to idle unless more blocks are announced.
+                    tracing::debug!(
+                        best_seen_block,
+                        median_seen_block,
+                        our_best,
+                        "Synced to the majority of peers, switching to Idle"
+                    );
+                    self.syncing = Syncing::Idle;
                     return false;
                 }
-
-                // Pick a random peer, even if it's marked as deprioritized.
-                self.rng
-                    .choice(sync_candidates)
-                    .expect("Sync candidates must be non-empty as checked; qed")
             }
+
+            // No new sync candidate, keep it as is.
+            // TODO: handle this properly.
+            tracing::debug!(
+                ?prior_peer_id,
+                "⚠️ Attempting to restart sync, but no new sync candidate available"
+            );
+
+            return false;
         };
 
-        tracing::debug!(?stalled_peer, ?new_peer, "🔄 Sync stalled, restarting");
+        let Some(new_peer) = self.peers.get_mut(&new_peer_id) else {
+            tracing::error!("Next peer {new_peer_id} missing from peer list");
+            return false;
+        };
+
+        tracing::debug!(?prior_peer_id, ?new_peer, "🔄 Sync restarted");
 
         new_peer.state = PeerSyncState::DownloadingNew { start: our_best };
 
