@@ -17,11 +17,12 @@ pub enum SyncState {
     DownloadingNew,
 }
 
+/// Overview of peers in chain sync.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct NetworkPeers {
+pub struct SyncPeers {
     /// A map containing the count of peers in each sync state (e.g., syncing, idle).
-    sync_state_counts: BTreeMap<SyncState, usize>,
+    peer_counts: BTreeMap<SyncState, usize>,
     /// The highest block height known across all peers in the network.
     best_known_block: Option<u32>,
     /// Detailed synchronization information for each peer.
@@ -31,8 +32,8 @@ pub struct NetworkPeers {
 #[rpc(client, server)]
 pub trait NetworkApi {
     /// Get the sync peers.
-    #[method(name = "network_peers")]
-    async fn network_peers(&self) -> Result<NetworkPeers, Error>;
+    #[method(name = "network_syncPeers")]
+    async fn network_sync_peers(&self) -> Result<SyncPeers, Error>;
 
     /// Get overall network status.
     #[method(name = "network_status")]
@@ -68,7 +69,7 @@ where
     Block: BlockT + 'static,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + 'static,
 {
-    async fn network_peers(&self) -> Result<NetworkPeers, Error> {
+    async fn network_sync_peers(&self) -> Result<SyncPeers, Error> {
         let mut sync_peers = self.network_handle.sync_peers().await;
 
         let mut available = 0;
@@ -91,17 +92,13 @@ where
 
         sync_peers.sort_by_key(|x| x.latency);
 
-        Ok(NetworkPeers {
-            sync_state_counts: BTreeMap::from([
+        Ok(SyncPeers {
+            peer_counts: BTreeMap::from([
                 (SyncState::Available, available),
                 (SyncState::Deprioritized, deprioritized),
                 (SyncState::DownloadingNew, downloading_new),
             ]),
-            best_known_block: if best_known_block > 0 {
-                Some(best_known_block)
-            } else {
-                None
-            },
+            best_known_block: (best_known_block > 0).then_some(best_known_block),
             peer_sync_details: sync_peers,
         })
     }
