@@ -294,7 +294,7 @@ where
                         our_best,
                         "Synced to the majority of peers, switching to Idle"
                     );
-                    self.syncing = Syncing::Idle;
+                    self.update_syncing_state(Syncing::Idle);
                     return;
                 }
             }
@@ -370,9 +370,9 @@ where
 
     pub(super) fn update_sync_peer_on_lower_latency(&mut self) {
         let maybe_sync_peer_id = match &self.syncing {
+            Syncing::Idle => return,
             Syncing::BlocksFirst(downloader) => downloader.replaceable_sync_peer(),
             Syncing::HeadersFirst(downloader) => downloader.replaceable_sync_peer(),
-            Syncing::Idle => return,
         };
 
         let Some(current_sync_peer_id) = maybe_sync_peer_id else {
@@ -577,10 +577,9 @@ where
     }
 
     fn update_syncing_state(&mut self, new: Syncing<Block, Client>) {
-        let is_major_syncing = new.is_major_syncing();
         self.syncing = new;
         self.is_major_syncing
-            .store(is_major_syncing, Ordering::Relaxed);
+            .store(self.syncing.is_major_syncing(), Ordering::Relaxed);
     }
 
     pub(super) fn set_idle(&mut self) {
@@ -632,7 +631,7 @@ where
                 if inventories.len() == 1 {
                     if let Inventory::Block(block_hash) = inventories[0] {
                         if !self.inflight_announced_blocks.contains(&block_hash) {
-                            // A new block maybe broadcasted via `inv` message.
+                            // A new block is broadcasted via `inv` message.
                             tracing::trace!(
                                 "Requesting a new block {block_hash} announced from {from:?}"
                             );
@@ -644,22 +643,6 @@ where
             }
             Syncing::BlocksFirst(downloader) => downloader.on_inv(inventories, from),
             Syncing::HeadersFirst(_) => SyncAction::None,
-        }
-    }
-
-    pub(super) fn on_block(&mut self, block: BitcoinBlock, from: PeerId) -> SyncAction {
-        if self.inflight_announced_blocks.remove(&block.block_hash()) {
-            self.import_queue.import_blocks(ImportBlocks {
-                origin: BlockOrigin::NetworkBroadcast,
-                blocks: vec![block],
-            });
-            return SyncAction::None;
-        }
-
-        match &mut self.syncing {
-            Syncing::Idle => SyncAction::None,
-            Syncing::BlocksFirst(downloader) => downloader.on_block(block, from),
-            Syncing::HeadersFirst(downloader) => downloader.on_block(block, from),
         }
     }
 
@@ -680,6 +663,22 @@ where
         );
 
         SyncAction::Request(data_request)
+    }
+
+    pub(super) fn on_block(&mut self, block: BitcoinBlock, from: PeerId) -> SyncAction {
+        match &mut self.syncing {
+            Syncing::Idle => {
+                if self.inflight_announced_blocks.remove(&block.block_hash()) {
+                    self.import_queue.import_blocks(ImportBlocks {
+                        origin: BlockOrigin::NetworkBroadcast,
+                        blocks: vec![block],
+                    });
+                }
+                SyncAction::None
+            }
+            Syncing::BlocksFirst(downloader) => downloader.on_block(block, from),
+            Syncing::HeadersFirst(downloader) => downloader.on_block(block, from),
+        }
     }
 
     pub(super) fn on_headers(&mut self, headers: Vec<BitcoinHeader>, from: PeerId) -> SyncAction {
@@ -707,10 +706,8 @@ where
                         }
                     }
 
-                    return self.announced_blocks_request(
-                        headers.into_iter().map(|header| header.block_hash()),
-                        from,
-                    );
+                    let new_blocks = headers.into_iter().map(|header| header.block_hash());
+                    return self.announced_blocks_request(new_blocks, from);
                 }
 
                 tracing::debug!(
