@@ -455,8 +455,8 @@ where
                     self.send_get_blocks_request(request);
                 }
             }
-            SyncAction::SwitchToIdle => {
-                self.chain_sync.switch_to_idle();
+            SyncAction::SetIdle => {
+                self.chain_sync.set_idle();
             }
             SyncAction::RestartSyncWithStalledPeer(stalled_peer_id) => {
                 self.chain_sync

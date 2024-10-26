@@ -105,16 +105,16 @@ pub(crate) enum SyncRequest {
 pub(crate) enum SyncAction {
     /// Fetch headers, blocks and data.
     Request(SyncRequest),
-    /// Headers-First sync completed, use the Blocks-First sync
-    /// to download the recent blocks.
+    /// Transitions to a Blocks-First sync after Headers-First sync
+    /// compltes, to fetch the most recent blocks.
     SwitchToBlocksFirstSync,
     /// Disconnect from the peer for the given reason.
     Disconnect(PeerId, Error),
-    /// Make this peer as deprioritized and restart the current syncing
-    /// process using other sync candidates if there are any.
+    /// Deprioritize the specified peer, restarting the current sync
+    /// with other candidates if available.
     RestartSyncWithStalledPeer(PeerId),
-    /// Blocks-First sync finished, switch syncing state to idle.
-    SwitchToIdle,
+    /// Blocks-First sync finished and sets the syncing state to idle.
+    SetIdle,
     /// No action needed.
     None,
 }
@@ -583,7 +583,7 @@ where
             .store(is_major_syncing, Ordering::Relaxed);
     }
 
-    pub(super) fn switch_to_idle(&mut self) {
+    pub(super) fn set_idle(&mut self) {
         tracing::debug!(
             best_number = self.client.best_number(),
             "Blocks-First sync completed, switching to Syncing::Idle"
