@@ -101,11 +101,7 @@ where
     }
 
     pub(crate) fn replaceable_sync_peer(&self) -> Option<PeerId> {
-        if self.downloaded_blocks_count > 0 {
-            None
-        } else {
-            Some(self.peer_id)
-        }
+        (self.downloaded_blocks_count == 0).then_some(self.peer_id)
     }
 
     pub(crate) fn replace_sync_peer(&mut self, peer_id: PeerId, target_block_number: u32) {
@@ -144,7 +140,7 @@ where
 
         if best_number == self.target_block_number {
             self.state = State::Completed;
-            return SyncAction::SwitchToIdle;
+            return SyncAction::SetIdle;
         }
 
         if self.download_manager.is_stalled(self.peer_id) {
@@ -299,7 +295,7 @@ where
                             "Received block #{block_number},{block_hash} higher than the target block"
                         );
                         self.state = State::Completed;
-                        SyncAction::SwitchToIdle
+                        SyncAction::SetIdle
                     } else {
                         self.state = State::Disconnecting;
                         SyncAction::Disconnect(

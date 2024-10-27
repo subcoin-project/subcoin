@@ -105,18 +105,24 @@ pub(crate) enum SyncRequest {
 pub(crate) enum SyncAction {
     /// Fetch headers, blocks and data.
     Request(SyncRequest),
-    /// Headers-First sync completed, use the Blocks-First sync
-    /// to download the recent blocks.
+    /// Transitions to a Blocks-First sync after Headers-First sync
+    /// compltes, to fetch the most recent blocks.
     SwitchToBlocksFirstSync,
     /// Disconnect from the peer for the given reason.
     Disconnect(PeerId, Error),
-    /// Make this peer as deprioritized and restart the current syncing
-    /// process using other sync candidates if there are any.
+    /// Deprioritize the specified peer, restarting the current sync
+    /// with other candidates if available.
     RestartSyncWithStalledPeer(PeerId),
-    /// Blocks-First sync finished, switch syncing state to idle.
-    SwitchToIdle,
+    /// Blocks-First sync finished and sets the syncing state to idle.
+    SetIdle,
     /// No action needed.
     None,
+}
+
+#[derive(Debug)]
+pub(crate) enum RestartReason {
+    Stalled,
+    Disconnected,
 }
 
 // This enum encapsulates the various strategies and states a node
@@ -229,80 +235,112 @@ where
             .collect()
     }
 
-    /// Attempts to restart the sync due to the stalled peer.
-    ///
-    /// Returns `true` if the sync is restarted with a new peer.
-    pub(super) fn restart_sync(&mut self, stalled_peer: PeerId) -> bool {
-        let our_best = self.client.best_number();
+    /// Removes the given peer from peers of chain sync.
+    pub(super) fn disconnect(&mut self, peer_id: PeerId) {
+        if let Some(removed_peer) = self.peers.remove(&peer_id) {
+            // We currently support only one syncing peer, this logic needs to be
+            // refactored once multiple syncing peers are supported.
+            if matches!(removed_peer.state, PeerSyncState::DownloadingNew { .. }) {
+                self.restart_sync(removed_peer.peer_id, RestartReason::Disconnected);
+            }
+        }
+    }
 
-        // First, try to find the best available peer for syncing.
-        let new_available_peer = self
-            .peers
-            .values_mut()
+    /// Attempt to find the best available peer, falling back to a random choice if needed
+    fn select_next_peer_for_sync(
+        &mut self,
+        our_best: u32,
+        excluded_peer: PeerId,
+    ) -> Option<PeerId> {
+        self.peers
+            .values()
             .filter(|peer| {
-                peer.peer_id != stalled_peer
+                peer.peer_id != excluded_peer
                     && peer.best_number > our_best
                     && peer.state.is_available()
             })
-            .max_by_key(|peer| peer.best_number);
-
-        let new_peer = match new_available_peer {
-            Some(peer) => peer,
-            None => {
+            .max_by_key(|peer| peer.best_number)
+            .map(|peer| peer.peer_id)
+            .or_else(|| {
                 let sync_candidates = self
                     .peers
-                    .values_mut()
-                    .filter(|peer| peer.peer_id != stalled_peer && peer.best_number > our_best)
+                    .values()
+                    .filter(|peer| peer.peer_id != excluded_peer && peer.best_number > our_best)
                     .collect::<Vec<_>>();
 
-                if sync_candidates.is_empty() {
-                    if let Some(median_seen_block) = self.median_seen() {
-                        let best_seen_block = self.peers.values().map(|p| p.best_number).max();
-
-                        if median_seen_block <= our_best {
-                            // We are synced to the median block seen by our peers, but this may
-                            // not be the network's tip.
-                            //
-                            // Transition to idle unless more blocks are announced.
-                            tracing::debug!(
-                                best_seen_block,
-                                median_seen_block,
-                                our_best,
-                                "Synced to the majority of peers, no new blocks to sync"
-                            );
-                            self.syncing = Syncing::Idle;
-                            return false;
-                        }
-                    }
-
-                    // No new sync candidate, keep it as is.
-                    // TODO: handle this properly.
-                    tracing::debug!(?stalled_peer, "⚠️ Sync stalled, but no new sync candidates");
-
-                    return false;
-                }
-
                 // Pick a random peer, even if it's marked as deprioritized.
-                self.rng
-                    .choice(sync_candidates)
-                    .expect("Sync candidates must be non-empty as checked; qed")
+                self.rng.choice(sync_candidates).map(|peer| peer.peer_id)
+            })
+    }
+
+    /// Attempts to restart the sync based on the reason provided.
+    ///
+    /// Returns `true` if the sync is restarted with a new peer.
+    pub(super) fn restart_sync(&mut self, prior_peer_id: PeerId, reason: RestartReason) {
+        let our_best = self.client.best_number();
+
+        let Some(new_peer_id) = self.select_next_peer_for_sync(our_best, prior_peer_id) else {
+            if let Some(median_seen_block) = self.median_seen() {
+                if median_seen_block <= our_best {
+                    let best_seen_block = self.peers.values().map(|p| p.best_number).max();
+
+                    // We are synced to the median block seen by our peers, but this may
+                    // not be the network's tip.
+                    //
+                    // Transition to idle unless more blocks are announced.
+                    tracing::debug!(
+                        best_seen_block,
+                        median_seen_block,
+                        our_best,
+                        "Synced to the majority of peers, switching to Idle"
+                    );
+                    self.update_syncing_state(Syncing::Idle);
+                    return;
+                }
             }
+
+            // No new sync candidate, keep it as is.
+            // TODO: handle this properly.
+            tracing::debug!(
+                ?prior_peer_id,
+                "⚠️ Attempting to restart sync, but no new sync candidate available"
+            );
+
+            return;
         };
 
-        tracing::debug!(?stalled_peer, ?new_peer, "🔄 Sync stalled, restarting");
+        {
+            let Some(new_peer) = self.peers.get_mut(&new_peer_id) else {
+                tracing::error!("Corrupted state, next peer {new_peer_id} missing from peer list");
+                return;
+            };
 
-        new_peer.state = PeerSyncState::DownloadingNew { start: our_best };
+            tracing::debug!(?reason, ?prior_peer_id, ?new_peer, "🔄 Sync restarted");
+            new_peer.state = PeerSyncState::DownloadingNew { start: our_best };
 
-        match &mut self.syncing {
-            Syncing::BlocksFirst(downloader) => {
-                downloader.restart(new_peer.peer_id, new_peer.best_number);
-                true
+            match &mut self.syncing {
+                Syncing::BlocksFirst(downloader) => {
+                    downloader.restart(new_peer.peer_id, new_peer.best_number);
+                }
+                Syncing::HeadersFirst(downloader) => {
+                    downloader.restart(new_peer.peer_id, new_peer.best_number);
+                }
+                Syncing::Idle => {}
             }
-            Syncing::HeadersFirst(downloader) => {
-                downloader.restart(new_peer.peer_id, new_peer.best_number);
-                true
+        }
+
+        match reason {
+            RestartReason::Stalled => {
+                self.peers.entry(prior_peer_id).and_modify(|p| {
+                    let current_stalled_count = p.state.stalled_count();
+                    p.state = PeerSyncState::Deprioritized {
+                        stalled_count: current_stalled_count + 1,
+                    };
+                });
             }
-            Syncing::Idle => false,
+            RestartReason::Disconnected => {
+                // Nothing to be done, peer is already removed from the peer list.
+            }
         }
     }
 
@@ -323,20 +361,6 @@ where
         }
     }
 
-    pub(super) fn note_peer_stalled(&mut self, stalled_peer: PeerId) {
-        self.peers.entry(stalled_peer).and_modify(|p| {
-            let current_stalled_count = p.state.stalled_count();
-            p.state = PeerSyncState::Deprioritized {
-                stalled_count: current_stalled_count + 1,
-            };
-        });
-    }
-
-    pub(super) fn remove_peer(&mut self, peer_id: PeerId) {
-        // TODO: handle the situation that the peer is being involved in the downloader.
-        self.peers.remove(&peer_id);
-    }
-
     pub(super) fn update_peer_latency(&mut self, peer_id: PeerId, avg_latency: Latency) {
         self.peers.entry(peer_id).and_modify(|peer| {
             peer.latency = avg_latency;
@@ -346,9 +370,9 @@ where
 
     pub(super) fn update_sync_peer_on_lower_latency(&mut self) {
         let maybe_sync_peer_id = match &self.syncing {
+            Syncing::Idle => return,
             Syncing::BlocksFirst(downloader) => downloader.replaceable_sync_peer(),
             Syncing::HeadersFirst(downloader) => downloader.replaceable_sync_peer(),
-            Syncing::Idle => return,
         };
 
         let Some(current_sync_peer_id) = maybe_sync_peer_id else {
@@ -413,6 +437,9 @@ where
                 );
                 self.peers.entry(current_sync_peer_id).and_modify(|peer| {
                     peer.state = PeerSyncState::Available;
+                });
+                self.peers.entry(peer_id).and_modify(|peer| {
+                    peer.state = PeerSyncState::DownloadingNew { start: our_best };
                 });
             }
         }
@@ -550,13 +577,12 @@ where
     }
 
     fn update_syncing_state(&mut self, new: Syncing<Block, Client>) {
-        let is_major_syncing = new.is_major_syncing();
         self.syncing = new;
         self.is_major_syncing
-            .store(is_major_syncing, Ordering::Relaxed);
+            .store(self.syncing.is_major_syncing(), Ordering::Relaxed);
     }
 
-    pub(super) fn switch_to_idle(&mut self) {
+    pub(super) fn set_idle(&mut self) {
         tracing::debug!(
             best_number = self.client.best_number(),
             "Blocks-First sync completed, switching to Syncing::Idle"
@@ -605,7 +631,7 @@ where
                 if inventories.len() == 1 {
                     if let Inventory::Block(block_hash) = inventories[0] {
                         if !self.inflight_announced_blocks.contains(&block_hash) {
-                            // A new block maybe broadcasted via `inv` message.
+                            // A new block is broadcasted via `inv` message.
                             tracing::trace!(
                                 "Requesting a new block {block_hash} announced from {from:?}"
                             );
@@ -617,22 +643,6 @@ where
             }
             Syncing::BlocksFirst(downloader) => downloader.on_inv(inventories, from),
             Syncing::HeadersFirst(_) => SyncAction::None,
-        }
-    }
-
-    pub(super) fn on_block(&mut self, block: BitcoinBlock, from: PeerId) -> SyncAction {
-        if self.inflight_announced_blocks.remove(&block.block_hash()) {
-            self.import_queue.import_blocks(ImportBlocks {
-                origin: BlockOrigin::NetworkBroadcast,
-                blocks: vec![block],
-            });
-            return SyncAction::None;
-        }
-
-        match &mut self.syncing {
-            Syncing::Idle => SyncAction::None,
-            Syncing::BlocksFirst(downloader) => downloader.on_block(block, from),
-            Syncing::HeadersFirst(downloader) => downloader.on_block(block, from),
         }
     }
 
@@ -653,6 +663,22 @@ where
         );
 
         SyncAction::Request(data_request)
+    }
+
+    pub(super) fn on_block(&mut self, block: BitcoinBlock, from: PeerId) -> SyncAction {
+        match &mut self.syncing {
+            Syncing::Idle => {
+                if self.inflight_announced_blocks.remove(&block.block_hash()) {
+                    self.import_queue.import_blocks(ImportBlocks {
+                        origin: BlockOrigin::NetworkBroadcast,
+                        blocks: vec![block],
+                    });
+                }
+                SyncAction::None
+            }
+            Syncing::BlocksFirst(downloader) => downloader.on_block(block, from),
+            Syncing::HeadersFirst(downloader) => downloader.on_block(block, from),
+        }
     }
 
     pub(super) fn on_headers(&mut self, headers: Vec<BitcoinHeader>, from: PeerId) -> SyncAction {
@@ -680,10 +706,8 @@ where
                         }
                     }
 
-                    return self.announced_blocks_request(
-                        headers.into_iter().map(|header| header.block_hash()),
-                        from,
-                    );
+                    let new_blocks = headers.into_iter().map(|header| header.block_hash());
+                    return self.announced_blocks_request(new_blocks, from);
                 }
 
                 tracing::debug!(

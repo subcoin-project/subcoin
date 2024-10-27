@@ -128,8 +128,6 @@ pub struct HeadersFirstDownloader<Block, Client> {
     downloaded_headers: DownloadedHeaders,
     downloaded_blocks_count: usize,
     last_locator_start: u32,
-    // TODO: Now it's solely used for the purpose of displaying the sync state.
-    // refactor it later.
     target_block_number: u32,
     _phantom: PhantomData<Block>,
 }
@@ -180,11 +178,7 @@ where
     }
 
     pub(crate) fn replaceable_sync_peer(&self) -> Option<PeerId> {
-        if self.downloaded_blocks_count > 0 {
-            None
-        } else {
-            Some(self.peer_id)
-        }
+        (self.downloaded_blocks_count == 0).then_some(self.peer_id)
     }
 
     pub(crate) fn replace_sync_peer(&mut self, peer_id: PeerId, target_block_number: u32) {
