@@ -4,7 +4,6 @@ use sc_service::config::MultiaddrWithPeerId;
 use std::num::NonZero;
 
 /// Bitcoin chain type.
-// TODO: This clippy warning will be fixed once more chains are supported.
 #[derive(Clone, Copy, Default, Debug, clap::ValueEnum)]
 pub enum BitcoinChain {
     /// Bitcoin mainnet.
