@@ -96,7 +96,7 @@ where
 
         for (key, value) in key_values {
             if key.len() > 32 {
-                // Store the UTXO entries.
+                // Attempt to decode the Coin storage item.
                 if let Ok((txid, vout)) =
                     <(pallet_bitcoin::types::Txid, u32)>::decode(&mut &key.as_slice()[32..])
                 {
@@ -162,8 +162,8 @@ where
     }
 }
 
-/// Build Subcoin state syncing strategy
-pub fn build_subcoin_syncing_strategy<Block, Client, Net>(
+/// Build snapcake state syncing strategy.
+pub fn build_snapcake_syncing_strategy<Block, Client, Net>(
     protocol_id: ProtocolId,
     fork_id: Option<&str>,
     net_config: &mut FullNetworkConfiguration<Block, <Block as BlockT>::Hash, Net>,
@@ -228,12 +228,14 @@ pub struct SnapcakeSyncingStrategy<B: BlockT, Client> {
     /// Connected peers and their best blocks used to seed a new strategy when switching to it in
     /// `SnapcakeSyncingStrategy::proceed_to_next`.
     peer_best_blocks: HashMap<PeerId, (B::Hash, NumberFor<B>)>,
+    /// Connected peers and their best finalized headers.
+    ///
+    /// Used as the target block to initiate the state sync.
+    peer_best_finalized_headers: HashMap<PeerId, B::Header>,
     /// Pending requests for the best headers.
     pending_header_requests: Vec<(PeerId, BlockRequest<B>)>,
-    /// Connected peers and their best headers, used to initiate the state sync.
-    peer_best_headers: HashMap<PeerId, B::Header>,
-    /// Whether the state download is finished.
-    state_download_complete: bool,
+    /// Whether the state sync is finished.
+    state_sync_complete: bool,
     /// Whether to skip proof in state sync.
     skip_proof: bool,
 }
@@ -279,16 +281,16 @@ where
             state: None,
             chain_sync: Some(chain_sync),
             peer_best_blocks: Default::default(),
+            peer_best_finalized_headers: HashMap::new(),
             pending_header_requests: Vec::new(),
-            peer_best_headers: HashMap::new(),
-            state_download_complete: false,
+            state_sync_complete: false,
             skip_proof,
         })
     }
 
     /// Proceed with the next strategy if the active one finished.
     pub fn proceed_to_next(&mut self) -> Result<(), sp_blockchain::Error> {
-        // The strategies are switched as `WarpSync` -> `StateStrategy` -> `ChainSync`.
+        // The strategies are switched as `StateStrategy` -> `ChainSync`.
         if let Some(state) = &self.state {
             if state.is_succeeded() {
                 tracing::info!(target: LOG_TARGET, "State sync is complete, continuing with block sync.");
@@ -351,7 +353,9 @@ where
             fields: BlockAttributes::HEADER,
             from: FromBlock::Hash(best_hash),
             direction: Direction::Descending,
-            max: Some(1),
+            // Attempt to download the most recent finalized block, i.e., peer_best_block -
+            // confirmation_depth(6).
+            max: Some(6),
         };
 
         self.pending_header_requests.push((peer_id, request));
@@ -439,9 +443,16 @@ where
                 .position(|x| x.0 == peer_id && x.1 == request)
             {
                 self.pending_header_requests.remove(index);
-                if let Some(block) = blocks.into_iter().next() {
-                    let best_header = block.header.expect("Header must exist as requested");
-                    self.peer_best_headers.insert(peer_id, best_header);
+
+                // TODO: validate_blocks
+                if blocks.len() < 6 {
+                    tracing::error!(target: LOG_TARGET, "No finalized block in the block response: {blocks:?}");
+                }
+
+                if let Some(block) = blocks.into_iter().nth(5) {
+                    let finalized_header = block.header.expect("Header must exist as requested");
+                    self.peer_best_finalized_headers
+                        .insert(peer_id, finalized_header);
                 }
             } else {
                 // Recv unexpected block response, drop peer?
@@ -547,13 +558,15 @@ where
     }
 
     fn actions(&mut self) -> Result<Vec<SyncingAction<B>>, sp_blockchain::Error> {
-        if self.state.is_none() && !self.state_download_complete {
-            // TODO: find next avaible peer
-            if let Some((_peer_id, best_header)) = self.peer_best_headers.iter().next() {
-                let target_header = best_header.clone();
+        if self.state.is_none() && !self.state_sync_complete {
+            // TODO: proper algo to select state sync target.
+            if let Some((peer_id, finalized_header)) =
+                self.peer_best_finalized_headers.iter().next()
+            {
+                let target_header = finalized_header.clone();
                 tracing::debug!(
                     target: LOG_TARGET,
-                    "⏳ Starting state sync, target block #{},{}",
+                    "⏳ Starting state sync from {peer_id:?}, target block #{},{}",
                     target_header.number(), target_header.hash(),
                 );
                 let state_sync = StateStrategy::new_with_provider(
@@ -596,7 +609,7 @@ where
         if state_sync_is_complete {
             tracing::debug!(target: LOG_TARGET, "✅ State sync is complete");
             self.state.take();
-            self.state_download_complete = true;
+            self.state_sync_complete = true;
             // Exit the entire program once the state sync is complete.
             std::process::exit(0);
         }

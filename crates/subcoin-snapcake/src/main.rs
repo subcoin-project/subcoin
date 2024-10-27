@@ -2,7 +2,7 @@
 //!
 //! `snapcake` is a Decentralized Bitcoin UTXO Set Snapshot Provider. It functions as a lightweight
 //! Substrate-based node specifically designed for downloading the UTXO set directly from the Subcoin
-//! P2P network without requiring the full functionality of a traditional Substrate node. The other
+//! P2P network without requiring the full functionality of a regular Substrate node. The other
 //! node components are only included to fulfill the structural requirements of building an instance
 //! of [`sc_service::Client`] but do not perform any significant tasks.
 //!
@@ -63,13 +63,13 @@ fn main() -> sc_cli::Result<()> {
 
     cli::SubstrateCli
         .create_runner(&command)?
-        .run_node_until_exit(
-            |config| async move { start_node(bitcoin_network, config, skip_proof) },
-        )
+        .run_node_until_exit(|config| async move {
+            start_snapcake_node(bitcoin_network, config, skip_proof)
+        })
         .map_err(Into::into)
 }
 
-fn start_node(
+fn start_snapcake_node(
     bitcoin_network: bitcoin::Network,
     mut config: Configuration,
     skip_proof: bool,
@@ -157,7 +157,7 @@ where
         None,
     );
 
-    let syncing_strategy = crate::network::build_subcoin_syncing_strategy(
+    let syncing_strategy = crate::network::build_snapcake_syncing_strategy(
         config.protocol_id(),
         config.chain_spec.fork_id(),
         &mut net_config,
