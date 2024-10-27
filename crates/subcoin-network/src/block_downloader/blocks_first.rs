@@ -101,11 +101,7 @@ where
     }
 
     pub(crate) fn replaceable_sync_peer(&self) -> Option<PeerId> {
-        if self.downloaded_blocks_count > 0 {
-            None
-        } else {
-            Some(self.peer_id)
-        }
+        (self.downloaded_blocks_count == 0).then_some(self.peer_id)
     }
 
     pub(crate) fn replace_sync_peer(&mut self, peer_id: PeerId, target_block_number: u32) {
