@@ -1,6 +1,7 @@
 use crate::params::{BitcoinChain, StateSyncNetworkParams};
 use clap::Parser;
 use sc_cli::{CliConfiguration, NetworkParams, SharedParams};
+use sc_service::BasePath;
 use std::path::PathBuf;
 use subcoin_service::ChainSpec;
 
@@ -51,7 +52,7 @@ impl sc_cli::SubstrateCli for SubstrateCli {
     }
 }
 
-/// Subcoin State Sync Node CLI.
+/// Subcoin Snapcake
 #[derive(Debug, Parser)]
 #[clap(version = "0.1.0")]
 pub struct App {
@@ -60,6 +61,9 @@ pub struct App {
     pub chain: BitcoinChain,
 
     /// Specify custom base path.
+    ///
+    /// If this flag is not provided, a temporary directory will be created which will be
+    /// deleted at the end of the process.
     #[arg(long, short = 'd', value_name = "PATH")]
     pub base_path: Option<PathBuf>,
 
@@ -121,6 +125,14 @@ impl Command {
 }
 
 impl CliConfiguration<ConfigurationValues> for Command {
+    fn base_path(&self) -> sc_cli::Result<Option<BasePath>> {
+        Ok(self
+            .shared_params()
+            .base_path
+            .as_ref()
+            .map_or_else(|| BasePath::new_temp_dir().ok(), |p| Some(p.clone().into())))
+    }
+
     fn shared_params(&self) -> &SharedParams {
         &self.shared_params
     }
