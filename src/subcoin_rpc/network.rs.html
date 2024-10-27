@@ -107,9 +107,6 @@
 <a href="#107" id="107">107</a>
 <a href="#108" id="108">108</a>
 <a href="#109" id="109">109</a>
-<a href="#110" id="110">110</a>
-<a href="#111" id="111">111</a>
-<a href="#112" id="112">112</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::error::Error;
 <span class="kw">use </span>jsonrpsee::proc_macros::rpc;
 <span class="kw">use </span>sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
@@ -129,11 +126,12 @@
     DownloadingNew,
 }
 
-<span class="attr">#[derive(Clone, Serialize, Deserialize)]
+<span class="doccomment">/// Overview of peers in chain sync.
+</span><span class="attr">#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = <span class="string">"camelCase"</span>)]
-</span><span class="kw">pub struct </span>NetworkPeers {
+</span><span class="kw">pub struct </span>SyncPeers {
     <span class="doccomment">/// A map containing the count of peers in each sync state (e.g., syncing, idle).
-    </span>sync_state_counts: BTreeMap&lt;SyncState, usize&gt;,
+    </span>peer_counts: BTreeMap&lt;SyncState, usize&gt;,
     <span class="doccomment">/// The highest block height known across all peers in the network.
     </span>best_known_block: <span class="prelude-ty">Option</span>&lt;u32&gt;,
     <span class="doccomment">/// Detailed synchronization information for each peer.
@@ -143,8 +141,8 @@
 <span class="attr">#[rpc(client, server)]
 </span><span class="kw">pub trait </span>NetworkApi {
     <span class="doccomment">/// Get the sync peers.
-    </span><span class="attr">#[method(name = <span class="string">"network_peers"</span>)]
-    </span><span class="kw">async fn </span>network_peers(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;NetworkPeers, Error&gt;;
+    </span><span class="attr">#[method(name = <span class="string">"network_syncPeers"</span>)]
+    </span><span class="kw">async fn </span>network_sync_peers(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;SyncPeers, Error&gt;;
 
     <span class="doccomment">/// Get overall network status.
     </span><span class="attr">#[method(name = <span class="string">"network_status"</span>)]
@@ -180,7 +178,7 @@
     </span>Block: BlockT + <span class="lifetime">'static</span>,
     Client: HeaderBackend&lt;Block&gt; + BlockBackend&lt;Block&gt; + AuxStore + <span class="lifetime">'static</span>,
 {
-    <span class="kw">async fn </span>network_peers(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;NetworkPeers, Error&gt; {
+    <span class="kw">async fn </span>network_sync_peers(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;SyncPeers, Error&gt; {
         <span class="kw">let </span><span class="kw-2">mut </span>sync_peers = <span class="self">self</span>.network_handle.sync_peers().<span class="kw">await</span>;
 
         <span class="kw">let </span><span class="kw-2">mut </span>available = <span class="number">0</span>;
@@ -203,17 +201,13 @@
 
         sync_peers.sort_by_key(|x| x.latency);
 
-        <span class="prelude-val">Ok</span>(NetworkPeers {
-            sync_state_counts: BTreeMap::from([
+        <span class="prelude-val">Ok</span>(SyncPeers {
+            peer_counts: BTreeMap::from([
                 (SyncState::Available, available),
                 (SyncState::Deprioritized, deprioritized),
                 (SyncState::DownloadingNew, downloading_new),
             ]),
-            best_known_block: <span class="kw">if </span>best_known_block &gt; <span class="number">0 </span>{
-                <span class="prelude-val">Some</span>(best_known_block)
-            } <span class="kw">else </span>{
-                <span class="prelude-val">None
-            </span>},
+            best_known_block: (best_known_block &gt; <span class="number">0</span>).then_some(best_known_block),
             peer_sync_details: sync_peers,
         })
     }

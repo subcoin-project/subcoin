@@ -514,7 +514,7 @@
             <span class="kw">_ </span>=&gt; <span class="number">512</span>,
         };
 
-        <span class="kw">let </span>queued_blocks = <span class="self">self</span>.best_queued_number - best_number;
+        <span class="kw">let </span>queued_blocks = <span class="self">self</span>.best_queued_number.saturating_sub(best_number);
 
         <span class="kw">if </span>queued_blocks &gt; max_queued_blocks {
             <span class="self">self</span>.queue_status = ImportQueueStatus::Overloaded;

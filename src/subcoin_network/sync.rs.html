@@ -739,6 +739,30 @@
 <a href="#739" id="739">739</a>
 <a href="#740" id="740">740</a>
 <a href="#741" id="741">741</a>
+<a href="#742" id="742">742</a>
+<a href="#743" id="743">743</a>
+<a href="#744" id="744">744</a>
+<a href="#745" id="745">745</a>
+<a href="#746" id="746">746</a>
+<a href="#747" id="747">747</a>
+<a href="#748" id="748">748</a>
+<a href="#749" id="749">749</a>
+<a href="#750" id="750">750</a>
+<a href="#751" id="751">751</a>
+<a href="#752" id="752">752</a>
+<a href="#753" id="753">753</a>
+<a href="#754" id="754">754</a>
+<a href="#755" id="755">755</a>
+<a href="#756" id="756">756</a>
+<a href="#757" id="757">757</a>
+<a href="#758" id="758">758</a>
+<a href="#759" id="759">759</a>
+<a href="#760" id="760">760</a>
+<a href="#761" id="761">761</a>
+<a href="#762" id="762">762</a>
+<a href="#763" id="763">763</a>
+<a href="#764" id="764">764</a>
+<a href="#765" id="765">765</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::block_downloader::{BlocksFirstDownloader, HeadersFirstDownloader};
 <span class="kw">use </span><span class="kw">crate</span>::peer_manager::NewPeer;
 <span class="kw">use </span><span class="kw">crate</span>::peer_store::PeerStore;
@@ -846,18 +870,24 @@
 </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">enum </span>SyncAction {
     <span class="doccomment">/// Fetch headers, blocks and data.
     </span>Request(SyncRequest),
-    <span class="doccomment">/// Headers-First sync completed, use the Blocks-First sync
-    /// to download the recent blocks.
+    <span class="doccomment">/// Transitions to a Blocks-First sync after Headers-First sync
+    /// compltes, to fetch the most recent blocks.
     </span>SwitchToBlocksFirstSync,
     <span class="doccomment">/// Disconnect from the peer for the given reason.
     </span>Disconnect(PeerId, Error),
-    <span class="doccomment">/// Make this peer as deprioritized and restart the current syncing
-    /// process using other sync candidates if there are any.
+    <span class="doccomment">/// Deprioritize the specified peer, restarting the current sync
+    /// with other candidates if available.
     </span>RestartSyncWithStalledPeer(PeerId),
-    <span class="doccomment">/// Blocks-First sync finished, switch syncing state to idle.
-    </span>SwitchToIdle,
+    <span class="doccomment">/// Blocks-First sync finished and sets the syncing state to idle.
+    </span>SetIdle,
     <span class="doccomment">/// No action needed.
     </span><span class="prelude-val">None</span>,
+}
+
+<span class="attr">#[derive(Debug)]
+</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">enum </span>RestartReason {
+    Stalled,
+    Disconnected,
 }
 
 <span class="comment">// This enum encapsulates the various strategies and states a node
@@ -970,80 +1000,112 @@
             .collect()
     }
 
-    <span class="doccomment">/// Attempts to restart the sync due to the stalled peer.
-    ///
-    /// Returns `true` if the sync is restarted with a new peer.
-    </span><span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>restart_sync(<span class="kw-2">&amp;mut </span><span class="self">self</span>, stalled_peer: PeerId) -&gt; bool {
-        <span class="kw">let </span>our_best = <span class="self">self</span>.client.best_number();
+    <span class="doccomment">/// Removes the given peer from peers of chain sync.
+    </span><span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>disconnect(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_id: PeerId) {
+        <span class="kw">if let </span><span class="prelude-val">Some</span>(removed_peer) = <span class="self">self</span>.peers.remove(<span class="kw-2">&amp;</span>peer_id) {
+            <span class="comment">// We currently support only one syncing peer, this logic needs to be
+            // refactored once multiple syncing peers are supported.
+            </span><span class="kw">if </span><span class="macro">matches!</span>(removed_peer.state, PeerSyncState::DownloadingNew { .. }) {
+                <span class="self">self</span>.restart_sync(removed_peer.peer_id, RestartReason::Disconnected);
+            }
+        }
+    }
 
-        <span class="comment">// First, try to find the best available peer for syncing.
-        </span><span class="kw">let </span>new_available_peer = <span class="self">self
-            </span>.peers
-            .values_mut()
+    <span class="doccomment">/// Attempt to find the best available peer, falling back to a random choice if needed
+    </span><span class="kw">fn </span>select_next_peer_for_sync(
+        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
+        our_best: u32,
+        excluded_peer: PeerId,
+    ) -&gt; <span class="prelude-ty">Option</span>&lt;PeerId&gt; {
+        <span class="self">self</span>.peers
+            .values()
             .filter(|peer| {
-                peer.peer_id != stalled_peer
+                peer.peer_id != excluded_peer
                     &amp;&amp; peer.best_number &gt; our_best
                     &amp;&amp; peer.state.is_available()
             })
-            .max_by_key(|peer| peer.best_number);
-
-        <span class="kw">let </span>new_peer = <span class="kw">match </span>new_available_peer {
-            <span class="prelude-val">Some</span>(peer) =&gt; peer,
-            <span class="prelude-val">None </span>=&gt; {
+            .max_by_key(|peer| peer.best_number)
+            .map(|peer| peer.peer_id)
+            .or_else(|| {
                 <span class="kw">let </span>sync_candidates = <span class="self">self
                     </span>.peers
-                    .values_mut()
-                    .filter(|peer| peer.peer_id != stalled_peer &amp;&amp; peer.best_number &gt; our_best)
+                    .values()
+                    .filter(|peer| peer.peer_id != excluded_peer &amp;&amp; peer.best_number &gt; our_best)
                     .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
 
-                <span class="kw">if </span>sync_candidates.is_empty() {
-                    <span class="kw">if let </span><span class="prelude-val">Some</span>(median_seen_block) = <span class="self">self</span>.median_seen() {
-                        <span class="kw">let </span>best_seen_block = <span class="self">self</span>.peers.values().map(|p| p.best_number).max();
-
-                        <span class="kw">if </span>median_seen_block &lt;= our_best {
-                            <span class="comment">// We are synced to the median block seen by our peers, but this may
-                            // not be the network's tip.
-                            //
-                            // Transition to idle unless more blocks are announced.
-                            </span><span class="macro">tracing::debug!</span>(
-                                best_seen_block,
-                                median_seen_block,
-                                our_best,
-                                <span class="string">"Synced to the majority of peers, no new blocks to sync"
-                            </span>);
-                            <span class="self">self</span>.syncing = Syncing::Idle;
-                            <span class="kw">return </span><span class="bool-val">false</span>;
-                        }
-                    }
-
-                    <span class="comment">// No new sync candidate, keep it as is.
-                    // TODO: handle this properly.
-                    </span><span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>stalled_peer, <span class="string">"⚠️ Sync stalled, but no new sync candidates"</span>);
-
-                    <span class="kw">return </span><span class="bool-val">false</span>;
-                }
-
                 <span class="comment">// Pick a random peer, even if it's marked as deprioritized.
-                </span><span class="self">self</span>.rng
-                    .choice(sync_candidates)
-                    .expect(<span class="string">"Sync candidates must be non-empty as checked; qed"</span>)
+                </span><span class="self">self</span>.rng.choice(sync_candidates).map(|peer| peer.peer_id)
+            })
+    }
+
+    <span class="doccomment">/// Attempts to restart the sync based on the reason provided.
+    ///
+    /// Returns `true` if the sync is restarted with a new peer.
+    </span><span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>restart_sync(<span class="kw-2">&amp;mut </span><span class="self">self</span>, prior_peer_id: PeerId, reason: RestartReason) {
+        <span class="kw">let </span>our_best = <span class="self">self</span>.client.best_number();
+
+        <span class="kw">let </span><span class="prelude-val">Some</span>(new_peer_id) = <span class="self">self</span>.select_next_peer_for_sync(our_best, prior_peer_id) <span class="kw">else </span>{
+            <span class="kw">if let </span><span class="prelude-val">Some</span>(median_seen_block) = <span class="self">self</span>.median_seen() {
+                <span class="kw">if </span>median_seen_block &lt;= our_best {
+                    <span class="kw">let </span>best_seen_block = <span class="self">self</span>.peers.values().map(|p| p.best_number).max();
+
+                    <span class="comment">// We are synced to the median block seen by our peers, but this may
+                    // not be the network's tip.
+                    //
+                    // Transition to idle unless more blocks are announced.
+                    </span><span class="macro">tracing::debug!</span>(
+                        best_seen_block,
+                        median_seen_block,
+                        our_best,
+                        <span class="string">"Synced to the majority of peers, switching to Idle"
+                    </span>);
+                    <span class="self">self</span>.update_syncing_state(Syncing::Idle);
+                    <span class="kw">return</span>;
+                }
             }
+
+            <span class="comment">// No new sync candidate, keep it as is.
+            // TODO: handle this properly.
+            </span><span class="macro">tracing::debug!</span>(
+                <span class="question-mark">?</span>prior_peer_id,
+                <span class="string">"⚠️ Attempting to restart sync, but no new sync candidate available"
+            </span>);
+
+            <span class="kw">return</span>;
         };
 
-        <span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>stalled_peer, <span class="question-mark">?</span>new_peer, <span class="string">"🔄 Sync stalled, restarting"</span>);
+        {
+            <span class="kw">let </span><span class="prelude-val">Some</span>(new_peer) = <span class="self">self</span>.peers.get_mut(<span class="kw-2">&amp;</span>new_peer_id) <span class="kw">else </span>{
+                <span class="macro">tracing::error!</span>(<span class="string">"Corrupted state, next peer {new_peer_id} missing from peer list"</span>);
+                <span class="kw">return</span>;
+            };
 
-        new_peer.state = PeerSyncState::DownloadingNew { start: our_best };
+            <span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>reason, <span class="question-mark">?</span>prior_peer_id, <span class="question-mark">?</span>new_peer, <span class="string">"🔄 Sync restarted"</span>);
+            new_peer.state = PeerSyncState::DownloadingNew { start: our_best };
 
-        <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.syncing {
-            Syncing::BlocksFirst(downloader) =&gt; {
-                downloader.restart(new_peer.peer_id, new_peer.best_number);
-                <span class="bool-val">true
+            <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.syncing {
+                Syncing::BlocksFirst(downloader) =&gt; {
+                    downloader.restart(new_peer.peer_id, new_peer.best_number);
+                }
+                Syncing::HeadersFirst(downloader) =&gt; {
+                    downloader.restart(new_peer.peer_id, new_peer.best_number);
+                }
+                Syncing::Idle =&gt; {}
+            }
+        }
+
+        <span class="kw">match </span>reason {
+            RestartReason::Stalled =&gt; {
+                <span class="self">self</span>.peers.entry(prior_peer_id).and_modify(|p| {
+                    <span class="kw">let </span>current_stalled_count = p.state.stalled_count();
+                    p.state = PeerSyncState::Deprioritized {
+                        stalled_count: current_stalled_count + <span class="number">1</span>,
+                    };
+                });
+            }
+            RestartReason::Disconnected =&gt; {
+                <span class="comment">// Nothing to be done, peer is already removed from the peer list.
             </span>}
-            Syncing::HeadersFirst(downloader) =&gt; {
-                downloader.restart(new_peer.peer_id, new_peer.best_number);
-                <span class="bool-val">true
-            </span>}
-            Syncing::Idle =&gt; <span class="bool-val">false</span>,
         }
     }
 
@@ -1064,20 +1126,6 @@
         }
     }
 
-    <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>note_peer_stalled(<span class="kw-2">&amp;mut </span><span class="self">self</span>, stalled_peer: PeerId) {
-        <span class="self">self</span>.peers.entry(stalled_peer).and_modify(|p| {
-            <span class="kw">let </span>current_stalled_count = p.state.stalled_count();
-            p.state = PeerSyncState::Deprioritized {
-                stalled_count: current_stalled_count + <span class="number">1</span>,
-            };
-        });
-    }
-
-    <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>remove_peer(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_id: PeerId) {
-        <span class="comment">// TODO: handle the situation that the peer is being involved in the downloader.
-        </span><span class="self">self</span>.peers.remove(<span class="kw-2">&amp;</span>peer_id);
-    }
-
     <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>update_peer_latency(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_id: PeerId, avg_latency: Latency) {
         <span class="self">self</span>.peers.entry(peer_id).and_modify(|peer| {
             peer.latency = avg_latency;
@@ -1087,9 +1135,9 @@
 
     <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>update_sync_peer_on_lower_latency(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
         <span class="kw">let </span>maybe_sync_peer_id = <span class="kw">match </span><span class="kw-2">&amp;</span><span class="self">self</span>.syncing {
+            Syncing::Idle =&gt; <span class="kw">return</span>,
             Syncing::BlocksFirst(downloader) =&gt; downloader.replaceable_sync_peer(),
             Syncing::HeadersFirst(downloader) =&gt; downloader.replaceable_sync_peer(),
-            Syncing::Idle =&gt; <span class="kw">return</span>,
         };
 
         <span class="kw">let </span><span class="prelude-val">Some</span>(current_sync_peer_id) = maybe_sync_peer_id <span class="kw">else </span>{
@@ -1154,6 +1202,9 @@
                 );
                 <span class="self">self</span>.peers.entry(current_sync_peer_id).and_modify(|peer| {
                     peer.state = PeerSyncState::Available;
+                });
+                <span class="self">self</span>.peers.entry(peer_id).and_modify(|peer| {
+                    peer.state = PeerSyncState::DownloadingNew { start: our_best };
                 });
             }
         }
@@ -1291,13 +1342,12 @@
     }
 
     <span class="kw">fn </span>update_syncing_state(<span class="kw-2">&amp;mut </span><span class="self">self</span>, new: Syncing&lt;Block, Client&gt;) {
-        <span class="kw">let </span>is_major_syncing = new.is_major_syncing();
         <span class="self">self</span>.syncing = new;
         <span class="self">self</span>.is_major_syncing
-            .store(is_major_syncing, Ordering::Relaxed);
+            .store(<span class="self">self</span>.syncing.is_major_syncing(), Ordering::Relaxed);
     }
 
-    <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>switch_to_idle(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
+    <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>set_idle(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
         <span class="macro">tracing::debug!</span>(
             best_number = <span class="self">self</span>.client.best_number(),
             <span class="string">"Blocks-First sync completed, switching to Syncing::Idle"
@@ -1346,7 +1396,7 @@
                 <span class="kw">if </span>inventories.len() == <span class="number">1 </span>{
                     <span class="kw">if let </span>Inventory::Block(block_hash) = inventories[<span class="number">0</span>] {
                         <span class="kw">if </span>!<span class="self">self</span>.inflight_announced_blocks.contains(<span class="kw-2">&amp;</span>block_hash) {
-                            <span class="comment">// A new block maybe broadcasted via `inv` message.
+                            <span class="comment">// A new block is broadcasted via `inv` message.
                             </span><span class="macro">tracing::trace!</span>(
                                 <span class="string">"Requesting a new block {block_hash} announced from {from:?}"
                             </span>);
@@ -1358,22 +1408,6 @@
             }
             Syncing::BlocksFirst(downloader) =&gt; downloader.on_inv(inventories, from),
             Syncing::HeadersFirst(<span class="kw">_</span>) =&gt; SyncAction::None,
-        }
-    }
-
-    <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>on_block(<span class="kw-2">&amp;mut </span><span class="self">self</span>, block: BitcoinBlock, from: PeerId) -&gt; SyncAction {
-        <span class="kw">if </span><span class="self">self</span>.inflight_announced_blocks.remove(<span class="kw-2">&amp;</span>block.block_hash()) {
-            <span class="self">self</span>.import_queue.import_blocks(ImportBlocks {
-                origin: BlockOrigin::NetworkBroadcast,
-                blocks: <span class="macro">vec!</span>[block],
-            });
-            <span class="kw">return </span>SyncAction::None;
-        }
-
-        <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.syncing {
-            Syncing::Idle =&gt; SyncAction::None,
-            Syncing::BlocksFirst(downloader) =&gt; downloader.on_block(block, from),
-            Syncing::HeadersFirst(downloader) =&gt; downloader.on_block(block, from),
         }
     }
 
@@ -1394,6 +1428,22 @@
         );
 
         SyncAction::Request(data_request)
+    }
+
+    <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>on_block(<span class="kw-2">&amp;mut </span><span class="self">self</span>, block: BitcoinBlock, from: PeerId) -&gt; SyncAction {
+        <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.syncing {
+            Syncing::Idle =&gt; {
+                <span class="kw">if </span><span class="self">self</span>.inflight_announced_blocks.remove(<span class="kw-2">&amp;</span>block.block_hash()) {
+                    <span class="self">self</span>.import_queue.import_blocks(ImportBlocks {
+                        origin: BlockOrigin::NetworkBroadcast,
+                        blocks: <span class="macro">vec!</span>[block],
+                    });
+                }
+                SyncAction::None
+            }
+            Syncing::BlocksFirst(downloader) =&gt; downloader.on_block(block, from),
+            Syncing::HeadersFirst(downloader) =&gt; downloader.on_block(block, from),
+        }
     }
 
     <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>on_headers(<span class="kw-2">&amp;mut </span><span class="self">self</span>, headers: Vec&lt;BitcoinHeader&gt;, from: PeerId) -&gt; SyncAction {
@@ -1421,10 +1471,8 @@
                         }
                     }
 
-                    <span class="kw">return </span><span class="self">self</span>.announced_blocks_request(
-                        headers.into_iter().map(|header| header.block_hash()),
-                        from,
-                    );
+                    <span class="kw">let </span>new_blocks = headers.into_iter().map(|header| header.block_hash());
+                    <span class="kw">return </span><span class="self">self</span>.announced_blocks_request(new_blocks, from);
                 }
 
                 <span class="macro">tracing::debug!</span>(

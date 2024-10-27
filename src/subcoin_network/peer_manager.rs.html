@@ -771,6 +771,30 @@
 <a href="#771" id="771">771</a>
 <a href="#772" id="772">772</a>
 <a href="#773" id="773">773</a>
+<a href="#774" id="774">774</a>
+<a href="#775" id="775">775</a>
+<a href="#776" id="776">776</a>
+<a href="#777" id="777">777</a>
+<a href="#778" id="778">778</a>
+<a href="#779" id="779">779</a>
+<a href="#780" id="780">780</a>
+<a href="#781" id="781">781</a>
+<a href="#782" id="782">782</a>
+<a href="#783" id="783">783</a>
+<a href="#784" id="784">784</a>
+<a href="#785" id="785">785</a>
+<a href="#786" id="786">786</a>
+<a href="#787" id="787">787</a>
+<a href="#788" id="788">788</a>
+<a href="#789" id="789">789</a>
+<a href="#790" id="790">790</a>
+<a href="#791" id="791">791</a>
+<a href="#792" id="792">792</a>
+<a href="#793" id="793">793</a>
+<a href="#794" id="794">794</a>
+<a href="#795" id="795">795</a>
+<a href="#796" id="796">796</a>
+<a href="#797" id="797">797</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::address_book::AddressBook;
 <span class="kw">use </span><span class="kw">crate</span>::connection::{ConnectionInitiator, ConnectionWriter, Direction, NewConnection};
 <span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
@@ -1088,7 +1112,7 @@
         }
     }
 
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>on_tick(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;SlowPeer&gt; {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>on_tick(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; (Vec&lt;PeerId&gt;, <span class="prelude-ty">Option</span>&lt;SlowPeer&gt;) {
         <span class="kw">let </span><span class="kw-2">mut </span>timeout_peers = <span class="macro">vec!</span>[];
         <span class="kw">let </span><span class="kw-2">mut </span>should_ping_peers = <span class="macro">vec!</span>[];
 
@@ -1105,10 +1129,6 @@
 
         <span class="kw">if </span>!should_ping_peers.is_empty() {
             <span class="self">self</span>.send_pings(should_ping_peers);
-        }
-
-        <span class="kw">for </span>peer_id <span class="kw">in </span>timeout_peers {
-            <span class="self">self</span>.disconnect(peer_id, Error::PingTimeout);
         }
 
         <span class="kw">let </span>outbound_peers_count = <span class="self">self
@@ -1133,6 +1153,13 @@
                 .set(<span class="self">self</span>.address_book.available_addresses_count() <span class="kw">as </span>u64);
         }
 
+        <span class="kw">let </span>maybe_slow_peer = <span class="self">self</span>.manage_outbound_connections(outbound_peers_count);
+
+        (timeout_peers, maybe_slow_peer)
+    }
+
+    <span class="doccomment">/// Manages outbound connections by initiating new connections or evicting slow peers.
+    </span><span class="kw">fn </span>manage_outbound_connections(<span class="kw-2">&amp;mut </span><span class="self">self</span>, outbound_peers_count: usize) -&gt; <span class="prelude-ty">Option</span>&lt;SlowPeer&gt; {
         <span class="kw">if </span>outbound_peers_count &lt; <span class="self">self</span>.max_outbound_peers {
             <span class="kw">if let </span><span class="prelude-val">Some</span>(addr) = <span class="self">self</span>.address_book.pop() {
                 <span class="kw">if </span>!<span class="self">self</span>.connections.contains_key(<span class="kw-2">&amp;</span>addr) {
@@ -1215,7 +1242,19 @@
         }
     }
 
-    <span class="doccomment">/// Disconnect from a peer with given reason, do nothing if the peer is persistent.
+    <span class="doccomment">/// Disconnects from a specified peer, unless it is designated as persistent, with a given reason.
+    ///
+    /// # Important Notes
+    ///
+    /// - **Syncing Components:** This function, as well as [`Self::evict`], should not be invoked
+    ///   directly within the peer manager module without triggering a notification. For example,
+    ///   chain sync might depend on receiving a disconnect notification to correctly update their
+    ///   internal state, which helps maintain a consistent peer set between the peer manager and
+    ///   other modules.
+    ///
+    /// - **Potential for Inconsistent State:** Bypassing notifications may lead to inconsistency
+    ///   between the peer manager and modules that rely on peer status, resulting in unexpected
+    ///   issues in the peer set or other connected components.
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>disconnect(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_id: PeerId, reason: Error) {
         <span class="kw">if </span><span class="self">self</span>.config.persistent.contains(<span class="kw-2">&amp;</span>peer_id) {
             <span class="kw">return</span>;
@@ -1238,6 +1277,20 @@
         <span class="self">self</span>.connected_peers.remove(<span class="kw-2">&amp;</span>peer_id);
     }
 
+    <span class="doccomment">/// Evicts a peer, disconnecting it with a specified reason and updating the eviction timestamp.
+    ///
+    /// This function internally calls [`Self::disconnect`] to carry out the disconnection
+    /// process and subsequently records the current time as the `last_eviction` timestamp.
+    ///
+    /// # Important Note
+    ///
+    /// Just like with `disconnect`, any call to `evict` should be accompanied by necessary
+    /// notifications to avoid state inconsistencies.
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>evict(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_id: PeerId, reason: Error) {
+        <span class="self">self</span>.disconnect(peer_id, reason);
+        <span class="self">self</span>.last_eviction = Instant::now();
+    }
+
     <span class="doccomment">/// Sets the prefer addrv2 flag for a peer.
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>set_want_addrv2(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_id: PeerId) {
         <span class="self">self</span>.connected_peers.entry(peer_id).and_modify(|info| {
@@ -1250,11 +1303,6 @@
         <span class="self">self</span>.connected_peers.entry(peer_id).and_modify(|info| {
             info.prefer_headers = <span class="bool-val">true</span>;
         });
-    }
-
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>evict(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_id: PeerId, reason: Error) {
-        <span class="self">self</span>.disconnect(peer_id, reason);
-        <span class="self">self</span>.last_eviction = Instant::now();
     }
 
     <span class="doccomment">/// Checks if a peer is connected.
