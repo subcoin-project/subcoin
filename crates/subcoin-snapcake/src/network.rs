@@ -22,10 +22,11 @@ use sc_service::SpawnTaskHandle;
 use sp_blockchain::HeaderMetadata;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use subcoin_crypto::muhash::MuHash3072;
 use subcoin_runtime_primitives::Coin;
-use subcoin_utils::UtxoSetBinaryOutput;
+use subcoin_utils::UtxoSetGenerator;
 
 const LOG_TARGET: &'static str = "sync::subcoin";
 
@@ -53,7 +54,7 @@ struct WrappedStateSync<B: BlockT, Client> {
     muhash: MuHash3072,
     target_bitcoin_block_hash: bitcoin::BlockHash,
     utxos: Vec<(bitcoin::Txid, u32, Coin)>,
-    utxo_set_binary_output: UtxoSetBinaryOutput,
+    utxo_set_generator: UtxoSetGenerator,
 }
 
 impl<B, Client> WrappedStateSync<B, Client>
@@ -61,21 +62,29 @@ where
     B: BlockT,
     Client: ProofProvider<B> + Send + Sync + 'static,
 {
-    fn new(client: Arc<Client>, target_header: B::Header, skip_proof: bool) -> Self {
+    fn new(
+        client: Arc<Client>,
+        target_header: B::Header,
+        skip_proof: bool,
+        snapshot_dir: PathBuf,
+    ) -> Self {
         let target_block_number = target_header.number();
         let target_bitcoin_block_hash =
             subcoin_primitives::extract_bitcoin_block_hash::<B>(&target_header)
                 .expect("Failed to extract bitcoin block hash");
 
-        let file_name = format!("/tmp/{target_block_number}_{target_bitcoin_block_hash}.txoutset");
-        let file = std::fs::File::create(file_name).expect("Failed to create output file");
+        let file_name = format!("{target_block_number}_{target_bitcoin_block_hash}_snapshot.dat");
+        let snapshot_file = snapshot_dir.join(file_name);
+        let utxo_set_generator = UtxoSetGenerator::new(
+            std::fs::File::create(snapshot_file).expect("Failed to create output file"),
+        );
 
         Self {
             inner: StateSync::new(client, target_header, None, None, skip_proof),
             target_bitcoin_block_hash,
             muhash: MuHash3072::new(),
             utxos: Vec::new(),
-            utxo_set_binary_output: UtxoSetBinaryOutput::new(file),
+            utxo_set_generator,
         }
     }
 
@@ -105,13 +114,13 @@ where
                     let coin = Coin::decode(&mut value.as_slice())
                         .expect("Coin in state response must be decoded successfully; qed");
 
-                    // TODO: write utxo to a local file
-
                     let data =
                         subcoin_primitives::tx_out_ser(bitcoin::OutPoint { txid, vout }, &coin)
                             .expect("Failed to serialize txout");
 
                     self.muhash.insert(&data);
+
+                    // TODO: write UTXO to a local file instead of storing in memory.
                     self.utxos.push((txid, vout, coin));
                 }
             }
@@ -129,7 +138,7 @@ where
                 "💾 State dowload is complete, writing the UTXO snapshot"
             );
 
-            self.utxo_set_binary_output
+            self.utxo_set_generator
                 .write_utxo_snapshot(self.target_bitcoin_block_hash, utxos)
                 .expect("Failed to write binary output");
         }
@@ -170,6 +179,7 @@ pub fn build_snapcake_syncing_strategy<Block, Client, Net>(
     client: Arc<Client>,
     spawn_handle: &SpawnTaskHandle,
     skip_proof: bool,
+    snapshot_dir: PathBuf,
 ) -> Result<Box<dyn SyncingStrategy<Block>>, sc_service::Error>
 where
     Block: BlockT,
@@ -208,10 +218,14 @@ where
         state_request_protocol_name,
     };
 
+    // Ensure the snapshot directory exists, creating it if necessary
+    std::fs::create_dir_all(&snapshot_dir).expect("Failed to create snapshot directory");
+
     Ok(Box::new(SnapcakeSyncingStrategy::new(
         syncing_config,
         client,
         skip_proof,
+        snapshot_dir,
     )?))
 }
 
@@ -238,6 +252,8 @@ pub struct SnapcakeSyncingStrategy<B: BlockT, Client> {
     state_sync_complete: bool,
     /// Whether to skip proof in state sync.
     skip_proof: bool,
+    // Snapshot directory.
+    snapshot_dir: PathBuf,
 }
 
 impl<B, Client> SnapcakeSyncingStrategy<B, Client>
@@ -256,6 +272,7 @@ where
         mut config: SyncingConfig,
         client: Arc<Client>,
         skip_proof: bool,
+        snapshot_dir: PathBuf,
     ) -> Result<Self, sp_blockchain::Error> {
         if config.max_blocks_per_request > MAX_BLOCKS_IN_RESPONSE as u32 {
             tracing::info!(
@@ -285,6 +302,7 @@ where
             pending_header_requests: Vec::new(),
             state_sync_complete: false,
             skip_proof,
+            snapshot_dir,
         })
     }
 
@@ -574,6 +592,7 @@ where
                         self.client.clone(),
                         target_header,
                         self.skip_proof,
+                        self.snapshot_dir.clone(),
                     )),
                     self.peer_best_blocks
                         .iter()

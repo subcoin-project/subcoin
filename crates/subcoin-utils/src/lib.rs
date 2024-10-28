@@ -5,12 +5,12 @@ use std::io::Write;
 use subcoin_primitives::runtime::Coin;
 
 /// Responsible for dumping the UTXO set snapshot compatible with Bitcoin Core.
-pub struct UtxoSetBinaryOutput {
+pub struct UtxoSetGenerator {
     output_file: File,
 }
 
-impl UtxoSetBinaryOutput {
-    /// Constructs a new instance of [`UtxoSetBinaryOutput`].
+impl UtxoSetGenerator {
+    /// Constructs a new instance of [`UtxoSetGenerator`].
     pub fn new(output_file: File) -> Self {
         Self { output_file }
     }

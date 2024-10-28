@@ -46,6 +46,7 @@ use sc_executor::WasmExecutor;
 use sc_network::config::NetworkBackendType;
 use sc_service::{Configuration, TaskManager};
 use sp_runtime::traits::Block as BlockT;
+use std::path::PathBuf;
 use std::sync::Arc;
 use subcoin_runtime::interface::OpaqueBlock as Block;
 use subcoin_runtime::RuntimeApi;
@@ -64,7 +65,7 @@ fn main() -> sc_cli::Result<()> {
     cli::SubstrateCli
         .create_runner(&command)?
         .run_node_until_exit(|config| async move {
-            start_snapcake_node(bitcoin_network, config, skip_proof)
+            start_snapcake_node(bitcoin_network, config, skip_proof, command.snapshot_dir())
         })
         .map_err(Into::into)
 }
@@ -73,6 +74,7 @@ fn start_snapcake_node(
     bitcoin_network: bitcoin::Network,
     mut config: Configuration,
     skip_proof: bool,
+    snapshot_dir: PathBuf,
 ) -> Result<TaskManager, sc_service::error::Error> {
     let executor = sc_service::new_wasm_executor(&config.executor);
     let backend = sc_service::new_db_backend(config.db_config())?;
@@ -109,6 +111,7 @@ fn start_snapcake_node(
                 &mut task_manager,
                 bitcoin_network,
                 skip_proof,
+                snapshot_dir,
             )?
         }
         NetworkBackendType::Litep2p => {
@@ -118,6 +121,7 @@ fn start_snapcake_node(
                 &mut task_manager,
                 bitcoin_network,
                 skip_proof,
+                snapshot_dir,
             )?;
         }
     }
@@ -131,6 +135,7 @@ fn start_substrate_network<N>(
     task_manager: &mut sc_service::TaskManager,
     bitcoin_network: bitcoin::Network,
     skip_proof: bool,
+    snapshot_dir: PathBuf,
 ) -> Result<(), sc_service::error::Error>
 where
     N: sc_network::NetworkBackend<Block, <Block as BlockT>::Hash>,
@@ -164,6 +169,7 @@ where
         client.clone(),
         &task_manager.spawn_handle(),
         skip_proof,
+        snapshot_dir,
     )?;
 
     let metrics = N::register_notification_metrics(config.prometheus_registry());

@@ -2,11 +2,13 @@ use crate::params::{BitcoinChain, StateSyncNetworkParams};
 use clap::Parser;
 use sc_cli::{CliConfiguration, NetworkParams, SharedParams};
 use sc_service::BasePath;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use subcoin_service::ChainSpec;
 
 const BITCOIN_MAINNET_CHAIN_SPEC: &str =
     include_str!("../../subcoin-node/res/chain-spec-raw-bitcoin-mainnet.json");
+
+const VERSION: &str = "0.1.0";
 
 /// Fake CLI for satisfying the Substrate CLI interface.
 ///
@@ -16,11 +18,11 @@ pub struct SubstrateCli;
 
 impl sc_cli::SubstrateCli for SubstrateCli {
     fn impl_name() -> String {
-        "Subcoin State Sync Node".into()
+        "Subcoin Snapcake Node".into()
     }
 
     fn impl_version() -> String {
-        "0.1.0".to_string()
+        VERSION.to_string()
     }
 
     fn description() -> String {
@@ -54,7 +56,8 @@ impl sc_cli::SubstrateCli for SubstrateCli {
 
 /// Subcoin Snapcake
 #[derive(Debug, Parser)]
-#[clap(version = "0.1.0")]
+#[clap(version = VERSION)]
+#[clap(about = "A decentralized tool to download UTXO set snapshot")]
 pub struct App {
     /// Specify the chain.
     #[arg(long, value_name = "CHAIN", default_value = "mainnet")]
@@ -66,6 +69,10 @@ pub struct App {
     /// deleted at the end of the process.
     #[arg(long, short = 'd', value_name = "PATH")]
     pub base_path: Option<PathBuf>,
+
+    /// Specify the directory for generated UTXO set snapshot and other metadata files.
+    #[arg(long, default_value = "./snapshots")]
+    pub snapshot_dir: PathBuf,
 
     /// Whether to skip the state proof in state sync.
     #[arg(long, default_value = "true")]
@@ -92,6 +99,7 @@ pub struct App {
 pub struct Command {
     shared_params: SharedParams,
     network_params: NetworkParams,
+    snapshot_dir: PathBuf,
 }
 
 impl Command {
@@ -102,6 +110,7 @@ impl Command {
             chain,
             base_path,
             network_params,
+            snapshot_dir,
             ..
         } = app;
 
@@ -120,7 +129,12 @@ impl Command {
         Self {
             shared_params,
             network_params: network_params.into_network_params(),
+            snapshot_dir,
         }
+    }
+
+    pub fn snapshot_dir(&self) -> PathBuf {
+        self.snapshot_dir.clone()
     }
 }
 
