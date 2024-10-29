@@ -6,11 +6,11 @@ use futures::FutureExt;
 use sc_service::SpawnTaskHandle;
 use std::collections::VecDeque;
 use std::fmt::Debug;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::watch;
 
 const MSG_HEADER_SIZE: usize = 24;
 
@@ -44,6 +44,24 @@ impl Direction {
     }
 }
 
+/// A handle to signal termination of a connection.
+#[derive(Debug)]
+pub struct ConnectionCloser {
+    sender: watch::Sender<()>,
+}
+
+impl ConnectionCloser {
+    /// Consumes this [`ConnectionCloser`], sending a termination signal for the connection.
+    ///
+    /// By taking ownership of `self`, we enforce that the disconnect signal
+    /// can only be sent once.
+    pub fn terminate(self) {
+        if let Err(err) = self.sender.send(()) {
+            tracing::warn!("Failed to send disconnect signal: {err}");
+        }
+    }
+}
+
 /// An incoming peer connection.
 #[derive(Debug)]
 pub struct NewConnection {
@@ -61,12 +79,8 @@ pub struct NewConnection {
     /// This `ConnectionWriter` enables the local node to transmit data
     /// and messages to the connected peer.
     pub writer: ConnectionWriter,
-    /// Signal to request disconnection of the connection.
-    ///
-    /// This `AtomicBool` is used to signal when the connection should
-    /// be terminated. When set to `true`, it indicates that the connection
-    /// should be gracefully disconnected.
-    pub disconnect_signal: Arc<AtomicBool>,
+    /// Handle to close the connection.
+    pub closer: ConnectionCloser,
 }
 
 /// Message stream decoder.
@@ -207,7 +221,7 @@ impl ConnectionInitiator {
 
         let (network_message_sender, network_message_receiver) = unbounded_channel();
 
-        let disconnect_signal = Arc::new(AtomicBool::new(false));
+        let (disconnect_sender, disconnect_receiver) = watch::channel(());
 
         self.network_event_sender
             .send(Event::NewConnection(NewConnection {
@@ -215,7 +229,9 @@ impl ConnectionInitiator {
                 local_addr,
                 direction,
                 writer: network_message_sender,
-                disconnect_signal: disconnect_signal.clone(),
+                closer: ConnectionCloser {
+                    sender: disconnect_sender,
+                },
             }))
             .map_err(|_| Error::NetworkEventStreamError)?;
 
@@ -228,7 +244,7 @@ impl ConnectionInitiator {
             {
                 let bandwidth = self.bandwidth.clone();
                 let network_event_sender = self.network_event_sender.clone();
-                let disconnect_signal = disconnect_signal.clone();
+                let disconnect_receiver = disconnect_receiver.clone();
 
                 async move {
                     if let Err(err) = read_peer_messages(
@@ -236,7 +252,7 @@ impl ConnectionInitiator {
                         direction,
                         readable,
                         network_event_sender.clone(),
-                        disconnect_signal,
+                        disconnect_receiver,
                         bandwidth,
                     )
                     .await
@@ -262,7 +278,7 @@ impl ConnectionInitiator {
                     network,
                     writable,
                     network_message_receiver,
-                    disconnect_signal,
+                    disconnect_receiver,
                     bandwidth,
                 )
                 .await
@@ -285,54 +301,61 @@ async fn read_peer_messages(
     direction: Direction,
     readable: tokio::net::tcp::OwnedReadHalf,
     network_event_sender: UnboundedSender<Event>,
-    disconnect_signal: Arc<AtomicBool>,
+    mut disconnect_receiver: watch::Receiver<()>,
     bandwidth: Bandwidth,
 ) -> Result<(), Error> {
     let mut decoder = NetworkMessageDecoder::new(1024 * 192);
 
+    tokio::pin! {
+        let disconnect_signal_fired = disconnect_receiver.changed();
+    }
+
     loop {
-        if disconnect_signal.load(Ordering::SeqCst) {
-            tracing::trace!(?peer, "Stopping the reader task");
-            return Ok(());
-        }
-
-        readable.readable().await?;
-
-        // TODO: optimize this, no need to always allocate the maximum buffer.
-        let mut read_buffer = vec![0; MAX_MSG_SIZE];
-
-        // Try to read data, this may still fail with `WouldBlock`
-        // if the readiness event is a false positive.
-        match readable.as_ref().try_read(&mut read_buffer) {
-            Ok(0) => {
-                tracing::trace!(from = ?peer, "<= recv 0 bytes");
-                return Err(Error::PeerShutdown);
+        tokio::select! {
+            _ = &mut disconnect_signal_fired => {
+                tracing::trace!(?peer, "Stopping the reader task");
+                return Ok(());
             }
-            Ok(n) => {
-                tracing::trace!(from = ?peer, "<= recv {n} bytes");
+            result = readable.readable() => {
+                result?;
 
-                let old = bandwidth
-                    .total_bytes_inbound
-                    .fetch_add(n as u64, Ordering::Relaxed);
-                bandwidth.report("in", old + n as u64);
+                // TODO: optimize this, no need to always allocate the maximum buffer.
+                let mut read_buffer = vec![0; MAX_MSG_SIZE];
 
-                decoder.input(&read_buffer[..n]);
+                // Try to read data, this may still fail with `WouldBlock`
+                // if the readiness event is a false positive.
+                match readable.as_ref().try_read(&mut read_buffer) {
+                    Ok(0) => {
+                        tracing::trace!(from = ?peer, "<= recv 0 bytes");
+                        return Err(Error::PeerShutdown);
+                    }
+                    Ok(n) => {
+                        tracing::trace!(from = ?peer, "<= recv {n} bytes");
 
-                while let Some(msg) = decoder.decode_next::<RawNetworkMessage>()? {
-                    network_event_sender
-                        .send(Event::PeerMessage {
-                            from: peer,
-                            direction,
-                            payload: msg.into_payload(),
-                        })
-                        .map_err(|_| Error::NetworkEventStreamError)?;
+                        let old = bandwidth
+                            .total_bytes_inbound
+                            .fetch_add(n as u64, Ordering::Relaxed);
+                        bandwidth.report("in", old + n as u64);
+
+                        decoder.input(&read_buffer[..n]);
+
+                        while let Some(msg) = decoder.decode_next::<RawNetworkMessage>()? {
+                            network_event_sender
+                                .send(Event::PeerMessage {
+                                    from: peer,
+                                    direction,
+                                    payload: msg.into_payload(),
+                                })
+                                .map_err(|_| Error::NetworkEventStreamError)?;
+                        }
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        continue;
+                    }
+                    Err(e) => {
+                        return Err(e.into());
+                    }
                 }
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                continue;
-            }
-            Err(e) => {
-                return Err(e.into());
             }
         }
     }
@@ -343,7 +366,7 @@ async fn send_peer_messages(
     network: bitcoin::Network,
     writable: tokio::net::tcp::OwnedWriteHalf,
     mut network_message_receiver: UnboundedReceiver<NetworkMessage>,
-    disconnect_signal: Arc<AtomicBool>,
+    mut disconnect_receiver: watch::Receiver<()>,
     bandwidth: Bandwidth,
 ) -> Result<(), Error> {
     let magic = network.magic();
@@ -351,73 +374,80 @@ async fn send_peer_messages(
     // Cache the messages yet to be processed due to the false positive readiness.
     let mut msg_buffer: VecDeque<(&'static str, Vec<u8>)> = VecDeque::with_capacity(32);
 
+    tokio::pin! {
+        let disconnect_signal_fired = disconnect_receiver.changed();
+    }
+
     loop {
-        if disconnect_signal.load(Ordering::SeqCst) {
-            tracing::trace!(?peer, "Stopping the writer task");
-            return Ok(());
-        }
+        tokio::select! {
+            _ = &mut disconnect_signal_fired => {
+                tracing::trace!(?peer, "Stopping the writer task");
+                return Ok(());
+            },
+            result = writable.writable() => {
+                result?;
 
-        writable.writable().await?;
+                let mut buffered_front_sent = false;
 
-        let mut buffered_front_sent = false;
+                if let Some((cmd, msg)) = msg_buffer.front() {
+                    // Try to write data, this may still fail with `WouldBlock`
+                    // if the readiness event is a false positive.
+                    match writable.as_ref().try_write(msg) {
+                        Ok(n) => {
+                            let old = bandwidth
+                                .total_bytes_outbound
+                                .fetch_add(n as u64, Ordering::Relaxed);
+                            bandwidth.report("out", old + n as u64);
 
-        if let Some((cmd, msg)) = msg_buffer.front() {
-            // Try to write data, this may still fail with `WouldBlock`
-            // if the readiness event is a false positive.
-            match writable.as_ref().try_write(msg) {
-                Ok(n) => {
-                    let old = bandwidth
-                        .total_bytes_outbound
-                        .fetch_add(n as u64, Ordering::Relaxed);
-                    bandwidth.report("out", old + n as u64);
-
-                    let msg_len = msg.len().saturating_sub(MSG_HEADER_SIZE);
-                    tracing::trace!(to = ?peer, "=> {cmd} ({msg_len} bytes) sent successfully");
-                    buffered_front_sent = true;
+                            let msg_len = msg.len().saturating_sub(MSG_HEADER_SIZE);
+                            tracing::trace!(to = ?peer, "=> {cmd} ({msg_len} bytes) sent successfully");
+                            buffered_front_sent = true;
+                        }
+                        Err(e) => {
+                            if e.kind() == std::io::ErrorKind::WouldBlock {
+                                continue;
+                            } else {
+                                return Err(e.into());
+                            }
+                        }
+                    };
                 }
-                Err(e) => {
-                    if e.kind() == std::io::ErrorKind::WouldBlock {
-                        continue;
-                    } else {
-                        return Err(e.into());
-                    }
+
+                if buffered_front_sent {
+                    msg_buffer.pop_front();
+                    continue;
                 }
-            };
-        }
 
-        if buffered_front_sent {
-            msg_buffer.pop_front();
-            continue;
-        }
+                if let Some(network_message) = network_message_receiver.recv().await {
+                    tracing::trace!(to = ?peer, "Sending {network_message:?}");
 
-        if let Some(network_message) = network_message_receiver.recv().await {
-            tracing::trace!(to = ?peer, "Sending {network_message:?}");
+                    let raw_network_message = RawNetworkMessage::new(magic, network_message);
 
-            let raw_network_message = RawNetworkMessage::new(magic, network_message);
+                    let mut msg = Vec::with_capacity(MAX_MSG_SIZE);
+                    raw_network_message.consensus_encode(&mut msg)?;
 
-            let mut msg = Vec::with_capacity(MAX_MSG_SIZE);
-            raw_network_message.consensus_encode(&mut msg)?;
+                    let cmd = raw_network_message.cmd();
 
-            let cmd = raw_network_message.cmd();
+                    // Try to write data, this may still fail with `WouldBlock` if
+                    // the readiness event is a false positive.
+                    match writable.as_ref().try_write(&msg) {
+                        Ok(n) => {
+                            let old = bandwidth
+                                .total_bytes_outbound
+                                .fetch_add(n as u64, Ordering::Relaxed);
+                            bandwidth.report("out", old + n as u64);
 
-            // Try to write data, this may still fail with `WouldBlock` if
-            // the readiness event is a false positive.
-            match writable.as_ref().try_write(&msg) {
-                Ok(n) => {
-                    let old = bandwidth
-                        .total_bytes_outbound
-                        .fetch_add(n as u64, Ordering::Relaxed);
-                    bandwidth.report("out", old + n as u64);
-
-                    // Bitcoin Core logs the message size without counting in the header.
-                    let msg_len = msg.len().saturating_sub(MSG_HEADER_SIZE);
-                    tracing::trace!(to = ?peer, "=> {cmd} ({msg_len} bytes) sent successfully");
-                }
-                Err(e) => {
-                    if e.kind() == std::io::ErrorKind::WouldBlock {
-                        msg_buffer.push_back((cmd, msg));
-                    } else {
-                        return Err(e.into());
+                            // Bitcoin Core logs the message size without counting in the header.
+                            let msg_len = msg.len().saturating_sub(MSG_HEADER_SIZE);
+                            tracing::trace!(to = ?peer, "=> {cmd} ({msg_len} bytes) sent successfully");
+                        }
+                        Err(e) => {
+                            if e.kind() == std::io::ErrorKind::WouldBlock {
+                                msg_buffer.push_back((cmd, msg));
+                            } else {
+                                return Err(e.into());
+                            }
+                        }
                     }
                 }
             }

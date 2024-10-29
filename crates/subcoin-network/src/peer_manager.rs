@@ -1,5 +1,7 @@
 use crate::address_book::AddressBook;
-use crate::connection::{ConnectionInitiator, ConnectionWriter, Direction, NewConnection};
+use crate::connection::{
+    ConnectionCloser, ConnectionInitiator, ConnectionWriter, Direction, NewConnection,
+};
 use crate::metrics::Metrics;
 use crate::{validate_outbound_services, Error, Latency, LocalTime, PeerId};
 use bitcoin::p2p::address::AddrV2Message;
@@ -11,7 +13,6 @@ use sc_client_api::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subcoin_primitives::ClientExt;
@@ -79,7 +80,7 @@ impl Config {
 struct Connection {
     local_addr: PeerId,
     writer: ConnectionWriter,
-    disconnect_signal: Arc<AtomicBool>,
+    closer: ConnectionCloser,
 }
 
 impl Connection {
@@ -463,12 +464,9 @@ where
             return;
         }
 
-        if let Some(Connection {
-            disconnect_signal, ..
-        }) = self.connections.remove(&peer_id)
-        {
+        if let Some(connection) = self.connections.remove(&peer_id) {
             tracing::debug!(?reason, ?peer_id, "💔 Disconnecting peer");
-            disconnect_signal.store(true, Ordering::SeqCst);
+            connection.closer.terminate();
 
             if let Some(metrics) = &self.metrics {
                 metrics.addresses.with_label_values(&["disconnected"]).inc();
@@ -544,13 +542,13 @@ where
             local_addr,
             direction,
             writer,
-            disconnect_signal,
+            closer,
         } = new_connection;
 
         let connection = Connection {
             local_addr,
             writer,
-            disconnect_signal,
+            closer,
         };
 
         let mut handshake_state = HandshakeState::ConnectionOpened;
