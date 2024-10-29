@@ -124,10 +124,8 @@ pub enum Error {
     UnexpectedPong,
     #[error("Invalid pong message: bad nonce")]
     BadPong,
-    #[error("Received an unrequested block: {0:?}")]
-    UnrequestedBlock(BlockHash),
     #[error("Cannot find the parent of the first header in headers message")]
-    ParentOfFirstHeaderEntryNotFound,
+    MissingFirstHeaderParent,
     #[error("Other: {0}")]
     Other(String),
     #[error(transparent)]

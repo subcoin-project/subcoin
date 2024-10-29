@@ -101,14 +101,14 @@ fn block_download_batch_size(height: u32) -> usize {
     match height {
         0..=99_999 => 1024,
         100_000..=199_999 => 512,
-        200_000..=299_999 => 128,
-        300_000..=399_999 => 32,
-        400_000..=499_999 => 16,
+        200_000..=299_999 => 64,
+        300_000..=499_999 => 16,
         _ => 8,
     }
 }
 
 /// Headers downloaded up to the next checkpoint.
+#[derive(Default)]
 struct DownloadedHeaders {
     /// Ordered map of headers, where the key is the block hash and the value is the block number.
     ///
@@ -126,6 +126,7 @@ pub struct HeadersFirstDownloader<Block, Client> {
     state: State,
     download_manager: BlockDownloadManager,
     downloaded_headers: DownloadedHeaders,
+    /// Tracks the number of blocks downloaded from the current sync peer.
     downloaded_blocks_count: usize,
     last_locator_start: u32,
     target_block_number: u32,
@@ -149,10 +150,7 @@ where
             header_verifier,
             peer_id,
             state: State::Idle,
-            downloaded_headers: DownloadedHeaders {
-                headers: IndexMap::new(),
-                completed_range: None,
-            },
+            downloaded_headers: DownloadedHeaders::default(),
             download_manager: BlockDownloadManager::new(peer_store),
             downloaded_blocks_count: 0,
             last_locator_start: 0u32,
@@ -201,43 +199,14 @@ where
         }
 
         if self.download_manager.queue_status.is_overloaded() {
-            let still_overloaded = self
+            let is_ready = self
                 .download_manager
                 .evaluate_queue_status(self.client.best_number())
-                .is_overloaded();
-            if still_overloaded {
-                return SyncAction::None;
+                .is_ready();
+            if is_ready {
+                return self.resume_request();
             } else {
-                // Resume blocks or headers request.
-                match &mut self.state {
-                    State::DownloadingBlocks(BlockDownload::Batches {
-                        downloaded_batch,
-                        waiting,
-                        paused,
-                    }) if *paused => {
-                        *paused = false;
-
-                        if let Some(next_batch) = waiting.pop_front() {
-                            tracing::debug!(
-                                best_number = self.client.best_number(),
-                                best_queued_number = self.download_manager.best_queued_number,
-                                "📦 Resumed downloading {} blocks in batches ({}/{})",
-                                next_batch.len(),
-                                *downloaded_batch + 1,
-                                *downloaded_batch + 1 + waiting.len()
-                            );
-                            self.download_manager
-                                .requested_blocks
-                                .clone_from(&next_batch);
-                            return self.blocks_request_action(next_batch);
-                        } else {
-                            return self.headers_request_action();
-                        }
-                    }
-                    _ => {
-                        return self.headers_request_action();
-                    }
-                }
+                return SyncAction::None;
             }
         }
 
@@ -248,12 +217,43 @@ where
         SyncAction::None
     }
 
+    // Resume blocks or headers request.
+    fn resume_request(&mut self) -> SyncAction {
+        match &mut self.state {
+            State::DownloadingBlocks(BlockDownload::Batches {
+                downloaded_batch,
+                waiting,
+                paused,
+            }) if *paused => {
+                *paused = false;
+
+                if let Some(next_batch) = waiting.pop_front() {
+                    tracing::debug!(
+                        best_number = self.client.best_number(),
+                        best_queued_number = self.download_manager.best_queued_number,
+                        "📦 Resumed downloading {} blocks in batches ({}/{})",
+                        next_batch.len(),
+                        *downloaded_batch + 1,
+                        *downloaded_batch + 1 + waiting.len()
+                    );
+                    self.download_manager
+                        .requested_blocks
+                        .clone_from(&next_batch);
+                    self.blocks_request_action(next_batch)
+                } else {
+                    self.headers_request_action()
+                }
+            }
+            _ => self.headers_request_action(),
+        }
+    }
+
     pub(crate) fn restart(&mut self, new_peer: PeerId, peer_best: u32) {
         self.peer_id = new_peer;
-        self.download_manager.reset();
         self.downloaded_blocks_count = 0;
         self.last_locator_start = 0u32;
         self.target_block_number = peer_best;
+        self.download_manager.reset();
         if let Some((start, end)) = self.downloaded_headers.completed_range {
             self.state = State::RestartingBlocks { start, end };
         } else {
@@ -327,10 +327,7 @@ where
         let (start, end) = match &self.state {
             State::DownloadingHeaders { start, end } => (*start, *end),
             state => {
-                tracing::debug!(
-                    %state,
-                    "Ignoring headers as we are not in the mode of downloading headers"
-                );
+                tracing::debug!(%state, "Ignoring headers unexpected");
                 return SyncAction::None;
             }
         };
@@ -351,7 +348,7 @@ where
                 "Cannot find the parent of the first header in headers, disconnecting"
             );
             self.state = State::Disconnecting;
-            return SyncAction::Disconnect(self.peer_id, Error::ParentOfFirstHeaderEntryNotFound);
+            return SyncAction::Disconnect(self.peer_id, Error::MissingFirstHeaderParent);
         };
 
         for header in headers {
@@ -368,8 +365,8 @@ where
             let block_hash = header.block_hash();
             let block_number = prev_number + 1;
 
-            // We can't import the header directly at this moment since creating a Substrate
-            // header requires the full block data.
+            // We can't convert the Bitcoin header to a Substrate header right now as creating a
+            // Substrate header requires the full block data that is still missing.
             self.downloaded_headers
                 .headers
                 .insert(block_hash, block_number);
@@ -463,27 +460,27 @@ where
                 return SyncAction::None;
             };
 
-            let get_data_msg = prepare_ordered_block_data_request(
-                initial_batch.clone(),
-                &self.downloaded_headers.headers,
-            );
-
-            let old_requested =
-                std::mem::replace(&mut self.download_manager.requested_blocks, initial_batch);
+            let old_requested = self
+                .download_manager
+                .reset_requested_blocks(initial_batch.clone());
 
             assert!(
                 old_requested.is_empty(),
                 "There are still requested blocks not yet received: {old_requested:?}"
             );
 
+            let blocks_request_count = initial_batch.len();
+
             tracing::debug!(
                 best_number,
                 best_queued_number = self.download_manager.best_queued_number,
                 missing_blocks_count,
                 downloaded_headers_count = self.downloaded_headers.headers.len(),
-                "Headers downloaded, requesting {} blocks in batches (1/{total_batches})",
-                get_data_msg.len(),
+                "Headers downloaded, requesting {blocks_request_count} blocks in batches (1/{total_batches})",
             );
+
+            let get_data_msg =
+                prepare_ordered_block_data_request(initial_batch, &self.downloaded_headers.headers);
 
             self.state = State::DownloadingBlocks(BlockDownload::Batches {
                 downloaded_batch: 0,

@@ -62,6 +62,10 @@ impl ImportQueueStatus {
     fn is_overloaded(&self) -> bool {
         matches!(self, Self::Overloaded)
     }
+
+    fn is_ready(&self) -> bool {
+        matches!(self, Self::Ready)
+    }
 }
 
 /// Manages the of blocks downloaded from the Bitcoin network.
@@ -217,6 +221,10 @@ impl BlockDownloadManager {
         self.orphan_blocks_pool.clear();
         self.last_progress_time = Instant::now();
         self.queue_status = ImportQueueStatus::Ready;
+    }
+
+    fn reset_requested_blocks(&mut self, new: HashSet<BlockHash>) -> HashSet<BlockHash> {
+        std::mem::replace(&mut self.requested_blocks, new)
     }
 
     /// Checks if there are blocks ready to be imported.

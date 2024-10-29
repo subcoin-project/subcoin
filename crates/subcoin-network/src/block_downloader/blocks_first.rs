@@ -122,14 +122,14 @@ where
         let best_number = self.client.best_number();
 
         if self.download_manager.queue_status.is_overloaded() {
-            let still_overloaded = self
+            let is_ready = self
                 .download_manager
                 .evaluate_queue_status(best_number)
-                .is_overloaded();
-            if still_overloaded {
-                return SyncAction::None;
-            } else {
+                .is_ready();
+            if is_ready {
                 return SyncAction::Request(self.prepare_blocks_request());
+            } else {
+                return SyncAction::None;
             }
         }
 
@@ -211,6 +211,24 @@ where
         self.truncate_and_prepare_block_data_request(block_data_request)
     }
 
+    /// Prepares and truncates the block data request to avoid overly large requests.
+    ///
+    /// To minimize potential failures and latency, this function splits large `Inventory` lists
+    /// into smaller requests if they exceed a predefined maximum size. If truncation is necessary,
+    /// the remaining items are stored in `pending_block_requests` for future processing.
+    ///
+    /// The number of blocks in the current request is stored in `inflight_blocks_count` to track
+    /// the ongoing download progress.
+    ///
+    /// # Parameters
+    ///
+    /// - `block_data_request`: A `Vec` of `Inventory` items representing blocks to be downloaded
+    ///   from the peer.
+    ///
+    /// # Returns
+    ///
+    /// A `SyncAction` containing a `SyncRequest::Data` with the truncated list of blocks to
+    /// request from the peer.
     fn truncate_and_prepare_block_data_request(
         &mut self,
         mut block_data_request: Vec<Inventory>,
@@ -246,7 +264,7 @@ where
                     ?state,
                     ?from,
                     current_sync_peer = ?self.peer_id,
-                    "Received block {} while not in the mode of downloading blocks",
+                    "Recv unexpected block {}",
                     block.block_hash()
                 );
                 return SyncAction::None;
@@ -353,10 +371,6 @@ where
                 .contains_unknown_block(&block_hash)
             {
                 tracing::debug!("Received orphan block {block_hash} again");
-                // New block might be announced using `block` message.
-                // TODO: handle the orphan blocks once download completed.
-
-                // FIXME: the tip block may be received too frequently?
                 return SyncAction::None;
             }
 
