@@ -259,7 +259,7 @@ where
                     && peer.best_number > our_best
                     && peer.state.is_available()
             })
-            .max_by_key(|peer| peer.best_number)
+            .min_by_key(|peer| peer.latency)
             .map(|peer| peer.peer_id)
             .or_else(|| {
                 let sync_candidates = self
@@ -315,7 +315,7 @@ where
                 return;
             };
 
-            tracing::debug!(?reason, ?prior_peer_id, ?new_peer, "🔄 Sync restarted");
+            tracing::debug!(?reason, prior_peer = ?prior_peer_id, ?new_peer, "🔄 Sync restarted");
             new_peer.state = PeerSyncState::DownloadingNew { start: our_best };
 
             match &mut self.syncing {
