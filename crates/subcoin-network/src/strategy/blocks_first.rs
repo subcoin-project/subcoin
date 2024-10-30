@@ -486,14 +486,14 @@ mod tests {
                 .expect("Create test node");
 
         let peer_id: PeerId = "0.0.0.0:0".parse().unwrap();
-        let (mut downloader, _initial_request) =
+        let (mut strategy, _initial_request) =
             BlocksFirstStrategy::new(client, peer_id, 800000, Arc::new(NoPeerStore));
 
         let block = block_data()[3].clone();
         let block_hash = block.block_hash();
 
         // Request the block when peer sent us a block announcement via inv.
-        let sync_action = downloader.on_inv(vec![Inventory::Block(block_hash)], peer_id);
+        let sync_action = strategy.on_inv(vec![Inventory::Block(block_hash)], peer_id);
 
         match sync_action {
             SyncAction::Request(SyncRequest::Data(blocks_request, _)) => {
@@ -503,29 +503,29 @@ mod tests {
         }
 
         let parent_hash = block.header.prev_blockhash;
-        assert!(!downloader
+        assert!(!strategy
             .block_downloader
             .orphan_blocks_pool
             .contains_orphan_block(&parent_hash));
-        assert!(!downloader
+        assert!(!strategy
             .block_downloader
             .orphan_blocks_pool
             .block_exists(&block_hash));
 
         // Block received, but the parent is still missing, we add this block to the orphan blocks
         // pool.
-        downloader.on_block(block, peer_id);
-        assert!(downloader
+        strategy.on_block(block, peer_id);
+        assert!(strategy
             .block_downloader
             .orphan_blocks_pool
             .contains_orphan_block(&parent_hash));
-        assert!(downloader
+        assert!(strategy
             .block_downloader
             .orphan_blocks_pool
             .block_exists(&block_hash));
 
         // The same block announcement was received, but we don't download it again.
-        let sync_action = downloader.on_inv(vec![Inventory::Block(block_hash)], peer_id);
+        let sync_action = strategy.on_inv(vec![Inventory::Block(block_hash)], peer_id);
 
         assert!(
             matches!(sync_action, SyncAction::None),
