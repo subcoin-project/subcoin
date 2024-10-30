@@ -119,7 +119,7 @@ struct DownloadedHeaders {
 }
 
 /// Implements the Headers-First download strategy.
-pub struct HeadersFirstDownloader<Block, Client> {
+pub struct HeadersFirstStrategy<Block, Client> {
     client: Arc<Client>,
     header_verifier: HeaderVerifier<Block, Client>,
     peer_id: PeerId,
@@ -133,7 +133,7 @@ pub struct HeadersFirstDownloader<Block, Client> {
     _phantom: PhantomData<Block>,
 }
 
-impl<Block, Client> HeadersFirstDownloader<Block, Client>
+impl<Block, Client> HeadersFirstStrategy<Block, Client>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore,

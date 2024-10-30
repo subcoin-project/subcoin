@@ -42,7 +42,7 @@ enum State {
 
 /// Download blocks using the Blocks-First strategy.
 #[derive(Clone)]
-pub struct BlocksFirstDownloader<Block, Client> {
+pub struct BlocksFirstStrategy<Block, Client> {
     client: Arc<Client>,
     peer_id: PeerId,
     /// The final block number we are targeting when the download is complete.
@@ -57,7 +57,7 @@ pub struct BlocksFirstDownloader<Block, Client> {
     _phantom: PhantomData<Block>,
 }
 
-impl<Block, Client> BlocksFirstDownloader<Block, Client>
+impl<Block, Client> BlocksFirstStrategy<Block, Client>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore,
@@ -487,7 +487,7 @@ mod tests {
 
         let peer_id: PeerId = "0.0.0.0:0".parse().unwrap();
         let (mut downloader, _initial_request) =
-            BlocksFirstDownloader::new(client, peer_id, 800000, Arc::new(NoPeerStore));
+            BlocksFirstStrategy::new(client, peer_id, 800000, Arc::new(NoPeerStore));
 
         let block = block_data()[3].clone();
         let block_hash = block.block_hash();

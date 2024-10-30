@@ -1,6 +1,6 @@
 use crate::peer_manager::NewPeer;
 use crate::peer_store::PeerStore;
-use crate::strategy::{BlocksFirstDownloader, HeadersFirstDownloader};
+use crate::strategy::{BlocksFirstStrategy, HeadersFirstStrategy};
 use crate::{Error, Latency, PeerId, SyncStatus, SyncStrategy};
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::p2p::message_blockdata::Inventory;
@@ -129,9 +129,9 @@ pub(crate) enum RestartReason {
 // might be in during the sync process.
 enum Syncing<Block, Client> {
     /// Blocks-First sync.
-    BlocksFirst(Box<BlocksFirstDownloader<Block, Client>>),
+    BlocksFirst(Box<BlocksFirstStrategy<Block, Client>>),
     /// Headers-First sync.
-    HeadersFirst(Box<HeadersFirstDownloader<Block, Client>>),
+    HeadersFirst(Box<HeadersFirstStrategy<Block, Client>>),
     /// Not syncing.
     ///
     /// This could indicate that the node is either fully synced
@@ -545,27 +545,27 @@ where
             );
 
             if blocks_first {
-                let (downloader, blocks_request) =
-                    BlocksFirstDownloader::new(client, next_peer_id, peer_best, peer_store);
+                let (sync_strategy, blocks_request) =
+                    BlocksFirstStrategy::new(client, next_peer_id, peer_best, peer_store);
                 (
-                    Syncing::BlocksFirst(Box::new(downloader)),
+                    Syncing::BlocksFirst(Box::new(sync_strategy)),
                     SyncAction::Request(blocks_request),
                 )
             } else {
-                let (downloader, sync_action) = HeadersFirstDownloader::new(
+                let (sync_strategy, sync_action) = HeadersFirstStrategy::new(
                     client,
                     self.header_verifier.clone(),
                     next_peer_id,
                     peer_best,
                     peer_store,
                 );
-                (Syncing::HeadersFirst(Box::new(downloader)), sync_action)
+                (Syncing::HeadersFirst(Box::new(sync_strategy)), sync_action)
             }
         } else {
-            let (downloader, blocks_request) =
-                BlocksFirstDownloader::new(client, next_peer_id, peer_best, peer_store);
+            let (sync_strategy, blocks_request) =
+                BlocksFirstStrategy::new(client, next_peer_id, peer_best, peer_store);
             (
-                Syncing::BlocksFirst(Box::new(downloader)),
+                Syncing::BlocksFirst(Box::new(sync_strategy)),
                 SyncAction::Request(blocks_request),
             )
         };
@@ -610,7 +610,7 @@ where
             return None;
         };
 
-        let (blocks_first_downloader, blocks_request) = BlocksFirstDownloader::new(
+        let (blocks_first_strategy, blocks_request) = BlocksFirstStrategy::new(
             self.client.clone(),
             best_peer.peer_id,
             best_peer.best_number,
@@ -618,7 +618,7 @@ where
         );
 
         tracing::debug!("Headers-First sync completed, continuing with blocks-first sync");
-        self.update_syncing_state(Syncing::BlocksFirst(Box::new(blocks_first_downloader)));
+        self.update_syncing_state(Syncing::BlocksFirst(Box::new(blocks_first_strategy)));
 
         Some(blocks_request)
     }
