@@ -1,6 +1,6 @@
-use crate::block_downloader::{BlocksFirstDownloader, HeadersFirstDownloader};
 use crate::peer_manager::NewPeer;
 use crate::peer_store::PeerStore;
+use crate::strategy::{BlocksFirstDownloader, HeadersFirstDownloader};
 use crate::{Error, Latency, PeerId, SyncStatus, SyncStrategy};
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::p2p::message_blockdata::Inventory;

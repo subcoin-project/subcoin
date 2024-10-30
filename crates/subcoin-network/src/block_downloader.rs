@@ -1,9 +1,3 @@
-mod blocks_first;
-mod headers_first;
-
-pub use self::blocks_first::BlocksFirstDownloader;
-pub use self::headers_first::HeadersFirstDownloader;
-
 use crate::orphan_blocks_pool::OrphanBlocksPool;
 use crate::peer_store::PeerStore;
 use crate::PeerId;
@@ -25,11 +19,11 @@ pub(crate) struct QueuedBlocks {
 }
 
 impl QueuedBlocks {
-    fn block_hash(&self, number: u32) -> Option<BlockHash> {
+    pub(crate) fn block_hash(&self, number: u32) -> Option<BlockHash> {
         self.number2hash.get(&number).copied()
     }
 
-    fn block_number(&self, hash: BlockHash) -> Option<u32> {
+    pub(crate) fn block_number(&self, hash: BlockHash) -> Option<u32> {
         self.hash2number.get(&hash).copied()
     }
 
@@ -51,7 +45,7 @@ impl QueuedBlocks {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum ImportQueueStatus {
+pub(crate) enum ImportQueueStatus {
     /// Queue is ready to accept more blocks for import.
     Ready,
     /// The queue is overloaded and cannot accept more blocks at the moment.
@@ -59,11 +53,11 @@ enum ImportQueueStatus {
 }
 
 impl ImportQueueStatus {
-    fn is_overloaded(&self) -> bool {
+    pub(crate) fn is_overloaded(&self) -> bool {
         matches!(self, Self::Overloaded)
     }
 
-    fn is_ready(&self) -> bool {
+    pub(crate) fn is_ready(&self) -> bool {
         matches!(self, Self::Ready)
     }
 }
@@ -84,36 +78,36 @@ pub(crate) struct BlockDownloader {
     /// A set of block hashes that have been requested from the network.
     ///
     /// This helps in tracking which blocks are pending download.
-    requested_blocks: HashSet<BlockHash>,
+    pub(crate) requested_blocks: HashSet<BlockHash>,
     /// A vector of blocks that have been downloaded from the network.
     ///
     /// These blocks are ready to be sent to the import queue.
-    downloaded_blocks: Vec<BitcoinBlock>,
+    pub(crate) downloaded_blocks: Vec<BitcoinBlock>,
     /// A map of block hashes to their respective heights in the import queue.
     /// This helps in tracking which blocks are currently being processed in the import queue.
-    blocks_in_queue: HashMap<BlockHash, u32>,
+    pub(crate) blocks_in_queue: HashMap<BlockHash, u32>,
     /// Pending blocks that either in the queue or waiting to be queued.
-    queued_blocks: QueuedBlocks,
+    pub(crate) queued_blocks: QueuedBlocks,
     /// The highest block number that is either in the queue or waiting to be queued.
-    best_queued_number: u32,
+    pub(crate) best_queued_number: u32,
     /// Orphan blocks
-    orphan_blocks_pool: OrphanBlocksPool,
+    pub(crate) orphan_blocks_pool: OrphanBlocksPool,
     /// Last time at which the block was received or imported.
     ///
     /// This is updated whenever a block is received from the network or
     /// when the results of processed blocks are notified. It helps track
     /// the most recent activity related to block processing.
-    last_progress_time: Instant,
+    pub(crate) last_progress_time: Instant,
     /// Import queue status.
-    queue_status: ImportQueueStatus,
+    pub(crate) queue_status: ImportQueueStatus,
     /// Last time the log of too many blocks in the queue was printed.
-    last_overloaded_queue_log_time: Option<Instant>,
+    pub(crate) last_overloaded_queue_log_time: Option<Instant>,
     /// Peer store.
-    peer_store: Arc<dyn PeerStore>,
+    pub(crate) peer_store: Arc<dyn PeerStore>,
 }
 
 impl BlockDownloader {
-    fn new(peer_store: Arc<dyn PeerStore>) -> Self {
+    pub(crate) fn new(peer_store: Arc<dyn PeerStore>) -> Self {
         Self {
             requested_blocks: HashSet::new(),
             downloaded_blocks: Vec::new(),
@@ -141,7 +135,7 @@ impl BlockDownloader {
     ///   increases, resulting in longer network response times for block retrieval.
     ///
     /// The timeout values are configurated arbitrarily.
-    fn is_stalled(&self, peer_id: PeerId) -> bool {
+    pub(crate) fn is_stalled(&self, peer_id: PeerId) -> bool {
         let stall_timeout = match self.best_queued_number {
             0..300_000 => 60,        // Standard timeout, 1 minute
             300_000..600_000 => 120, // Extended timeout, 2 minutes
@@ -158,27 +152,27 @@ impl BlockDownloader {
         stalled
     }
 
-    fn block_exists(&self, block_hash: BlockHash) -> bool {
+    pub(crate) fn block_exists(&self, block_hash: BlockHash) -> bool {
         self.queued_blocks.block_number(block_hash).is_some()
     }
 
-    fn block_number(&self, block_hash: BlockHash) -> Option<u32> {
+    pub(crate) fn block_number(&self, block_hash: BlockHash) -> Option<u32> {
         self.queued_blocks.block_number(block_hash)
     }
 
-    fn is_unknown_block(&self, block_hash: BlockHash) -> bool {
+    pub(crate) fn is_unknown_block(&self, block_hash: BlockHash) -> bool {
         self.queued_blocks.block_number(block_hash).is_none()
             && !self.requested_blocks.contains(&block_hash)
             && !self.orphan_blocks_pool.block_exists(&block_hash)
     }
 
-    fn on_block_response(&mut self, block_hash: BlockHash) -> bool {
+    pub(crate) fn on_block_response(&mut self, block_hash: BlockHash) -> bool {
         self.last_progress_time = Instant::now();
         self.requested_blocks.remove(&block_hash)
     }
 
     /// Checks if the import queue is overloaded and updates the internal state.
-    fn evaluate_queue_status(&mut self, best_number: u32) -> ImportQueueStatus {
+    pub(crate) fn evaluate_queue_status(&mut self, best_number: u32) -> ImportQueueStatus {
         // Maximum number of pending blocks in the import queue.
         let max_queued_blocks = match best_number {
             0..=100_000 => 8192,
@@ -212,7 +206,7 @@ impl BlockDownloader {
         self.queue_status
     }
 
-    fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         self.requested_blocks.clear();
         self.downloaded_blocks.clear();
         self.blocks_in_queue.clear();
@@ -223,7 +217,7 @@ impl BlockDownloader {
         self.queue_status = ImportQueueStatus::Ready;
     }
 
-    fn reset_requested_blocks(&mut self, new: HashSet<BlockHash>) -> HashSet<BlockHash> {
+    pub(crate) fn reset_requested_blocks(&mut self, new: HashSet<BlockHash>) -> HashSet<BlockHash> {
         std::mem::replace(&mut self.requested_blocks, new)
     }
 
@@ -290,7 +284,7 @@ impl BlockDownloader {
     }
 
     /// Add the block that is ready to be imported.
-    fn add_block(
+    pub(crate) fn add_block(
         &mut self,
         block_number: u32,
         block_hash: BlockHash,
@@ -320,7 +314,7 @@ impl BlockDownloader {
         self.peer_store.record_block_download(from);
     }
 
-    fn add_orphan_block(&mut self, block_hash: BlockHash, orphan_block: BitcoinBlock) {
+    pub(crate) fn add_orphan_block(&mut self, block_hash: BlockHash, orphan_block: BitcoinBlock) {
         tracing::debug!(
             orphan_blocks_count = self.orphan_blocks_pool.len(),
             "Adding orphan block {block_hash} to the orphan blocks pool",
@@ -328,7 +322,7 @@ impl BlockDownloader {
         self.orphan_blocks_pool.insert_orphan_block(orphan_block);
     }
 
-    fn add_unknown_block(&mut self, block_hash: BlockHash, unknown_block: BitcoinBlock) {
+    pub(crate) fn add_unknown_block(&mut self, block_hash: BlockHash, unknown_block: BitcoinBlock) {
         tracing::debug!(
             orphan_blocks_count = self.orphan_blocks_pool.len(),
             "Adding unknown block {block_hash} to the orphan blocks pool",

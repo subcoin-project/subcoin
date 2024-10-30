@@ -35,6 +35,7 @@ mod network;
 mod orphan_blocks_pool;
 mod peer_manager;
 mod peer_store;
+mod strategy;
 mod sync;
 #[cfg(test)]
 mod tests;
