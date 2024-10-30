@@ -35,6 +35,8 @@ enum State {
     /// up to 500 blocks in specific. It only continues to download the next batch
     /// of blocks once the previous request succeeds.
     DownloadingInv(Range<u32>),
+    ///
+    DownloadingBlocks(Range<u32>),
     /// All blocks up to the target block have been successfully downloaded,
     /// the download process has been completed.
     Completed,
@@ -51,9 +53,6 @@ pub struct BlocksFirstStrategy<Block, Client> {
     block_downloader: BlockDownloader,
     downloaded_blocks_count: usize,
     last_locator_start: u32,
-    pending_block_requests: Vec<Inventory>,
-    /// Number of blocks' data requested but not yet received.
-    inflight_blocks_count: usize,
     _phantom: PhantomData<Block>,
 }
 
@@ -68,16 +67,16 @@ where
         peer_best: u32,
         peer_store: Arc<dyn PeerStore>,
     ) -> (Self, SyncRequest) {
+        let best_number = client.best_number();
+
         let mut blocks_first_sync = Self {
             peer_id,
             client,
             target_block_number: peer_best,
             state: State::Idle,
-            block_downloader: BlockDownloader::new(peer_store),
+            block_downloader: BlockDownloader::new(peer_id, best_number, peer_store),
             downloaded_blocks_count: 0,
             last_locator_start: 0u32,
-            pending_block_requests: Vec::new(),
-            inflight_blocks_count: 0,
             _phantom: Default::default(),
         };
 
@@ -108,6 +107,7 @@ where
         self.peer_id = peer_id;
         self.target_block_number = target_block_number;
         self.downloaded_blocks_count = 0;
+        self.block_downloader.peer_id = peer_id;
     }
 
     pub(crate) fn block_downloader(&mut self) -> &mut BlockDownloader {
@@ -133,9 +133,12 @@ where
             }
         }
 
-        if !self.pending_block_requests.is_empty() && self.inflight_blocks_count == 0 {
-            let block_data_request = std::mem::take(&mut self.pending_block_requests);
-            return self.truncate_and_prepare_block_data_request(block_data_request);
+        if matches!(self.state, State::DownloadingBlocks { .. }) {
+            if self.block_downloader.pending_blocks.is_empty() {
+                return SyncAction::Request(self.prepare_blocks_request());
+            } else if self.block_downloader.requested_blocks.is_empty() {
+                return self.block_downloader.next_block_download_action();
+            }
         }
 
         if best_number == self.target_block_number {
@@ -157,8 +160,7 @@ where
         self.last_locator_start = 0u32;
         self.block_downloader.reset();
         self.state = State::Restarting;
-        self.pending_block_requests.clear();
-        self.inflight_blocks_count = 0;
+        self.block_downloader.peer_id = new_peer;
     }
 
     // Handle `inv` message.
@@ -191,7 +193,7 @@ where
             return SyncAction::Disconnect(self.peer_id, Error::InvHasTooManyBlockItems);
         }
 
-        let mut block_data_request = Vec::new();
+        let mut missing_blocks = Vec::new();
 
         for inv in inventories {
             match inv {
@@ -199,8 +201,7 @@ where
                     if !self.client.block_exists(block_hash)
                         && self.block_downloader.is_unknown_block(block_hash)
                     {
-                        block_data_request.push(Inventory::Block(block_hash));
-                        self.block_downloader.requested_blocks.insert(block_hash);
+                        missing_blocks.push(block_hash);
                     }
                 }
                 Inventory::WitnessBlock(_block_hash) => {}
@@ -210,51 +211,21 @@ where
             }
         }
 
-        if block_data_request.is_empty() {
-            return SyncAction::None;
+        if missing_blocks.is_empty() {
+            return SyncAction::Request(self.prepare_blocks_request());
         }
 
-        self.truncate_and_prepare_block_data_request(block_data_request)
-    }
+        self.block_downloader.set_pending_blocks(missing_blocks);
+        let range = match &self.state {
+            State::DownloadingInv(range) => range.clone(),
+            state => {
+                tracing::error!("Recv inventories in state {state:?}");
+                return SyncAction::None;
+            }
+        };
+        self.state = State::DownloadingBlocks(range);
 
-    /// Prepares and truncates the block data request to avoid overly large requests.
-    ///
-    /// To minimize potential failures and latency, this function splits large `Inventory` lists
-    /// into smaller requests if they exceed a predefined maximum size. If truncation is necessary,
-    /// the remaining items are stored in `pending_block_requests` for future processing.
-    ///
-    /// The number of blocks in the current request is stored in `inflight_blocks_count` to track
-    /// the ongoing download progress.
-    ///
-    /// # Parameters
-    ///
-    /// - `block_data_request`: A `Vec` of `Inventory` items representing blocks to be downloaded
-    ///   from the peer.
-    ///
-    /// # Returns
-    ///
-    /// A `SyncAction` containing a `SyncRequest::Data` with the truncated list of blocks to
-    /// request from the peer.
-    fn truncate_and_prepare_block_data_request(
-        &mut self,
-        mut block_data_request: Vec<Inventory>,
-    ) -> SyncAction {
-        let max_request_size = self.max_block_data_request_size();
-
-        if block_data_request.len() > max_request_size {
-            self.pending_block_requests = block_data_request.split_off(max_request_size);
-        }
-
-        self.inflight_blocks_count = block_data_request.len();
-
-        tracing::debug!(
-            from = ?self.peer_id,
-            pending_block_data_request = self.pending_block_requests.len(),
-            "📦 Downloading {} blocks",
-            self.inflight_blocks_count,
-        );
-
-        SyncAction::Request(SyncRequest::Data(block_data_request, self.peer_id))
+        self.block_downloader.next_block_download_action()
     }
 
     pub(crate) fn on_block(&mut self, block: BitcoinBlock, from: PeerId) -> SyncAction {
@@ -264,7 +235,7 @@ where
         }
 
         let last_get_blocks_target = match &self.state {
-            State::DownloadingInv(range) => range.end - 1,
+            State::DownloadingBlocks(range) => range.end - 1,
             state => {
                 tracing::debug!(
                     ?state,
@@ -303,7 +274,6 @@ where
             self.block_downloader
                 .add_block(block_number, block_hash, block, from);
 
-            self.inflight_blocks_count -= 1;
             self.downloaded_blocks_count += 1;
 
             match block_number.cmp(&last_get_blocks_target) {
@@ -350,6 +320,7 @@ where
                         .min(best_queued_number + MAX_GET_BLOCKS_RESPONSE);
 
                     self.state = State::DownloadingInv(best_queued_number + 1..end + 1);
+                    self.block_downloader.clear_pending_blocks();
 
                     let BlockLocator { locator_hashes, .. } = self
                         .client
@@ -447,25 +418,6 @@ where
         self.client.block_locator(Some(from), |height: u32| {
             self.block_downloader.queued_blocks.block_hash(height)
         })
-    }
-
-    fn max_block_data_request_size(&self) -> usize {
-        let best_known = self
-            .client
-            .best_number()
-            .max(self.block_downloader.best_queued_number);
-
-        match best_known {
-            0..=99_999 => 500,
-            100_000..=199_999 => 256,
-            200_000..=299_999 => 128,
-            300_000..=399_999 => 64,
-            400_000..=499_999 => 32,
-            500_000..=599_999 => 16,
-            600_000..=699_999 => 8,
-            700_000..=799_999 => 4,
-            _ => 2,
-        }
     }
 }
 

@@ -1,6 +1,8 @@
 use crate::orphan_blocks_pool::OrphanBlocksPool;
 use crate::peer_store::PeerStore;
+use crate::sync::{SyncAction, SyncRequest};
 use crate::PeerId;
+use bitcoin::p2p::message_blockdata::Inventory;
 use bitcoin::{Block as BitcoinBlock, BlockHash};
 use sc_consensus::BlockImportError;
 use sc_consensus_nakamoto::ImportManyBlocksResult;
@@ -62,7 +64,7 @@ impl ImportQueueStatus {
     }
 }
 
-/// Manages the of blocks downloaded from the Bitcoin network.
+/// Responsible for downloading blocks from a specific peer.
 ///
 /// This struct keeps track of:
 /// - Blocks that have been requested from the network but not yet received.
@@ -75,6 +77,9 @@ impl ImportQueueStatus {
 /// the state of blocks during the sync process.
 #[derive(Clone)]
 pub(crate) struct BlockDownloader {
+    pub(crate) peer_id: PeerId,
+    /// Blocks awaiting to be downloaded.
+    pub(crate) pending_blocks: Vec<BlockHash>,
     /// A set of block hashes that have been requested from the network.
     ///
     /// This helps in tracking which blocks are pending download.
@@ -107,19 +112,85 @@ pub(crate) struct BlockDownloader {
 }
 
 impl BlockDownloader {
-    pub(crate) fn new(peer_store: Arc<dyn PeerStore>) -> Self {
+    pub(crate) fn new(
+        peer_id: PeerId,
+        best_queued_number: u32,
+        peer_store: Arc<dyn PeerStore>,
+    ) -> Self {
         Self {
+            peer_id,
+            pending_blocks: Vec::new(),
             requested_blocks: HashSet::new(),
             downloaded_blocks: Vec::new(),
             blocks_in_queue: HashMap::new(),
             queued_blocks: QueuedBlocks::default(),
-            best_queued_number: 0u32,
+            best_queued_number,
             orphan_blocks_pool: OrphanBlocksPool::new(),
             last_progress_time: Instant::now(),
             queue_status: ImportQueueStatus::Ready,
             last_overloaded_queue_log_time: None,
             peer_store,
         }
+    }
+
+    pub(crate) fn set_pending_blocks(&mut self, new: Vec<BlockHash>) {
+        self.pending_blocks = new;
+    }
+
+    pub(crate) fn clear_pending_blocks(&mut self) {
+        self.pending_blocks.clear();
+    }
+
+    /// Prepares and truncates the block data request to avoid overly large requests.
+    ///
+    /// To minimize potential failures and latency, this function splits large `Inventory` lists
+    /// into smaller requests if they exceed a predefined maximum size. If truncation is necessary,
+    /// the remaining items are stored in `self.pending_blocks` for future processing.
+    ///
+    /// # Returns
+    ///
+    /// A `SyncAction` containing a `SyncRequest::Data` with the truncated list of blocks to
+    /// request from the peer.
+    pub(crate) fn next_block_download_action(&mut self) -> SyncAction {
+        let max_request_size = match self.best_queued_number {
+            0..=99_999 => 1024,
+            100_000..=199_999 => 512,
+            200_000..=299_999 => 128,
+            300_000..=399_999 => 64,
+            400_000..=499_999 => 32,
+            500_000..=599_999 => 16,
+            600_000..=699_999 => 8,
+            700_000..=799_999 => 4,
+            _ => 2,
+        };
+
+        let mut blocks_to_download = std::mem::take(&mut self.pending_blocks);
+
+        let new_pending_blocks = if blocks_to_download.len() > max_request_size {
+            blocks_to_download.split_off(max_request_size)
+        } else {
+            vec![]
+        };
+
+        self.pending_blocks = new_pending_blocks;
+
+        self.requested_blocks = blocks_to_download.into_iter().collect::<HashSet<_>>();
+
+        tracing::debug!(
+            from = ?self.peer_id,
+            pending_blocks_count = self.pending_blocks.len(),
+            "📦 Downloading {} blocks",
+            self.requested_blocks.len(),
+        );
+
+        let block_data_request = self
+            .requested_blocks
+            .clone()
+            .into_iter()
+            .map(Inventory::Block)
+            .collect::<Vec<_>>();
+
+        SyncAction::Request(SyncRequest::Data(block_data_request, self.peer_id))
     }
 
     /// Determine if the downloader is stalled based on the time elapsed since the last progress
@@ -211,7 +282,6 @@ impl BlockDownloader {
         self.downloaded_blocks.clear();
         self.blocks_in_queue.clear();
         self.queued_blocks.clear();
-        self.best_queued_number = 0u32;
         self.orphan_blocks_pool.clear();
         self.last_progress_time = Instant::now();
         self.queue_status = ImportQueueStatus::Ready;

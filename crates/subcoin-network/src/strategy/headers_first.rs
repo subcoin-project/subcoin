@@ -145,13 +145,15 @@ where
         target_block_number: u32,
         peer_store: Arc<dyn PeerStore>,
     ) -> (Self, SyncAction) {
+        let best_number = client.best_number();
+
         let mut headers_first_sync = Self {
             client,
             header_verifier,
             peer_id,
             state: State::Idle,
             downloaded_headers: DownloadedHeaders::default(),
-            block_downloader: BlockDownloader::new(peer_store),
+            block_downloader: BlockDownloader::new(peer_id, best_number, peer_store),
             downloaded_blocks_count: 0,
             last_locator_start: 0u32,
             target_block_number,
@@ -183,6 +185,7 @@ where
         self.peer_id = peer_id;
         self.downloaded_blocks_count = 0;
         self.target_block_number = target_block_number;
+        self.block_downloader.peer_id = peer_id;
     }
 
     pub(crate) fn block_downloader(&mut self) -> &mut BlockDownloader {
@@ -254,6 +257,7 @@ where
         self.last_locator_start = 0u32;
         self.target_block_number = peer_best;
         self.block_downloader.reset();
+        self.block_downloader.peer_id = new_peer;
         if let Some((start, end)) = self.downloaded_headers.completed_range {
             self.state = State::RestartingBlocks { start, end };
         } else {
