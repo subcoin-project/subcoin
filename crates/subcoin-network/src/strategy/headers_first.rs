@@ -213,8 +213,8 @@ where
             }
         }
 
-        if self.block_downloader.is_stalled(self.peer_id) {
-            return SyncAction::RestartSyncWithStalledPeer(self.peer_id);
+        if let Some(stalled_peer) = self.block_downloader.has_stalled() {
+            return SyncAction::RestartSyncWithStalledPeer(stalled_peer);
         }
 
         SyncAction::None

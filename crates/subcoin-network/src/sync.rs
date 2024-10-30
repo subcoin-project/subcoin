@@ -583,6 +583,8 @@ where
     }
 
     pub(super) fn set_idle(&mut self) {
+        self.import_pending_blocks();
+
         tracing::debug!(
             best_number = self.client.best_number(),
             "Blocks-First sync completed, switching to Syncing::Idle"

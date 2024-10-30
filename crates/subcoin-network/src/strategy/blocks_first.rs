@@ -42,6 +42,12 @@ enum State {
     Completed,
 }
 
+impl State {
+    fn is_downloading_blocks(&self) -> bool {
+        matches!(self, Self::DownloadingBlocks(..))
+    }
+}
+
 /// Download blocks using the Blocks-First strategy.
 #[derive(Clone)]
 pub struct BlocksFirstStrategy<Block, Client> {
@@ -86,7 +92,10 @@ where
     }
 
     pub(crate) fn sync_status(&self) -> SyncStatus {
-        if self.block_downloader.queue_status.is_overloaded() {
+        if self.block_downloader.queue_status.is_overloaded()
+            || (self.state.is_downloading_blocks()
+                && self.block_downloader.missing_blocks.is_empty())
+        {
             SyncStatus::Importing {
                 target: self.target_block_number,
                 peers: vec![self.peer_id],
@@ -119,12 +128,10 @@ where
             return SyncAction::Request(self.prepare_blocks_request());
         }
 
-        let best_number = self.client.best_number();
-
         if self.block_downloader.queue_status.is_overloaded() {
             let is_ready = self
                 .block_downloader
-                .evaluate_queue_status(best_number)
+                .evaluate_queue_status(self.client.best_number())
                 .is_ready();
             if is_ready {
                 return SyncAction::Request(self.prepare_blocks_request());
@@ -133,21 +140,21 @@ where
             }
         }
 
-        if matches!(self.state, State::DownloadingBlocks { .. }) {
-            if self.block_downloader.pending_blocks.is_empty() {
+        if matches!(self.state, State::DownloadingBlocks(..)) {
+            if self.block_downloader.missing_blocks.is_empty() {
                 return SyncAction::Request(self.prepare_blocks_request());
             } else if self.block_downloader.requested_blocks.is_empty() {
                 return self.block_downloader.next_block_download_action();
             }
         }
 
-        if best_number == self.target_block_number {
+        if self.client.best_number() == self.target_block_number {
             self.state = State::Completed;
             return SyncAction::SetIdle;
         }
 
-        if self.block_downloader.is_stalled(self.peer_id) {
-            return SyncAction::RestartSyncWithStalledPeer(self.peer_id);
+        if let Some(stalled_peer) = self.block_downloader.has_stalled() {
+            return SyncAction::RestartSyncWithStalledPeer(stalled_peer);
         }
 
         SyncAction::None
@@ -215,7 +222,7 @@ where
             return SyncAction::Request(self.prepare_blocks_request());
         }
 
-        self.block_downloader.set_pending_blocks(missing_blocks);
+        self.block_downloader.set_missing_blocks(missing_blocks);
         let range = match &self.state {
             State::DownloadingInv(range) => range.clone(),
             state => {
@@ -320,7 +327,7 @@ where
                         .min(best_queued_number + MAX_GET_BLOCKS_RESPONSE);
 
                     self.state = State::DownloadingInv(best_queued_number + 1..end + 1);
-                    self.block_downloader.clear_pending_blocks();
+                    self.block_downloader.clear_missing_blocks();
 
                     let BlockLocator { locator_hashes, .. } = self
                         .client

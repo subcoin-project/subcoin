@@ -79,7 +79,7 @@ impl ImportQueueStatus {
 pub(crate) struct BlockDownloader {
     pub(crate) peer_id: PeerId,
     /// Blocks awaiting to be downloaded.
-    pub(crate) pending_blocks: Vec<BlockHash>,
+    pub(crate) missing_blocks: Vec<BlockHash>,
     /// A set of block hashes that have been requested from the network.
     ///
     /// This helps in tracking which blocks are pending download.
@@ -119,7 +119,7 @@ impl BlockDownloader {
     ) -> Self {
         Self {
             peer_id,
-            pending_blocks: Vec::new(),
+            missing_blocks: Vec::new(),
             requested_blocks: HashSet::new(),
             downloaded_blocks: Vec::new(),
             blocks_in_queue: HashMap::new(),
@@ -133,19 +133,19 @@ impl BlockDownloader {
         }
     }
 
-    pub(crate) fn set_pending_blocks(&mut self, new: Vec<BlockHash>) {
-        self.pending_blocks = new;
+    pub(crate) fn set_missing_blocks(&mut self, new: Vec<BlockHash>) {
+        self.missing_blocks = new;
     }
 
-    pub(crate) fn clear_pending_blocks(&mut self) {
-        self.pending_blocks.clear();
+    pub(crate) fn clear_missing_blocks(&mut self) {
+        self.missing_blocks.clear();
     }
 
     /// Prepares and truncates the block data request to avoid overly large requests.
     ///
     /// To minimize potential failures and latency, this function splits large `Inventory` lists
     /// into smaller requests if they exceed a predefined maximum size. If truncation is necessary,
-    /// the remaining items are stored in `self.pending_blocks` for future processing.
+    /// the remaining items are stored in `self.missing_blocks` for future processing.
     ///
     /// # Returns
     ///
@@ -164,21 +164,21 @@ impl BlockDownloader {
             _ => 2,
         };
 
-        let mut blocks_to_download = std::mem::take(&mut self.pending_blocks);
+        let mut blocks_to_download = std::mem::take(&mut self.missing_blocks);
 
-        let new_pending_blocks = if blocks_to_download.len() > max_request_size {
+        let new_missing_blocks = if blocks_to_download.len() > max_request_size {
             blocks_to_download.split_off(max_request_size)
         } else {
             vec![]
         };
 
-        self.pending_blocks = new_pending_blocks;
+        self.missing_blocks = new_missing_blocks;
 
         self.requested_blocks = blocks_to_download.into_iter().collect::<HashSet<_>>();
 
         tracing::debug!(
             from = ?self.peer_id,
-            pending_blocks_count = self.pending_blocks.len(),
+            missing_blocks_count = self.missing_blocks.len(),
             "📦 Downloading {} blocks",
             self.requested_blocks.len(),
         );
@@ -206,7 +206,7 @@ impl BlockDownloader {
     ///   increases, resulting in longer network response times for block retrieval.
     ///
     /// The timeout values are configurated arbitrarily.
-    pub(crate) fn is_stalled(&self, peer_id: PeerId) -> bool {
+    pub(crate) fn has_stalled(&self) -> Option<PeerId> {
         let stall_timeout = match self.best_queued_number {
             0..300_000 => 60,        // Standard timeout, 1 minute
             300_000..600_000 => 120, // Extended timeout, 2 minutes
@@ -217,10 +217,11 @@ impl BlockDownloader {
         let stalled = self.last_progress_time.elapsed().as_secs() > stall_timeout;
 
         if stalled {
-            self.peer_store.record_failure(peer_id);
+            self.peer_store.record_failure(self.peer_id);
+            Some(self.peer_id)
+        } else {
+            None
         }
-
-        stalled
     }
 
     pub(crate) fn block_exists(&self, block_hash: BlockHash) -> bool {
