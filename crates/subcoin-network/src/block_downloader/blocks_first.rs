@@ -34,7 +34,7 @@ enum State {
     /// When downloading blocks, the system fetches them in batches of a fixed size,
     /// up to 500 blocks in specific. It only continues to download the next batch
     /// of blocks once the previous request succeeds.
-    DownloadingNew(Range<u32>),
+    DownloadingInv(Range<u32>),
     /// All blocks up to the target block have been successfully downloaded,
     /// the download process has been completed.
     Completed,
@@ -169,7 +169,10 @@ where
         if from != self.peer_id {
             tracing::debug!(?from, current_sync_peer = ?self.peer_id, "Recv unexpected {} inventories", inventories.len());
             if inventories.len() == 1 {
-                tracing::debug!(?from, "TODO: block announcement, inventories: {inventories:?}");
+                tracing::debug!(
+                    ?from,
+                    "TODO: block announcement, inventories: {inventories:?}"
+                );
             }
             return SyncAction::None;
         }
@@ -261,7 +264,7 @@ where
         }
 
         let last_get_blocks_target = match &self.state {
-            State::DownloadingNew(range) => range.end - 1,
+            State::DownloadingInv(range) => range.end - 1,
             state => {
                 tracing::debug!(
                     ?state,
@@ -346,7 +349,7 @@ where
                         .target_block_number
                         .min(best_queued_number + MAX_GET_BLOCKS_RESPONSE);
 
-                    self.state = State::DownloadingNew(best_queued_number + 1..end + 1);
+                    self.state = State::DownloadingInv(best_queued_number + 1..end + 1);
 
                     let BlockLocator { locator_hashes, .. } = self
                         .client
@@ -415,7 +418,7 @@ where
             .target_block_number
             .min(latest_block + MAX_GET_BLOCKS_RESPONSE);
 
-        self.state = State::DownloadingNew(latest_block + 1..end + 1);
+        self.state = State::DownloadingInv(latest_block + 1..end + 1);
 
         tracing::debug!(
             latest_block,
