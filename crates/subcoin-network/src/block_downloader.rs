@@ -76,11 +76,11 @@ impl ImportQueueStatus {
 /// - Blocks that are currently in the import queue awaiting processing.
 /// - The highest block number that is either in the queue or pending to be queued.
 ///
-/// [`BlockDownloadManager`] is designed to be used in both Blocks-First and
+/// [`BlockDownloader`] is designed to be used in both Blocks-First and
 /// Headers-First sync strategies, providing a common component for managing
 /// the state of blocks during the sync process.
 #[derive(Clone)]
-pub(crate) struct BlockDownloadManager {
+pub(crate) struct BlockDownloader {
     /// A set of block hashes that have been requested from the network.
     ///
     /// This helps in tracking which blocks are pending download.
@@ -112,7 +112,7 @@ pub(crate) struct BlockDownloadManager {
     peer_store: Arc<dyn PeerStore>,
 }
 
-impl BlockDownloadManager {
+impl BlockDownloader {
     fn new(peer_store: Arc<dyn PeerStore>) -> Self {
         Self {
             requested_blocks: HashSet::new(),

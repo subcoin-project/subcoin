@@ -1,4 +1,4 @@
-use crate::block_downloader::BlockDownloadManager;
+use crate::block_downloader::BlockDownloader;
 use crate::peer_store::PeerStore;
 use crate::sync::{LocatorRequest, SyncAction, SyncRequest};
 use crate::{Error, PeerId, SyncStatus};
@@ -124,7 +124,7 @@ pub struct HeadersFirstDownloader<Block, Client> {
     header_verifier: HeaderVerifier<Block, Client>,
     peer_id: PeerId,
     state: State,
-    download_manager: BlockDownloadManager,
+    block_downloader: BlockDownloader,
     downloaded_headers: DownloadedHeaders,
     /// Tracks the number of blocks downloaded from the current sync peer.
     downloaded_blocks_count: usize,
@@ -151,7 +151,7 @@ where
             peer_id,
             state: State::Idle,
             downloaded_headers: DownloadedHeaders::default(),
-            download_manager: BlockDownloadManager::new(peer_store),
+            block_downloader: BlockDownloader::new(peer_store),
             downloaded_blocks_count: 0,
             last_locator_start: 0u32,
             target_block_number,
@@ -162,7 +162,7 @@ where
     }
 
     pub(crate) fn sync_status(&self) -> SyncStatus {
-        if self.download_manager.queue_status.is_overloaded() {
+        if self.block_downloader.queue_status.is_overloaded() {
             SyncStatus::Importing {
                 target: self.target_block_number,
                 peers: vec![self.peer_id],
@@ -185,8 +185,8 @@ where
         self.target_block_number = target_block_number;
     }
 
-    pub(crate) fn download_manager(&mut self) -> &mut BlockDownloadManager {
-        &mut self.download_manager
+    pub(crate) fn block_downloader(&mut self) -> &mut BlockDownloader {
+        &mut self.block_downloader
     }
 
     pub(crate) fn on_tick(&mut self) -> SyncAction {
@@ -198,9 +198,9 @@ where
             return self.start_block_download(start, end);
         }
 
-        if self.download_manager.queue_status.is_overloaded() {
+        if self.block_downloader.queue_status.is_overloaded() {
             let is_ready = self
-                .download_manager
+                .block_downloader
                 .evaluate_queue_status(self.client.best_number())
                 .is_ready();
             if is_ready {
@@ -210,7 +210,7 @@ where
             }
         }
 
-        if self.download_manager.is_stalled(self.peer_id) {
+        if self.block_downloader.is_stalled(self.peer_id) {
             return SyncAction::RestartSyncWithStalledPeer(self.peer_id);
         }
 
@@ -230,13 +230,13 @@ where
                 if let Some(next_batch) = waiting.pop_front() {
                     tracing::debug!(
                         best_number = self.client.best_number(),
-                        best_queued_number = self.download_manager.best_queued_number,
+                        best_queued_number = self.block_downloader.best_queued_number,
                         "📦 Resumed downloading {} blocks in batches ({}/{})",
                         next_batch.len(),
                         *downloaded_batch + 1,
                         *downloaded_batch + 1 + waiting.len()
                     );
-                    self.download_manager
+                    self.block_downloader
                         .requested_blocks
                         .clone_from(&next_batch);
                     self.blocks_request_action(next_batch)
@@ -253,7 +253,7 @@ where
         self.downloaded_blocks_count = 0;
         self.last_locator_start = 0u32;
         self.target_block_number = peer_best;
-        self.download_manager.reset();
+        self.block_downloader.reset();
         if let Some((start, end)) = self.downloaded_headers.completed_range {
             self.state = State::RestartingBlocks { start, end };
         } else {
@@ -432,7 +432,7 @@ where
 
             tracing::debug!(
                 best_number,
-                best_queued_number = self.download_manager.best_queued_number,
+                best_queued_number = self.block_downloader.best_queued_number,
                 requested_blocks_count = get_data_msg.len(),
                 missing_blocks_count,
                 downloaded_headers_count = self.downloaded_headers.headers.len(),
@@ -461,7 +461,7 @@ where
             };
 
             let old_requested = self
-                .download_manager
+                .block_downloader
                 .reset_requested_blocks(initial_batch.clone());
 
             assert!(
@@ -473,7 +473,7 @@ where
 
             tracing::debug!(
                 best_number,
-                best_queued_number = self.download_manager.best_queued_number,
+                best_queued_number = self.block_downloader.best_queued_number,
                 missing_blocks_count,
                 downloaded_headers_count = self.downloaded_headers.headers.len(),
                 "Headers downloaded, requesting {blocks_request_count} blocks in batches (1/{total_batches})",
@@ -513,12 +513,12 @@ where
             }
         };
 
-        let receive_requested_block = self.download_manager.on_block_response(block_hash);
+        let receive_requested_block = self.block_downloader.on_block_response(block_hash);
 
         let parent_block_hash = block.header.prev_blockhash;
 
         let maybe_parent = self
-            .download_manager
+            .block_downloader
             .block_number(parent_block_hash)
             .or_else(|| self.client.block_number(parent_block_hash));
 
@@ -527,7 +527,7 @@ where
 
             tracing::trace!("Add pending block #{block_number},{block_hash}");
 
-            self.download_manager
+            self.block_downloader
                 .add_block(block_number, block_hash, block, from);
 
             self.downloaded_blocks_count += 1;
@@ -546,13 +546,13 @@ where
                     waiting,
                     paused,
                 } => {
-                    if self.download_manager.requested_blocks.is_empty() {
+                    if self.block_downloader.requested_blocks.is_empty() {
                         *downloaded_batch += 1;
 
                         let best_number = self.client.best_number();
 
                         if self
-                            .download_manager
+                            .block_downloader
                             .evaluate_queue_status(best_number)
                             .is_overloaded()
                         {
@@ -563,13 +563,13 @@ where
                         if let Some(next_batch) = waiting.pop_front() {
                             tracing::debug!(
                                 best_number,
-                                best_queued_number = self.download_manager.best_queued_number,
+                                best_queued_number = self.block_downloader.best_queued_number,
                                 "📦 Downloaded {} blocks in batches ({}/{})",
                                 next_batch.len(),
                                 *downloaded_batch + 1,
                                 *downloaded_batch + 1 + waiting.len()
                             );
-                            self.download_manager
+                            self.block_downloader
                                 .requested_blocks
                                 .clone_from(&next_batch);
                             return self.blocks_request_action(next_batch);
@@ -591,7 +591,7 @@ where
             }
         } else {
             if receive_requested_block {
-                self.download_manager.add_orphan_block(block_hash, block);
+                self.block_downloader.add_orphan_block(block_hash, block);
             } else {
                 tracing::debug!("Discard unrequested orphan block {block_hash}");
             }
@@ -618,7 +618,7 @@ where
         let best_number = self.client.best_number();
 
         if self
-            .download_manager
+            .block_downloader
             .evaluate_queue_status(best_number)
             .is_overloaded()
         {

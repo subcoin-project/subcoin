@@ -725,30 +725,30 @@ where
     }
 
     pub(super) fn on_blocks_processed(&mut self, results: ImportManyBlocksResult) {
-        let download_manager = match &mut self.syncing {
+        let block_downloader = match &mut self.syncing {
             Syncing::Idle => return,
-            Syncing::BlocksFirst(downloader) => downloader.download_manager(),
-            Syncing::HeadersFirst(downloader) => downloader.download_manager(),
+            Syncing::BlocksFirst(downloader) => downloader.block_downloader(),
+            Syncing::HeadersFirst(downloader) => downloader.block_downloader(),
         };
-        download_manager.handle_processed_blocks(results);
+        block_downloader.handle_processed_blocks(results);
     }
 
     pub(super) fn import_pending_blocks(&mut self) {
-        let download_manager = match &mut self.syncing {
+        let block_downloader = match &mut self.syncing {
             Syncing::Idle => return,
-            Syncing::BlocksFirst(downloader) => downloader.download_manager(),
-            Syncing::HeadersFirst(downloader) => downloader.download_manager(),
+            Syncing::BlocksFirst(downloader) => downloader.block_downloader(),
+            Syncing::HeadersFirst(downloader) => downloader.block_downloader(),
         };
 
-        if !download_manager.has_pending_blocks() {
+        if !block_downloader.has_pending_blocks() {
             return;
         }
 
-        let (hashes, blocks) = download_manager.prepare_blocks_for_import();
+        let (hashes, blocks) = block_downloader.prepare_blocks_for_import();
 
         tracing::trace!(
             blocks = ?hashes,
-            blocks_in_queue = download_manager.blocks_in_queue_count(),
+            blocks_in_queue = block_downloader.blocks_in_queue_count(),
             "Scheduling {} blocks for import",
             blocks.len(),
         );
