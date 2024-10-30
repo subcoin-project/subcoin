@@ -455,9 +455,9 @@ where
             let Some(initial_batch) = batches.pop_front() else {
                 tracing::warn!(
                     ?total_batches,
-                    "Download batches is empty, failed to start new block download"
+                    "Block download batches are empty, attempting new headers request"
                 );
-                return SyncAction::None;
+                return self.headers_request_action();
             };
 
             let old_requested = self

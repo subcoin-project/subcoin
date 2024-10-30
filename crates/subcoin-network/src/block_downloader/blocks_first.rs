@@ -168,6 +168,9 @@ where
     pub(crate) fn on_inv(&mut self, inventories: Vec<Inventory>, from: PeerId) -> SyncAction {
         if from != self.peer_id {
             tracing::debug!(?from, current_sync_peer = ?self.peer_id, "Recv unexpected {} inventories", inventories.len());
+            if inventories.len() == 1 {
+                tracing::debug!(?from, "TODO: block announcement, inventories: {inventories:?}");
+            }
             return SyncAction::None;
         }
 
