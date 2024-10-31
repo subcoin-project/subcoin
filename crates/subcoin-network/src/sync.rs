@@ -12,11 +12,11 @@ use sc_consensus_nakamoto::{
 use serde::{Deserialize, Serialize};
 use sp_consensus::BlockOrigin;
 use sp_runtime::traits::Block as BlockT;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use subcoin_primitives::{BackendExt, ClientExt};
+use subcoin_primitives::ClientExt;
 
 // Do major sync when the current tip falls behind the network by 144 blocks (roughly one day).
 const MAJOR_SYNC_GAP: u32 = 144;
@@ -159,7 +159,7 @@ pub(crate) struct ChainSync<Block, Client> {
     /// Current syncing state.
     syncing: Syncing<Block, Client>,
     /// Handle of the import queue.
-    import_queue: BlockImportQueue,
+    pub(crate) import_queue: BlockImportQueue,
     /// Block syncing strategy.
     sync_strategy: SyncStrategy,
     /// Are we in major syncing?
@@ -168,8 +168,6 @@ pub(crate) struct ChainSync<Block, Client> {
     enable_block_sync: bool,
     /// Randomness generator.
     rng: fastrand::Rng,
-    /// Broadcasted blocks that are being requested.
-    inflight_announced_blocks: HashSet<BlockHash>,
     /// Handle of peer store.
     peer_store: Arc<dyn PeerStore>,
     _phantom: PhantomData<Block>,
@@ -200,7 +198,6 @@ where
             is_major_syncing,
             enable_block_sync,
             rng: fastrand::Rng::new(),
-            inflight_announced_blocks: HashSet::new(),
             peer_store,
             _phantom: Default::default(),
         }
@@ -246,6 +243,22 @@ where
             if matches!(removed_peer.state, PeerSyncState::DownloadingNew { .. }) {
                 self.restart_sync(removed_peer.peer_id, RestartReason::Disconnected);
             }
+        }
+    }
+
+    pub(super) fn update_peer_best(&mut self, peer_id: PeerId, peer_best: u32) {
+        self.peers.entry(peer_id).and_modify(|e| {
+            tracing::debug!(
+                "Peer's best block updated from #{} to #{peer_best}",
+                e.best_number
+            );
+            e.best_number = peer_best;
+        });
+
+        match &mut self.syncing {
+            Syncing::Idle => return,
+            Syncing::BlocksFirst(strategy) => strategy.update_peer_best(peer_id, peer_best),
+            Syncing::HeadersFirst(strategy) => strategy.update_peer_best(peer_id, peer_best),
         }
     }
 
@@ -637,55 +650,15 @@ where
     // or in reply to `getblocks`.
     pub(super) fn on_inv(&mut self, inventories: Vec<Inventory>, from: PeerId) -> SyncAction {
         match &mut self.syncing {
-            Syncing::Idle => {
-                if inventories.len() == 1 {
-                    if let Inventory::Block(block_hash) = inventories[0] {
-                        if !self.inflight_announced_blocks.contains(&block_hash) {
-                            // A new block is broadcasted via `inv` message.
-                            tracing::trace!(
-                                "Requesting a new block {block_hash} announced from {from:?}"
-                            );
-                            return self.announced_blocks_request(vec![block_hash], from);
-                        }
-                    }
-                }
-                SyncAction::None
-            }
+            Syncing::Idle => SyncAction::None,
             Syncing::BlocksFirst(strategy) => strategy.on_inv(inventories, from),
             Syncing::HeadersFirst(_) => SyncAction::None,
         }
     }
 
-    fn announced_blocks_request(
-        &mut self,
-        block_hashes: impl IntoIterator<Item = BlockHash>,
-        from: PeerId,
-    ) -> SyncAction {
-        let data_request = SyncRequest::Data(
-            block_hashes
-                .into_iter()
-                .map(|block_hash| {
-                    self.inflight_announced_blocks.insert(block_hash);
-                    Inventory::Block(block_hash)
-                })
-                .collect(),
-            from,
-        );
-
-        SyncAction::Request(data_request)
-    }
-
     pub(super) fn on_block(&mut self, block: BitcoinBlock, from: PeerId) -> SyncAction {
         match &mut self.syncing {
-            Syncing::Idle => {
-                if self.inflight_announced_blocks.remove(&block.block_hash()) {
-                    self.import_queue.import_blocks(ImportBlocks {
-                        origin: BlockOrigin::NetworkBroadcast,
-                        blocks: vec![block],
-                    });
-                }
-                SyncAction::None
-            }
+            Syncing::Idle => SyncAction::None,
             Syncing::BlocksFirst(strategy) => strategy.on_block(block, from),
             Syncing::HeadersFirst(strategy) => strategy.on_block(block, from),
         }
@@ -695,31 +668,6 @@ where
         match &mut self.syncing {
             Syncing::HeadersFirst(strategy) => strategy.on_headers(headers, from),
             Syncing::BlocksFirst(_) | Syncing::Idle => {
-                if headers.is_empty() {
-                    return SyncAction::None;
-                }
-
-                // New blocks maybe broadcasted via `headers` message.
-                let Some(best_hash) = self.client.block_hash(self.client.best_number()) else {
-                    return SyncAction::None;
-                };
-
-                // New blocks, extending the chain tip.
-                if headers[0].prev_blockhash == best_hash {
-                    for (index, header) in headers.iter().enumerate() {
-                        if !self.header_verifier.has_valid_proof_of_work(header) {
-                            tracing::error!(?from, "Invalid header at index {index} in headers");
-                            return SyncAction::Disconnect(
-                                from,
-                                Error::BadProofOfWork(header.block_hash()),
-                            );
-                        }
-                    }
-
-                    let new_blocks = headers.into_iter().map(|header| header.block_hash());
-                    return self.announced_blocks_request(new_blocks, from);
-                }
-
                 tracing::debug!(
                     ?from,
                     "Ignored headers: {:?}",
@@ -728,7 +676,6 @@ where
                         .map(|header| header.block_hash())
                         .collect::<Vec<_>>()
                 );
-
                 SyncAction::None
             }
         }

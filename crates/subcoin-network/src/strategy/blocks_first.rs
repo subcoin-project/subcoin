@@ -119,6 +119,12 @@ where
         self.block_downloader.peer_id = peer_id;
     }
 
+    pub(crate) fn update_peer_best(&mut self, peer_id: PeerId, peer_best: u32) {
+        if self.peer_id == peer_id {
+            self.target_block_number = peer_best;
+        }
+    }
+
     pub(crate) fn block_downloader(&mut self) -> &mut BlockDownloader {
         &mut self.block_downloader
     }
@@ -177,10 +183,7 @@ where
     pub(crate) fn on_inv(&mut self, inventories: Vec<Inventory>, from: PeerId) -> SyncAction {
         if from != self.peer_id {
             tracing::debug!(?from, current_sync_peer = ?self.peer_id, "Recv unexpected {} inventories", inventories.len());
-                tracing::debug!(
-                    ?from,
-                    "TODO: possibly block announcement, inventories: {inventories:?}"
-                );
+            tracing::debug!(?from, "TODO: inventories: {inventories:?}");
             return SyncAction::None;
         }
 
@@ -205,14 +208,6 @@ where
                 return SyncAction::None;
             }
         };
-
-        if range.end - range.start > 1
-            && inventories.len() == 1
-            && matches!(inventories[0], Inventory::Block(_))
-        {
-            tracing::debug!("TODO: sync peer sent us a block annoucement: {inventories:?}");
-            return SyncAction::None;
-        }
 
         tracing::debug!("Processing {} inventories", inventories.len());
 
@@ -256,13 +251,17 @@ where
         let last_get_blocks_target = match &self.state {
             State::DownloadingBlocks(range) => range.end - 1,
             state => {
-                tracing::debug!(
-                    ?state,
-                    ?from,
-                    current_sync_peer = ?self.peer_id,
-                    "Recv unexpected block {}",
-                    block.block_hash()
-                );
+                if let Ok(height) = block.bip34_block_height() {
+                } else {
+                    tracing::debug!(
+                        ?state,
+                        ?from,
+                        current_sync_peer = ?self.peer_id,
+                        "Recv unexpected block {}",
+                        block.block_hash()
+                    );
+                }
+
                 return SyncAction::None;
             }
         };

@@ -387,18 +387,18 @@ impl BlockDownloader {
     }
 
     pub(crate) fn add_orphan_block(&mut self, block_hash: BlockHash, orphan_block: BitcoinBlock) {
+        self.orphan_blocks_pool.insert_orphan_block(orphan_block);
         tracing::debug!(
             orphan_blocks_count = self.orphan_blocks_pool.len(),
-            "Adding orphan block {block_hash} to the orphan blocks pool",
+            "Added orphan block {block_hash} to orphan blocks pool",
         );
-        self.orphan_blocks_pool.insert_orphan_block(orphan_block);
     }
 
     pub(crate) fn add_unknown_block(&mut self, block_hash: BlockHash, unknown_block: BitcoinBlock) {
+        self.orphan_blocks_pool.insert_unknown_block(unknown_block);
         tracing::debug!(
             orphan_blocks_count = self.orphan_blocks_pool.len(),
-            "Adding unknown block {block_hash} to the orphan blocks pool",
+            "Added unknown block {block_hash} to orphan blocks pool",
         );
-        self.orphan_blocks_pool.insert_unknown_block(unknown_block);
     }
 }

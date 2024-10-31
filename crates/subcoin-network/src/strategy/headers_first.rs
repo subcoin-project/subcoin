@@ -188,6 +188,12 @@ where
         self.block_downloader.peer_id = peer_id;
     }
 
+    pub(crate) fn update_peer_best(&mut self, peer_id: PeerId, peer_best: u32) {
+        if self.peer_id == peer_id {
+            self.target_block_number = peer_best;
+        }
+    }
+
     pub(crate) fn block_downloader(&mut self) -> &mut BlockDownloader {
         &mut self.block_downloader
     }
