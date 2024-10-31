@@ -356,7 +356,7 @@ where
         );
 
         if !config.enable_block_sync_on_startup {
-            tracing::info!("Subcoin block sync is disabled until Substrate fast sync is complete");
+            tracing::info!("Subcoin block sync is disabled on startup");
         }
 
         let (sender, receiver) = tracing_unbounded("mpsc_subcoin_peer_store", 10_000);

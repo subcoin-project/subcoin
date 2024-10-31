@@ -69,6 +69,7 @@ pub struct NetworkWorker<Block, Client> {
     chain_sync: ChainSync<Block, Client>,
     peer_store: Arc<dyn PeerStore>,
     peer_manager: PeerManager<Block, Client>,
+    header_verifier: HeaderVerifier<Block, Client>,
     transaction_manager: TransactionManager,
     network_event_receiver: UnboundedReceiver<Event>,
     /// Broadcasted blocks that are being requested.
@@ -115,7 +116,7 @@ where
 
         let chain_sync = ChainSync::new(
             client.clone(),
-            header_verifier,
+            header_verifier.clone(),
             import_queue,
             sync_strategy,
             is_major_syncing,
@@ -129,6 +130,7 @@ where
             chain_sync,
             peer_store,
             peer_manager,
+            header_verifier,
             transaction_manager: TransactionManager::new(),
             inflight_announced_blocks: HashMap::new(),
             network_event_receiver,
@@ -474,36 +476,37 @@ where
 
     fn process_block(&mut self, from: PeerId, block: BitcoinBlock) -> Result<SyncAction, Error> {
         let block_hash = block.block_hash();
+
         if self
             .inflight_announced_blocks
             .get(&from)
             .map(|annoucements| annoucements.contains(&block_hash))
             .unwrap_or(false)
         {
-            tracing::debug!("============ Recv block announce response {block_hash} from {from:?}");
+            tracing::debug!("Recv announced block {block_hash} from {from:?}");
             self.inflight_announced_blocks.entry(from).and_modify(|e| {
                 e.remove(&block_hash);
             });
 
             if let Ok(height) = block.bip34_block_height() {
                 self.chain_sync.update_peer_best(from, height as u32);
-
-                let Some(best_hash) = self.client.block_hash(self.client.best_number()) else {
-                    return Ok(SyncAction::None);
-                };
-
-                if block.header.prev_blockhash == best_hash
-                    && self.client.block_number(block_hash).is_none()
-                {
-                    self.chain_sync.import_queue.import_blocks(
-                        sc_consensus_nakamoto::ImportBlocks {
-                            origin: sp_consensus::BlockOrigin::NetworkBroadcast,
-                            blocks: vec![block],
-                        },
-                    );
-                }
             } else {
-                tracing::debug!("No height in coinbase transaction");
+                tracing::debug!(?block_hash, "No height in coinbase transaction");
+            }
+
+            let Some(best_hash) = self.client.block_hash(self.client.best_number()) else {
+                return Ok(SyncAction::None);
+            };
+
+            if block.header.prev_blockhash == best_hash
+                && self.client.block_number(block_hash).is_none()
+            {
+                self.chain_sync
+                    .import_queue
+                    .import_blocks(sc_consensus_nakamoto::ImportBlocks {
+                        origin: sp_consensus::BlockOrigin::NetworkBroadcast,
+                        blocks: vec![block],
+                    });
             }
 
             return Ok(SyncAction::None);
@@ -521,7 +524,6 @@ where
             return Ok(SyncAction::None);
         }
 
-        /* TODO
         // New blocks maybe broadcasted via `headers` message.
         let Some(best_hash) = self.client.block_hash(self.client.best_number()) else {
             return Ok(SyncAction::None);
@@ -532,17 +534,33 @@ where
             for (index, header) in headers.iter().enumerate() {
                 if !self.header_verifier.has_valid_proof_of_work(header) {
                     tracing::error!(?from, "Invalid header at index {index} in headers");
-                    return SyncAction::Disconnect(
+                    return Ok(SyncAction::Disconnect(
                         from,
                         Error::BadProofOfWork(header.block_hash()),
-                    );
+                    ));
                 }
             }
 
-            let new_blocks = headers.into_iter().map(|header| header.block_hash());
-            return self.announced_blocks_request(new_blocks, from);
+            let inv = headers
+                .into_iter()
+                .map(|header| {
+                    let block_hash = header.block_hash();
+
+                    self.inflight_announced_blocks
+                        .entry(from)
+                        .and_modify(|e| {
+                            e.insert(block_hash);
+                        })
+                        .or_insert_with(|| HashSet::from([block_hash]));
+
+                    Inventory::Block(block_hash)
+                })
+                .collect();
+
+            let _ = self.send(from, NetworkMessage::GetData(inv));
+
+            return Ok(SyncAction::None);
         }
-        */
 
         Ok(self.chain_sync.on_headers(headers, from))
     }
