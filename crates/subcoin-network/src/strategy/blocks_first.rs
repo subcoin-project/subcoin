@@ -35,7 +35,7 @@ enum State {
     /// up to 500 blocks in specific. It only continues to download the next batch
     /// of blocks once the previous request succeeds.
     DownloadingInv(Range<u32>),
-    ///
+    /// Downloading blocks upon the completion of inventories download.
     DownloadingBlocks(Range<u32>),
     /// All blocks up to the target block have been successfully downloaded,
     /// the download process has been completed.
@@ -135,22 +135,41 @@ where
         }
 
         if self.block_downloader.queue_status.is_overloaded() {
+            // If the queue was overloaded, evalute the current queue status again.
             let is_ready = self
                 .block_downloader
                 .evaluate_queue_status(self.client.best_number())
                 .is_ready();
+
             if is_ready {
-                return self.blocks_request_action();
+                if matches!(self.state, State::DownloadingBlocks(..)) {
+                    if self.block_downloader.missing_blocks.is_empty() {
+                        return self.blocks_request_action();
+                    } else if self.block_downloader.requested_blocks.is_empty() {
+                        return self.block_downloader.schedule_next_download_batch();
+                    }
+                } else {
+                    return self.blocks_request_action();
+                }
             } else {
                 return SyncAction::None;
             }
-        }
+        } else if matches!(self.state, State::DownloadingBlocks(..)) {
+            // If the queue was not overloaded, but we are in the downloading blocks mode,
+            // see whether there are more blocks to download.
+            let is_ready = self
+                .block_downloader
+                .evaluate_queue_status(self.client.best_number())
+                .is_ready();
 
-        if matches!(self.state, State::DownloadingBlocks(..)) {
-            if self.block_downloader.missing_blocks.is_empty() {
-                return self.blocks_request_action();
-            } else if self.block_downloader.requested_blocks.is_empty() {
-                return self.block_downloader.schedule_next_download_batch();
+            if is_ready {
+                if self.block_downloader.missing_blocks.is_empty() {
+                    return self.blocks_request_action();
+                } else if self.block_downloader.requested_blocks.is_empty() {
+                    return self.block_downloader.schedule_next_download_batch();
+                }
+            } else {
+                return SyncAction::None;
             }
         }
 

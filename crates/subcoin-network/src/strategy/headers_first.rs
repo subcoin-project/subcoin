@@ -261,7 +261,7 @@ where
 
         let end = checkpoint;
 
-        tracing::debug!("Requesting headers from {start} to {end}");
+        tracing::debug!("Requesting headers ({start}, {end}]");
 
         // Ignore the back-to-back duplicate locators.
         if our_best > 0 && our_best == self.last_locator_start {
