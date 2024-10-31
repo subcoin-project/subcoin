@@ -345,39 +345,7 @@ where
                 self.send(from, NetworkMessage::Pong(nonce))?;
                 Ok(SyncAction::None)
             }
-            NetworkMessage::Pong(nonce) => {
-                match self.peer_manager.on_pong(from, nonce) {
-                    Ok(avg_latency) => {
-                        // Disconnect the peer directly if the latency is higher than the threshold.
-                        if avg_latency > PEER_LATENCY_THRESHOLD {
-                            self.peer_manager
-                                .disconnect(from, Error::PingLatencyTooHigh(avg_latency));
-                            self.chain_sync.disconnect(from);
-                            self.peer_store.remove_peer(from);
-                        } else {
-                            if self.chain_sync.peers.contains_key(&from) {
-                                self.chain_sync.update_peer_latency(from, avg_latency);
-                            } else {
-                                self.chain_sync.add_new_peer(NewPeer {
-                                    peer_id: from,
-                                    best_number: self
-                                        .peer_manager
-                                        .peer_best_number(from)
-                                        .ok_or(Error::ConnectionNotFound(from))?,
-                                    latency: avg_latency,
-                                });
-                            }
-                            self.peer_store.try_add_peer(from, avg_latency);
-                        }
-                    }
-                    Err(err) => {
-                        self.peer_manager.disconnect(from, err);
-                        self.chain_sync.disconnect(from);
-                        self.peer_store.remove_peer(from);
-                    }
-                }
-                Ok(SyncAction::None)
-            }
+            NetworkMessage::Pong(nonce) => Ok(self.process_pong(from, nonce)?),
             NetworkMessage::AddrV2(addresses) => {
                 self.peer_manager.on_addr_v2(from, addresses);
                 Ok(SyncAction::None)
@@ -485,6 +453,44 @@ where
             };
             let _ = self.send(to, NetworkMessage::GetBlocks(msg));
         }
+    }
+
+    fn process_pong(&mut self, from: PeerId, nonce: u64) -> Result<SyncAction, Error> {
+        match self.peer_manager.on_pong(from, nonce) {
+            Ok(avg_latency) => {
+                // Disconnect the peer directly if the latency is higher than the threshold.
+                if avg_latency > PEER_LATENCY_THRESHOLD {
+                    self.peer_manager
+                        .disconnect(from, Error::PingLatencyTooHigh(avg_latency));
+                    self.chain_sync.disconnect(from);
+                    self.peer_store.remove_peer(from);
+                } else {
+                    self.peer_store.try_add_peer(from, avg_latency);
+
+                    if self.chain_sync.peers.contains_key(&from) {
+                        self.chain_sync.update_peer_latency(from, avg_latency);
+                    } else {
+                        let maybe_start_sync = self.chain_sync.add_new_peer(NewPeer {
+                            peer_id: from,
+                            best_number: self
+                                .peer_manager
+                                .peer_best_number(from)
+                                .ok_or(Error::ConnectionNotFound(from))?,
+                            latency: avg_latency,
+                        });
+
+                        return Ok(maybe_start_sync);
+                    }
+                }
+            }
+            Err(err) => {
+                self.peer_manager.disconnect(from, err);
+                self.chain_sync.disconnect(from);
+                self.peer_store.remove_peer(from);
+            }
+        }
+
+        Ok(SyncAction::None)
     }
 
     fn process_inv(&mut self, from: PeerId, inv: Vec<Inventory>) -> Result<SyncAction, Error> {
