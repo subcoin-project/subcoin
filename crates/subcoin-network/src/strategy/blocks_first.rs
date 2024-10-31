@@ -131,7 +131,7 @@ where
 
     pub(crate) fn on_tick(&mut self) -> SyncAction {
         if matches!(self.state, State::Restarting) {
-            return SyncAction::Request(self.prepare_blocks_request());
+            return self.blocks_request_action();
         }
 
         if self.block_downloader.queue_status.is_overloaded() {
@@ -140,7 +140,7 @@ where
                 .evaluate_queue_status(self.client.best_number())
                 .is_ready();
             if is_ready {
-                return SyncAction::Request(self.prepare_blocks_request());
+                return self.blocks_request_action();
             } else {
                 return SyncAction::None;
             }
@@ -148,7 +148,7 @@ where
 
         if matches!(self.state, State::DownloadingBlocks(..)) {
             if self.block_downloader.missing_blocks.is_empty() {
-                return SyncAction::Request(self.prepare_blocks_request());
+                return self.blocks_request_action();
             } else if self.block_downloader.requested_blocks.is_empty() {
                 return self.block_downloader.schedule_next_download_batch();
             }
@@ -204,7 +204,7 @@ where
         let range = match &self.state {
             State::DownloadingInv(range) => range,
             state => {
-                tracing::error!("Recv inventories in state {state:?}");
+                tracing::debug!("Recv inventories in state {state:?}");
                 return SyncAction::None;
             }
         };
@@ -230,7 +230,7 @@ where
         }
 
         if missing_blocks.is_empty() {
-            return SyncAction::Request(self.prepare_blocks_request());
+            return self.blocks_request_action();
         }
 
         tracing::debug!("Found {} blocks missing", missing_blocks.len());
@@ -395,11 +395,15 @@ where
                 {
                     SyncAction::None
                 } else {
-                    // Request the parents of the orphan block.
-                    SyncAction::Request(self.prepare_blocks_request())
+                    self.blocks_request_action()
                 }
             }
         }
+    }
+
+    #[inline]
+    fn blocks_request_action(&mut self) -> SyncAction {
+        SyncAction::Request(self.prepare_blocks_request())
     }
 
     fn prepare_blocks_request(&mut self) -> SyncRequest {
@@ -408,7 +412,6 @@ where
             locator_hashes,
         } = self.block_locator();
 
-        // TODO: update self.target_block_number properly.
         let end = self
             .target_block_number
             .min(latest_block + MAX_GET_BLOCKS_RESPONSE);
