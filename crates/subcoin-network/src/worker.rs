@@ -529,37 +529,39 @@ where
             return Ok(SyncAction::None);
         };
 
-        // New blocks, extending the chain tip.
-        if headers[0].prev_blockhash == best_hash {
-            for (index, header) in headers.iter().enumerate() {
-                if !self.header_verifier.has_valid_proof_of_work(header) {
-                    tracing::error!(?from, "Invalid header at index {index} in headers");
-                    return Ok(SyncAction::Disconnect(
-                        from,
-                        Error::BadProofOfWork(header.block_hash()),
-                    ));
+        if self.chain_sync.is_idle() {
+            // New blocks, extending the chain tip.
+            if headers[0].prev_blockhash == best_hash {
+                for (index, header) in headers.iter().enumerate() {
+                    if !self.header_verifier.has_valid_proof_of_work(header) {
+                        tracing::error!(?from, "Invalid header at index {index} in headers");
+                        return Ok(SyncAction::Disconnect(
+                            from,
+                            Error::BadProofOfWork(header.block_hash()),
+                        ));
+                    }
                 }
+
+                let inv = headers
+                    .into_iter()
+                    .map(|header| {
+                        let block_hash = header.block_hash();
+
+                        self.inflight_announced_blocks
+                            .entry(from)
+                            .and_modify(|e| {
+                                e.insert(block_hash);
+                            })
+                            .or_insert_with(|| HashSet::from([block_hash]));
+
+                        Inventory::Block(block_hash)
+                    })
+                    .collect();
+
+                let _ = self.send(from, NetworkMessage::GetData(inv));
+
+                return Ok(SyncAction::None);
             }
-
-            let inv = headers
-                .into_iter()
-                .map(|header| {
-                    let block_hash = header.block_hash();
-
-                    self.inflight_announced_blocks
-                        .entry(from)
-                        .and_modify(|e| {
-                            e.insert(block_hash);
-                        })
-                        .or_insert_with(|| HashSet::from([block_hash]));
-
-                    Inventory::Block(block_hash)
-                })
-                .collect();
-
-            let _ = self.send(from, NetworkMessage::GetData(inv));
-
-            return Ok(SyncAction::None);
         }
 
         Ok(self.chain_sync.on_headers(headers, from))

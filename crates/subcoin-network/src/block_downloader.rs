@@ -141,17 +141,20 @@ impl BlockDownloader {
         self.missing_blocks.clear();
     }
 
-    /// Prepares and truncates the block data request to avoid overly large requests.
+    /// Prepares the next block data request, ensuring the request size aligns with the current
+    /// blockchain height to avoid overly large downloads and improve latency.
     ///
-    /// To minimize potential failures and latency, this function splits large `Inventory` lists
-    /// into smaller requests if they exceed a predefined maximum size. If truncation is necessary,
-    /// the remaining items are stored in `self.missing_blocks` for future processing.
+    /// This function selects a batch of blocks from `self.missing_blocks` based on the
+    /// `self.best_queued_number`. As the chain grows, the maximum request size decreases to
+    /// reduce the burden on peers. If the number of blocks exceeds the `max_request_size`,
+    /// the function truncates the list to the maximum allowed, storing any remaining blocks
+    /// back in `self.missing_blocks` for future requests.
     ///
     /// # Returns
     ///
-    /// A `SyncAction` containing a `SyncRequest::Data` with the truncated list of blocks to
+    /// A `SyncAction::Request` containing a `SyncRequest::Data` with the list of blocks to
     /// request from the peer.
-    pub(crate) fn next_block_download_action(&mut self) -> SyncAction {
+    pub(crate) fn schedule_next_download_batch(&mut self) -> SyncAction {
         let max_request_size = match self.best_queued_number {
             0..=99_999 => 1024,
             100_000..=199_999 => 512,
@@ -174,21 +177,20 @@ impl BlockDownloader {
 
         self.missing_blocks = new_missing_blocks;
 
-        self.requested_blocks = blocks_to_download.into_iter().collect::<HashSet<_>>();
-
-        tracing::debug!(
-            from = ?self.peer_id,
-            missing_blocks_count = self.missing_blocks.len(),
-            "📦 Downloading {} blocks",
-            self.requested_blocks.len(),
-        );
-
-        let block_data_request = self
-            .requested_blocks
+        let block_data_request = blocks_to_download
             .clone()
             .into_iter()
             .map(Inventory::Block)
             .collect::<Vec<_>>();
+
+        self.requested_blocks = blocks_to_download.into_iter().collect::<HashSet<_>>();
+
+        tracing::debug!(
+            from = ?self.peer_id,
+            missing_blocks = self.missing_blocks.len(),
+            "📦 Downloading {} blocks",
+            self.requested_blocks.len(),
+        );
 
         SyncAction::Request(SyncRequest::Data(block_data_request, self.peer_id))
     }
@@ -286,10 +288,6 @@ impl BlockDownloader {
         self.orphan_blocks_pool.clear();
         self.last_progress_time = Instant::now();
         self.queue_status = ImportQueueStatus::Ready;
-    }
-
-    pub(crate) fn reset_requested_blocks(&mut self, new: HashSet<BlockHash>) -> HashSet<BlockHash> {
-        std::mem::replace(&mut self.requested_blocks, new)
     }
 
     /// Checks if there are blocks ready to be imported.

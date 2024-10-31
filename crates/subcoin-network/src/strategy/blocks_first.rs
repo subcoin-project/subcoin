@@ -150,7 +150,7 @@ where
             if self.block_downloader.missing_blocks.is_empty() {
                 return SyncAction::Request(self.prepare_blocks_request());
             } else if self.block_downloader.requested_blocks.is_empty() {
-                return self.block_downloader.next_block_download_action();
+                return self.block_downloader.schedule_next_download_batch();
             }
         }
 
@@ -239,7 +239,7 @@ where
 
         self.state = State::DownloadingBlocks(range.clone());
 
-        self.block_downloader.next_block_download_action()
+        self.block_downloader.schedule_next_download_batch()
     }
 
     pub(crate) fn on_block(&mut self, block: BitcoinBlock, from: PeerId) -> SyncAction {
@@ -252,12 +252,17 @@ where
             State::DownloadingBlocks(range) => range.end - 1,
             state => {
                 if let Ok(height) = block.bip34_block_height() {
+                    tracing::debug!(
+                        ?state,
+                        current_sync_peer = ?self.peer_id,
+                        "Recv unexpected block #{height},{} from {from:?}",
+                        block.block_hash()
+                    );
                 } else {
                     tracing::debug!(
                         ?state,
-                        ?from,
                         current_sync_peer = ?self.peer_id,
-                        "Recv unexpected block {}",
+                        "Recv unexpected block {} from {from:?}",
                         block.block_hash()
                     );
                 }

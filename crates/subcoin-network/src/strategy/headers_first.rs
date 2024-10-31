@@ -10,7 +10,6 @@ use sc_client_api::AuxStore;
 use sc_consensus_nakamoto::HeaderVerifier;
 use sp_blockchain::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
-use std::collections::{HashSet, VecDeque};
 use std::fmt::Display;
 use std::marker::PhantomData;
 use std::net::IpAddr;
@@ -38,13 +37,6 @@ enum BlockDownload {
     },
     /// Request blocks in smaller, manageable batches.
     Batches {
-        /// Tracks the number of batches already downloaded.
-        downloaded_batch: usize,
-        /// A queue of sets containing the blocks that are waiting to be downloaded.
-        ///
-        /// **Note**: The blocks currently being downloaded are tracked by the sync
-        /// manager, not included directly in this structure..
-        waiting: VecDeque<HashSet<BlockHash>>,
         /// Is the blocks download paused?
         paused: bool,
     },
@@ -94,16 +86,6 @@ impl Display for State {
             Self::DownloadingBlocks(_range) => write!(f, "DownloadingBlocks"),
             Self::Completed => write!(f, "Completed"),
         }
-    }
-}
-
-fn block_download_batch_size(height: u32) -> usize {
-    match height {
-        0..=99_999 => 1024,
-        100_000..=199_999 => 512,
-        200_000..=299_999 => 64,
-        300_000..=499_999 => 16,
-        _ => 8,
     }
 }
 
@@ -229,26 +211,12 @@ where
     // Resume blocks or headers request.
     fn resume_request(&mut self) -> SyncAction {
         match &mut self.state {
-            State::DownloadingBlocks(BlockDownload::Batches {
-                downloaded_batch,
-                waiting,
-                paused,
-            }) if *paused => {
+            State::DownloadingBlocks(BlockDownload::Batches { paused }) if *paused => {
                 *paused = false;
 
-                if let Some(next_batch) = waiting.pop_front() {
-                    tracing::debug!(
-                        best_number = self.client.best_number(),
-                        best_queued_number = self.block_downloader.best_queued_number,
-                        "📦 Resumed downloading {} blocks in batches ({}/{})",
-                        next_batch.len(),
-                        *downloaded_batch + 1,
-                        *downloaded_batch + 1 + waiting.len()
-                    );
-                    self.block_downloader
-                        .requested_blocks
-                        .clone_from(&next_batch);
-                    self.blocks_request_action(next_batch)
+                if !self.block_downloader.missing_blocks.is_empty() {
+                    tracing::debug!("Resumed downloading next batch of blocks");
+                    self.block_downloader.schedule_next_download_batch()
                 } else {
                     self.headers_request_action()
                 }
@@ -437,7 +405,7 @@ where
         // simply request all blocks at once.
         let download_all_blocks_in_one_request = is_local_address(&self.peer_id);
 
-        let get_data_msg = if download_all_blocks_in_one_request {
+        if download_all_blocks_in_one_request {
             let get_data_msg = missing_blocks.map(Inventory::Block).collect::<Vec<_>>();
 
             tracing::debug!(
@@ -451,57 +419,27 @@ where
 
             self.state = State::DownloadingBlocks(BlockDownload::AllBlocks { start, end });
 
-            get_data_msg
+            SyncAction::Request(SyncRequest::Data(get_data_msg, self.peer_id))
         } else {
-            let batch_size = block_download_batch_size(end.number);
-            let mut batches = missing_blocks
-                .collect::<Vec<_>>()
-                .chunks(batch_size)
-                .map(|set| HashSet::from_iter(set.to_vec()))
-                .collect::<VecDeque<HashSet<_>>>();
+            let mut missing_blocks = missing_blocks.collect::<Vec<_>>();
 
-            let total_batches = batches.len();
-
-            let Some(initial_batch) = batches.pop_front() else {
-                tracing::warn!(
-                    ?total_batches,
-                    "Block download batches are empty, attempting new headers request"
-                );
+            if missing_blocks.is_empty() {
+                tracing::debug!("No missing blocks, starting new headers request");
                 return self.headers_request_action();
-            };
+            }
 
-            let old_requested = self
-                .block_downloader
-                .reset_requested_blocks(initial_batch.clone());
+            self.state = State::DownloadingBlocks(BlockDownload::Batches { paused: false });
 
-            assert!(
-                old_requested.is_empty(),
-                "There are still requested blocks not yet received: {old_requested:?}"
-            );
-
-            let blocks_request_count = initial_batch.len();
-
-            tracing::debug!(
-                best_number,
-                best_queued_number = self.block_downloader.best_queued_number,
-                missing_blocks_count,
-                downloaded_headers_count = self.downloaded_headers.headers.len(),
-                "Headers downloaded, requesting {blocks_request_count} blocks in batches (1/{total_batches})",
-            );
-
-            let get_data_msg =
-                prepare_ordered_block_data_request(initial_batch, &self.downloaded_headers.headers);
-
-            self.state = State::DownloadingBlocks(BlockDownload::Batches {
-                downloaded_batch: 0,
-                waiting: batches,
-                paused: false,
+            // Sort the download list to avoid too many orphan blocks.
+            missing_blocks.sort_by_key(|block_hash| {
+                self.downloaded_headers.headers.get(block_hash).expect(
+                    "Header must be available for downloading blocks in headers-first mode; qed ",
+                )
             });
 
-            get_data_msg
-        };
-
-        SyncAction::Request(SyncRequest::Data(get_data_msg, self.peer_id))
+            self.block_downloader.set_missing_blocks(missing_blocks);
+            self.block_downloader.schedule_next_download_batch()
+        }
     }
 
     pub(crate) fn on_block(&mut self, block: BitcoinBlock, from: PeerId) -> SyncAction {
@@ -551,38 +489,20 @@ where
                         false
                     }
                 }
-                BlockDownload::Batches {
-                    downloaded_batch,
-                    waiting,
-                    paused,
-                } => {
+                BlockDownload::Batches { paused } => {
                     if self.block_downloader.requested_blocks.is_empty() {
-                        *downloaded_batch += 1;
+                        if !self.block_downloader.missing_blocks.is_empty() {
+                            if self
+                                .block_downloader
+                                .evaluate_queue_status(self.client.best_number())
+                                .is_overloaded()
+                            {
+                                *paused = true;
+                                return SyncAction::None;
+                            }
 
-                        let best_number = self.client.best_number();
-
-                        if self
-                            .block_downloader
-                            .evaluate_queue_status(best_number)
-                            .is_overloaded()
-                        {
-                            *paused = true;
-                            return SyncAction::None;
-                        }
-
-                        if let Some(next_batch) = waiting.pop_front() {
-                            tracing::debug!(
-                                best_number,
-                                best_queued_number = self.block_downloader.best_queued_number,
-                                "📦 Downloaded {} blocks in batches ({}/{})",
-                                next_batch.len(),
-                                *downloaded_batch + 1,
-                                *downloaded_batch + 1 + waiting.len()
-                            );
-                            self.block_downloader
-                                .requested_blocks
-                                .clone_from(&next_batch);
-                            return self.blocks_request_action(next_batch);
+                            // Request next batch of blocks.
+                            return self.block_downloader.schedule_next_download_batch();
                         }
 
                         tracing::debug!("Downloaded checkpoint block #{block_number},{block_hash}");
@@ -608,14 +528,6 @@ where
 
             SyncAction::None
         }
-    }
-
-    fn blocks_request_action(&self, blocks_to_download: HashSet<BlockHash>) -> SyncAction {
-        let get_data_msg = prepare_ordered_block_data_request(
-            blocks_to_download,
-            &self.downloaded_headers.headers,
-        );
-        SyncAction::Request(SyncRequest::Data(get_data_msg, self.peer_id))
     }
 
     // All blocks for the downloaded headers have been downloaded, start to request
@@ -665,28 +577,6 @@ where
             }
         }
     }
-}
-
-fn prepare_ordered_block_data_request(
-    blocks: HashSet<BlockHash>,
-    downloaded_headers: &IndexMap<BlockHash, u32>,
-) -> Vec<Inventory> {
-    let mut blocks = blocks
-        .into_iter()
-        .map(|block_hash| {
-            let block_number = downloaded_headers
-                .get(&block_hash)
-                .expect("Header must exist before downloading blocks in headers-first mode; qed");
-            (block_number, block_hash)
-        })
-        .collect::<Vec<_>>();
-
-    blocks.sort_by(|a, b| a.0.cmp(b.0));
-
-    blocks
-        .into_iter()
-        .map(|(_number, hash)| Inventory::Block(hash))
-        .collect()
 }
 
 fn is_local_address(addr: &PeerId) -> bool {

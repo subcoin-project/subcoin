@@ -211,6 +211,10 @@ where
         }
     }
 
+    pub(super) fn is_idle(&self) -> bool {
+        matches!(self.syncing, Syncing::Idle)
+    }
+
     pub(super) fn on_tick(&mut self) -> SyncAction {
         match &mut self.syncing {
             Syncing::Idle => SyncAction::None,
@@ -249,14 +253,14 @@ where
     pub(super) fn update_peer_best(&mut self, peer_id: PeerId, peer_best: u32) {
         self.peers.entry(peer_id).and_modify(|e| {
             tracing::debug!(
-                "Peer's best block updated from #{} to #{peer_best}",
+                "Tip of {peer_id:?} updated from #{} to #{peer_best}",
                 e.best_number
             );
             e.best_number = peer_best;
         });
 
         match &mut self.syncing {
-            Syncing::Idle => return,
+            Syncing::Idle => {}
             Syncing::BlocksFirst(strategy) => strategy.update_peer_best(peer_id, peer_best),
             Syncing::HeadersFirst(strategy) => strategy.update_peer_best(peer_id, peer_best),
         }
