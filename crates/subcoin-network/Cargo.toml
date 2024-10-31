@@ -35,6 +35,8 @@ tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
+sc-cli = { workspace = true }
+sc-tracing = { workspace = true }
 sp-tracing = { workspace = true }
 subcoin-service = { workspace = true }
 subcoin-test-service = { workspace = true } 
