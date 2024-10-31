@@ -177,12 +177,10 @@ where
     pub(crate) fn on_inv(&mut self, inventories: Vec<Inventory>, from: PeerId) -> SyncAction {
         if from != self.peer_id {
             tracing::debug!(?from, current_sync_peer = ?self.peer_id, "Recv unexpected {} inventories", inventories.len());
-            if inventories.len() == 1 {
                 tracing::debug!(
                     ?from,
-                    "TODO: block announcement, inventories: {inventories:?}"
+                    "TODO: possibly block announcement, inventories: {inventories:?}"
                 );
-            }
             return SyncAction::None;
         }
 
@@ -199,6 +197,24 @@ where
             self.state = State::Disconnecting;
             return SyncAction::Disconnect(self.peer_id, Error::InvHasTooManyBlockItems);
         }
+
+        let range = match &self.state {
+            State::DownloadingInv(range) => range,
+            state => {
+                tracing::error!("Recv inventories in state {state:?}");
+                return SyncAction::None;
+            }
+        };
+
+        if range.end - range.start > 1
+            && inventories.len() == 1
+            && matches!(inventories[0], Inventory::Block(_))
+        {
+            tracing::debug!("TODO: sync peer sent us a block annoucement: {inventories:?}");
+            return SyncAction::None;
+        }
+
+        tracing::debug!("Processing {} inventories", inventories.len());
 
         let mut missing_blocks = Vec::new();
 
@@ -222,15 +238,11 @@ where
             return SyncAction::Request(self.prepare_blocks_request());
         }
 
+        tracing::debug!("Found {} blocks missing", missing_blocks.len());
+
         self.block_downloader.set_missing_blocks(missing_blocks);
-        let range = match &self.state {
-            State::DownloadingInv(range) => range.clone(),
-            state => {
-                tracing::error!("Recv inventories in state {state:?}");
-                return SyncAction::None;
-            }
-        };
-        self.state = State::DownloadingBlocks(range);
+
+        self.state = State::DownloadingBlocks(range.clone());
 
         self.block_downloader.next_block_download_action()
     }
@@ -392,6 +404,7 @@ where
             locator_hashes,
         } = self.block_locator();
 
+        // TODO: update self.target_block_number properly.
         let end = self
             .target_block_number
             .min(latest_block + MAX_GET_BLOCKS_RESPONSE);
@@ -401,6 +414,7 @@ where
         tracing::debug!(
             latest_block,
             best_queued_number = self.block_downloader.best_queued_number,
+            ?locator_hashes,
             "Requesting new blocks",
         );
 

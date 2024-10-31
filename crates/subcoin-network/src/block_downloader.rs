@@ -375,6 +375,7 @@ impl BlockDownloader {
         let children = self.orphan_blocks_pool.remove_blocks_for_parent(block_hash);
 
         if !children.is_empty() {
+            tracing::trace!(blocks = ?children, "Connected orphan blocks");
             for (index, child_block) in children.into_iter().enumerate() {
                 let hash = child_block.block_hash();
                 let number = block_number + index as u32 + 1;
