@@ -29,6 +29,9 @@ const LOW_LATENCY_CUTOFF: Latency = 20;
 /// Maximum number of syncing retries for a deprioritized peer.
 const MAX_STALLS: usize = 5;
 
+// Minimum peer threshold required to start sync
+const MIN_PEER_THRESHOLD: usize = 3;
+
 /// The state of syncing between a Peer and ourselves.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "camelCase")]
@@ -476,6 +479,11 @@ where
 
     fn attempt_sync_start(&mut self) -> SyncAction {
         if self.syncing.is_major_syncing() {
+            return SyncAction::None;
+        }
+
+        if self.peers.len() < MIN_PEER_THRESHOLD {
+            tracing::debug!("Waiting for more peers");
             return SyncAction::None;
         }
 
