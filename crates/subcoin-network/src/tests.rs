@@ -213,7 +213,7 @@ async fn new_mock_bitcoind(spawn_handle: SpawnTaskHandle) -> MockBitcoind {
 
 #[tokio::test]
 async fn test_block_announcement_via_headers() {
-    let _ = sc_cli::LoggerBuilder::new("").init();
+    let _ = sc_tracing::logging::LoggerBuilder::new("").init();
 
     let runtime_handle = Handle::current();
 
