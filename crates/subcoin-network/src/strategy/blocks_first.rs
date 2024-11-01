@@ -446,19 +446,13 @@ where
                     // Peer may send us higher blocks than our previous known peer_best when the chain grows.
                     tracing::debug!(
                         target_block_number = self.target_block_number,
-                        "Received block #{block_number},{block_hash} higher than the target block"
+                        "Received block #{block_number},{block_hash} higher than the target #{}",
+                        self.target_block_number
                     );
                     self.state = State::Completed;
                     SyncAction::SetIdle
                 } else {
-                    self.state = State::Disconnecting;
-                    SyncAction::Disconnect(
-                        self.peer_id,
-                        Error::Other(format!(
-                            "Received block#{block_number} higher than the target #{}",
-                            self.target_block_number
-                        )),
-                    )
+                    SyncAction::None
                 }
             }
             CmpOrdering::Equal => {

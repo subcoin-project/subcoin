@@ -8925,7 +8925,6 @@ dependencies = [
  "ip_network",
  "once_cell",
  "parking_lot 0.12.3",
- "sc-cli",
  "sc-client-api",
  "sc-consensus",
  "sc-consensus-nakamoto",
