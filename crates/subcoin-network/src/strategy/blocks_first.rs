@@ -48,6 +48,67 @@ impl State {
     }
 }
 
+/// Responsible for downloading a list of block hashes as the prerequisite of `BlockDownloader`.
+#[derive(Clone)]
+struct BlockListDownloader<Block, Client> {
+    client: Arc<Client>,
+    peer_id: PeerId,
+    target_block_number: u32,
+    last_locator_start: u32,
+    _phantom: PhantomData<Block>,
+}
+
+impl<Block, Client> BlockListDownloader<Block, Client>
+where
+    Block: BlockT,
+    Client: HeaderBackend<Block> + AuxStore,
+{
+    fn prepare_blocks_request(
+        &mut self,
+        block_downloader: &BlockDownloader,
+    ) -> (SyncRequest, Range<u32>) {
+        let BlockLocator {
+            latest_block,
+            locator_hashes,
+        } = self.block_locator(block_downloader);
+
+        let end = self
+            .target_block_number
+            .min(latest_block + MAX_GET_BLOCKS_RESPONSE);
+
+        tracing::debug!(
+            latest_block,
+            best_queued_number = block_downloader.best_queued_number,
+            ?locator_hashes,
+            "Requesting new blocks",
+        );
+
+        let blocks_request = SyncRequest::Blocks(LocatorRequest {
+            locator_hashes,
+            stop_hash: BlockHash::all_zeros(),
+            to: self.peer_id,
+        });
+
+        (blocks_request, latest_block + 1..end + 1)
+    }
+
+    fn block_locator(&mut self, block_downloader: &BlockDownloader) -> BlockLocator {
+        let from = self
+            .client
+            .best_number()
+            .max(block_downloader.best_queued_number);
+
+        if from > 0 && self.last_locator_start == from {
+            return BlockLocator::empty();
+        }
+
+        self.last_locator_start = from;
+        self.client.block_locator(Some(from), |height: u32| {
+            block_downloader.queued_blocks.block_hash(height)
+        })
+    }
+}
+
 /// Download blocks using the Blocks-First strategy.
 #[derive(Clone)]
 pub struct BlocksFirstStrategy<Block, Client> {
@@ -57,9 +118,8 @@ pub struct BlocksFirstStrategy<Block, Client> {
     target_block_number: u32,
     state: State,
     block_downloader: BlockDownloader,
+    block_list_downloader: BlockListDownloader<Block, Client>,
     downloaded_blocks_count: usize,
-    last_locator_start: u32,
-    _phantom: PhantomData<Block>,
 }
 
 impl<Block, Client> BlocksFirstStrategy<Block, Client>
@@ -75,18 +135,29 @@ where
     ) -> (Self, SyncRequest) {
         let best_number = client.best_number();
 
+        let block_list_downloader = BlockListDownloader {
+            client: client.clone(),
+            peer_id,
+            target_block_number: peer_best,
+            last_locator_start: 0u32,
+            _phantom: Default::default(),
+        };
+
         let mut blocks_first_sync = Self {
             peer_id,
             client,
             target_block_number: peer_best,
             state: State::Idle,
             block_downloader: BlockDownloader::new(peer_id, best_number, peer_store),
+            block_list_downloader,
             downloaded_blocks_count: 0,
-            last_locator_start: 0u32,
-            _phantom: Default::default(),
         };
 
-        let get_blocks_request = blocks_first_sync.prepare_blocks_request();
+        let (get_blocks_request, range) = blocks_first_sync
+            .block_list_downloader
+            .prepare_blocks_request(&blocks_first_sync.block_downloader);
+
+        blocks_first_sync.state = State::DownloadingInv(range);
 
         (blocks_first_sync, get_blocks_request)
     }
@@ -189,7 +260,7 @@ where
         self.peer_id = new_peer;
         self.downloaded_blocks_count = 0;
         self.target_block_number = peer_best;
-        self.last_locator_start = 0u32;
+        self.block_list_downloader.last_locator_start = 0u32;
         self.block_downloader.reset();
         self.state = State::Restarting;
         self.block_downloader.peer_id = new_peer;
@@ -422,49 +493,11 @@ where
 
     #[inline]
     fn blocks_request_action(&mut self) -> SyncAction {
-        SyncAction::Request(self.prepare_blocks_request())
-    }
-
-    fn prepare_blocks_request(&mut self) -> SyncRequest {
-        let BlockLocator {
-            latest_block,
-            locator_hashes,
-        } = self.block_locator();
-
-        let end = self
-            .target_block_number
-            .min(latest_block + MAX_GET_BLOCKS_RESPONSE);
-
-        self.state = State::DownloadingInv(latest_block + 1..end + 1);
-
-        tracing::debug!(
-            latest_block,
-            best_queued_number = self.block_downloader.best_queued_number,
-            ?locator_hashes,
-            "Requesting new blocks",
-        );
-
-        SyncRequest::Blocks(LocatorRequest {
-            locator_hashes,
-            stop_hash: BlockHash::all_zeros(),
-            to: self.peer_id,
-        })
-    }
-
-    fn block_locator(&mut self) -> BlockLocator {
-        let from = self
-            .client
-            .best_number()
-            .max(self.block_downloader.best_queued_number);
-
-        if from > 0 && self.last_locator_start == from {
-            return BlockLocator::empty();
-        }
-
-        self.last_locator_start = from;
-        self.client.block_locator(Some(from), |height: u32| {
-            self.block_downloader.queued_blocks.block_hash(height)
-        })
+        let (blocks_request, range) = self
+            .block_list_downloader
+            .prepare_blocks_request(&self.block_downloader);
+        self.state = State::DownloadingInv(range);
+        SyncAction::Request(blocks_request)
     }
 }
 

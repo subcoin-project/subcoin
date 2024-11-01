@@ -89,6 +89,69 @@ impl Display for State {
     }
 }
 
+struct BlockListDownloader<Block, Client> {
+    client: Arc<Client>,
+    peer_id: PeerId,
+    downloaded_headers: DownloadedHeaders,
+    last_locator_start: u32,
+    _phantom: PhantomData<Block>,
+}
+
+impl<Block, Client> BlockListDownloader<Block, Client>
+where
+    Block: BlockT,
+    Client: HeaderBackend<Block> + AuxStore,
+{
+    fn prepare_headers_request(&mut self) -> (SyncAction, Option<(IndexedBlock, IndexedBlock)>) {
+        let our_best = self.client.best_number();
+
+        let Some(checkpoint) = crate::checkpoint::next_checkpoint(our_best + 1) else {
+            tracing::debug!(
+                our_best,
+                "No more checkpoints, switching to blocks-first sync"
+            );
+            return (SyncAction::SwitchToBlocksFirstSync, None);
+        };
+
+        let start = IndexedBlock {
+            number: our_best,
+            hash: self
+                .client
+                .block_hash(our_best)
+                .expect("Best block must exist; qed"),
+        };
+
+        let end = checkpoint;
+
+        tracing::debug!("Requesting headers ({start}, {end}]");
+
+        // Ignore the back-to-back duplicate locators.
+        if our_best > 0 && our_best == self.last_locator_start {
+            return (SyncAction::None, None);
+        }
+
+        self.last_locator_start = our_best;
+
+        let locator_hashes = self
+            .client
+            .block_locator(Some(our_best), |_height: u32| None)
+            .locator_hashes;
+
+        self.downloaded_headers = DownloadedHeaders {
+            headers: IndexMap::with_capacity((end.number - start.number) as usize),
+            completed_range: None,
+        };
+
+        let headers_request = SyncAction::Request(SyncRequest::Headers(LocatorRequest {
+            locator_hashes,
+            stop_hash: checkpoint.hash,
+            to: self.peer_id,
+        }));
+
+        (headers_request, Some((start, end)))
+    }
+}
+
 /// Headers downloaded up to the next checkpoint.
 #[derive(Default)]
 struct DownloadedHeaders {
@@ -107,12 +170,10 @@ pub struct HeadersFirstStrategy<Block, Client> {
     peer_id: PeerId,
     state: State,
     block_downloader: BlockDownloader,
-    downloaded_headers: DownloadedHeaders,
+    block_list_downloader: BlockListDownloader<Block, Client>,
     /// Tracks the number of blocks downloaded from the current sync peer.
     downloaded_blocks_count: usize,
-    last_locator_start: u32,
     target_block_number: u32,
-    _phantom: PhantomData<Block>,
 }
 
 impl<Block, Client> HeadersFirstStrategy<Block, Client>
@@ -129,17 +190,23 @@ where
     ) -> (Self, SyncAction) {
         let best_number = client.best_number();
 
+        let block_list_downloader = BlockListDownloader {
+            client: client.clone(),
+            peer_id,
+            downloaded_headers: DownloadedHeaders::default(),
+            last_locator_start: 0u32,
+            _phantom: Default::default(),
+        };
+
         let mut headers_first_sync = Self {
             client,
             header_verifier,
             peer_id,
             state: State::Idle,
-            downloaded_headers: DownloadedHeaders::default(),
             block_downloader: BlockDownloader::new(peer_id, best_number, peer_store),
+            block_list_downloader,
             downloaded_blocks_count: 0,
-            last_locator_start: 0u32,
             target_block_number,
-            _phantom: Default::default(),
         };
         let sync_action = headers_first_sync.headers_request_action();
         (headers_first_sync, sync_action)
@@ -228,64 +295,33 @@ where
     pub(crate) fn restart(&mut self, new_peer: PeerId, peer_best: u32) {
         self.peer_id = new_peer;
         self.downloaded_blocks_count = 0;
-        self.last_locator_start = 0u32;
+        self.block_list_downloader.last_locator_start = 0u32;
         self.target_block_number = peer_best;
         self.block_downloader.reset();
         self.block_downloader.peer_id = new_peer;
-        if let Some((start, end)) = self.downloaded_headers.completed_range {
+        if let Some((start, end)) = self
+            .block_list_downloader
+            .downloaded_headers
+            .completed_range
+        {
             self.state = State::RestartingBlocks { start, end };
         } else {
-            self.downloaded_headers.headers.clear();
+            self.block_list_downloader
+                .downloaded_headers
+                .headers
+                .clear();
             self.state = State::RestartingHeaders;
         }
     }
 
     fn headers_request_action(&mut self) -> SyncAction {
-        let our_best = self.client.best_number();
+        let (sync_action, maybe_range) = self.block_list_downloader.prepare_headers_request();
 
-        let Some(checkpoint) = crate::checkpoint::next_checkpoint(our_best + 1) else {
-            tracing::debug!(
-                our_best,
-                "No more checkpoints, switching to blocks-first sync"
-            );
-            return SyncAction::SwitchToBlocksFirstSync;
-        };
-
-        let start = IndexedBlock {
-            number: our_best,
-            hash: self
-                .client
-                .block_hash(our_best)
-                .expect("Best block must exist; qed"),
-        };
-
-        let end = checkpoint;
-
-        tracing::debug!("Requesting headers ({start}, {end}]");
-
-        // Ignore the back-to-back duplicate locators.
-        if our_best > 0 && our_best == self.last_locator_start {
-            return SyncAction::None;
+        if let Some((start, end)) = maybe_range {
+            self.state = State::DownloadingHeaders { start, end };
         }
 
-        self.last_locator_start = our_best;
-
-        let locator_hashes = self
-            .client
-            .block_locator(Some(our_best), |_height: u32| None)
-            .locator_hashes;
-
-        self.state = State::DownloadingHeaders { start, end };
-        self.downloaded_headers = DownloadedHeaders {
-            headers: IndexMap::with_capacity((end.number - start.number) as usize),
-            completed_range: None,
-        };
-
-        SyncAction::Request(SyncRequest::Headers(LocatorRequest {
-            locator_hashes,
-            stop_hash: checkpoint.hash,
-            to: self.peer_id,
-        }))
+        sync_action
     }
 
     // Handle `headers` message.
@@ -314,7 +350,12 @@ where
 
         let mut prev_number = if prev_hash == start.hash {
             start.number
-        } else if let Some(block_number) = self.downloaded_headers.headers.get(&prev_hash).copied()
+        } else if let Some(block_number) = self
+            .block_list_downloader
+            .downloaded_headers
+            .headers
+            .get(&prev_hash)
+            .copied()
         {
             block_number
         } else if let Some(block_number) = self.client.block_number(prev_hash) {
@@ -345,7 +386,8 @@ where
 
             // We can't convert the Bitcoin header to a Substrate header right now as creating a
             // Substrate header requires the full block data that is still missing.
-            self.downloaded_headers
+            self.block_list_downloader
+                .downloaded_headers
                 .headers
                 .insert(block_hash, block_number);
 
@@ -358,7 +400,8 @@ where
         let target_block_hash = end.hash;
 
         if final_block_number == target_block_number {
-            self.downloaded_headers
+            self.block_list_downloader
+                .downloaded_headers
                 .completed_range
                 .replace((start, end));
             self.start_block_download(start, end)
@@ -381,25 +424,26 @@ where
 
         let mut missing_blocks_count = 0usize;
 
-        let missing_blocks =
-            self.downloaded_headers
-                .headers
-                .iter()
-                .filter_map(|(block_hash, block_number)| {
-                    let block_hash = *block_hash;
+        let missing_blocks = self
+            .block_list_downloader
+            .downloaded_headers
+            .headers
+            .iter()
+            .filter_map(|(block_hash, block_number)| {
+                let block_hash = *block_hash;
 
-                    if *block_number > best_number {
-                        missing_blocks_count += 1;
-                        return Some(block_hash);
-                    }
+                if *block_number > best_number {
+                    missing_blocks_count += 1;
+                    return Some(block_hash);
+                }
 
-                    if self.client.block_exists(block_hash) {
-                        None
-                    } else {
-                        missing_blocks_count += 1;
-                        Some(block_hash)
-                    }
-                });
+                if self.client.block_exists(block_hash) {
+                    None
+                } else {
+                    missing_blocks_count += 1;
+                    Some(block_hash)
+                }
+            });
 
         // If the sync peer is running from local, the bandwidth is not a bottleneck,
         // simply request all blocks at once.
@@ -413,7 +457,8 @@ where
                 best_queued_number = self.block_downloader.best_queued_number,
                 requested_blocks_count = get_data_msg.len(),
                 missing_blocks_count,
-                downloaded_headers_count = self.downloaded_headers.headers.len(),
+                downloaded_headers_count =
+                    self.block_list_downloader.downloaded_headers.headers.len(),
                 "Downloaded headers from {start} to {end}, requesting blocks",
             );
 
@@ -432,7 +477,7 @@ where
 
             // Sort the download list to avoid too many orphan blocks.
             missing_blocks.sort_by_key(|block_hash| {
-                self.downloaded_headers.headers.get(block_hash).expect(
+                self.block_list_downloader.downloaded_headers.headers.get(block_hash).expect(
                     "Header must be available for downloading blocks in headers-first mode; qed ",
                 )
             });
