@@ -44,7 +44,7 @@ impl State {
     }
 }
 
-/// Responsible for downloading a list of block hashes as the prerequisite of `BlockDownloader`.
+/// Sends `GetBlocks` requests to retrieve block inventories.
 #[derive(Clone)]
 struct GetBlocksRequester<Block, Client> {
     client: Arc<Client>,
@@ -55,7 +55,9 @@ struct GetBlocksRequester<Block, Client> {
 }
 
 enum GetBlocksRequestOutcome {
+    /// Indicates a redundant request to avoid unnecessary inventory fetching.
     RepeatedRequest,
+    /// New `GetBlocks` request with specified locator hashes and range.
     NewGetBlocks {
         payload: LocatorRequest,
         range: Range<u32>,
@@ -115,14 +117,13 @@ where
 /// Download blocks using the Blocks-First strategy.
 #[derive(Clone)]
 pub struct BlocksFirstStrategy<Block, Client> {
+    state: State,
     client: Arc<Client>,
     peer_id: PeerId,
     /// The final block number we are targeting when the download is complete.
     target_block_number: u32,
-    state: State,
-    get_blocks_requester: GetBlocksRequester<Block, Client>,
     block_downloader: BlockDownloader,
-    downloaded_blocks_count: usize,
+    get_blocks_requester: GetBlocksRequester<Block, Client>,
 }
 
 impl<Block, Client> BlocksFirstStrategy<Block, Client>
@@ -153,7 +154,6 @@ where
             state: State::Idle,
             get_blocks_requester,
             block_downloader: BlockDownloader::new(peer_id, best_number, peer_store),
-            downloaded_blocks_count: 0,
         };
 
         let outcome = blocks_first_sync
@@ -182,14 +182,14 @@ where
     }
 
     pub(crate) fn replaceable_sync_peer(&self) -> Option<PeerId> {
-        (self.downloaded_blocks_count == 0).then_some(self.peer_id)
+        (self.block_downloader.downloaded_blocks_count == 0).then_some(self.peer_id)
     }
 
     pub(crate) fn replace_sync_peer(&mut self, peer_id: PeerId, target_block_number: u32) {
         self.peer_id = peer_id;
         self.target_block_number = target_block_number;
-        self.downloaded_blocks_count = 0;
         self.block_downloader.peer_id = peer_id;
+        self.block_downloader.downloaded_blocks_count = 0;
     }
 
     pub(crate) fn update_peer_best(&mut self, peer_id: PeerId, peer_best: u32) {
@@ -204,7 +204,7 @@ where
 
     pub(crate) fn on_tick(&mut self) -> SyncAction {
         if matches!(self.state, State::Restarting) {
-            return self.blocks_request_action();
+            return self.get_blocks_request_action();
         }
 
         if self.block_downloader.queue_status.is_overloaded() {
@@ -217,12 +217,12 @@ where
             if is_ready {
                 if matches!(self.state, State::DownloadingBlockData(..)) {
                     if self.block_downloader.missing_blocks.is_empty() {
-                        return self.blocks_request_action();
+                        return self.get_blocks_request_action();
                     } else if self.block_downloader.requested_blocks.is_empty() {
                         return self.block_downloader.schedule_next_download_batch();
                     }
                 } else {
-                    return self.blocks_request_action();
+                    return self.get_blocks_request_action();
                 }
             } else {
                 return SyncAction::None;
@@ -243,7 +243,7 @@ where
 
             if is_ready && self.block_downloader.requested_blocks.is_empty() {
                 if self.block_downloader.missing_blocks.is_empty() {
-                    return self.blocks_request_action();
+                    return self.get_blocks_request_action();
                 } else {
                     return self.block_downloader.schedule_next_download_batch();
                 }
@@ -262,9 +262,7 @@ where
         self.state = State::Restarting;
         self.peer_id = new_peer;
         self.target_block_number = peer_best;
-        self.downloaded_blocks_count = 0;
-        self.block_downloader.reset();
-        self.block_downloader.peer_id = new_peer;
+        self.block_downloader.restart(new_peer);
         self.get_blocks_requester.peer_id = new_peer;
         self.get_blocks_requester.last_locator_request_start = 0u32;
     }
@@ -322,7 +320,7 @@ where
         }
 
         if missing_blocks.is_empty() {
-            return self.blocks_request_action();
+            return self.get_blocks_request_action();
         }
 
         self.state = State::DownloadingBlockData(range.clone());
@@ -383,8 +381,6 @@ where
             self.block_downloader
                 .add_block(block_number, block_hash, block, from);
 
-            self.downloaded_blocks_count += 1;
-
             self.schedule_block_download(block_number, block_hash, last_get_blocks_target)
         } else {
             if self
@@ -417,7 +413,7 @@ where
                 {
                     SyncAction::None
                 } else {
-                    self.blocks_request_action()
+                    self.get_blocks_request_action()
                 }
             }
         }
@@ -461,7 +457,7 @@ where
                 }
 
                 if self.block_downloader.missing_blocks.is_empty() {
-                    self.blocks_request_action()
+                    self.get_blocks_request_action()
                 } else {
                     self.block_downloader.schedule_next_download_batch()
                 }
@@ -470,7 +466,7 @@ where
     }
 
     #[inline]
-    fn blocks_request_action(&mut self) -> SyncAction {
+    fn get_blocks_request_action(&mut self) -> SyncAction {
         let get_blocks_request_outcome = self
             .get_blocks_requester
             .schedule_next_get_blocks_request(&self.block_downloader);
@@ -485,7 +481,7 @@ where
             GetBlocksRequestOutcome::RepeatedRequest => SyncAction::None,
             GetBlocksRequestOutcome::NewGetBlocks { payload, range } => {
                 self.state = State::DownloadingBlockList(range);
-                SyncAction::Request(SyncRequest::Blocks(payload))
+                SyncAction::Request(SyncRequest::GetBlocks(payload))
             }
         }
     }
@@ -518,7 +514,7 @@ mod tests {
         let sync_action = strategy.on_inv(vec![Inventory::Block(block_hash)], peer_id);
 
         match sync_action {
-            SyncAction::Request(SyncRequest::Data(blocks_request, _)) => {
+            SyncAction::Request(SyncRequest::GetData(blocks_request, _)) => {
                 assert_eq!(blocks_request, vec![Inventory::Block(block_hash)])
             }
             action => panic!("Should request block data but got: {action:?}"),

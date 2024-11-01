@@ -98,13 +98,15 @@ pub(crate) struct LocatorRequest {
 
 /// Represents different kinds of sync requests.
 #[derive(Debug)]
+// We prefer the variant to align with the actual message mame.
+#[allow(clippy::enum_variant_names)]
 pub(crate) enum SyncRequest {
     /// Request headers via `getheaders`.
-    Headers(LocatorRequest),
-    /// Request blocks via `getblocks`.
-    Blocks(LocatorRequest),
-    /// Request data via `getdata`.
-    Data(Vec<Inventory>, PeerId),
+    GetHeaders(LocatorRequest),
+    /// Request inventories via `getblocks`.
+    GetBlocks(LocatorRequest),
+    /// Request blocks via `getdata`.
+    GetData(Vec<Inventory>, PeerId),
 }
 
 /// Represents actions that can be taken during the syncing.

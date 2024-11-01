@@ -109,6 +109,8 @@ pub(crate) struct BlockDownloader {
     pub(crate) last_overloaded_queue_log_time: Option<Instant>,
     /// Peer store.
     pub(crate) peer_store: Arc<dyn PeerStore>,
+    /// Tracks the number of blocks downloaded from the current sync peer.
+    pub(crate) downloaded_blocks_count: usize,
 }
 
 impl BlockDownloader {
@@ -130,6 +132,7 @@ impl BlockDownloader {
             queue_status: ImportQueueStatus::Ready,
             last_overloaded_queue_log_time: None,
             peer_store,
+            downloaded_blocks_count: 0,
         }
     }
 
@@ -148,7 +151,7 @@ impl BlockDownloader {
     ///
     /// # Returns
     ///
-    /// A `SyncAction::Request` containing a `SyncRequest::Data` with the list of blocks to
+    /// A `SyncAction::Request` containing a `SyncRequest::GetData` with the list of blocks to
     /// request from the peer.
     pub(crate) fn schedule_next_download_batch(&mut self) -> SyncAction {
         let max_request_size = match self.best_queued_number {
@@ -188,7 +191,7 @@ impl BlockDownloader {
             self.requested_blocks.len(),
         );
 
-        SyncAction::Request(SyncRequest::Data(block_data_request, self.peer_id))
+        SyncAction::Request(SyncRequest::GetData(block_data_request, self.peer_id))
     }
 
     /// Determine if the downloader is stalled based on the time elapsed since the last progress
@@ -276,7 +279,9 @@ impl BlockDownloader {
         self.queue_status
     }
 
-    pub(crate) fn reset(&mut self) {
+    pub(crate) fn restart(&mut self, new_peer: PeerId) {
+        self.peer_id = new_peer;
+        self.downloaded_blocks_count = 0;
         self.requested_blocks.clear();
         self.downloaded_blocks.clear();
         self.blocks_in_queue.clear();
@@ -377,6 +382,7 @@ impl BlockDownloader {
             }
         }
 
+        self.downloaded_blocks_count += 1;
         self.peer_store.record_block_download(from);
     }
 
