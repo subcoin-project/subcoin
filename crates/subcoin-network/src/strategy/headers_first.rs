@@ -107,6 +107,35 @@ where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore,
 {
+    fn missing_block_list(&mut self, best_number: u32) -> Vec<BlockHash> {
+        let mut missing_blocks = self
+            .headers
+            .iter()
+            .filter_map(|(block_hash, block_number)| {
+                let block_hash = *block_hash;
+
+                if *block_number > best_number {
+                    return Some(block_hash);
+                }
+
+                if self.client.block_exists(block_hash) {
+                    None
+                } else {
+                    Some(block_hash)
+                }
+            })
+            .collect::<Vec<_>>();
+
+        // Sort the download list to avoid too many orphan blocks.
+        missing_blocks.sort_by_key(|block_hash| {
+            self.headers.get(block_hash).expect(
+                "Header must be available for downloading blocks in headers-first mode; qed ",
+            )
+        });
+
+        missing_blocks
+    }
+
     fn prepare_headers_request(&mut self) -> (SyncAction, Option<(IndexedBlock, IndexedBlock)>) {
         let our_best = self.client.best_number();
 
@@ -154,10 +183,6 @@ where
         (headers_request, Some((start, end)))
     }
 }
-
-/// Headers downloaded up to the next checkpoint.
-#[derive(Default)]
-struct DownloadedHeaders {}
 
 /// Implements the Headers-First download strategy.
 pub struct HeadersFirstStrategy<Block, Client> {
@@ -292,8 +317,8 @@ where
     pub(crate) fn restart(&mut self, new_peer: PeerId, peer_best: u32) {
         self.peer_id = new_peer;
         self.downloaded_blocks_count = 0;
-        self.block_list_downloader.last_locator_start = 0u32;
         self.target_block_number = peer_best;
+        self.block_list_downloader.last_locator_start = 0u32;
         self.block_downloader.reset();
         self.block_downloader.peer_id = new_peer;
         if let Some((start, end)) = self.block_list_downloader.completed_range {
@@ -406,64 +431,36 @@ where
 
         let best_number = self.client.best_number();
 
-        let mut missing_blocks_count = 0usize;
+        let missing_blocks = self.block_list_downloader.missing_block_list(best_number);
 
-        let missing_blocks =
-            self.block_list_downloader
-                .headers
-                .iter()
-                .filter_map(|(block_hash, block_number)| {
-                    let block_hash = *block_hash;
-
-                    if *block_number > best_number {
-                        missing_blocks_count += 1;
-                        return Some(block_hash);
-                    }
-
-                    if self.client.block_exists(block_hash) {
-                        None
-                    } else {
-                        missing_blocks_count += 1;
-                        Some(block_hash)
-                    }
-                });
+        if missing_blocks.is_empty() {
+            tracing::debug!("No missing blocks, starting new headers request");
+            return self.headers_request_action();
+        }
 
         // If the sync peer is running from local, the bandwidth is not a bottleneck,
         // simply request all blocks at once.
         let download_all_blocks_in_one_request = is_local_address(&self.peer_id);
 
         if download_all_blocks_in_one_request {
-            let get_data_msg = missing_blocks.map(Inventory::Block).collect::<Vec<_>>();
-
             tracing::debug!(
                 best_number,
                 best_queued_number = self.block_downloader.best_queued_number,
-                requested_blocks_count = get_data_msg.len(),
-                missing_blocks_count,
                 downloaded_headers_count = self.block_list_downloader.headers.len(),
-                "Downloaded headers from {start} to {end}, requesting blocks",
+                "Downloaded headers from {start} to {end}, requesting {} blocks",
+                missing_blocks.len()
             );
 
             self.state = State::DownloadingBlocks(BlockDownload::AllBlocks { start, end });
 
+            let get_data_msg = missing_blocks
+                .into_iter()
+                .map(Inventory::Block)
+                .collect::<Vec<_>>();
+
             SyncAction::Request(SyncRequest::Data(get_data_msg, self.peer_id))
         } else {
-            let mut missing_blocks = missing_blocks.collect::<Vec<_>>();
-
-            if missing_blocks.is_empty() {
-                tracing::debug!("No missing blocks, starting new headers request");
-                return self.headers_request_action();
-            }
-
             self.state = State::DownloadingBlocks(BlockDownload::Batches { paused: false });
-
-            // Sort the download list to avoid too many orphan blocks.
-            missing_blocks.sort_by_key(|block_hash| {
-                self.block_list_downloader.headers.get(block_hash).expect(
-                    "Header must be available for downloading blocks in headers-first mode; qed ",
-                )
-            });
-
             self.block_downloader.set_missing_blocks(missing_blocks);
             self.block_downloader.schedule_next_download_batch()
         }
