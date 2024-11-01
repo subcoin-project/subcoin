@@ -370,12 +370,10 @@ where
 
         let parent_block_hash = block.header.prev_blockhash;
 
-        let maybe_parent =
-            if let Some(number) = self.block_downloader.block_number(parent_block_hash) {
-                Some(number)
-            } else {
-                self.client.block_number(parent_block_hash)
-            };
+        let maybe_parent = self
+            .block_downloader
+            .block_number(parent_block_hash)
+            .or_else(|| self.client.block_number(parent_block_hash));
 
         let receive_requested_block = self.block_downloader.on_block_response(block_hash);
 
@@ -389,71 +387,7 @@ where
 
             self.downloaded_blocks_count += 1;
 
-            match block_number.cmp(&last_get_blocks_target) {
-                CmpOrdering::Less => {
-                    // The last `getblocks` request is not yet finished, waiting for more blocks to come.
-                    SyncAction::None
-                }
-                CmpOrdering::Greater => {
-                    if block_number >= self.target_block_number {
-                        // Peer may send us higher blocks than our previous known peer_best when the chain grows.
-                        tracing::debug!(
-                            target_block_number = self.target_block_number,
-                            "Received block #{block_number},{block_hash} higher than the target block"
-                        );
-                        self.state = State::Completed;
-                        SyncAction::SetIdle
-                    } else {
-                        self.state = State::Disconnecting;
-                        SyncAction::Disconnect(
-                            self.peer_id,
-                            Error::Other(format!(
-                                "Received block#{block_number} higher than the target #{}",
-                                self.target_block_number
-                            )),
-                        )
-                    }
-                }
-                CmpOrdering::Equal => {
-                    let best_number = self.client.best_number();
-
-                    // No more new blocks request as there are enough ongoing blocks in the queue.
-                    if self
-                        .block_downloader
-                        .evaluate_queue_status(best_number)
-                        .is_overloaded()
-                    {
-                        return SyncAction::None;
-                    }
-
-                    let best_queued_number = self.block_downloader.best_queued_number;
-
-                    let end = self
-                        .target_block_number
-                        .min(best_queued_number + MAX_GET_BLOCKS_RESPONSE);
-
-                    self.state = State::DownloadingInv(best_queued_number + 1..end + 1);
-                    self.block_downloader.clear_missing_blocks();
-
-                    let BlockLocator { locator_hashes, .. } = self
-                        .client
-                        .block_locator(Some(best_queued_number), |height: u32| {
-                            self.block_downloader.queued_blocks.block_hash(height)
-                        });
-
-                    tracing::debug!(
-                        best_number,
-                        best_queued_number,
-                        "Last `getblocks` finished, fetching more blocks",
-                    );
-
-                    SyncAction::Request(SyncRequest::Blocks(LocatorRequest {
-                        locator_hashes,
-                        stop_hash: BlockHash::all_zeros(),
-                        to: self.peer_id,
-                    }))
-                }
-            }
+            self.schedule_block_download(block_number, block_hash, last_get_blocks_target)
         } else {
             if self
                 .block_downloader
@@ -487,6 +421,79 @@ where
                 } else {
                     self.blocks_request_action()
                 }
+            }
+        }
+    }
+
+    fn schedule_block_download(
+        &mut self,
+        block_number: u32,
+        block_hash: BlockHash,
+        last_get_blocks_target: u32,
+    ) -> SyncAction {
+        match block_number.cmp(&last_get_blocks_target) {
+            CmpOrdering::Less => {
+                // The last `getblocks` request is not yet finished, waiting for more blocks to come.
+                SyncAction::None
+            }
+            CmpOrdering::Greater => {
+                if block_number >= self.target_block_number {
+                    // Peer may send us higher blocks than our previous known peer_best when the chain grows.
+                    tracing::debug!(
+                        target_block_number = self.target_block_number,
+                        "Received block #{block_number},{block_hash} higher than the target block"
+                    );
+                    self.state = State::Completed;
+                    SyncAction::SetIdle
+                } else {
+                    self.state = State::Disconnecting;
+                    SyncAction::Disconnect(
+                        self.peer_id,
+                        Error::Other(format!(
+                            "Received block#{block_number} higher than the target #{}",
+                            self.target_block_number
+                        )),
+                    )
+                }
+            }
+            CmpOrdering::Equal => {
+                let best_number = self.client.best_number();
+
+                // No more new blocks request as there are enough ongoing blocks in the queue.
+                if self
+                    .block_downloader
+                    .evaluate_queue_status(best_number)
+                    .is_overloaded()
+                {
+                    return SyncAction::None;
+                }
+
+                let best_queued_number = self.block_downloader.best_queued_number;
+
+                let end = self
+                    .target_block_number
+                    .min(best_queued_number + MAX_GET_BLOCKS_RESPONSE);
+
+                self.state = State::DownloadingInv(best_queued_number + 1..end + 1);
+                self.block_downloader.clear_missing_blocks();
+
+                let BlockLocator { locator_hashes, .. } = self
+                    .client
+                    .block_locator(Some(best_queued_number), |height: u32| {
+                        self.block_downloader.queued_blocks.block_hash(height)
+                    });
+
+                tracing::debug!(
+                    best_number,
+                    best_queued_number,
+                    "Last `getblocks` finished, fetching more blocks",
+                );
+
+                SyncAction::Request(SyncRequest::Blocks(LocatorRequest {
+                    locator_hashes,
+                    stop_hash: BlockHash::all_zeros(),
+                    to: self.peer_id,
+                }))
             }
         }
     }

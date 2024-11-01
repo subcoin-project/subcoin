@@ -469,17 +469,16 @@ where
     pub(crate) fn on_block(&mut self, block: BitcoinBlock, from: PeerId) -> SyncAction {
         let block_hash = block.block_hash();
 
-        let block_download = match &mut self.state {
-            State::DownloadingBlocks(block_download) => block_download,
+        match &self.state {
+            State::DownloadingBlocks(_block_download) => {}
             state => {
                 // TODO: we may receive the blocks from a peer that has been considered as stalled,
                 // should we try to cache and use such blocks since the bandwidth has been consumed
                 // already?
                 tracing::warn!(
                     ?state,
-                    ?from,
                     current_sync_peer = ?self.peer_id,
-                    "Not in the block download mode, dropping block {block_hash}",
+                    "Not in the block download mode, dropping block {block_hash} from {from:?}",
                 );
                 return SyncAction::None;
             }
@@ -504,45 +503,7 @@ where
 
             self.downloaded_blocks_count += 1;
 
-            let should_request_more_headers = match block_download {
-                BlockDownload::AllBlocks { start, end } => {
-                    if end.hash == block_hash {
-                        tracing::debug!("Downloaded blocks in ({start}, {end}]");
-                        true
-                    } else {
-                        false
-                    }
-                }
-                BlockDownload::Batches { paused } => {
-                    if self.block_downloader.requested_blocks.is_empty() {
-                        if !self.block_downloader.missing_blocks.is_empty() {
-                            if self
-                                .block_downloader
-                                .evaluate_queue_status(self.client.best_number())
-                                .is_overloaded()
-                            {
-                                *paused = true;
-                                return SyncAction::None;
-                            }
-
-                            // Request next batch of blocks.
-                            return self.block_downloader.schedule_next_download_batch();
-                        }
-
-                        tracing::debug!("Downloaded checkpoint block #{block_number},{block_hash}");
-
-                        true
-                    } else {
-                        false
-                    }
-                }
-            };
-
-            if should_request_more_headers {
-                self.request_more_headers_at_checkpoint(block_number, block_hash)
-            } else {
-                SyncAction::None
-            }
+            self.schedule_block_download(block_number, block_hash)
         } else {
             if receive_requested_block {
                 self.block_downloader.add_orphan_block(block_hash, block);
@@ -550,6 +511,53 @@ where
                 tracing::debug!("Discard unrequested orphan block {block_hash}");
             }
 
+            SyncAction::None
+        }
+    }
+
+    fn schedule_block_download(&mut self, block_number: u32, block_hash: BlockHash) -> SyncAction {
+        let block_download = match &mut self.state {
+            State::DownloadingBlocks(block_download) => block_download,
+            _state => unreachable!("Must be DownloadingBlocks as checked; qed"),
+        };
+
+        let should_request_more_headers = match block_download {
+            BlockDownload::AllBlocks { start, end } => {
+                if end.hash == block_hash {
+                    tracing::debug!("Downloaded blocks in ({start}, {end}]");
+                    true
+                } else {
+                    false
+                }
+            }
+            BlockDownload::Batches { paused } => {
+                if self.block_downloader.requested_blocks.is_empty() {
+                    if !self.block_downloader.missing_blocks.is_empty() {
+                        if self
+                            .block_downloader
+                            .evaluate_queue_status(self.client.best_number())
+                            .is_overloaded()
+                        {
+                            *paused = true;
+                            return SyncAction::None;
+                        }
+
+                        // Request next batch of blocks.
+                        return self.block_downloader.schedule_next_download_batch();
+                    }
+
+                    tracing::debug!("Downloaded checkpoint block #{block_number},{block_hash}");
+
+                    true
+                } else {
+                    false
+                }
+            }
+        };
+
+        if should_request_more_headers {
+            self.request_more_headers_at_checkpoint(block_number, block_hash)
+        } else {
             SyncAction::None
         }
     }
