@@ -92,7 +92,12 @@ impl Display for State {
 struct BlockListDownloader<Block, Client> {
     client: Arc<Client>,
     peer_id: PeerId,
-    downloaded_headers: DownloadedHeaders,
+    /// Ordered map of headers, where the key is the block hash and the value is the block number.
+    ///
+    /// Keep the headers ordered so that fetching the blocks orderly later is possible.
+    headers: IndexMap<BlockHash, u32>,
+    /// Optional range of blocks indicating the completed header download up to the next checkpoint (start, end].
+    completed_range: Option<(IndexedBlock, IndexedBlock)>,
     last_locator_start: u32,
     _phantom: PhantomData<Block>,
 }
@@ -137,10 +142,8 @@ where
             .block_locator(Some(our_best), |_height: u32| None)
             .locator_hashes;
 
-        self.downloaded_headers = DownloadedHeaders {
-            headers: IndexMap::with_capacity((end.number - start.number) as usize),
-            completed_range: None,
-        };
+        self.headers = IndexMap::with_capacity((end.number - start.number) as usize);
+        self.completed_range = None;
 
         let headers_request = SyncAction::Request(SyncRequest::Headers(LocatorRequest {
             locator_hashes,
@@ -154,14 +157,7 @@ where
 
 /// Headers downloaded up to the next checkpoint.
 #[derive(Default)]
-struct DownloadedHeaders {
-    /// Ordered map of headers, where the key is the block hash and the value is the block number.
-    ///
-    /// Keep the headers ordered so that fetching the blocks orderly later is possible.
-    headers: IndexMap<BlockHash, u32>,
-    /// Optional range of blocks indicating the completed header download up to the next checkpoint (start, end].
-    completed_range: Option<(IndexedBlock, IndexedBlock)>,
-}
+struct DownloadedHeaders {}
 
 /// Implements the Headers-First download strategy.
 pub struct HeadersFirstStrategy<Block, Client> {
@@ -193,8 +189,9 @@ where
         let block_list_downloader = BlockListDownloader {
             client: client.clone(),
             peer_id,
-            downloaded_headers: DownloadedHeaders::default(),
             last_locator_start: 0u32,
+            headers: IndexMap::new(),
+            completed_range: None,
             _phantom: Default::default(),
         };
 
@@ -299,17 +296,10 @@ where
         self.target_block_number = peer_best;
         self.block_downloader.reset();
         self.block_downloader.peer_id = new_peer;
-        if let Some((start, end)) = self
-            .block_list_downloader
-            .downloaded_headers
-            .completed_range
-        {
+        if let Some((start, end)) = self.block_list_downloader.completed_range {
             self.state = State::RestartingBlocks { start, end };
         } else {
-            self.block_list_downloader
-                .downloaded_headers
-                .headers
-                .clear();
+            self.block_list_downloader.headers.clear();
             self.state = State::RestartingHeaders;
         }
     }
@@ -350,12 +340,8 @@ where
 
         let mut prev_number = if prev_hash == start.hash {
             start.number
-        } else if let Some(block_number) = self
-            .block_list_downloader
-            .downloaded_headers
-            .headers
-            .get(&prev_hash)
-            .copied()
+        } else if let Some(block_number) =
+            self.block_list_downloader.headers.get(&prev_hash).copied()
         {
             block_number
         } else if let Some(block_number) = self.client.block_number(prev_hash) {
@@ -387,7 +373,6 @@ where
             // We can't convert the Bitcoin header to a Substrate header right now as creating a
             // Substrate header requires the full block data that is still missing.
             self.block_list_downloader
-                .downloaded_headers
                 .headers
                 .insert(block_hash, block_number);
 
@@ -401,7 +386,6 @@ where
 
         if final_block_number == target_block_number {
             self.block_list_downloader
-                .downloaded_headers
                 .completed_range
                 .replace((start, end));
             self.start_block_download(start, end)
@@ -424,26 +408,25 @@ where
 
         let mut missing_blocks_count = 0usize;
 
-        let missing_blocks = self
-            .block_list_downloader
-            .downloaded_headers
-            .headers
-            .iter()
-            .filter_map(|(block_hash, block_number)| {
-                let block_hash = *block_hash;
+        let missing_blocks =
+            self.block_list_downloader
+                .headers
+                .iter()
+                .filter_map(|(block_hash, block_number)| {
+                    let block_hash = *block_hash;
 
-                if *block_number > best_number {
-                    missing_blocks_count += 1;
-                    return Some(block_hash);
-                }
+                    if *block_number > best_number {
+                        missing_blocks_count += 1;
+                        return Some(block_hash);
+                    }
 
-                if self.client.block_exists(block_hash) {
-                    None
-                } else {
-                    missing_blocks_count += 1;
-                    Some(block_hash)
-                }
-            });
+                    if self.client.block_exists(block_hash) {
+                        None
+                    } else {
+                        missing_blocks_count += 1;
+                        Some(block_hash)
+                    }
+                });
 
         // If the sync peer is running from local, the bandwidth is not a bottleneck,
         // simply request all blocks at once.
@@ -457,8 +440,7 @@ where
                 best_queued_number = self.block_downloader.best_queued_number,
                 requested_blocks_count = get_data_msg.len(),
                 missing_blocks_count,
-                downloaded_headers_count =
-                    self.block_list_downloader.downloaded_headers.headers.len(),
+                downloaded_headers_count = self.block_list_downloader.headers.len(),
                 "Downloaded headers from {start} to {end}, requesting blocks",
             );
 
@@ -477,7 +459,7 @@ where
 
             // Sort the download list to avoid too many orphan blocks.
             missing_blocks.sort_by_key(|block_hash| {
-                self.block_list_downloader.downloaded_headers.headers.get(block_hash).expect(
+                self.block_list_downloader.headers.get(block_hash).expect(
                     "Header must be available for downloading blocks in headers-first mode; qed ",
                 )
             });
