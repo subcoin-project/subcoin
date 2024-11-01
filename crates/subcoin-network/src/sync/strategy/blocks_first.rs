@@ -29,28 +29,24 @@ enum State {
     Restarting,
     /// Peer misbehavior detected, will disconnect the peer shortly.
     Disconnecting,
-    /// Actively downloading new blocks in the specified range, in batches.
-    ///
-    /// When downloading blocks, the system fetches them in batches of a fixed size,
-    /// up to 500 blocks in specific. It only continues to download the next batch
-    /// of blocks once the previous request succeeds.
-    DownloadingInv(Range<u32>),
-    /// Downloading blocks upon the completion of inventories download.
-    DownloadingBlocks(Range<u32>),
+    /// Actively downloading new block inventories in the specified range.
+    DownloadingBlockList(Range<u32>),
+    /// Downloading full blocks upon the completion of inventories download.
+    DownloadingBlockData(Range<u32>),
     /// All blocks up to the target block have been successfully downloaded,
     /// the download process has been completed.
     Completed,
 }
 
 impl State {
-    fn is_downloading_blocks(&self) -> bool {
-        matches!(self, Self::DownloadingBlocks(..))
+    fn is_downloading_block_data(&self) -> bool {
+        matches!(self, Self::DownloadingBlockData(..))
     }
 }
 
 /// Responsible for downloading a list of block hashes as the prerequisite of `BlockDownloader`.
 #[derive(Clone)]
-struct BlockInventoryDownloader<Block, Client> {
+struct GetBlocksRequester<Block, Client> {
     client: Arc<Client>,
     peer_id: PeerId,
     target_block_number: u32,
@@ -58,30 +54,30 @@ struct BlockInventoryDownloader<Block, Client> {
     _phantom: PhantomData<Block>,
 }
 
-enum BlockInvRequestOutcome {
-    DuplicateLocator,
-    NewBlocks {
+enum GetBlocksRequestOutcome {
+    RepeatedRequest,
+    NewGetBlocks {
         payload: LocatorRequest,
         range: Range<u32>,
     },
 }
 
-impl<Block, Client> BlockInventoryDownloader<Block, Client>
+impl<Block, Client> GetBlocksRequester<Block, Client>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore,
 {
-    fn schedule_next_block_inv_request(
+    fn schedule_next_get_blocks_request(
         &mut self,
         block_downloader: &BlockDownloader,
-    ) -> BlockInvRequestOutcome {
+    ) -> GetBlocksRequestOutcome {
         let from = self
             .client
             .best_number()
             .max(block_downloader.best_queued_number);
 
         if from > 0 && self.last_locator_request_start == from {
-            return BlockInvRequestOutcome::DuplicateLocator;
+            return GetBlocksRequestOutcome::RepeatedRequest;
         }
 
         self.last_locator_request_start = from;
@@ -109,7 +105,7 @@ where
             to: self.peer_id,
         };
 
-        BlockInvRequestOutcome::NewBlocks {
+        GetBlocksRequestOutcome::NewGetBlocks {
             payload,
             range: latest_block + 1..end + 1,
         }
@@ -124,7 +120,7 @@ pub struct BlocksFirstStrategy<Block, Client> {
     /// The final block number we are targeting when the download is complete.
     target_block_number: u32,
     state: State,
-    block_inv_downloader: BlockInventoryDownloader<Block, Client>,
+    get_blocks_requester: GetBlocksRequester<Block, Client>,
     block_downloader: BlockDownloader,
     downloaded_blocks_count: usize,
 }
@@ -142,7 +138,7 @@ where
     ) -> (Self, SyncAction) {
         let best_number = client.best_number();
 
-        let block_inv_downloader = BlockInventoryDownloader {
+        let get_blocks_requester = GetBlocksRequester {
             client: client.clone(),
             peer_id,
             target_block_number: peer_best,
@@ -155,22 +151,22 @@ where
             client,
             target_block_number: peer_best,
             state: State::Idle,
-            block_inv_downloader,
+            get_blocks_requester,
             block_downloader: BlockDownloader::new(peer_id, best_number, peer_store),
             downloaded_blocks_count: 0,
         };
 
         let outcome = blocks_first_sync
-            .block_inv_downloader
-            .schedule_next_block_inv_request(&blocks_first_sync.block_downloader);
-        let sync_action = blocks_first_sync.process_block_inv_request_outcome(outcome);
+            .get_blocks_requester
+            .schedule_next_get_blocks_request(&blocks_first_sync.block_downloader);
+        let sync_action = blocks_first_sync.process_get_blocks_request_outcome(outcome);
 
         (blocks_first_sync, sync_action)
     }
 
     pub(crate) fn sync_status(&self) -> SyncStatus {
         if self.block_downloader.queue_status.is_overloaded()
-            || (self.state.is_downloading_blocks()
+            || (self.state.is_downloading_block_data()
                 && self.block_downloader.missing_blocks.is_empty())
         {
             SyncStatus::Importing {
@@ -219,7 +215,7 @@ where
                 .is_ready();
 
             if is_ready {
-                if matches!(self.state, State::DownloadingBlocks(..)) {
+                if matches!(self.state, State::DownloadingBlockData(..)) {
                     if self.block_downloader.missing_blocks.is_empty() {
                         return self.blocks_request_action();
                     } else if self.block_downloader.requested_blocks.is_empty() {
@@ -237,7 +233,7 @@ where
             return SyncAction::RestartSyncWithStalledPeer(stalled_peer);
         }
 
-        if matches!(self.state, State::DownloadingBlocks(..)) {
+        if matches!(self.state, State::DownloadingBlockData(..)) {
             // If the queue was not overloaded, but we are in the downloading blocks mode,
             // see whether there are pending blocks in the block_downloader.
             let is_ready = self
@@ -269,8 +265,8 @@ where
         self.downloaded_blocks_count = 0;
         self.block_downloader.reset();
         self.block_downloader.peer_id = new_peer;
-        self.block_inv_downloader.peer_id = new_peer;
-        self.block_inv_downloader.last_locator_request_start = 0u32;
+        self.get_blocks_requester.peer_id = new_peer;
+        self.get_blocks_requester.last_locator_request_start = 0u32;
     }
 
     // Handle `inv` message.
@@ -279,6 +275,7 @@ where
     // or in reply to `getblocks`.
     pub(crate) fn on_inv(&mut self, inventories: Vec<Inventory>, from: PeerId) -> SyncAction {
         if from != self.peer_id {
+            // TODO: handle transaction inventories
             // tracing::debug!(?from, current_sync_peer = ?self.peer_id, "Recv unexpected {} inventories", inventories.len());
             // tracing::debug!(?from, "TODO: inventories: {inventories:?}");
             return SyncAction::None;
@@ -299,14 +296,12 @@ where
         }
 
         let range = match &self.state {
-            State::DownloadingInv(range) => range,
+            State::DownloadingBlockList(range) => range,
             state => {
                 tracing::debug!(?state, "Ignored inventories {inventories:?}");
                 return SyncAction::None;
             }
         };
-
-        tracing::debug!("Processing {} inventories", inventories.len());
 
         let mut missing_blocks = Vec::new();
 
@@ -330,7 +325,7 @@ where
             return self.blocks_request_action();
         }
 
-        self.state = State::DownloadingBlocks(range.clone());
+        self.state = State::DownloadingBlockData(range.clone());
         self.block_downloader.set_missing_blocks(missing_blocks);
         self.block_downloader.schedule_next_download_batch()
     }
@@ -342,7 +337,7 @@ where
         }
 
         let last_get_blocks_target = match &self.state {
-            State::DownloadingBlocks(range) => range.end - 1,
+            State::DownloadingBlockData(range) => range.end - 1,
             state => {
                 if let Ok(height) = block.bip34_block_height() {
                     tracing::debug!(
@@ -476,17 +471,20 @@ where
 
     #[inline]
     fn blocks_request_action(&mut self) -> SyncAction {
-        let outcome = self
-            .block_inv_downloader
-            .schedule_next_block_inv_request(&self.block_downloader);
-        self.process_block_inv_request_outcome(outcome)
+        let get_blocks_request_outcome = self
+            .get_blocks_requester
+            .schedule_next_get_blocks_request(&self.block_downloader);
+        self.process_get_blocks_request_outcome(get_blocks_request_outcome)
     }
 
-    fn process_block_inv_request_outcome(&mut self, outcome: BlockInvRequestOutcome) -> SyncAction {
-        match outcome {
-            BlockInvRequestOutcome::DuplicateLocator => SyncAction::None,
-            BlockInvRequestOutcome::NewBlocks { payload, range } => {
-                self.state = State::DownloadingInv(range);
+    fn process_get_blocks_request_outcome(
+        &mut self,
+        get_blocks_request_outcome: GetBlocksRequestOutcome,
+    ) -> SyncAction {
+        match get_blocks_request_outcome {
+            GetBlocksRequestOutcome::RepeatedRequest => SyncAction::None,
+            GetBlocksRequestOutcome::NewGetBlocks { payload, range } => {
+                self.state = State::DownloadingBlockList(range);
                 SyncAction::Request(SyncRequest::Blocks(payload))
             }
         }

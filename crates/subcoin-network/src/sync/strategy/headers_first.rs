@@ -89,19 +89,19 @@ impl Display for State {
     }
 }
 
-enum HeaderRequestOutcome {
+enum GetHeadersRequestOutcome {
     /// No checkpoints remain for requesting more headers.
     ExhaustedCheckpoint,
     /// A duplicate locator; skip additional requests.
-    DuplicateLocator,
+    RepeatedRequest,
     /// Request new headers within the specified range.
-    NewHeaders {
+    NewGetHeaders {
         payload: LocatorRequest,
         range: (IndexedBlock, IndexedBlock),
     },
 }
 
-struct HeaderDownloader<Block, Client> {
+struct GetHeadersRequester<Block, Client> {
     client: Arc<Client>,
     peer_id: PeerId,
     /// Ordered map of headers, where the key is the block hash and the value is the block number.
@@ -114,7 +114,7 @@ struct HeaderDownloader<Block, Client> {
     _phantom: PhantomData<Block>,
 }
 
-impl<Block, Client> HeaderDownloader<Block, Client>
+impl<Block, Client> GetHeadersRequester<Block, Client>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore,
@@ -159,13 +159,13 @@ where
     ///
     /// Ensures no duplicate locators are sent consecutively, and stores the last
     /// requested locator start position.
-    fn schedule_next_header_request_at(
+    fn schedule_next_get_headers_request_at(
         &mut self,
         block_number: u32,
         block_hash: BlockHash,
-    ) -> HeaderRequestOutcome {
+    ) -> GetHeadersRequestOutcome {
         let Some(checkpoint) = crate::checkpoint::next_checkpoint(block_number + 1) else {
-            return HeaderRequestOutcome::ExhaustedCheckpoint;
+            return GetHeadersRequestOutcome::ExhaustedCheckpoint;
         };
 
         let start = IndexedBlock {
@@ -177,7 +177,7 @@ where
 
         // Ignore the back-to-back duplicate locators.
         if block_number > 0 && block_number == self.last_locator_request_start {
-            return HeaderRequestOutcome::DuplicateLocator;
+            return GetHeadersRequestOutcome::RepeatedRequest;
         }
 
         self.last_locator_request_start = block_number;
@@ -196,7 +196,7 @@ where
             to: self.peer_id,
         };
 
-        HeaderRequestOutcome::NewHeaders {
+        GetHeadersRequestOutcome::NewGetHeaders {
             payload,
             range: (start, end),
         }
@@ -210,7 +210,7 @@ pub struct HeadersFirstStrategy<Block, Client> {
     peer_id: PeerId,
     state: State,
     block_downloader: BlockDownloader,
-    header_downloader: HeaderDownloader<Block, Client>,
+    get_headers_requester: GetHeadersRequester<Block, Client>,
     /// Tracks the number of blocks downloaded from the current sync peer.
     downloaded_blocks_count: usize,
     target_block_number: u32,
@@ -230,7 +230,7 @@ where
     ) -> (Self, SyncAction) {
         let best_number = client.best_number();
 
-        let header_downloader = HeaderDownloader {
+        let get_headers_requester = GetHeadersRequester {
             client: client.clone(),
             peer_id,
             last_locator_request_start: 0u32,
@@ -245,7 +245,7 @@ where
             peer_id,
             state: State::Idle,
             block_downloader: BlockDownloader::new(peer_id, best_number, peer_store),
-            header_downloader,
+            get_headers_requester,
             downloaded_blocks_count: 0,
             target_block_number,
         };
@@ -278,7 +278,7 @@ where
         self.downloaded_blocks_count = 0;
         self.target_block_number = target_block_number;
         self.block_downloader.peer_id = peer_id;
-        self.header_downloader.peer_id = peer_id;
+        self.get_headers_requester.peer_id = peer_id;
     }
 
     pub(crate) fn update_peer_best(&mut self, peer_id: PeerId, peer_best: u32) {
@@ -334,10 +334,10 @@ where
     }
 
     pub(crate) fn restart(&mut self, new_peer: PeerId, peer_best: u32) {
-        if let Some((start, end)) = self.header_downloader.completed_range {
+        if let Some((start, end)) = self.get_headers_requester.completed_range {
             self.state = State::RestartingBlocks { start, end };
         } else {
-            self.header_downloader.headers.clear();
+            self.get_headers_requester.headers.clear();
             self.state = State::RestartingHeaders;
         }
         self.peer_id = new_peer;
@@ -345,8 +345,8 @@ where
         self.downloaded_blocks_count = 0;
         self.block_downloader.reset();
         self.block_downloader.peer_id = new_peer;
-        self.header_downloader.peer_id = new_peer;
-        self.header_downloader.last_locator_request_start = 0u32;
+        self.get_headers_requester.peer_id = new_peer;
+        self.get_headers_requester.last_locator_request_start = 0u32;
     }
 
     fn headers_request_action(&mut self) -> SyncAction {
@@ -355,24 +355,24 @@ where
             .client
             .block_hash(best_number)
             .expect("Best hash must exist; qed");
-        let header_request_outcome = self
-            .header_downloader
-            .schedule_next_header_request_at(best_number, best_hash);
-        self.process_header_request_outcome(header_request_outcome)
+        let get_headers_request_outcome = self
+            .get_headers_requester
+            .schedule_next_get_headers_request_at(best_number, best_hash);
+        self.process_header_request_outcome(get_headers_request_outcome)
     }
 
     fn process_header_request_outcome(
         &mut self,
-        header_request_outcome: HeaderRequestOutcome,
+        get_headers_request_outcome: GetHeadersRequestOutcome,
     ) -> SyncAction {
-        match header_request_outcome {
-            HeaderRequestOutcome::DuplicateLocator => SyncAction::None,
-            HeaderRequestOutcome::ExhaustedCheckpoint => {
+        match get_headers_request_outcome {
+            GetHeadersRequestOutcome::RepeatedRequest => SyncAction::None,
+            GetHeadersRequestOutcome::ExhaustedCheckpoint => {
                 tracing::debug!("No more checkpoints, switching to blocks-first sync");
                 self.state = State::Completed;
                 SyncAction::SwitchToBlocksFirstSync
             }
-            HeaderRequestOutcome::NewHeaders {
+            GetHeadersRequestOutcome::NewGetHeaders {
                 payload,
                 range: (start, end),
             } => {
@@ -409,7 +409,9 @@ where
 
         let mut prev_number = if prev_hash == start.hash {
             start.number
-        } else if let Some(block_number) = self.header_downloader.headers.get(&prev_hash).copied() {
+        } else if let Some(block_number) =
+            self.get_headers_requester.headers.get(&prev_hash).copied()
+        {
             block_number
         } else if let Some(block_number) = self.client.block_number(prev_hash) {
             block_number
@@ -439,7 +441,7 @@ where
 
             // We can't convert the Bitcoin header to a Substrate header right now as creating a
             // Substrate header requires the full block data that is still missing.
-            self.header_downloader
+            self.get_headers_requester
                 .headers
                 .insert(block_hash, block_number);
 
@@ -452,7 +454,9 @@ where
         let target_block_hash = end.hash;
 
         if final_block_number == target_block_number {
-            self.header_downloader.completed_range.replace((start, end));
+            self.get_headers_requester
+                .completed_range
+                .replace((start, end));
             self.start_block_download_on_header_download_completion(start, end)
         } else {
             tracing::debug!("📄 Downloaded headers ({final_block_number}/{target_block_number})");
@@ -475,7 +479,9 @@ where
 
         let best_number = self.client.best_number();
 
-        let missing_blocks = self.header_downloader.compute_missing_blocks(best_number);
+        let missing_blocks = self
+            .get_headers_requester
+            .compute_missing_blocks(best_number);
 
         if missing_blocks.is_empty() {
             tracing::debug!("No missing blocks, starting new headers request");
@@ -490,7 +496,7 @@ where
             tracing::debug!(
                 best_number,
                 best_queued_number = self.block_downloader.best_queued_number,
-                downloaded_headers_count = self.header_downloader.headers.len(),
+                downloaded_headers_count = self.get_headers_requester.headers.len(),
                 "Headers downloaded, starting to download {} blocks from {start} to {end}",
                 missing_blocks.len()
             );
@@ -609,10 +615,10 @@ where
                 return SyncAction::None;
             }
 
-            let header_request_outcome = self
-                .header_downloader
-                .schedule_next_header_request_at(block_number, block_hash);
-            self.process_header_request_outcome(header_request_outcome)
+            let get_headers_request_outcome = self
+                .get_headers_requester
+                .schedule_next_get_headers_request_at(block_number, block_hash);
+            self.process_header_request_outcome(get_headers_request_outcome)
         } else {
             SyncAction::None
         }
