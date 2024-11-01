@@ -712,11 +712,11 @@ where
             Direction::Inbound => {
                 // Do not log the inbound connection success as what Bitcoin Core does.
                 #[cfg(test)]
-                tracing::debug!(peer = ?peer_id, ?direction, "🤝 Completed handshake");
+                tracing::debug!(?direction, "🤝 New peer {peer_id:?}");
             }
             Direction::Outbound => {
                 self.send(peer_id, NetworkMessage::Verack)?;
-                tracing::debug!(peer = ?peer_id, ?direction, "🤝 Completed handshake");
+                tracing::debug!(?direction, "🤝 New peer {peer_id:?}");
             }
         }
 
@@ -733,7 +733,7 @@ where
     pub(crate) fn on_addr(&mut self, peer_id: PeerId, addresses: Vec<(u32, Address)>) {
         let added = self.address_book.add_many(peer_id, addresses);
         if added > 0 {
-            tracing::debug!("Added {added} addresses from {peer_id:?}");
+            tracing::trace!("Added {added} addresses from {peer_id:?}");
 
             if let Some(metrics) = &self.metrics {
                 metrics
@@ -747,7 +747,7 @@ where
     pub(crate) fn on_addr_v2(&mut self, peer_id: PeerId, addresses: Vec<AddrV2Message>) {
         let added = self.address_book.add_many_v2(peer_id, addresses);
         if added > 0 {
-            tracing::debug!("Added {added} addresses from {peer_id:?}");
+            tracing::trace!("Added {added} addresses from {peer_id:?}");
 
             if let Some(metrics) = &self.metrics {
                 metrics

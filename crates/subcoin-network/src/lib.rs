@@ -27,15 +27,12 @@
 //! to Bitcoin chain's tip by leveraging the advanced state sync provided by the Substrate networking stack.
 
 mod address_book;
-mod block_downloader;
 mod checkpoint;
 mod connection;
 mod metrics;
 mod network;
-mod orphan_blocks_pool;
 mod peer_manager;
 mod peer_store;
-mod strategy;
 mod sync;
 #[cfg(test)]
 mod tests;

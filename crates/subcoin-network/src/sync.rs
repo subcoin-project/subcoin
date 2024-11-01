@@ -1,6 +1,10 @@
+mod block_downloader;
+mod orphan_blocks_pool;
+mod strategy;
+
+use self::strategy::{BlocksFirstStrategy, HeadersFirstStrategy};
 use crate::peer_manager::NewPeer;
 use crate::peer_store::PeerStore;
-use crate::strategy::{BlocksFirstStrategy, HeadersFirstStrategy};
 use crate::{Error, Latency, PeerId, SyncStatus, SyncStrategy};
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::p2p::message_blockdata::Inventory;

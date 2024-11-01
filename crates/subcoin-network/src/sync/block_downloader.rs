@@ -1,4 +1,4 @@
-use crate::orphan_blocks_pool::OrphanBlocksPool;
+use super::orphan_blocks_pool::OrphanBlocksPool;
 use crate::peer_store::PeerStore;
 use crate::sync::{SyncAction, SyncRequest};
 use crate::PeerId;

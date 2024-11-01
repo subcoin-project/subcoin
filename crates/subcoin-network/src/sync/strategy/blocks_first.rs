@@ -1,5 +1,5 @@
-use crate::block_downloader::BlockDownloader;
 use crate::peer_store::PeerStore;
+use crate::sync::block_downloader::BlockDownloader;
 use crate::sync::{LocatorRequest, SyncAction, SyncRequest};
 use crate::{Error, PeerId, SyncStatus};
 use bitcoin::hashes::Hash;
