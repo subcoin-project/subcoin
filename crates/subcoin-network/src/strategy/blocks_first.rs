@@ -425,6 +425,8 @@ where
         }
     }
 
+    /// Request more blocks if there are remaining blocks in the current block list, otherwise
+    /// request a new list of missing blocks for downloading.
     fn schedule_block_download(
         &mut self,
         block_number: u32,
