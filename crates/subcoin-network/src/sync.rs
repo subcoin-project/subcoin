@@ -118,7 +118,7 @@ pub(crate) enum SyncAction {
     /// compltes, to fetch the most recent blocks.
     SwitchToBlocksFirstSync,
     /// Disconnect from the peer for the given reason.
-    Disconnect(PeerId, Error),
+    DisconnectPeer(PeerId, Error),
     /// Deprioritize the specified peer, restarting the current sync
     /// with other candidates if available.
     RestartSyncWithStalledPeer(PeerId),

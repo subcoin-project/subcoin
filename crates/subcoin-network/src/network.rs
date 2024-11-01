@@ -55,9 +55,9 @@ pub(crate) struct IncomingTransaction {
     pub(crate) transaction: Transaction,
 }
 
-/// Represents the different messages that can be sent to the network worker.
+/// Represents the different messages that can be sent to the network processor.
 #[derive(Debug)]
-pub(crate) enum NetworkWorkerMessage {
+pub(crate) enum NetworkProcessorMessage {
     /// Request the current network status.
     RequestNetworkStatus(oneshot::Sender<NetworkStatus>),
     /// Request the sync peers.
@@ -72,13 +72,13 @@ pub(crate) enum NetworkWorkerMessage {
     StartBlockSync,
 }
 
-/// A handle for interacting with the network worker.
+/// A handle for interacting with the network processor.
 ///
-/// This handle allows sending messages to the network worker and provides a simple
+/// This handle allows sending messages to the network processor and provides a simple
 /// way to check if the node is performing a major synchronization.
 #[derive(Debug, Clone)]
 pub struct NetworkHandle {
-    pub(crate) worker_msg_sender: TracingUnboundedSender<NetworkWorkerMessage>,
+    pub(crate) processor_msg_sender: TracingUnboundedSender<NetworkProcessorMessage>,
     // A simple flag to know whether the node is doing the major sync.
     pub(crate) is_major_syncing: Arc<AtomicBool>,
 }
@@ -86,12 +86,12 @@ pub struct NetworkHandle {
 impl NetworkHandle {
     /// Provides high-level status information about network.
     ///
-    /// Returns None if the `NetworkWorker` is no longer running.
+    /// Returns None if the `NetworkProcessor` is no longer running.
     pub async fn status(&self) -> Option<NetworkStatus> {
         let (sender, receiver) = oneshot::channel();
 
-        self.worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::RequestNetworkStatus(sender))
+        self.processor_msg_sender
+            .unbounded_send(NetworkProcessorMessage::RequestNetworkStatus(sender))
             .ok();
 
         receiver.await.ok()
@@ -102,8 +102,8 @@ impl NetworkHandle {
         let (sender, receiver) = oneshot::channel();
 
         if self
-            .worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::RequestSyncPeers(sender))
+            .processor_msg_sender
+            .unbounded_send(NetworkProcessorMessage::RequestSyncPeers(sender))
             .is_err()
         {
             return Vec::new();
@@ -117,8 +117,8 @@ impl NetworkHandle {
         let (sender, receiver) = oneshot::channel();
 
         if self
-            .worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::RequestTransaction((txid, sender)))
+            .processor_msg_sender
+            .unbounded_send(NetworkProcessorMessage::RequestTransaction((txid, sender)))
             .is_err()
         {
             return None;
@@ -135,15 +135,15 @@ impl NetworkHandle {
         let incoming_transaction = IncomingTransaction { txid, transaction };
 
         if self
-            .worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::SendTransaction((
+            .processor_msg_sender
+            .unbounded_send(NetworkProcessorMessage::SendTransaction((
                 incoming_transaction,
                 sender,
             )))
             .is_err()
         {
             return SendTransactionResult::Failure(format!(
-                "Failed to send transaction ({txid}) to worker"
+                "Failed to send transaction ({txid}) to net processor"
             ));
         }
 
@@ -154,8 +154,8 @@ impl NetworkHandle {
 
     /// Starts the block sync in chain sync component.
     pub fn start_block_sync(&self) -> bool {
-        self.worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::StartBlockSync)
+        self.processor_msg_sender
+            .unbounded_send(NetworkProcessorMessage::StartBlockSync)
             .is_ok()
     }
 

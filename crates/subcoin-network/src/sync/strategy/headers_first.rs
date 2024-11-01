@@ -383,7 +383,7 @@ where
     // `headers` are expected to contain at most 2000 entries, in ascending order. [b1, b2, b3, ..., b2000].
     pub(crate) fn on_headers(&mut self, headers: Vec<BitcoinHeader>, from: PeerId) -> SyncAction {
         if headers.len() > MAX_HEADERS_SIZE {
-            return SyncAction::Disconnect(from, Error::TooManyHeaders);
+            return SyncAction::DisconnectPeer(from, Error::TooManyHeaders);
         }
 
         let Some(first_header) = headers.first() else {
@@ -417,18 +417,21 @@ where
                 "Cannot find the parent of the first header in headers, disconnecting"
             );
             self.state = State::Disconnecting;
-            return SyncAction::Disconnect(self.peer_id, Error::MissingFirstHeaderParent);
+            return SyncAction::DisconnectPeer(self.peer_id, Error::MissingFirstHeaderParent);
         };
 
         for header in headers {
             if header.prev_blockhash != prev_hash {
                 self.state = State::Disconnecting;
-                return SyncAction::Disconnect(self.peer_id, Error::HeadersNotInAscendingOrder);
+                return SyncAction::DisconnectPeer(self.peer_id, Error::HeadersNotInAscendingOrder);
             }
 
             if !self.header_verifier.has_valid_proof_of_work(&header) {
                 self.state = State::Disconnecting;
-                return SyncAction::Disconnect(from, Error::BadProofOfWork(header.block_hash()));
+                return SyncAction::DisconnectPeer(
+                    from,
+                    Error::BadProofOfWork(header.block_hash()),
+                );
             }
 
             let block_hash = header.block_hash();

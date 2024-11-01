@@ -290,7 +290,7 @@ where
                 "Received inv with more than {MAX_GET_BLOCKS_RESPONSE} block entries"
             );
             self.state = State::Disconnecting;
-            return SyncAction::Disconnect(self.peer_id, Error::InvHasTooManyBlockItems);
+            return SyncAction::DisconnectPeer(self.peer_id, Error::InvHasTooManyBlockItems);
         }
 
         let range = match &self.state {

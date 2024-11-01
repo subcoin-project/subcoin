@@ -1,7 +1,7 @@
 use crate::connection::{ConnectionInitiator, Direction, NewConnection};
 use crate::metrics::Metrics;
 use crate::network::{
-    IncomingTransaction, NetworkStatus, NetworkWorkerMessage, SendTransactionResult,
+    IncomingTransaction, NetworkProcessorMessage, NetworkStatus, SendTransactionResult,
 };
 use crate::peer_manager::{Config, NewPeer, PeerManager, SlowPeer, PEER_LATENCY_THRESHOLD};
 use crate::peer_store::PeerStore;
@@ -38,7 +38,7 @@ pub enum Event {
     /// Failed to make a connection to the given outbound peer.
     OutboundConnectionFailure { peer_addr: PeerId, reason: Error },
     /// TCP connection was closed, either properly or abruptly.
-    Disconnect { peer_addr: PeerId, reason: Error },
+    DisconnectPeer { peer_addr: PeerId, reason: Error },
     /// New Bitcoin p2p network message received from the peer.
     PeerMessage {
         from: PeerId,
@@ -47,7 +47,14 @@ pub enum Event {
     },
 }
 
-/// Parameters for creating a [`NetworkWorker`].
+impl Event {
+    /// Constructs a [`Event::DisconnectPeer`] variant.
+    pub fn disconnect(peer_addr: PeerId, reason: Error) -> Self {
+        Self::DisconnectPeer { peer_addr, reason }
+    }
+}
+
+/// Parameters for creating a [`NetworkProcessor`].
 pub struct Params<Block, Client> {
     pub client: Arc<Client>,
     pub header_verifier: HeaderVerifier<Block, Client>,
@@ -62,8 +69,8 @@ pub struct Params<Block, Client> {
     pub peer_store: Arc<dyn PeerStore>,
 }
 
-/// [`NetworkWorker`] is responsible for processing the network events.
-pub struct NetworkWorker<Block, Client> {
+/// [`NetworkProcessor`] is responsible for processing the network events.
+pub struct NetworkProcessor<Block, Client> {
     config: Config,
     client: Arc<Client>,
     chain_sync: ChainSync<Block, Client>,
@@ -77,12 +84,12 @@ pub struct NetworkWorker<Block, Client> {
     metrics: Option<Metrics>,
 }
 
-impl<Block, Client> NetworkWorker<Block, Client>
+impl<Block, Client> NetworkProcessor<Block, Client>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore,
 {
-    /// Constructs a new instance of [`NetworkWorker`].
+    /// Constructs a new instance of [`NetworkProcessor`].
     pub fn new(params: Params<Block, Client>, registry: Option<&Registry>) -> Self {
         let Params {
             client,
@@ -142,10 +149,10 @@ where
     ///
     /// This loop handles various tasks such as processing incoming network events,
     /// syncing the blockchain, managing peers, and updating metrics. It runs indefinitely
-    /// until the network worker is stopped.
+    /// until the network processor is stopped.
     pub(crate) async fn run(
         mut self,
-        worker_msg_receiver: TracingUnboundedReceiver<NetworkWorkerMessage>,
+        processor_msg_receiver: TracingUnboundedReceiver<NetworkProcessorMessage>,
         bandwidth: Bandwidth,
     ) {
         let mut tick_timeout = {
@@ -154,7 +161,7 @@ where
             interval
         };
 
-        let mut worker_msg_sink = worker_msg_receiver.fuse();
+        let mut processor_msg_sink = processor_msg_receiver.fuse();
 
         loop {
             tokio::select! {
@@ -165,15 +172,15 @@ where
                     let Some(event) = maybe_event else {
                         return;
                     };
-                    self.process_event(event).await;
+                    self.handle_event(event).await;
                 }
-                maybe_worker_msg = worker_msg_sink.next(), if !worker_msg_sink.is_terminated() => {
-                    if let Some(worker_msg) = maybe_worker_msg {
-                        self.process_worker_message(worker_msg, &bandwidth);
+                maybe_processor_msg = processor_msg_sink.next(), if !processor_msg_sink.is_terminated() => {
+                    if let Some(processor_msg) = maybe_processor_msg {
+                        self.handle_processor_message(processor_msg, &bandwidth);
                     }
                 }
                 _ = tick_timeout.tick() => {
-                    self.perform_periodic_actions();
+                    self.execute_periodic_tasks();
                 }
             }
 
@@ -181,7 +188,7 @@ where
         }
     }
 
-    async fn process_event(&mut self, event: Event) {
+    async fn handle_event(&mut self, event: Event) {
         match event {
             Event::NewConnection(new_connection) => {
                 self.peer_manager.on_new_connection(new_connection);
@@ -191,7 +198,7 @@ where
                     .on_outbound_connection_failure(peer_addr, reason);
                 self.peer_store.remove_peer(peer_addr);
             }
-            Event::Disconnect { peer_addr, reason } => {
+            Event::DisconnectPeer { peer_addr, reason } => {
                 self.peer_manager.disconnect(peer_addr, reason);
                 self.chain_sync.disconnect(peer_addr);
                 self.peer_store.remove_peer(peer_addr);
@@ -222,7 +229,7 @@ where
         }
     }
 
-    fn perform_periodic_actions(&mut self) {
+    fn execute_periodic_tasks(&mut self) {
         let sync_action = self.chain_sync.on_tick();
         self.do_sync_action(sync_action);
 
@@ -253,9 +260,13 @@ where
         }
     }
 
-    fn process_worker_message(&mut self, worker_msg: NetworkWorkerMessage, bandwidth: &Bandwidth) {
-        match worker_msg {
-            NetworkWorkerMessage::RequestNetworkStatus(result_sender) => {
+    fn handle_processor_message(
+        &mut self,
+        processor_msg: NetworkProcessorMessage,
+        bandwidth: &Bandwidth,
+    ) {
+        match processor_msg {
+            NetworkProcessorMessage::RequestNetworkStatus(result_sender) => {
                 let net_status = NetworkStatus {
                     num_connected_peers: self.peer_manager.connected_peers_count(),
                     total_bytes_inbound: bandwidth.total_bytes_inbound.load(Ordering::Relaxed),
@@ -264,17 +275,17 @@ where
                 };
                 let _ = result_sender.send(net_status);
             }
-            NetworkWorkerMessage::RequestSyncPeers(result_sender) => {
+            NetworkProcessorMessage::RequestSyncPeers(result_sender) => {
                 let sync_peers = self.chain_sync.peers.values().cloned().collect::<Vec<_>>();
                 let _ = result_sender.send(sync_peers);
             }
-            NetworkWorkerMessage::RequestInboundPeersCount(result_sender) => {
+            NetworkProcessorMessage::RequestInboundPeersCount(result_sender) => {
                 let _ = result_sender.send(self.peer_manager.inbound_peers_count());
             }
-            NetworkWorkerMessage::RequestTransaction((txid, result_sender)) => {
+            NetworkProcessorMessage::RequestTransaction((txid, result_sender)) => {
                 let _ = result_sender.send(self.transaction_manager.get_transaction(&txid));
             }
-            NetworkWorkerMessage::SendTransaction((incoming_transaction, result_sender)) => {
+            NetworkProcessorMessage::SendTransaction((incoming_transaction, result_sender)) => {
                 let send_transaction_result = match self
                     .transaction_manager
                     .add_transaction(incoming_transaction)
@@ -284,7 +295,7 @@ where
                 };
                 let _ = result_sender.send(send_transaction_result);
             }
-            NetworkWorkerMessage::StartBlockSync => {
+            NetworkProcessorMessage::StartBlockSync => {
                 let sync_action = self.chain_sync.start_block_sync();
                 self.do_sync_action(sync_action);
             }
@@ -402,7 +413,7 @@ where
     fn process_pong(&mut self, from: PeerId, nonce: u64) -> Result<SyncAction, Error> {
         match self.peer_manager.on_pong(from, nonce) {
             Ok(avg_latency) => {
-                // Disconnect the peer directly if the latency is higher than the threshold.
+                // DisconnectPeer the peer directly if the latency is higher than the threshold.
                 if avg_latency > PEER_LATENCY_THRESHOLD {
                     self.peer_manager
                         .disconnect(from, Error::PingLatencyTooHigh(avg_latency));
@@ -441,7 +452,10 @@ where
 
     fn process_inv(&mut self, from: PeerId, inv: Vec<Inventory>) -> Result<SyncAction, Error> {
         if inv.len() > MAX_INV_SIZE {
-            return Ok(SyncAction::Disconnect(from, Error::TooManyInventoryItems));
+            return Ok(SyncAction::DisconnectPeer(
+                from,
+                Error::TooManyInventoryItems,
+            ));
         }
 
         if inv.len() == 1 {
@@ -536,7 +550,7 @@ where
                 for (index, header) in headers.iter().enumerate() {
                     if !self.header_verifier.has_valid_proof_of_work(header) {
                         tracing::error!(?from, "Invalid header at index {index} in headers");
-                        return Ok(SyncAction::Disconnect(
+                        return Ok(SyncAction::DisconnectPeer(
                             from,
                             Error::BadProofOfWork(header.block_hash()),
                         ));
@@ -638,7 +652,7 @@ where
                 self.chain_sync
                     .restart_sync(stalled_peer_id, RestartReason::Stalled);
             }
-            SyncAction::Disconnect(peer_id, reason) => {
+            SyncAction::DisconnectPeer(peer_id, reason) => {
                 self.peer_manager.disconnect(peer_id, reason);
                 self.chain_sync.disconnect(peer_id);
             }

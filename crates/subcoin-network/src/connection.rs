@@ -1,4 +1,4 @@
-use crate::worker::Event;
+use crate::net_processor::Event;
 use crate::{Bandwidth, Error, PeerId};
 use bitcoin::consensus::{encode, Decodable, Encodable};
 use bitcoin::p2p::message::{NetworkMessage, RawNetworkMessage, MAX_MSG_SIZE};
@@ -257,10 +257,7 @@ impl ConnectionInitiator {
                     )
                     .await
                     {
-                        let _ = network_event_sender.send(Event::Disconnect {
-                            peer_addr,
-                            reason: err,
-                        });
+                        let _ = network_event_sender.send(Event::disconnect(peer_addr, err));
                     }
                 }
             }
@@ -283,10 +280,7 @@ impl ConnectionInitiator {
                 )
                 .await
                 {
-                    let _ = network_event_sender.send(Event::Disconnect {
-                        peer_addr,
-                        reason: err,
-                    });
+                    let _ = network_event_sender.send(Event::disconnect(peer_addr, err));
                 }
             }
             .boxed()
