@@ -334,18 +334,19 @@ where
     }
 
     pub(crate) fn restart(&mut self, new_peer: PeerId, peer_best: u32) {
-        self.peer_id = new_peer;
-        self.downloaded_blocks_count = 0;
-        self.target_block_number = peer_best;
-        self.header_downloader.last_locator_request_start = 0u32;
-        self.block_downloader.reset();
-        self.block_downloader.peer_id = new_peer;
         if let Some((start, end)) = self.header_downloader.completed_range {
             self.state = State::RestartingBlocks { start, end };
         } else {
             self.header_downloader.headers.clear();
             self.state = State::RestartingHeaders;
         }
+        self.peer_id = new_peer;
+        self.target_block_number = peer_best;
+        self.downloaded_blocks_count = 0;
+        self.block_downloader.reset();
+        self.block_downloader.peer_id = new_peer;
+        self.header_downloader.peer_id = new_peer;
+        self.header_downloader.last_locator_request_start = 0u32;
     }
 
     fn headers_request_action(&mut self) -> SyncAction {

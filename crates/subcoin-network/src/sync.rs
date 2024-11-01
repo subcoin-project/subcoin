@@ -570,12 +570,9 @@ where
             );
 
             if blocks_first {
-                let (sync_strategy, blocks_request) =
+                let (sync_strategy, sync_action) =
                     BlocksFirstStrategy::new(client, next_peer_id, peer_best, peer_store);
-                (
-                    Syncing::BlocksFirst(Box::new(sync_strategy)),
-                    SyncAction::Request(blocks_request),
-                )
+                (Syncing::BlocksFirst(Box::new(sync_strategy)), sync_action)
             } else {
                 let (sync_strategy, sync_action) = HeadersFirstStrategy::new(
                     client,
@@ -587,12 +584,9 @@ where
                 (Syncing::HeadersFirst(Box::new(sync_strategy)), sync_action)
             }
         } else {
-            let (sync_strategy, blocks_request) =
+            let (sync_strategy, sync_action) =
                 BlocksFirstStrategy::new(client, next_peer_id, peer_best, peer_store);
-            (
-                Syncing::BlocksFirst(Box::new(sync_strategy)),
-                SyncAction::Request(blocks_request),
-            )
+            (Syncing::BlocksFirst(Box::new(sync_strategy)), sync_action)
         };
 
         next_peer.state = PeerSyncState::DownloadingNew { start: our_best };
@@ -601,23 +595,7 @@ where
         sync_action
     }
 
-    fn update_syncing_state(&mut self, new: Syncing<Block, Client>) {
-        self.syncing = new;
-        self.is_major_syncing
-            .store(self.syncing.is_major_syncing(), Ordering::Relaxed);
-    }
-
-    pub(super) fn set_idle(&mut self) {
-        self.import_pending_blocks();
-
-        tracing::debug!(
-            best_number = self.client.best_number(),
-            "Blocks-First sync completed, switching to Syncing::Idle"
-        );
-        self.update_syncing_state(Syncing::Idle);
-    }
-
-    pub(super) fn attempt_blocks_first_sync(&mut self) -> Option<SyncRequest> {
+    pub(super) fn attempt_blocks_first_sync(&mut self) -> Option<SyncAction> {
         if self.syncing.is_major_syncing() {
             return None;
         }
@@ -637,7 +615,7 @@ where
             return None;
         };
 
-        let (blocks_first_strategy, blocks_request) = BlocksFirstStrategy::new(
+        let (blocks_first_strategy, sync_action) = BlocksFirstStrategy::new(
             self.client.clone(),
             best_peer.peer_id,
             best_peer.best_number,
@@ -647,7 +625,23 @@ where
         tracing::debug!("Headers-First sync completed, continuing with blocks-first sync");
         self.update_syncing_state(Syncing::BlocksFirst(Box::new(blocks_first_strategy)));
 
-        Some(blocks_request)
+        Some(sync_action)
+    }
+
+    fn update_syncing_state(&mut self, new: Syncing<Block, Client>) {
+        self.syncing = new;
+        self.is_major_syncing
+            .store(self.syncing.is_major_syncing(), Ordering::Relaxed);
+    }
+
+    pub(super) fn set_idle(&mut self) {
+        self.import_pending_blocks();
+
+        tracing::debug!(
+            best_number = self.client.best_number(),
+            "Blocks-First sync completed, switching to Syncing::Idle"
+        );
+        self.update_syncing_state(Syncing::Idle);
     }
 
     // NOTE: `inv` can be received unsolicited as an announcement of a new block,

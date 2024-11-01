@@ -447,6 +447,7 @@ where
         if inv.len() == 1 {
             if let Inventory::Block(block_hash) = inv[0] {
                 if self.client.block_number(block_hash).is_none() {
+                    // TODO: peers may sent us duplicate block announcements.
                     tracing::debug!("Recv possible block announcement {inv:?} from {from:?}");
 
                     let mut is_new_block_announce = false;
@@ -624,7 +625,7 @@ where
                 }
             },
             SyncAction::SwitchToBlocksFirstSync => {
-                if let Some(SyncRequest::Blocks(request)) =
+                if let Some(SyncAction::Request(SyncRequest::Blocks(request))) =
                     self.chain_sync.attempt_blocks_first_sync()
                 {
                     self.send_get_blocks_request(request);

@@ -50,27 +50,48 @@ impl State {
 
 /// Responsible for downloading a list of block hashes as the prerequisite of `BlockDownloader`.
 #[derive(Clone)]
-struct BlockListDownloader<Block, Client> {
+struct BlockInventoryDownloader<Block, Client> {
     client: Arc<Client>,
     peer_id: PeerId,
     target_block_number: u32,
-    last_locator_start: u32,
+    last_locator_request_start: u32,
     _phantom: PhantomData<Block>,
 }
 
-impl<Block, Client> BlockListDownloader<Block, Client>
+enum BlockInvRequestOutcome {
+    DuplicateLocator,
+    NewBlocks {
+        payload: LocatorRequest,
+        range: Range<u32>,
+    },
+}
+
+impl<Block, Client> BlockInventoryDownloader<Block, Client>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore,
 {
-    fn prepare_blocks_request(
+    fn schedule_next_block_inv_request(
         &mut self,
         block_downloader: &BlockDownloader,
-    ) -> (SyncRequest, Range<u32>) {
+    ) -> BlockInvRequestOutcome {
+        let from = self
+            .client
+            .best_number()
+            .max(block_downloader.best_queued_number);
+
+        if from > 0 && self.last_locator_request_start == from {
+            return BlockInvRequestOutcome::DuplicateLocator;
+        }
+
+        self.last_locator_request_start = from;
+
         let BlockLocator {
             latest_block,
             locator_hashes,
-        } = self.block_locator(block_downloader);
+        } = self.client.block_locator(Some(from), |height: u32| {
+            block_downloader.queued_blocks.block_hash(height)
+        });
 
         let end = self
             .target_block_number
@@ -79,33 +100,19 @@ where
         tracing::debug!(
             latest_block,
             best_queued_number = block_downloader.best_queued_number,
-            ?locator_hashes,
-            "Requesting new blocks",
+            "Requesting new block inventories",
         );
 
-        let blocks_request = SyncRequest::Blocks(LocatorRequest {
+        let payload = LocatorRequest {
             locator_hashes,
             stop_hash: BlockHash::all_zeros(),
             to: self.peer_id,
-        });
+        };
 
-        (blocks_request, latest_block + 1..end + 1)
-    }
-
-    fn block_locator(&mut self, block_downloader: &BlockDownloader) -> BlockLocator {
-        let from = self
-            .client
-            .best_number()
-            .max(block_downloader.best_queued_number);
-
-        if from > 0 && self.last_locator_start == from {
-            return BlockLocator::empty();
+        BlockInvRequestOutcome::NewBlocks {
+            payload,
+            range: latest_block + 1..end + 1,
         }
-
-        self.last_locator_start = from;
-        self.client.block_locator(Some(from), |height: u32| {
-            block_downloader.queued_blocks.block_hash(height)
-        })
     }
 }
 
@@ -117,8 +124,8 @@ pub struct BlocksFirstStrategy<Block, Client> {
     /// The final block number we are targeting when the download is complete.
     target_block_number: u32,
     state: State,
+    block_inv_downloader: BlockInventoryDownloader<Block, Client>,
     block_downloader: BlockDownloader,
-    block_list_downloader: BlockListDownloader<Block, Client>,
     downloaded_blocks_count: usize,
 }
 
@@ -132,14 +139,14 @@ where
         peer_id: PeerId,
         peer_best: u32,
         peer_store: Arc<dyn PeerStore>,
-    ) -> (Self, SyncRequest) {
+    ) -> (Self, SyncAction) {
         let best_number = client.best_number();
 
-        let block_list_downloader = BlockListDownloader {
+        let block_inv_downloader = BlockInventoryDownloader {
             client: client.clone(),
             peer_id,
             target_block_number: peer_best,
-            last_locator_start: 0u32,
+            last_locator_request_start: 0u32,
             _phantom: Default::default(),
         };
 
@@ -148,18 +155,17 @@ where
             client,
             target_block_number: peer_best,
             state: State::Idle,
+            block_inv_downloader,
             block_downloader: BlockDownloader::new(peer_id, best_number, peer_store),
-            block_list_downloader,
             downloaded_blocks_count: 0,
         };
 
-        let (get_blocks_request, range) = blocks_first_sync
-            .block_list_downloader
-            .prepare_blocks_request(&blocks_first_sync.block_downloader);
+        let outcome = blocks_first_sync
+            .block_inv_downloader
+            .schedule_next_block_inv_request(&blocks_first_sync.block_downloader);
+        let sync_action = blocks_first_sync.process_block_inv_request_outcome(outcome);
 
-        blocks_first_sync.state = State::DownloadingInv(range);
-
-        (blocks_first_sync, get_blocks_request)
+        (blocks_first_sync, sync_action)
     }
 
     pub(crate) fn sync_status(&self) -> SyncStatus {
@@ -225,22 +231,26 @@ where
             } else {
                 return SyncAction::None;
             }
-        } else if matches!(self.state, State::DownloadingBlocks(..)) {
+        }
+
+        if let Some(stalled_peer) = self.block_downloader.has_stalled() {
+            return SyncAction::RestartSyncWithStalledPeer(stalled_peer);
+        }
+
+        if matches!(self.state, State::DownloadingBlocks(..)) {
             // If the queue was not overloaded, but we are in the downloading blocks mode,
-            // see whether there are more blocks to download.
+            // see whether there are pending blocks in the block_downloader.
             let is_ready = self
                 .block_downloader
                 .evaluate_queue_status(self.client.best_number())
                 .is_ready();
 
-            if is_ready {
+            if is_ready && self.block_downloader.requested_blocks.is_empty() {
                 if self.block_downloader.missing_blocks.is_empty() {
                     return self.blocks_request_action();
-                } else if self.block_downloader.requested_blocks.is_empty() {
+                } else {
                     return self.block_downloader.schedule_next_download_batch();
                 }
-            } else {
-                return SyncAction::None;
             }
         }
 
@@ -249,21 +259,18 @@ where
             return SyncAction::SetIdle;
         }
 
-        if let Some(stalled_peer) = self.block_downloader.has_stalled() {
-            return SyncAction::RestartSyncWithStalledPeer(stalled_peer);
-        }
-
         SyncAction::None
     }
 
     pub(crate) fn restart(&mut self, new_peer: PeerId, peer_best: u32) {
-        self.peer_id = new_peer;
-        self.downloaded_blocks_count = 0;
-        self.target_block_number = peer_best;
-        self.block_list_downloader.last_locator_start = 0u32;
-        self.block_downloader.reset();
         self.state = State::Restarting;
+        self.peer_id = new_peer;
+        self.target_block_number = peer_best;
+        self.downloaded_blocks_count = 0;
+        self.block_downloader.reset();
         self.block_downloader.peer_id = new_peer;
+        self.block_inv_downloader.peer_id = new_peer;
+        self.block_inv_downloader.last_locator_request_start = 0u32;
     }
 
     // Handle `inv` message.
@@ -272,8 +279,8 @@ where
     // or in reply to `getblocks`.
     pub(crate) fn on_inv(&mut self, inventories: Vec<Inventory>, from: PeerId) -> SyncAction {
         if from != self.peer_id {
-            tracing::debug!(?from, current_sync_peer = ?self.peer_id, "Recv unexpected {} inventories", inventories.len());
-            tracing::debug!(?from, "TODO: inventories: {inventories:?}");
+            // tracing::debug!(?from, current_sync_peer = ?self.peer_id, "Recv unexpected {} inventories", inventories.len());
+            // tracing::debug!(?from, "TODO: inventories: {inventories:?}");
             return SyncAction::None;
         }
 
@@ -294,7 +301,7 @@ where
         let range = match &self.state {
             State::DownloadingInv(range) => range,
             state => {
-                tracing::debug!("Recv inventories in state {state:?}");
+                tracing::debug!(?state, "Ignored inventories {inventories:?}");
                 return SyncAction::None;
             }
         };
@@ -323,12 +330,8 @@ where
             return self.blocks_request_action();
         }
 
-        tracing::debug!("Found {} blocks missing", missing_blocks.len());
-
-        self.block_downloader.set_missing_blocks(missing_blocks);
-
         self.state = State::DownloadingBlocks(range.clone());
-
+        self.block_downloader.set_missing_blocks(missing_blocks);
         self.block_downloader.schedule_next_download_batch()
     }
 
@@ -459,54 +462,40 @@ where
                 }
             }
             CmpOrdering::Equal => {
-                let best_number = self.client.best_number();
-
                 // No more new blocks request as there are enough ongoing blocks in the queue.
                 if self
                     .block_downloader
-                    .evaluate_queue_status(best_number)
+                    .evaluate_queue_status(self.client.best_number())
                     .is_overloaded()
                 {
                     return SyncAction::None;
                 }
 
-                let best_queued_number = self.block_downloader.best_queued_number;
-
-                let end = self
-                    .target_block_number
-                    .min(best_queued_number + MAX_GET_BLOCKS_RESPONSE);
-
-                self.state = State::DownloadingInv(best_queued_number + 1..end + 1);
-                self.block_downloader.clear_missing_blocks();
-
-                let BlockLocator { locator_hashes, .. } = self
-                    .client
-                    .block_locator(Some(best_queued_number), |height: u32| {
-                        self.block_downloader.queued_blocks.block_hash(height)
-                    });
-
-                tracing::debug!(
-                    best_number,
-                    best_queued_number,
-                    "Last `getblocks` finished, fetching more blocks",
-                );
-
-                SyncAction::Request(SyncRequest::Blocks(LocatorRequest {
-                    locator_hashes,
-                    stop_hash: BlockHash::all_zeros(),
-                    to: self.peer_id,
-                }))
+                if self.block_downloader.missing_blocks.is_empty() {
+                    self.blocks_request_action()
+                } else {
+                    self.block_downloader.schedule_next_download_batch()
+                }
             }
         }
     }
 
     #[inline]
     fn blocks_request_action(&mut self) -> SyncAction {
-        let (blocks_request, range) = self
-            .block_list_downloader
-            .prepare_blocks_request(&self.block_downloader);
-        self.state = State::DownloadingInv(range);
-        SyncAction::Request(blocks_request)
+        let outcome = self
+            .block_inv_downloader
+            .schedule_next_block_inv_request(&self.block_downloader);
+        self.process_block_inv_request_outcome(outcome)
+    }
+
+    fn process_block_inv_request_outcome(&mut self, outcome: BlockInvRequestOutcome) -> SyncAction {
+        match outcome {
+            BlockInvRequestOutcome::DuplicateLocator => SyncAction::None,
+            BlockInvRequestOutcome::NewBlocks { payload, range } => {
+                self.state = State::DownloadingInv(range);
+                SyncAction::Request(SyncRequest::Blocks(payload))
+            }
+        }
     }
 }
 

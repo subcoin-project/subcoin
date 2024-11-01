@@ -137,10 +137,6 @@ impl BlockDownloader {
         self.missing_blocks = new;
     }
 
-    pub(crate) fn clear_missing_blocks(&mut self) {
-        self.missing_blocks.clear();
-    }
-
     /// Prepares the next block data request, ensuring the request size aligns with the current
     /// blockchain height to avoid overly large downloads and improve latency.
     ///
@@ -187,7 +183,7 @@ impl BlockDownloader {
 
         tracing::debug!(
             from = ?self.peer_id,
-            missing_blocks = self.missing_blocks.len(),
+            pending_blocks_to_download = self.missing_blocks.len(),
             "📦 Downloading {} blocks",
             self.requested_blocks.len(),
         );
