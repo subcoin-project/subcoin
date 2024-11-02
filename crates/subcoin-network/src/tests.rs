@@ -189,12 +189,13 @@ async fn bitcoind_main_loop(
     }
 }
 
+#[sc_tracing::logging::prefix_logs_with("Bitcoind")]
 async fn new_mock_bitcoind(spawn_handle: SpawnTaskHandle) -> MockBitcoind {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 
     let addr = listener.local_addr().unwrap();
 
-    tracing::debug!("MockBitcoind listens on {addr:?}");
+    tracing::debug!("listens on {addr:?}");
 
     let bitcoind = MockBitcoind::new(addr);
 
@@ -212,7 +213,7 @@ async fn new_mock_bitcoind(spawn_handle: SpawnTaskHandle) -> MockBitcoind {
 
 #[tokio::test]
 async fn test_block_announcement_via_headers() {
-    sp_tracing::try_init_simple();
+    let _ = sc_tracing::logging::LoggerBuilder::new("").init();
 
     let runtime_handle = Handle::current();
 
@@ -260,11 +261,15 @@ async fn test_block_announcement_via_headers() {
         bitcoin_block_import,
     );
 
+    let span =
+        sc_tracing::tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "Subcoin");
+    let _enter = span.enter();
+
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 
     let listen_on = listener.local_addr().unwrap();
 
-    tracing::debug!("Subcoin listens on {listen_on:?}");
+    tracing::debug!("listens on {listen_on:?}");
 
     let (subcoin_networking, _subcoin_network_handle) = crate::Network::new(
         client.clone(),

@@ -8929,6 +8929,7 @@ dependencies = [
  "sc-consensus",
  "sc-consensus-nakamoto",
  "sc-service",
+ "sc-tracing",
  "sc-utils",
  "serde",
  "serde_json",

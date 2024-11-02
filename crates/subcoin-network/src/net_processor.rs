@@ -1,24 +1,28 @@
 use crate::connection::{ConnectionInitiator, Direction, NewConnection};
 use crate::metrics::Metrics;
-use crate::network::{
-    IncomingTransaction, NetworkStatus, NetworkWorkerMessage, SendTransactionResult,
+use crate::network_api::{
+    IncomingTransaction, NetworkProcessorMessage, NetworkStatus, SendTransactionResult,
 };
 use crate::peer_manager::{Config, NewPeer, PeerManager, SlowPeer, PEER_LATENCY_THRESHOLD};
 use crate::peer_store::PeerStore;
 use crate::sync::{ChainSync, LocatorRequest, RestartReason, SyncAction, SyncRequest};
 use crate::transaction_manager::TransactionManager;
 use crate::{Bandwidth, Error, PeerId, SyncStrategy};
+use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::p2p::message::{NetworkMessage, MAX_INV_SIZE};
 use bitcoin::p2p::message_blockdata::{GetBlocksMessage, GetHeadersMessage, Inventory};
+use bitcoin::{Block as BitcoinBlock, BlockHash};
 use futures::stream::FusedStream;
 use futures::StreamExt;
 use sc_client_api::{AuxStore, HeaderBackend};
 use sc_consensus_nakamoto::{BlockImportQueue, HeaderVerifier};
 use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_runtime::traits::Block as BlockT;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use subcoin_primitives::{BackendExt, ClientExt};
 use substrate_prometheus_endpoint::Registry;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::MissedTickBehavior;
@@ -34,7 +38,7 @@ pub enum Event {
     /// Failed to make a connection to the given outbound peer.
     OutboundConnectionFailure { peer_addr: PeerId, reason: Error },
     /// TCP connection was closed, either properly or abruptly.
-    Disconnect { peer_addr: PeerId, reason: Error },
+    DisconnectPeer { peer_addr: PeerId, reason: Error },
     /// New Bitcoin p2p network message received from the peer.
     PeerMessage {
         from: PeerId,
@@ -43,7 +47,14 @@ pub enum Event {
     },
 }
 
-/// Parameters for creating a [`NetworkWorker`].
+impl Event {
+    /// Constructs a [`Event::DisconnectPeer`] variant.
+    pub fn disconnect(peer_addr: PeerId, reason: Error) -> Self {
+        Self::DisconnectPeer { peer_addr, reason }
+    }
+}
+
+/// Parameters for creating a [`NetworkProcessor`].
 pub struct Params<Block, Client> {
     pub client: Arc<Client>,
     pub header_verifier: HeaderVerifier<Block, Client>,
@@ -58,23 +69,27 @@ pub struct Params<Block, Client> {
     pub peer_store: Arc<dyn PeerStore>,
 }
 
-/// [`NetworkWorker`] is responsible for processing the network events.
-pub struct NetworkWorker<Block, Client> {
+/// [`NetworkProcessor`] is responsible for processing the network events.
+pub struct NetworkProcessor<Block, Client> {
     config: Config,
-    network_event_receiver: UnboundedReceiver<Event>,
-    peer_manager: PeerManager<Block, Client>,
-    peer_store: Arc<dyn PeerStore>,
-    transaction_manager: TransactionManager,
+    client: Arc<Client>,
     chain_sync: ChainSync<Block, Client>,
+    peer_store: Arc<dyn PeerStore>,
+    peer_manager: PeerManager<Block, Client>,
+    header_verifier: HeaderVerifier<Block, Client>,
+    transaction_manager: TransactionManager,
+    network_event_receiver: UnboundedReceiver<Event>,
+    /// Broadcasted blocks that are being requested.
+    inflight_announced_blocks: HashMap<PeerId, HashSet<BlockHash>>,
     metrics: Option<Metrics>,
 }
 
-impl<Block, Client> NetworkWorker<Block, Client>
+impl<Block, Client> NetworkProcessor<Block, Client>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore,
 {
-    /// Constructs a new instance of [`NetworkWorker`].
+    /// Constructs a new instance of [`NetworkProcessor`].
     pub fn new(params: Params<Block, Client>, registry: Option<&Registry>) -> Self {
         let Params {
             client,
@@ -107,8 +122,8 @@ where
         );
 
         let chain_sync = ChainSync::new(
-            client,
-            header_verifier,
+            client.clone(),
+            header_verifier.clone(),
             import_queue,
             sync_strategy,
             is_major_syncing,
@@ -117,13 +132,16 @@ where
         );
 
         Self {
-            network_event_receiver,
-            peer_manager,
-            peer_store,
-            transaction_manager: TransactionManager::new(),
-            chain_sync,
-            metrics,
             config,
+            client,
+            chain_sync,
+            peer_store,
+            peer_manager,
+            header_verifier,
+            transaction_manager: TransactionManager::new(),
+            inflight_announced_blocks: HashMap::new(),
+            network_event_receiver,
+            metrics,
         }
     }
 
@@ -131,10 +149,10 @@ where
     ///
     /// This loop handles various tasks such as processing incoming network events,
     /// syncing the blockchain, managing peers, and updating metrics. It runs indefinitely
-    /// until the network worker is stopped.
+    /// until the network processor is stopped.
     pub(crate) async fn run(
         mut self,
-        worker_msg_receiver: TracingUnboundedReceiver<NetworkWorkerMessage>,
+        processor_msg_receiver: TracingUnboundedReceiver<NetworkProcessorMessage>,
         bandwidth: Bandwidth,
     ) {
         let mut tick_timeout = {
@@ -143,7 +161,7 @@ where
             interval
         };
 
-        let mut worker_msg_sink = worker_msg_receiver.fuse();
+        let mut processor_msg_sink = processor_msg_receiver.fuse();
 
         loop {
             tokio::select! {
@@ -154,15 +172,15 @@ where
                     let Some(event) = maybe_event else {
                         return;
                     };
-                    self.process_event(event).await;
+                    self.handle_event(event).await;
                 }
-                maybe_worker_msg = worker_msg_sink.next(), if !worker_msg_sink.is_terminated() => {
-                    if let Some(worker_msg) = maybe_worker_msg {
-                        self.process_worker_message(worker_msg, &bandwidth);
+                maybe_processor_msg = processor_msg_sink.next(), if !processor_msg_sink.is_terminated() => {
+                    if let Some(processor_msg) = maybe_processor_msg {
+                        self.handle_processor_message(processor_msg, &bandwidth);
                     }
                 }
                 _ = tick_timeout.tick() => {
-                    self.perform_periodic_actions();
+                    self.execute_periodic_tasks();
                 }
             }
 
@@ -170,7 +188,7 @@ where
         }
     }
 
-    async fn process_event(&mut self, event: Event) {
+    async fn handle_event(&mut self, event: Event) {
         match event {
             Event::NewConnection(new_connection) => {
                 self.peer_manager.on_new_connection(new_connection);
@@ -180,7 +198,7 @@ where
                     .on_outbound_connection_failure(peer_addr, reason);
                 self.peer_store.remove_peer(peer_addr);
             }
-            Event::Disconnect { peer_addr, reason } => {
+            Event::DisconnectPeer { peer_addr, reason } => {
                 self.peer_manager.disconnect(peer_addr, reason);
                 self.chain_sync.disconnect(peer_addr);
                 self.peer_store.remove_peer(peer_addr);
@@ -211,7 +229,7 @@ where
         }
     }
 
-    fn perform_periodic_actions(&mut self) {
+    fn execute_periodic_tasks(&mut self) {
         let sync_action = self.chain_sync.on_tick();
         self.do_sync_action(sync_action);
 
@@ -242,9 +260,13 @@ where
         }
     }
 
-    fn process_worker_message(&mut self, worker_msg: NetworkWorkerMessage, bandwidth: &Bandwidth) {
-        match worker_msg {
-            NetworkWorkerMessage::RequestNetworkStatus(result_sender) => {
+    fn handle_processor_message(
+        &mut self,
+        processor_msg: NetworkProcessorMessage,
+        bandwidth: &Bandwidth,
+    ) {
+        match processor_msg {
+            NetworkProcessorMessage::RequestNetworkStatus(result_sender) => {
                 let net_status = NetworkStatus {
                     num_connected_peers: self.peer_manager.connected_peers_count(),
                     total_bytes_inbound: bandwidth.total_bytes_inbound.load(Ordering::Relaxed),
@@ -253,17 +275,17 @@ where
                 };
                 let _ = result_sender.send(net_status);
             }
-            NetworkWorkerMessage::RequestSyncPeers(result_sender) => {
+            NetworkProcessorMessage::RequestSyncPeers(result_sender) => {
                 let sync_peers = self.chain_sync.peers.values().cloned().collect::<Vec<_>>();
                 let _ = result_sender.send(sync_peers);
             }
-            NetworkWorkerMessage::RequestInboundPeersCount(result_sender) => {
+            NetworkProcessorMessage::RequestInboundPeersCount(result_sender) => {
                 let _ = result_sender.send(self.peer_manager.inbound_peers_count());
             }
-            NetworkWorkerMessage::RequestTransaction((txid, result_sender)) => {
+            NetworkProcessorMessage::RequestTransaction((txid, result_sender)) => {
                 let _ = result_sender.send(self.transaction_manager.get_transaction(&txid));
             }
-            NetworkWorkerMessage::SendTransaction((incoming_transaction, result_sender)) => {
+            NetworkProcessorMessage::SendTransaction((incoming_transaction, result_sender)) => {
                 let send_transaction_result = match self
                     .transaction_manager
                     .add_transaction(incoming_transaction)
@@ -273,7 +295,7 @@ where
                 };
                 let _ = result_sender.send(send_transaction_result);
             }
-            NetworkWorkerMessage::StartBlockSync => {
+            NetworkProcessorMessage::StartBlockSync => {
                 let sync_action = self.chain_sync.start_block_sync();
                 self.do_sync_action(sync_action);
             }
@@ -345,39 +367,7 @@ where
                 self.send(from, NetworkMessage::Pong(nonce))?;
                 Ok(SyncAction::None)
             }
-            NetworkMessage::Pong(nonce) => {
-                match self.peer_manager.on_pong(from, nonce) {
-                    Ok(avg_latency) => {
-                        // Disconnect the peer directly if the latency is higher than the threshold.
-                        if avg_latency > PEER_LATENCY_THRESHOLD {
-                            self.peer_manager
-                                .disconnect(from, Error::PingLatencyTooHigh(avg_latency));
-                            self.chain_sync.disconnect(from);
-                            self.peer_store.remove_peer(from);
-                        } else {
-                            if self.chain_sync.peers.contains_key(&from) {
-                                self.chain_sync.update_peer_latency(from, avg_latency);
-                            } else {
-                                self.chain_sync.add_new_peer(NewPeer {
-                                    peer_id: from,
-                                    best_number: self
-                                        .peer_manager
-                                        .peer_best_number(from)
-                                        .ok_or(Error::ConnectionNotFound(from))?,
-                                    latency: avg_latency,
-                                });
-                            }
-                            self.peer_store.try_add_peer(from, avg_latency);
-                        }
-                    }
-                    Err(err) => {
-                        self.peer_manager.disconnect(from, err);
-                        self.chain_sync.disconnect(from);
-                        self.peer_store.remove_peer(from);
-                    }
-                }
-                Ok(SyncAction::None)
-            }
+            NetworkMessage::Pong(nonce) => Ok(self.process_pong(from, nonce)?),
             NetworkMessage::AddrV2(addresses) => {
                 self.peer_manager.on_addr_v2(from, addresses);
                 Ok(SyncAction::None)
@@ -395,8 +385,8 @@ where
                 Ok(SyncAction::None)
             }
             NetworkMessage::Inv(inv) => self.process_inv(from, inv),
-            NetworkMessage::Block(block) => Ok(self.chain_sync.on_block(block, from)),
-            NetworkMessage::Headers(headers) => Ok(self.chain_sync.on_headers(headers, from)),
+            NetworkMessage::Block(block) => self.process_block(from, block),
+            NetworkMessage::Headers(headers) => self.process_headers(from, headers),
             NetworkMessage::MerkleBlock(_) => Ok(SyncAction::None),
             NetworkMessage::Unknown { .. }
             | NetworkMessage::NotFound(_)
@@ -420,79 +410,176 @@ where
         }
     }
 
-    fn do_sync_action(&mut self, sync_action: SyncAction) {
-        match sync_action {
-            SyncAction::Request(sync_request) => match sync_request {
-                SyncRequest::Headers(request) => {
-                    let LocatorRequest {
-                        locator_hashes,
-                        stop_hash,
-                        to,
-                    } = request;
+    fn process_pong(&mut self, from: PeerId, nonce: u64) -> Result<SyncAction, Error> {
+        match self.peer_manager.on_pong(from, nonce) {
+            Ok(avg_latency) => {
+                // DisconnectPeer the peer directly if the latency is higher than the threshold.
+                if avg_latency > PEER_LATENCY_THRESHOLD {
+                    self.peer_manager
+                        .disconnect(from, Error::PingLatencyTooHigh(avg_latency));
+                    self.chain_sync.disconnect(from);
+                    self.peer_store.remove_peer(from);
+                } else {
+                    self.peer_store.try_add_peer(from, avg_latency);
 
-                    if !locator_hashes.is_empty() {
-                        let msg = GetHeadersMessage {
-                            version: self.config.protocol_version,
-                            locator_hashes,
-                            stop_hash,
-                        };
-                        let _ = self.send(to, NetworkMessage::GetHeaders(msg));
+                    if self.chain_sync.peers.contains_key(&from) {
+                        self.chain_sync.update_peer_latency(from, avg_latency);
+                    } else {
+                        let peer_best = self
+                            .peer_manager
+                            .peer_best_number(from)
+                            .ok_or(Error::ConnectionNotFound(from))?;
+
+                        let maybe_sync_start = self.chain_sync.add_new_peer(NewPeer {
+                            peer_id: from,
+                            best_number: peer_best,
+                            latency: avg_latency,
+                        });
+
+                        return Ok(maybe_sync_start);
                     }
                 }
-                SyncRequest::Blocks(request) => {
-                    self.send_get_blocks_request(request);
-                }
-                SyncRequest::Data(invs, to) => {
-                    if !invs.is_empty() {
-                        let _ = self.send(to, NetworkMessage::GetData(invs));
-                    }
-                }
-            },
-            SyncAction::SwitchToBlocksFirstSync => {
-                if let Some(SyncRequest::Blocks(request)) =
-                    self.chain_sync.attempt_blocks_first_sync()
-                {
-                    self.send_get_blocks_request(request);
-                }
             }
-            SyncAction::SetIdle => {
-                self.chain_sync.set_idle();
+            Err(err) => {
+                self.peer_manager.disconnect(from, err);
+                self.chain_sync.disconnect(from);
+                self.peer_store.remove_peer(from);
             }
-            SyncAction::RestartSyncWithStalledPeer(stalled_peer_id) => {
-                self.chain_sync
-                    .restart_sync(stalled_peer_id, RestartReason::Stalled);
-            }
-            SyncAction::Disconnect(peer_id, reason) => {
-                self.peer_manager.disconnect(peer_id, reason);
-                self.chain_sync.disconnect(peer_id);
-            }
-            SyncAction::None => {}
         }
-    }
 
-    fn send_get_blocks_request(&self, request: LocatorRequest) {
-        let LocatorRequest {
-            locator_hashes,
-            stop_hash,
-            to,
-        } = request;
-
-        if !locator_hashes.is_empty() {
-            let msg = GetBlocksMessage {
-                version: self.config.protocol_version,
-                locator_hashes,
-                stop_hash,
-            };
-            let _ = self.send(to, NetworkMessage::GetBlocks(msg));
-        }
+        Ok(SyncAction::None)
     }
 
     fn process_inv(&mut self, from: PeerId, inv: Vec<Inventory>) -> Result<SyncAction, Error> {
         if inv.len() > MAX_INV_SIZE {
-            return Ok(SyncAction::Disconnect(from, Error::TooManyInventoryItems));
+            return Ok(SyncAction::DisconnectPeer(
+                from,
+                Error::TooManyInventoryItems,
+            ));
+        }
+
+        if inv.len() == 1 {
+            if let Inventory::Block(block_hash) = inv[0] {
+                if self.client.block_number(block_hash).is_none() {
+                    // TODO: peers may sent us duplicate block announcements.
+                    tracing::debug!("Recv possible block announcement {inv:?} from {from:?}");
+
+                    let mut is_new_block_announce = false;
+
+                    self.inflight_announced_blocks
+                        .entry(from)
+                        .and_modify(|announcements| {
+                            is_new_block_announce = announcements.insert(block_hash);
+                        })
+                        .or_insert_with(|| {
+                            is_new_block_announce = true;
+                            HashSet::from([block_hash])
+                        });
+
+                    // A new block is broadcasted via `inv` message.
+                    if is_new_block_announce {
+                        tracing::debug!("Requesting announced block {block_hash} from {from:?}");
+                        let _ = self.send(from, NetworkMessage::GetData(inv));
+                    }
+                }
+                return Ok(SyncAction::None);
+            }
         }
 
         Ok(self.chain_sync.on_inv(inv, from))
+    }
+
+    fn process_block(&mut self, from: PeerId, block: BitcoinBlock) -> Result<SyncAction, Error> {
+        let block_hash = block.block_hash();
+
+        if self
+            .inflight_announced_blocks
+            .get(&from)
+            .map(|annoucements| annoucements.contains(&block_hash))
+            .unwrap_or(false)
+        {
+            tracing::debug!("Recv announced block {block_hash} from {from:?}");
+            self.inflight_announced_blocks.entry(from).and_modify(|e| {
+                e.remove(&block_hash);
+            });
+
+            if let Ok(height) = block.bip34_block_height() {
+                self.chain_sync.update_peer_best(from, height as u32);
+            } else {
+                tracing::debug!(?block_hash, "No height in coinbase transaction");
+            }
+
+            let Some(best_hash) = self.client.block_hash(self.client.best_number()) else {
+                return Ok(SyncAction::None);
+            };
+
+            if block.header.prev_blockhash == best_hash
+                && self.client.block_number(block_hash).is_none()
+            {
+                self.chain_sync
+                    .import_queue
+                    .import_blocks(sc_consensus_nakamoto::ImportBlocks {
+                        origin: sp_consensus::BlockOrigin::NetworkBroadcast,
+                        blocks: vec![block],
+                    });
+            }
+
+            return Ok(SyncAction::None);
+        }
+
+        Ok(self.chain_sync.on_block(block, from))
+    }
+
+    fn process_headers(
+        &mut self,
+        from: PeerId,
+        headers: Vec<BitcoinHeader>,
+    ) -> Result<SyncAction, Error> {
+        if headers.is_empty() {
+            return Ok(SyncAction::None);
+        }
+
+        // New blocks maybe broadcasted via `headers` message.
+        let Some(best_hash) = self.client.block_hash(self.client.best_number()) else {
+            return Ok(SyncAction::None);
+        };
+
+        if self.chain_sync.is_idle() {
+            // New blocks, extending the chain tip.
+            if headers[0].prev_blockhash == best_hash {
+                for (index, header) in headers.iter().enumerate() {
+                    if !self.header_verifier.has_valid_proof_of_work(header) {
+                        tracing::error!(?from, "Invalid header at index {index} in headers");
+                        return Ok(SyncAction::DisconnectPeer(
+                            from,
+                            Error::BadProofOfWork(header.block_hash()),
+                        ));
+                    }
+                }
+
+                let inv = headers
+                    .into_iter()
+                    .map(|header| {
+                        let block_hash = header.block_hash();
+
+                        self.inflight_announced_blocks
+                            .entry(from)
+                            .and_modify(|e| {
+                                e.insert(block_hash);
+                            })
+                            .or_insert_with(|| HashSet::from([block_hash]));
+
+                        Inventory::Block(block_hash)
+                    })
+                    .collect();
+
+                let _ = self.send(from, NetworkMessage::GetData(inv));
+
+                return Ok(SyncAction::None);
+            }
+        }
+
+        Ok(self.chain_sync.on_headers(headers, from))
     }
 
     fn process_get_data(&self, from: PeerId, get_data_requests: Vec<Inventory>) {
@@ -521,6 +608,73 @@ where
 
     fn process_get_block_data(&self, _inv: &Inventory) {
         // TODO: load the requested block and send them back.
+    }
+
+    fn do_sync_action(&mut self, sync_action: SyncAction) {
+        match sync_action {
+            SyncAction::Request(sync_request) => match sync_request {
+                SyncRequest::GetHeaders(request) => {
+                    let LocatorRequest {
+                        locator_hashes,
+                        stop_hash,
+                        to,
+                    } = request;
+
+                    if !locator_hashes.is_empty() {
+                        let msg = GetHeadersMessage {
+                            version: self.config.protocol_version,
+                            locator_hashes,
+                            stop_hash,
+                        };
+                        let _ = self.send(to, NetworkMessage::GetHeaders(msg));
+                    }
+                }
+                SyncRequest::GetBlocks(request) => {
+                    self.send_get_blocks_request(request);
+                }
+                SyncRequest::GetData(invs, to) => {
+                    if !invs.is_empty() {
+                        let _ = self.send(to, NetworkMessage::GetData(invs));
+                    }
+                }
+            },
+            SyncAction::SwitchToBlocksFirstSync => {
+                if let Some(SyncAction::Request(SyncRequest::GetBlocks(request))) =
+                    self.chain_sync.attempt_blocks_first_sync()
+                {
+                    self.send_get_blocks_request(request);
+                }
+            }
+            SyncAction::SetIdle => {
+                self.chain_sync.set_idle();
+            }
+            SyncAction::RestartSyncWithStalledPeer(stalled_peer_id) => {
+                self.chain_sync
+                    .restart_sync(stalled_peer_id, RestartReason::Stalled);
+            }
+            SyncAction::DisconnectPeer(peer_id, reason) => {
+                self.peer_manager.disconnect(peer_id, reason);
+                self.chain_sync.disconnect(peer_id);
+            }
+            SyncAction::None => {}
+        }
+    }
+
+    fn send_get_blocks_request(&self, request: LocatorRequest) {
+        let LocatorRequest {
+            locator_hashes,
+            stop_hash,
+            to,
+        } = request;
+
+        if !locator_hashes.is_empty() {
+            let msg = GetBlocksMessage {
+                version: self.config.protocol_version,
+                locator_hashes,
+                stop_hash,
+            };
+            let _ = self.send(to, NetworkMessage::GetBlocks(msg));
+        }
     }
 
     /// Send a network message to given peer.

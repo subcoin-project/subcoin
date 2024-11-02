@@ -77,6 +77,7 @@ sc-service = { git = "https://github.com/subcoin-project/polkadot-sdk", branch =
 sc-storage-monitor = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
 sc-sysinfo = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
 sc-telemetry = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+sc-tracing = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
 sc-transaction-pool = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
 sc-transaction-pool-api = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
 sc-utils = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }

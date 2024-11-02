@@ -27,25 +27,23 @@
 //! to Bitcoin chain's tip by leveraging the advanced state sync provided by the Substrate networking stack.
 
 mod address_book;
-mod block_downloader;
 mod checkpoint;
 mod connection;
 mod metrics;
-mod network;
-mod orphan_blocks_pool;
+mod net_processor;
+mod network_api;
 mod peer_manager;
 mod peer_store;
 mod sync;
 #[cfg(test)]
 mod tests;
 mod transaction_manager;
-mod worker;
 
 use crate::connection::ConnectionInitiator;
 use crate::metrics::BandwidthMetrics;
-use crate::network::NetworkWorkerMessage;
+use crate::net_processor::NetworkProcessor;
+use crate::network_api::NetworkProcessorMessage;
 use crate::peer_store::{PersistentPeerStore, PersistentPeerStoreHandle};
-use crate::worker::NetworkWorker;
 use bitcoin::p2p::ServiceFlags;
 use bitcoin::{BlockHash, Network as BitcoinNetwork};
 use chrono::prelude::{DateTime, Local};
@@ -64,7 +62,7 @@ use substrate_prometheus_endpoint::Registry;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
-pub use crate::network::{NetworkHandle, NetworkStatus, SendTransactionResult, SyncStatus};
+pub use crate::network_api::{NetworkHandle, NetworkStatus, SendTransactionResult, SyncStatus};
 pub use crate::sync::{PeerSync, PeerSyncState};
 
 /// Identifies a peer.
@@ -124,10 +122,8 @@ pub enum Error {
     UnexpectedPong,
     #[error("Invalid pong message: bad nonce")]
     BadPong,
-    #[error("Received an unrequested block: {0:?}")]
-    UnrequestedBlock(BlockHash),
     #[error("Cannot find the parent of the first header in headers message")]
-    ParentOfFirstHeaderEntryNotFound,
+    MissingFirstHeaderParent,
     #[error("Other: {0}")]
     Other(String),
     #[error(transparent)]
@@ -271,8 +267,8 @@ pub struct Network<Block, Client> {
     config: Config,
     import_queue: BlockImportQueue,
     spawn_handle: SpawnTaskHandle,
-    worker_msg_sender: TracingUnboundedSender<NetworkWorkerMessage>,
-    worker_msg_receiver: TracingUnboundedReceiver<NetworkWorkerMessage>,
+    processor_msg_sender: TracingUnboundedSender<NetworkProcessorMessage>,
+    processor_msg_receiver: TracingUnboundedReceiver<NetworkProcessorMessage>,
     is_major_syncing: Arc<AtomicBool>,
     registry: Option<Registry>,
     _phantom: PhantomData<Block>,
@@ -291,8 +287,8 @@ where
         spawn_handle: SpawnTaskHandle,
         registry: Option<Registry>,
     ) -> (Self, NetworkHandle) {
-        let (worker_msg_sender, worker_msg_receiver) =
-            tracing_unbounded("mpsc_subcoin_network_worker", 100);
+        let (processor_msg_sender, processor_msg_receiver) =
+            tracing_unbounded("mpsc_subcoin_network_processor", 100);
 
         let is_major_syncing = Arc::new(AtomicBool::new(false));
 
@@ -301,8 +297,8 @@ where
             config,
             import_queue,
             spawn_handle,
-            worker_msg_sender: worker_msg_sender.clone(),
-            worker_msg_receiver,
+            processor_msg_sender: processor_msg_sender.clone(),
+            processor_msg_receiver,
             is_major_syncing: is_major_syncing.clone(),
             registry,
             _phantom: Default::default(),
@@ -311,7 +307,7 @@ where
         (
             network,
             NetworkHandle {
-                worker_msg_sender,
+                processor_msg_sender,
                 is_major_syncing,
             },
         )
@@ -326,8 +322,8 @@ where
             config,
             import_queue,
             spawn_handle,
-            worker_msg_sender,
-            worker_msg_receiver,
+            processor_msg_sender,
+            processor_msg_receiver,
             is_major_syncing,
             registry,
             _phantom,
@@ -357,7 +353,7 @@ where
         );
 
         if !config.enable_block_sync_on_startup {
-            tracing::info!("Subcoin block sync is disabled until Substrate fast sync is complete");
+            tracing::info!("Subcoin block sync is disabled on startup");
         }
 
         let (sender, receiver) = tracing_unbounded("mpsc_subcoin_peer_store", 10_000);
@@ -368,8 +364,8 @@ where
 
         spawn_handle.spawn("peer-store", None, persistent_peer_store.run(receiver));
 
-        let network_worker = NetworkWorker::new(
-            worker::Params {
+        let network_processor = NetworkProcessor::new(
+            net_processor::Params {
                 client: client.clone(),
                 header_verifier: HeaderVerifier::new(
                     client.clone(),
@@ -398,8 +394,8 @@ where
                 while let Ok((socket, peer_addr)) = listener.accept().await {
                     let (sender, receiver) = oneshot::channel();
 
-                    if worker_msg_sender
-                        .unbounded_send(NetworkWorkerMessage::RequestInboundPeersCount(sender))
+                    if processor_msg_sender
+                        .unbounded_send(NetworkProcessorMessage::RequestInboundPeersCount(sender))
                         .is_err()
                     {
                         return;
@@ -465,7 +461,9 @@ where
             }
         }
 
-        network_worker.run(worker_msg_receiver, bandwidth).await;
+        network_processor
+            .run(processor_msg_receiver, bandwidth)
+            .await;
 
         Ok(())
     }

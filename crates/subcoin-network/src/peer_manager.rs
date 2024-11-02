@@ -1,5 +1,7 @@
 use crate::address_book::AddressBook;
-use crate::connection::{ConnectionInitiator, ConnectionWriter, Direction, NewConnection};
+use crate::connection::{
+    ConnectionCloser, ConnectionInitiator, ConnectionWriter, Direction, NewConnection,
+};
 use crate::metrics::Metrics;
 use crate::{validate_outbound_services, Error, Latency, LocalTime, PeerId};
 use bitcoin::p2p::address::AddrV2Message;
@@ -11,7 +13,6 @@ use sc_client_api::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subcoin_primitives::ClientExt;
@@ -79,7 +80,7 @@ impl Config {
 struct Connection {
     local_addr: PeerId,
     writer: ConnectionWriter,
-    disconnect_signal: Arc<AtomicBool>,
+    closer: ConnectionCloser,
 }
 
 impl Connection {
@@ -463,12 +464,9 @@ where
             return;
         }
 
-        if let Some(Connection {
-            disconnect_signal, ..
-        }) = self.connections.remove(&peer_id)
-        {
+        if let Some(connection) = self.connections.remove(&peer_id) {
             tracing::debug!(?reason, ?peer_id, "💔 Disconnecting peer");
-            disconnect_signal.store(true, Ordering::SeqCst);
+            connection.closer.terminate();
 
             if let Some(metrics) = &self.metrics {
                 metrics.addresses.with_label_values(&["disconnected"]).inc();
@@ -544,13 +542,13 @@ where
             local_addr,
             direction,
             writer,
-            disconnect_signal,
+            closer,
         } = new_connection;
 
         let connection = Connection {
             local_addr,
             writer,
-            disconnect_signal,
+            closer,
         };
 
         let mut handshake_state = HandshakeState::ConnectionOpened;
@@ -714,11 +712,11 @@ where
             Direction::Inbound => {
                 // Do not log the inbound connection success as what Bitcoin Core does.
                 #[cfg(test)]
-                tracing::debug!(peer = ?peer_id, ?direction, "🤝 Completed handshake");
+                tracing::debug!(?direction, "🤝 New peer {peer_id:?}");
             }
             Direction::Outbound => {
                 self.send(peer_id, NetworkMessage::Verack)?;
-                tracing::debug!(peer = ?peer_id, ?direction, "🤝 Completed handshake");
+                tracing::debug!(?direction, "🤝 New peer {peer_id:?}");
             }
         }
 
@@ -735,7 +733,7 @@ where
     pub(crate) fn on_addr(&mut self, peer_id: PeerId, addresses: Vec<(u32, Address)>) {
         let added = self.address_book.add_many(peer_id, addresses);
         if added > 0 {
-            tracing::debug!("Added {added} addresses from {peer_id:?}");
+            tracing::trace!("Added {added} addresses from {peer_id:?}");
 
             if let Some(metrics) = &self.metrics {
                 metrics
@@ -749,7 +747,7 @@ where
     pub(crate) fn on_addr_v2(&mut self, peer_id: PeerId, addresses: Vec<AddrV2Message>) {
         let added = self.address_book.add_many_v2(peer_id, addresses);
         if added > 0 {
-            tracing::debug!("Added {added} addresses from {peer_id:?}");
+            tracing::trace!("Added {added} addresses from {peer_id:?}");
 
             if let Some(metrics) = &self.metrics {
                 metrics
