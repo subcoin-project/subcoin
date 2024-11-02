@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/block_downloader.rs`."><title>block_downloader.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-970bf1bf55bd1c15.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (28a58f2fa 2024-07-31)" data-channel="nightly" data-search-js="search-ef54e092fea9c776.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-f9142fe437216fc3.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/sync/block_downloader.rs`."><title>block_downloader.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../../static.files/rustdoc-970bf1bf55bd1c15.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (28a58f2fa 2024-07-31)" data-channel="nightly" data-search-js="search-ef54e092fea9c776.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-f9142fe437216fc3.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -328,15 +328,85 @@
 <a href="#328" id="328">328</a>
 <a href="#329" id="329">329</a>
 <a href="#330" id="330">330</a>
-</pre></div><pre class="rust"><code><span class="kw">mod </span>blocks_first;
-<span class="kw">mod </span>headers_first;
-
-<span class="kw">pub use </span><span class="self">self</span>::blocks_first::BlocksFirstDownloader;
-<span class="kw">pub use </span><span class="self">self</span>::headers_first::HeadersFirstDownloader;
-
-<span class="kw">use </span><span class="kw">crate</span>::orphan_blocks_pool::OrphanBlocksPool;
+<a href="#331" id="331">331</a>
+<a href="#332" id="332">332</a>
+<a href="#333" id="333">333</a>
+<a href="#334" id="334">334</a>
+<a href="#335" id="335">335</a>
+<a href="#336" id="336">336</a>
+<a href="#337" id="337">337</a>
+<a href="#338" id="338">338</a>
+<a href="#339" id="339">339</a>
+<a href="#340" id="340">340</a>
+<a href="#341" id="341">341</a>
+<a href="#342" id="342">342</a>
+<a href="#343" id="343">343</a>
+<a href="#344" id="344">344</a>
+<a href="#345" id="345">345</a>
+<a href="#346" id="346">346</a>
+<a href="#347" id="347">347</a>
+<a href="#348" id="348">348</a>
+<a href="#349" id="349">349</a>
+<a href="#350" id="350">350</a>
+<a href="#351" id="351">351</a>
+<a href="#352" id="352">352</a>
+<a href="#353" id="353">353</a>
+<a href="#354" id="354">354</a>
+<a href="#355" id="355">355</a>
+<a href="#356" id="356">356</a>
+<a href="#357" id="357">357</a>
+<a href="#358" id="358">358</a>
+<a href="#359" id="359">359</a>
+<a href="#360" id="360">360</a>
+<a href="#361" id="361">361</a>
+<a href="#362" id="362">362</a>
+<a href="#363" id="363">363</a>
+<a href="#364" id="364">364</a>
+<a href="#365" id="365">365</a>
+<a href="#366" id="366">366</a>
+<a href="#367" id="367">367</a>
+<a href="#368" id="368">368</a>
+<a href="#369" id="369">369</a>
+<a href="#370" id="370">370</a>
+<a href="#371" id="371">371</a>
+<a href="#372" id="372">372</a>
+<a href="#373" id="373">373</a>
+<a href="#374" id="374">374</a>
+<a href="#375" id="375">375</a>
+<a href="#376" id="376">376</a>
+<a href="#377" id="377">377</a>
+<a href="#378" id="378">378</a>
+<a href="#379" id="379">379</a>
+<a href="#380" id="380">380</a>
+<a href="#381" id="381">381</a>
+<a href="#382" id="382">382</a>
+<a href="#383" id="383">383</a>
+<a href="#384" id="384">384</a>
+<a href="#385" id="385">385</a>
+<a href="#386" id="386">386</a>
+<a href="#387" id="387">387</a>
+<a href="#388" id="388">388</a>
+<a href="#389" id="389">389</a>
+<a href="#390" id="390">390</a>
+<a href="#391" id="391">391</a>
+<a href="#392" id="392">392</a>
+<a href="#393" id="393">393</a>
+<a href="#394" id="394">394</a>
+<a href="#395" id="395">395</a>
+<a href="#396" id="396">396</a>
+<a href="#397" id="397">397</a>
+<a href="#398" id="398">398</a>
+<a href="#399" id="399">399</a>
+<a href="#400" id="400">400</a>
+<a href="#401" id="401">401</a>
+<a href="#402" id="402">402</a>
+<a href="#403" id="403">403</a>
+<a href="#404" id="404">404</a>
+</pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">super</span>::orphan_blocks_pool::OrphanBlocksPool;
 <span class="kw">use </span><span class="kw">crate</span>::peer_store::PeerStore;
+<span class="kw">use </span><span class="kw">crate</span>::sync::{SyncAction, SyncRequest};
 <span class="kw">use </span><span class="kw">crate</span>::PeerId;
+<span class="kw">use </span>bitcoin::p2p::message_blockdata::Inventory;
 <span class="kw">use </span>bitcoin::{Block <span class="kw">as </span>BitcoinBlock, BlockHash};
 <span class="kw">use </span>sc_consensus::BlockImportError;
 <span class="kw">use </span>sc_consensus_nakamoto::ImportManyBlocksResult;
@@ -355,11 +425,11 @@
 }
 
 <span class="kw">impl </span>QueuedBlocks {
-    <span class="kw">fn </span>block_hash(<span class="kw-2">&amp;</span><span class="self">self</span>, number: u32) -&gt; <span class="prelude-ty">Option</span>&lt;BlockHash&gt; {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>block_hash(<span class="kw-2">&amp;</span><span class="self">self</span>, number: u32) -&gt; <span class="prelude-ty">Option</span>&lt;BlockHash&gt; {
         <span class="self">self</span>.number2hash.get(<span class="kw-2">&amp;</span>number).copied()
     }
 
-    <span class="kw">fn </span>block_number(<span class="kw-2">&amp;</span><span class="self">self</span>, hash: BlockHash) -&gt; <span class="prelude-ty">Option</span>&lt;u32&gt; {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>block_number(<span class="kw-2">&amp;</span><span class="self">self</span>, hash: BlockHash) -&gt; <span class="prelude-ty">Option</span>&lt;u32&gt; {
         <span class="self">self</span>.hash2number.get(<span class="kw-2">&amp;</span>hash).copied()
     }
 
@@ -381,7 +451,7 @@
 }
 
 <span class="attr">#[derive(Debug, Clone, Copy)]
-</span><span class="kw">enum </span>ImportQueueStatus {
+</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">enum </span>ImportQueueStatus {
     <span class="doccomment">/// Queue is ready to accept more blocks for import.
     </span>Ready,
     <span class="doccomment">/// The queue is overloaded and cannot accept more blocks at the moment.
@@ -389,12 +459,16 @@
 }
 
 <span class="kw">impl </span>ImportQueueStatus {
-    <span class="kw">fn </span>is_overloaded(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>is_overloaded(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
         <span class="macro">matches!</span>(<span class="self">self</span>, <span class="self">Self</span>::Overloaded)
+    }
+
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>is_ready(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+        <span class="macro">matches!</span>(<span class="self">self</span>, <span class="self">Self</span>::Ready)
     }
 }
 
-<span class="doccomment">/// Manages the of blocks downloaded from the Bitcoin network.
+<span class="doccomment">/// Responsible for downloading blocks from a specific peer.
 ///
 /// This struct keeps track of:
 /// - Blocks that have been requested from the network but not yet received.
@@ -402,56 +476,126 @@
 /// - Blocks that are currently in the import queue awaiting processing.
 /// - The highest block number that is either in the queue or pending to be queued.
 ///
-/// [`BlockDownloadManager`] is designed to be used in both Blocks-First and
+/// [`BlockDownloader`] is designed to be used in both Blocks-First and
 /// Headers-First sync strategies, providing a common component for managing
 /// the state of blocks during the sync process.
 </span><span class="attr">#[derive(Clone)]
-</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">struct </span>BlockDownloadManager {
+</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">struct </span>BlockDownloader {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) peer_id: PeerId,
+    <span class="doccomment">/// Blocks awaiting to be downloaded.
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) missing_blocks: Vec&lt;BlockHash&gt;,
     <span class="doccomment">/// A set of block hashes that have been requested from the network.
     ///
     /// This helps in tracking which blocks are pending download.
-    </span>requested_blocks: HashSet&lt;BlockHash&gt;,
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) requested_blocks: HashSet&lt;BlockHash&gt;,
     <span class="doccomment">/// A vector of blocks that have been downloaded from the network.
     ///
     /// These blocks are ready to be sent to the import queue.
-    </span>downloaded_blocks: Vec&lt;BitcoinBlock&gt;,
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) downloaded_blocks: Vec&lt;BitcoinBlock&gt;,
     <span class="doccomment">/// A map of block hashes to their respective heights in the import queue.
     /// This helps in tracking which blocks are currently being processed in the import queue.
-    </span>blocks_in_queue: HashMap&lt;BlockHash, u32&gt;,
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) blocks_in_queue: HashMap&lt;BlockHash, u32&gt;,
     <span class="doccomment">/// Pending blocks that either in the queue or waiting to be queued.
-    </span>queued_blocks: QueuedBlocks,
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) queued_blocks: QueuedBlocks,
     <span class="doccomment">/// The highest block number that is either in the queue or waiting to be queued.
-    </span>best_queued_number: u32,
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) best_queued_number: u32,
     <span class="doccomment">/// Orphan blocks
-    </span>orphan_blocks_pool: OrphanBlocksPool,
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) orphan_blocks_pool: OrphanBlocksPool,
     <span class="doccomment">/// Last time at which the block was received or imported.
     ///
     /// This is updated whenever a block is received from the network or
     /// when the results of processed blocks are notified. It helps track
     /// the most recent activity related to block processing.
-    </span>last_progress_time: Instant,
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) last_progress_time: Instant,
     <span class="doccomment">/// Import queue status.
-    </span>queue_status: ImportQueueStatus,
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) queue_status: ImportQueueStatus,
     <span class="doccomment">/// Last time the log of too many blocks in the queue was printed.
-    </span>last_overloaded_queue_log_time: <span class="prelude-ty">Option</span>&lt;Instant&gt;,
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) last_overloaded_queue_log_time: <span class="prelude-ty">Option</span>&lt;Instant&gt;,
     <span class="doccomment">/// Peer store.
-    </span>peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;,
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;,
+    <span class="doccomment">/// Tracks the number of blocks downloaded from the current sync peer.
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) downloaded_blocks_count: usize,
 }
 
-<span class="kw">impl </span>BlockDownloadManager {
-    <span class="kw">fn </span>new(peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;) -&gt; <span class="self">Self </span>{
+<span class="kw">impl </span>BlockDownloader {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>new(
+        peer_id: PeerId,
+        best_queued_number: u32,
+        peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;,
+    ) -&gt; <span class="self">Self </span>{
         <span class="self">Self </span>{
+            peer_id,
+            missing_blocks: Vec::new(),
             requested_blocks: HashSet::new(),
             downloaded_blocks: Vec::new(),
             blocks_in_queue: HashMap::new(),
             queued_blocks: QueuedBlocks::default(),
-            best_queued_number: <span class="number">0u32</span>,
+            best_queued_number,
             orphan_blocks_pool: OrphanBlocksPool::new(),
             last_progress_time: Instant::now(),
             queue_status: ImportQueueStatus::Ready,
             last_overloaded_queue_log_time: <span class="prelude-val">None</span>,
             peer_store,
+            downloaded_blocks_count: <span class="number">0</span>,
         }
+    }
+
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>set_missing_blocks(<span class="kw-2">&amp;mut </span><span class="self">self</span>, new: Vec&lt;BlockHash&gt;) {
+        <span class="self">self</span>.missing_blocks = new;
+    }
+
+    <span class="doccomment">/// Prepares the next block data request, ensuring the request size aligns with the current
+    /// blockchain height to avoid overly large downloads and improve latency.
+    ///
+    /// This function selects a batch of blocks from `self.missing_blocks` based on the
+    /// `self.best_queued_number`. As the chain grows, the maximum request size decreases to
+    /// reduce the burden on peers. If the number of blocks exceeds the `max_request_size`,
+    /// the function truncates the list to the maximum allowed, storing any remaining blocks
+    /// back in `self.missing_blocks` for future requests.
+    ///
+    /// # Returns
+    ///
+    /// A `SyncAction::Request` containing a `SyncRequest::GetData` with the list of blocks to
+    /// request from the peer.
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>schedule_next_download_batch(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; SyncAction {
+        <span class="kw">let </span>max_request_size = <span class="kw">match </span><span class="self">self</span>.best_queued_number {
+            <span class="number">0</span>..=<span class="number">99_999 </span>=&gt; <span class="number">1024</span>,
+            <span class="number">100_000</span>..=<span class="number">199_999 </span>=&gt; <span class="number">512</span>,
+            <span class="number">200_000</span>..=<span class="number">299_999 </span>=&gt; <span class="number">128</span>,
+            <span class="number">300_000</span>..=<span class="number">399_999 </span>=&gt; <span class="number">64</span>,
+            <span class="number">400_000</span>..=<span class="number">499_999 </span>=&gt; <span class="number">32</span>,
+            <span class="number">500_000</span>..=<span class="number">599_999 </span>=&gt; <span class="number">16</span>,
+            <span class="number">600_000</span>..=<span class="number">699_999 </span>=&gt; <span class="number">8</span>,
+            <span class="number">700_000</span>..=<span class="number">799_999 </span>=&gt; <span class="number">4</span>,
+            <span class="kw">_ </span>=&gt; <span class="number">2</span>,
+        };
+
+        <span class="kw">let </span><span class="kw-2">mut </span>blocks_to_download = std::mem::take(<span class="kw-2">&amp;mut </span><span class="self">self</span>.missing_blocks);
+
+        <span class="kw">let </span>new_missing_blocks = <span class="kw">if </span>blocks_to_download.len() &gt; max_request_size {
+            blocks_to_download.split_off(max_request_size)
+        } <span class="kw">else </span>{
+            <span class="macro">vec!</span>[]
+        };
+
+        <span class="self">self</span>.missing_blocks = new_missing_blocks;
+
+        <span class="kw">let </span>block_data_request = blocks_to_download
+            .clone()
+            .into_iter()
+            .map(Inventory::Block)
+            .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
+
+        <span class="self">self</span>.requested_blocks = blocks_to_download.into_iter().collect::&lt;HashSet&lt;<span class="kw">_</span>&gt;&gt;();
+
+        <span class="macro">tracing::debug!</span>(
+            from = <span class="question-mark">?</span><span class="self">self</span>.peer_id,
+            pending_blocks_to_download = <span class="self">self</span>.missing_blocks.len(),
+            <span class="string">"📦 Downloading {} blocks"</span>,
+            <span class="self">self</span>.requested_blocks.len(),
+        );
+
+        SyncAction::Request(SyncRequest::GetData(block_data_request, <span class="self">self</span>.peer_id))
     }
 
     <span class="doccomment">/// Determine if the downloader is stalled based on the time elapsed since the last progress
@@ -467,7 +611,7 @@
     ///   increases, resulting in longer network response times for block retrieval.
     ///
     /// The timeout values are configurated arbitrarily.
-    </span><span class="kw">fn </span>is_stalled(<span class="kw-2">&amp;</span><span class="self">self</span>, peer_id: PeerId) -&gt; bool {
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>has_stalled(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;PeerId&gt; {
         <span class="kw">let </span>stall_timeout = <span class="kw">match </span><span class="self">self</span>.best_queued_number {
             <span class="number">0</span>..<span class="number">300_000 </span>=&gt; <span class="number">60</span>,        <span class="comment">// Standard timeout, 1 minute
             </span><span class="number">300_000</span>..<span class="number">600_000 </span>=&gt; <span class="number">120</span>, <span class="comment">// Extended timeout, 2 minutes
@@ -478,33 +622,34 @@
         <span class="kw">let </span>stalled = <span class="self">self</span>.last_progress_time.elapsed().as_secs() &gt; stall_timeout;
 
         <span class="kw">if </span>stalled {
-            <span class="self">self</span>.peer_store.record_failure(peer_id);
-        }
-
-        stalled
+            <span class="self">self</span>.peer_store.record_failure(<span class="self">self</span>.peer_id);
+            <span class="prelude-val">Some</span>(<span class="self">self</span>.peer_id)
+        } <span class="kw">else </span>{
+            <span class="prelude-val">None
+        </span>}
     }
 
-    <span class="kw">fn </span>block_exists(<span class="kw-2">&amp;</span><span class="self">self</span>, block_hash: BlockHash) -&gt; bool {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>block_exists(<span class="kw-2">&amp;</span><span class="self">self</span>, block_hash: BlockHash) -&gt; bool {
         <span class="self">self</span>.queued_blocks.block_number(block_hash).is_some()
     }
 
-    <span class="kw">fn </span>block_number(<span class="kw-2">&amp;</span><span class="self">self</span>, block_hash: BlockHash) -&gt; <span class="prelude-ty">Option</span>&lt;u32&gt; {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>block_number(<span class="kw-2">&amp;</span><span class="self">self</span>, block_hash: BlockHash) -&gt; <span class="prelude-ty">Option</span>&lt;u32&gt; {
         <span class="self">self</span>.queued_blocks.block_number(block_hash)
     }
 
-    <span class="kw">fn </span>is_unknown_block(<span class="kw-2">&amp;</span><span class="self">self</span>, block_hash: BlockHash) -&gt; bool {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>is_unknown_block(<span class="kw-2">&amp;</span><span class="self">self</span>, block_hash: BlockHash) -&gt; bool {
         <span class="self">self</span>.queued_blocks.block_number(block_hash).is_none()
             &amp;&amp; !<span class="self">self</span>.requested_blocks.contains(<span class="kw-2">&amp;</span>block_hash)
             &amp;&amp; !<span class="self">self</span>.orphan_blocks_pool.block_exists(<span class="kw-2">&amp;</span>block_hash)
     }
 
-    <span class="kw">fn </span>on_block_response(<span class="kw-2">&amp;mut </span><span class="self">self</span>, block_hash: BlockHash) -&gt; bool {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>on_block_response(<span class="kw-2">&amp;mut </span><span class="self">self</span>, block_hash: BlockHash) -&gt; bool {
         <span class="self">self</span>.last_progress_time = Instant::now();
         <span class="self">self</span>.requested_blocks.remove(<span class="kw-2">&amp;</span>block_hash)
     }
 
     <span class="doccomment">/// Checks if the import queue is overloaded and updates the internal state.
-    </span><span class="kw">fn </span>evaluate_queue_status(<span class="kw-2">&amp;mut </span><span class="self">self</span>, best_number: u32) -&gt; ImportQueueStatus {
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>evaluate_queue_status(<span class="kw-2">&amp;mut </span><span class="self">self</span>, best_number: u32) -&gt; ImportQueueStatus {
         <span class="comment">// Maximum number of pending blocks in the import queue.
         </span><span class="kw">let </span>max_queued_blocks = <span class="kw">match </span>best_number {
             <span class="number">0</span>..=<span class="number">100_000 </span>=&gt; <span class="number">8192</span>,
@@ -538,12 +683,13 @@
         <span class="self">self</span>.queue_status
     }
 
-    <span class="kw">fn </span>reset(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>restart(<span class="kw-2">&amp;mut </span><span class="self">self</span>, new_peer: PeerId) {
+        <span class="self">self</span>.peer_id = new_peer;
+        <span class="self">self</span>.downloaded_blocks_count = <span class="number">0</span>;
         <span class="self">self</span>.requested_blocks.clear();
         <span class="self">self</span>.downloaded_blocks.clear();
         <span class="self">self</span>.blocks_in_queue.clear();
         <span class="self">self</span>.queued_blocks.clear();
-        <span class="self">self</span>.best_queued_number = <span class="number">0u32</span>;
         <span class="self">self</span>.orphan_blocks_pool.clear();
         <span class="self">self</span>.last_progress_time = Instant::now();
         <span class="self">self</span>.queue_status = ImportQueueStatus::Ready;
@@ -612,7 +758,7 @@
     }
 
     <span class="doccomment">/// Add the block that is ready to be imported.
-    </span><span class="kw">fn </span>add_block(
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>add_block(
         <span class="kw-2">&amp;mut </span><span class="self">self</span>,
         block_number: u32,
         block_hash: BlockHash,
@@ -632,6 +778,7 @@
         <span class="kw">let </span>children = <span class="self">self</span>.orphan_blocks_pool.remove_blocks_for_parent(block_hash);
 
         <span class="kw">if </span>!children.is_empty() {
+            <span class="macro">tracing::trace!</span>(blocks = <span class="question-mark">?</span>children, <span class="string">"Connected orphan blocks"</span>);
             <span class="kw">for </span>(index, child_block) <span class="kw">in </span>children.into_iter().enumerate() {
                 <span class="kw">let </span>hash = child_block.block_hash();
                 <span class="kw">let </span>number = block_number + index <span class="kw">as </span>u32 + <span class="number">1</span>;
@@ -639,23 +786,24 @@
             }
         }
 
+        <span class="self">self</span>.downloaded_blocks_count += <span class="number">1</span>;
         <span class="self">self</span>.peer_store.record_block_download(from);
     }
 
-    <span class="kw">fn </span>add_orphan_block(<span class="kw-2">&amp;mut </span><span class="self">self</span>, block_hash: BlockHash, orphan_block: BitcoinBlock) {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>add_orphan_block(<span class="kw-2">&amp;mut </span><span class="self">self</span>, block_hash: BlockHash, orphan_block: BitcoinBlock) {
+        <span class="self">self</span>.orphan_blocks_pool.insert_orphan_block(orphan_block);
         <span class="macro">tracing::debug!</span>(
             orphan_blocks_count = <span class="self">self</span>.orphan_blocks_pool.len(),
-            <span class="string">"Adding orphan block {block_hash} to the orphan blocks pool"</span>,
+            <span class="string">"Added orphan block {block_hash} to orphan blocks pool"</span>,
         );
-        <span class="self">self</span>.orphan_blocks_pool.insert_orphan_block(orphan_block);
     }
 
-    <span class="kw">fn </span>add_unknown_block(<span class="kw-2">&amp;mut </span><span class="self">self</span>, block_hash: BlockHash, unknown_block: BitcoinBlock) {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>add_unknown_block(<span class="kw-2">&amp;mut </span><span class="self">self</span>, block_hash: BlockHash, unknown_block: BitcoinBlock) {
+        <span class="self">self</span>.orphan_blocks_pool.insert_unknown_block(unknown_block);
         <span class="macro">tracing::debug!</span>(
             orphan_blocks_count = <span class="self">self</span>.orphan_blocks_pool.len(),
-            <span class="string">"Adding unknown block {block_hash} to the orphan blocks pool"</span>,
+            <span class="string">"Added unknown block {block_hash} to orphan blocks pool"</span>,
         );
-        <span class="self">self</span>.orphan_blocks_pool.insert_unknown_block(unknown_block);
     }
 }
 </code></pre></div></section></main></body></html>

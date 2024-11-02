@@ -724,46 +724,11 @@
 <a href="#724" id="724">724</a>
 <a href="#725" id="725">725</a>
 <a href="#726" id="726">726</a>
-<a href="#727" id="727">727</a>
-<a href="#728" id="728">728</a>
-<a href="#729" id="729">729</a>
-<a href="#730" id="730">730</a>
-<a href="#731" id="731">731</a>
-<a href="#732" id="732">732</a>
-<a href="#733" id="733">733</a>
-<a href="#734" id="734">734</a>
-<a href="#735" id="735">735</a>
-<a href="#736" id="736">736</a>
-<a href="#737" id="737">737</a>
-<a href="#738" id="738">738</a>
-<a href="#739" id="739">739</a>
-<a href="#740" id="740">740</a>
-<a href="#741" id="741">741</a>
-<a href="#742" id="742">742</a>
-<a href="#743" id="743">743</a>
-<a href="#744" id="744">744</a>
-<a href="#745" id="745">745</a>
-<a href="#746" id="746">746</a>
-<a href="#747" id="747">747</a>
-<a href="#748" id="748">748</a>
-<a href="#749" id="749">749</a>
-<a href="#750" id="750">750</a>
-<a href="#751" id="751">751</a>
-<a href="#752" id="752">752</a>
-<a href="#753" id="753">753</a>
-<a href="#754" id="754">754</a>
-<a href="#755" id="755">755</a>
-<a href="#756" id="756">756</a>
-<a href="#757" id="757">757</a>
-<a href="#758" id="758">758</a>
-<a href="#759" id="759">759</a>
-<a href="#760" id="760">760</a>
-<a href="#761" id="761">761</a>
-<a href="#762" id="762">762</a>
-<a href="#763" id="763">763</a>
-<a href="#764" id="764">764</a>
-<a href="#765" id="765">765</a>
-</pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::block_downloader::{BlocksFirstDownloader, HeadersFirstDownloader};
+</pre></div><pre class="rust"><code><span class="kw">mod </span>block_downloader;
+<span class="kw">mod </span>orphan_blocks_pool;
+<span class="kw">mod </span>strategy;
+
+<span class="kw">use </span><span class="self">self</span>::strategy::{BlocksFirstStrategy, HeadersFirstStrategy};
 <span class="kw">use </span><span class="kw">crate</span>::peer_manager::NewPeer;
 <span class="kw">use </span><span class="kw">crate</span>::peer_store::PeerStore;
 <span class="kw">use crate</span>::{Error, Latency, PeerId, SyncStatus, SyncStrategy};
@@ -777,11 +742,11 @@
 <span class="kw">use </span>serde::{Deserialize, Serialize};
 <span class="kw">use </span>sp_consensus::BlockOrigin;
 <span class="kw">use </span>sp_runtime::traits::Block <span class="kw">as </span>BlockT;
-<span class="kw">use </span>std::collections::{HashMap, HashSet};
+<span class="kw">use </span>std::collections::HashMap;
 <span class="kw">use </span>std::marker::PhantomData;
 <span class="kw">use </span>std::sync::atomic::{AtomicBool, Ordering};
 <span class="kw">use </span>std::sync::Arc;
-<span class="kw">use </span>subcoin_primitives::{BackendExt, ClientExt};
+<span class="kw">use </span>subcoin_primitives::ClientExt;
 
 <span class="comment">// Do major sync when the current tip falls behind the network by 144 blocks (roughly one day).
 </span><span class="kw">const </span>MAJOR_SYNC_GAP: u32 = <span class="number">144</span>;
@@ -793,6 +758,9 @@
 
 <span class="doccomment">/// Maximum number of syncing retries for a deprioritized peer.
 </span><span class="kw">const </span>MAX_STALLS: usize = <span class="number">5</span>;
+
+<span class="comment">// Minimum peer threshold required to start sync
+</span><span class="kw">const </span>MIN_PEER_THRESHOLD: usize = <span class="number">3</span>;
 
 <span class="doccomment">/// The state of syncing between a Peer and ourselves.
 </span><span class="attr">#[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize, Hash)]
@@ -856,13 +824,15 @@
 
 <span class="doccomment">/// Represents different kinds of sync requests.
 </span><span class="attr">#[derive(Debug)]
+</span><span class="comment">// We prefer the variant to align with the actual message mame.
+</span><span class="attr">#[allow(clippy::enum_variant_names)]
 </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">enum </span>SyncRequest {
     <span class="doccomment">/// Request headers via `getheaders`.
-    </span>Headers(LocatorRequest),
-    <span class="doccomment">/// Request blocks via `getblocks`.
-    </span>Blocks(LocatorRequest),
-    <span class="doccomment">/// Request data via `getdata`.
-    </span>Data(Vec&lt;Inventory&gt;, PeerId),
+    </span>GetHeaders(LocatorRequest),
+    <span class="doccomment">/// Request inventories via `getblocks`.
+    </span>GetBlocks(LocatorRequest),
+    <span class="doccomment">/// Request blocks via `getdata`.
+    </span>GetData(Vec&lt;Inventory&gt;, PeerId),
 }
 
 <span class="doccomment">/// Represents actions that can be taken during the syncing.
@@ -874,7 +844,7 @@
     /// compltes, to fetch the most recent blocks.
     </span>SwitchToBlocksFirstSync,
     <span class="doccomment">/// Disconnect from the peer for the given reason.
-    </span>Disconnect(PeerId, Error),
+    </span>DisconnectPeer(PeerId, Error),
     <span class="doccomment">/// Deprioritize the specified peer, restarting the current sync
     /// with other candidates if available.
     </span>RestartSyncWithStalledPeer(PeerId),
@@ -894,9 +864,9 @@
 // might be in during the sync process.
 </span><span class="kw">enum </span>Syncing&lt;Block, Client&gt; {
     <span class="doccomment">/// Blocks-First sync.
-    </span>BlocksFirst(Box&lt;BlocksFirstDownloader&lt;Block, Client&gt;&gt;),
+    </span>BlocksFirst(Box&lt;BlocksFirstStrategy&lt;Block, Client&gt;&gt;),
     <span class="doccomment">/// Headers-First sync.
-    </span>HeadersFirst(Box&lt;HeadersFirstDownloader&lt;Block, Client&gt;&gt;),
+    </span>HeadersFirst(Box&lt;HeadersFirstStrategy&lt;Block, Client&gt;&gt;),
     <span class="doccomment">/// Not syncing.
     ///
     /// This could indicate that the node is either fully synced
@@ -921,7 +891,7 @@
     <span class="doccomment">/// Current syncing state.
     </span>syncing: Syncing&lt;Block, Client&gt;,
     <span class="doccomment">/// Handle of the import queue.
-    </span>import_queue: BlockImportQueue,
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) import_queue: BlockImportQueue,
     <span class="doccomment">/// Block syncing strategy.
     </span>sync_strategy: SyncStrategy,
     <span class="doccomment">/// Are we in major syncing?
@@ -930,8 +900,6 @@
     </span>enable_block_sync: bool,
     <span class="doccomment">/// Randomness generator.
     </span>rng: fastrand::Rng,
-    <span class="doccomment">/// Broadcasted blocks that are being requested.
-    </span>inflight_announced_blocks: HashSet&lt;BlockHash&gt;,
     <span class="doccomment">/// Handle of peer store.
     </span>peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;,
     _phantom: PhantomData&lt;Block&gt;,
@@ -962,7 +930,6 @@
             is_major_syncing,
             enable_block_sync,
             rng: fastrand::Rng::new(),
-            inflight_announced_blocks: HashSet::new(),
             peer_store,
             _phantom: Default::default(),
         }
@@ -971,16 +938,20 @@
     <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>sync_status(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; SyncStatus {
         <span class="kw">match </span><span class="kw-2">&amp;</span><span class="self">self</span>.syncing {
             Syncing::Idle =&gt; SyncStatus::Idle,
-            Syncing::BlocksFirst(downloader) =&gt; downloader.sync_status(),
-            Syncing::HeadersFirst(downloader) =&gt; downloader.sync_status(),
+            Syncing::BlocksFirst(strategy) =&gt; strategy.sync_status(),
+            Syncing::HeadersFirst(strategy) =&gt; strategy.sync_status(),
         }
+    }
+
+    <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>is_idle(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+        <span class="macro">matches!</span>(<span class="self">self</span>.syncing, Syncing::Idle)
     }
 
     <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>on_tick(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; SyncAction {
         <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.syncing {
             Syncing::Idle =&gt; SyncAction::None,
-            Syncing::BlocksFirst(downloader) =&gt; downloader.on_tick(),
-            Syncing::HeadersFirst(downloader) =&gt; downloader.on_tick(),
+            Syncing::BlocksFirst(strategy) =&gt; strategy.on_tick(),
+            Syncing::HeadersFirst(strategy) =&gt; strategy.on_tick(),
         }
     }
 
@@ -1011,6 +982,22 @@
         }
     }
 
+    <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>update_peer_best(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_id: PeerId, peer_best: u32) {
+        <span class="self">self</span>.peers.entry(peer_id).and_modify(|e| {
+            <span class="macro">tracing::debug!</span>(
+                <span class="string">"Tip of {peer_id:?} updated from #{} to #{peer_best}"</span>,
+                e.best_number
+            );
+            e.best_number = peer_best;
+        });
+
+        <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.syncing {
+            Syncing::Idle =&gt; {}
+            Syncing::BlocksFirst(strategy) =&gt; strategy.update_peer_best(peer_id, peer_best),
+            Syncing::HeadersFirst(strategy) =&gt; strategy.update_peer_best(peer_id, peer_best),
+        }
+    }
+
     <span class="doccomment">/// Attempt to find the best available peer, falling back to a random choice if needed
     </span><span class="kw">fn </span>select_next_peer_for_sync(
         <span class="kw-2">&amp;mut </span><span class="self">self</span>,
@@ -1024,7 +1011,7 @@
                     &amp;&amp; peer.best_number &gt; our_best
                     &amp;&amp; peer.state.is_available()
             })
-            .max_by_key(|peer| peer.best_number)
+            .min_by_key(|peer| peer.latency)
             .map(|peer| peer.peer_id)
             .or_else(|| {
                 <span class="kw">let </span>sync_candidates = <span class="self">self
@@ -1080,15 +1067,15 @@
                 <span class="kw">return</span>;
             };
 
-            <span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>reason, <span class="question-mark">?</span>prior_peer_id, <span class="question-mark">?</span>new_peer, <span class="string">"🔄 Sync restarted"</span>);
+            <span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>reason, prior_peer = <span class="question-mark">?</span>prior_peer_id, <span class="question-mark">?</span>new_peer, <span class="string">"🔄 Sync restarted"</span>);
             new_peer.state = PeerSyncState::DownloadingNew { start: our_best };
 
             <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.syncing {
-                Syncing::BlocksFirst(downloader) =&gt; {
-                    downloader.restart(new_peer.peer_id, new_peer.best_number);
+                Syncing::BlocksFirst(strategy) =&gt; {
+                    strategy.restart(new_peer.peer_id, new_peer.best_number);
                 }
-                Syncing::HeadersFirst(downloader) =&gt; {
-                    downloader.restart(new_peer.peer_id, new_peer.best_number);
+                Syncing::HeadersFirst(strategy) =&gt; {
+                    strategy.restart(new_peer.peer_id, new_peer.best_number);
                 }
                 Syncing::Idle =&gt; {}
             }
@@ -1136,8 +1123,8 @@
     <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>update_sync_peer_on_lower_latency(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
         <span class="kw">let </span>maybe_sync_peer_id = <span class="kw">match </span><span class="kw-2">&amp;</span><span class="self">self</span>.syncing {
             Syncing::Idle =&gt; <span class="kw">return</span>,
-            Syncing::BlocksFirst(downloader) =&gt; downloader.replaceable_sync_peer(),
-            Syncing::HeadersFirst(downloader) =&gt; downloader.replaceable_sync_peer(),
+            Syncing::BlocksFirst(strategy) =&gt; strategy.replaceable_sync_peer(),
+            Syncing::HeadersFirst(strategy) =&gt; strategy.replaceable_sync_peer(),
         };
 
         <span class="kw">let </span><span class="prelude-val">Some</span>(current_sync_peer_id) = maybe_sync_peer_id <span class="kw">else </span>{
@@ -1183,12 +1170,12 @@
             <span class="kw">let </span>target_block_number = best_sync_peer.best_number;
 
             <span class="kw">let </span>sync_peer_updated = <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.syncing {
-                Syncing::BlocksFirst(downloader) =&gt; {
-                    downloader.replace_sync_peer(peer_id, target_block_number);
+                Syncing::BlocksFirst(strategy) =&gt; {
+                    strategy.replace_sync_peer(peer_id, target_block_number);
                     <span class="bool-val">true
                 </span>}
-                Syncing::HeadersFirst(downloader) =&gt; {
-                    downloader.replace_sync_peer(peer_id, target_block_number);
+                Syncing::HeadersFirst(strategy) =&gt; {
+                    strategy.replace_sync_peer(peer_id, target_block_number);
                     <span class="bool-val">true
                 </span>}
                 Syncing::Idle =&gt; <span class="macro">unreachable!</span>(<span class="string">"Must not be Idle as checked; qed"</span>),
@@ -1241,6 +1228,11 @@
 
     <span class="kw">fn </span>attempt_sync_start(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; SyncAction {
         <span class="kw">if </span><span class="self">self</span>.syncing.is_major_syncing() {
+            <span class="kw">return </span>SyncAction::None;
+        }
+
+        <span class="kw">if </span><span class="self">self</span>.peers.len() &lt; MIN_PEER_THRESHOLD {
+            <span class="macro">tracing::debug!</span>(<span class="string">"Waiting for more peers"</span>);
             <span class="kw">return </span>SyncAction::None;
         }
 
@@ -1310,29 +1302,23 @@
             );
 
             <span class="kw">if </span>blocks_first {
-                <span class="kw">let </span>(downloader, blocks_request) =
-                    BlocksFirstDownloader::new(client, next_peer_id, peer_best, peer_store);
-                (
-                    Syncing::BlocksFirst(Box::new(downloader)),
-                    SyncAction::Request(blocks_request),
-                )
+                <span class="kw">let </span>(sync_strategy, sync_action) =
+                    BlocksFirstStrategy::new(client, next_peer_id, peer_best, peer_store);
+                (Syncing::BlocksFirst(Box::new(sync_strategy)), sync_action)
             } <span class="kw">else </span>{
-                <span class="kw">let </span>(downloader, sync_action) = HeadersFirstDownloader::new(
+                <span class="kw">let </span>(sync_strategy, sync_action) = HeadersFirstStrategy::new(
                     client,
                     <span class="self">self</span>.header_verifier.clone(),
                     next_peer_id,
                     peer_best,
                     peer_store,
                 );
-                (Syncing::HeadersFirst(Box::new(downloader)), sync_action)
+                (Syncing::HeadersFirst(Box::new(sync_strategy)), sync_action)
             }
         } <span class="kw">else </span>{
-            <span class="kw">let </span>(downloader, blocks_request) =
-                BlocksFirstDownloader::new(client, next_peer_id, peer_best, peer_store);
-            (
-                Syncing::BlocksFirst(Box::new(downloader)),
-                SyncAction::Request(blocks_request),
-            )
+            <span class="kw">let </span>(sync_strategy, sync_action) =
+                BlocksFirstStrategy::new(client, next_peer_id, peer_best, peer_store);
+            (Syncing::BlocksFirst(Box::new(sync_strategy)), sync_action)
         };
 
         next_peer.state = PeerSyncState::DownloadingNew { start: our_best };
@@ -1341,21 +1327,7 @@
         sync_action
     }
 
-    <span class="kw">fn </span>update_syncing_state(<span class="kw-2">&amp;mut </span><span class="self">self</span>, new: Syncing&lt;Block, Client&gt;) {
-        <span class="self">self</span>.syncing = new;
-        <span class="self">self</span>.is_major_syncing
-            .store(<span class="self">self</span>.syncing.is_major_syncing(), Ordering::Relaxed);
-    }
-
-    <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>set_idle(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
-        <span class="macro">tracing::debug!</span>(
-            best_number = <span class="self">self</span>.client.best_number(),
-            <span class="string">"Blocks-First sync completed, switching to Syncing::Idle"
-        </span>);
-        <span class="self">self</span>.update_syncing_state(Syncing::Idle);
-    }
-
-    <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>attempt_blocks_first_sync(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;SyncRequest&gt; {
+    <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>attempt_blocks_first_sync(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;SyncAction&gt; {
         <span class="kw">if </span><span class="self">self</span>.syncing.is_major_syncing() {
             <span class="kw">return </span><span class="prelude-val">None</span>;
         }
@@ -1375,7 +1347,7 @@
             <span class="kw">return </span><span class="prelude-val">None</span>;
         };
 
-        <span class="kw">let </span>(blocks_first_downloader, blocks_request) = BlocksFirstDownloader::new(
+        <span class="kw">let </span>(blocks_first_strategy, sync_action) = BlocksFirstStrategy::new(
             <span class="self">self</span>.client.clone(),
             best_peer.peer_id,
             best_peer.best_number,
@@ -1383,98 +1355,49 @@
         );
 
         <span class="macro">tracing::debug!</span>(<span class="string">"Headers-First sync completed, continuing with blocks-first sync"</span>);
-        <span class="self">self</span>.update_syncing_state(Syncing::BlocksFirst(Box::new(blocks_first_downloader)));
+        <span class="self">self</span>.update_syncing_state(Syncing::BlocksFirst(Box::new(blocks_first_strategy)));
 
-        <span class="prelude-val">Some</span>(blocks_request)
+        <span class="prelude-val">Some</span>(sync_action)
+    }
+
+    <span class="kw">fn </span>update_syncing_state(<span class="kw-2">&amp;mut </span><span class="self">self</span>, new: Syncing&lt;Block, Client&gt;) {
+        <span class="self">self</span>.syncing = new;
+        <span class="self">self</span>.is_major_syncing
+            .store(<span class="self">self</span>.syncing.is_major_syncing(), Ordering::Relaxed);
+    }
+
+    <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>set_idle(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
+        <span class="self">self</span>.import_pending_blocks();
+
+        <span class="macro">tracing::debug!</span>(
+            best_number = <span class="self">self</span>.client.best_number(),
+            <span class="string">"Blocks-First sync completed, switching to Syncing::Idle"
+        </span>);
+        <span class="self">self</span>.update_syncing_state(Syncing::Idle);
     }
 
     <span class="comment">// NOTE: `inv` can be received unsolicited as an announcement of a new block,
     // or in reply to `getblocks`.
     </span><span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>on_inv(<span class="kw-2">&amp;mut </span><span class="self">self</span>, inventories: Vec&lt;Inventory&gt;, from: PeerId) -&gt; SyncAction {
         <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.syncing {
-            Syncing::Idle =&gt; {
-                <span class="kw">if </span>inventories.len() == <span class="number">1 </span>{
-                    <span class="kw">if let </span>Inventory::Block(block_hash) = inventories[<span class="number">0</span>] {
-                        <span class="kw">if </span>!<span class="self">self</span>.inflight_announced_blocks.contains(<span class="kw-2">&amp;</span>block_hash) {
-                            <span class="comment">// A new block is broadcasted via `inv` message.
-                            </span><span class="macro">tracing::trace!</span>(
-                                <span class="string">"Requesting a new block {block_hash} announced from {from:?}"
-                            </span>);
-                            <span class="kw">return </span><span class="self">self</span>.announced_blocks_request(<span class="macro">vec!</span>[block_hash], from);
-                        }
-                    }
-                }
-                SyncAction::None
-            }
-            Syncing::BlocksFirst(downloader) =&gt; downloader.on_inv(inventories, from),
+            Syncing::Idle =&gt; SyncAction::None,
+            Syncing::BlocksFirst(strategy) =&gt; strategy.on_inv(inventories, from),
             Syncing::HeadersFirst(<span class="kw">_</span>) =&gt; SyncAction::None,
         }
     }
 
-    <span class="kw">fn </span>announced_blocks_request(
-        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
-        block_hashes: <span class="kw">impl </span>IntoIterator&lt;Item = BlockHash&gt;,
-        from: PeerId,
-    ) -&gt; SyncAction {
-        <span class="kw">let </span>data_request = SyncRequest::Data(
-            block_hashes
-                .into_iter()
-                .map(|block_hash| {
-                    <span class="self">self</span>.inflight_announced_blocks.insert(block_hash);
-                    Inventory::Block(block_hash)
-                })
-                .collect(),
-            from,
-        );
-
-        SyncAction::Request(data_request)
-    }
-
     <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>on_block(<span class="kw-2">&amp;mut </span><span class="self">self</span>, block: BitcoinBlock, from: PeerId) -&gt; SyncAction {
         <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.syncing {
-            Syncing::Idle =&gt; {
-                <span class="kw">if </span><span class="self">self</span>.inflight_announced_blocks.remove(<span class="kw-2">&amp;</span>block.block_hash()) {
-                    <span class="self">self</span>.import_queue.import_blocks(ImportBlocks {
-                        origin: BlockOrigin::NetworkBroadcast,
-                        blocks: <span class="macro">vec!</span>[block],
-                    });
-                }
-                SyncAction::None
-            }
-            Syncing::BlocksFirst(downloader) =&gt; downloader.on_block(block, from),
-            Syncing::HeadersFirst(downloader) =&gt; downloader.on_block(block, from),
+            Syncing::Idle =&gt; SyncAction::None,
+            Syncing::BlocksFirst(strategy) =&gt; strategy.on_block(block, from),
+            Syncing::HeadersFirst(strategy) =&gt; strategy.on_block(block, from),
         }
     }
 
     <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>on_headers(<span class="kw-2">&amp;mut </span><span class="self">self</span>, headers: Vec&lt;BitcoinHeader&gt;, from: PeerId) -&gt; SyncAction {
         <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.syncing {
-            Syncing::HeadersFirst(downloader) =&gt; downloader.on_headers(headers, from),
+            Syncing::HeadersFirst(strategy) =&gt; strategy.on_headers(headers, from),
             Syncing::BlocksFirst(<span class="kw">_</span>) | Syncing::Idle =&gt; {
-                <span class="kw">if </span>headers.is_empty() {
-                    <span class="kw">return </span>SyncAction::None;
-                }
-
-                <span class="comment">// New blocks maybe broadcasted via `headers` message.
-                </span><span class="kw">let </span><span class="prelude-val">Some</span>(best_hash) = <span class="self">self</span>.client.block_hash(<span class="self">self</span>.client.best_number()) <span class="kw">else </span>{
-                    <span class="kw">return </span>SyncAction::None;
-                };
-
-                <span class="comment">// New blocks, extending the chain tip.
-                </span><span class="kw">if </span>headers[<span class="number">0</span>].prev_blockhash == best_hash {
-                    <span class="kw">for </span>(index, header) <span class="kw">in </span>headers.iter().enumerate() {
-                        <span class="kw">if </span>!<span class="self">self</span>.header_verifier.has_valid_proof_of_work(header) {
-                            <span class="macro">tracing::error!</span>(<span class="question-mark">?</span>from, <span class="string">"Invalid header at index {index} in headers"</span>);
-                            <span class="kw">return </span>SyncAction::Disconnect(
-                                from,
-                                Error::BadProofOfWork(header.block_hash()),
-                            );
-                        }
-                    }
-
-                    <span class="kw">let </span>new_blocks = headers.into_iter().map(|header| header.block_hash());
-                    <span class="kw">return </span><span class="self">self</span>.announced_blocks_request(new_blocks, from);
-                }
-
                 <span class="macro">tracing::debug!</span>(
                     <span class="question-mark">?</span>from,
                     <span class="string">"Ignored headers: {:?}"</span>,
@@ -1483,37 +1406,36 @@
                         .map(|header| header.block_hash())
                         .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;()
                 );
-
                 SyncAction::None
             }
         }
     }
 
     <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>on_blocks_processed(<span class="kw-2">&amp;mut </span><span class="self">self</span>, results: ImportManyBlocksResult) {
-        <span class="kw">let </span>download_manager = <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.syncing {
+        <span class="kw">let </span>block_downloader = <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.syncing {
             Syncing::Idle =&gt; <span class="kw">return</span>,
-            Syncing::BlocksFirst(downloader) =&gt; downloader.download_manager(),
-            Syncing::HeadersFirst(downloader) =&gt; downloader.download_manager(),
+            Syncing::BlocksFirst(strategy) =&gt; strategy.block_downloader(),
+            Syncing::HeadersFirst(strategy) =&gt; strategy.block_downloader(),
         };
-        download_manager.handle_processed_blocks(results);
+        block_downloader.handle_processed_blocks(results);
     }
 
     <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>import_pending_blocks(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
-        <span class="kw">let </span>download_manager = <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.syncing {
+        <span class="kw">let </span>block_downloader = <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.syncing {
             Syncing::Idle =&gt; <span class="kw">return</span>,
-            Syncing::BlocksFirst(downloader) =&gt; downloader.download_manager(),
-            Syncing::HeadersFirst(downloader) =&gt; downloader.download_manager(),
+            Syncing::BlocksFirst(strategy) =&gt; strategy.block_downloader(),
+            Syncing::HeadersFirst(strategy) =&gt; strategy.block_downloader(),
         };
 
-        <span class="kw">if </span>!download_manager.has_pending_blocks() {
+        <span class="kw">if </span>!block_downloader.has_pending_blocks() {
             <span class="kw">return</span>;
         }
 
-        <span class="kw">let </span>(hashes, blocks) = download_manager.prepare_blocks_for_import();
+        <span class="kw">let </span>(hashes, blocks) = block_downloader.prepare_blocks_for_import();
 
         <span class="macro">tracing::trace!</span>(
             blocks = <span class="question-mark">?</span>hashes,
-            blocks_in_queue = download_manager.blocks_in_queue_count(),
+            blocks_in_queue = block_downloader.blocks_in_queue_count(),
             <span class="string">"Scheduling {} blocks for import"</span>,
             blocks.len(),
         );

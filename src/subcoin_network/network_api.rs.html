@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/network.rs`."><title>network.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-970bf1bf55bd1c15.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (28a58f2fa 2024-07-31)" data-channel="nightly" data-search-js="search-ef54e092fea9c776.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-f9142fe437216fc3.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/network_api.rs`."><title>network_api.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-970bf1bf55bd1c15.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (28a58f2fa 2024-07-31)" data-channel="nightly" data-search-js="search-ef54e092fea9c776.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-f9142fe437216fc3.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -221,9 +221,9 @@
     <span class="kw">pub</span>(<span class="kw">crate</span>) transaction: Transaction,
 }
 
-<span class="doccomment">/// Represents the different messages that can be sent to the network worker.
+<span class="doccomment">/// Represents the different messages that can be sent to the network processor.
 </span><span class="attr">#[derive(Debug)]
-</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">enum </span>NetworkWorkerMessage {
+</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">enum </span>NetworkProcessorMessage {
     <span class="doccomment">/// Request the current network status.
     </span>RequestNetworkStatus(oneshot::Sender&lt;NetworkStatus&gt;),
     <span class="doccomment">/// Request the sync peers.
@@ -238,13 +238,13 @@
     </span>StartBlockSync,
 }
 
-<span class="doccomment">/// A handle for interacting with the network worker.
+<span class="doccomment">/// A handle for interacting with the network processor.
 ///
-/// This handle allows sending messages to the network worker and provides a simple
+/// This handle allows sending messages to the network processor and provides a simple
 /// way to check if the node is performing a major synchronization.
 </span><span class="attr">#[derive(Debug, Clone)]
 </span><span class="kw">pub struct </span>NetworkHandle {
-    <span class="kw">pub</span>(<span class="kw">crate</span>) worker_msg_sender: TracingUnboundedSender&lt;NetworkWorkerMessage&gt;,
+    <span class="kw">pub</span>(<span class="kw">crate</span>) processor_msg_sender: TracingUnboundedSender&lt;NetworkProcessorMessage&gt;,
     <span class="comment">// A simple flag to know whether the node is doing the major sync.
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) is_major_syncing: Arc&lt;AtomicBool&gt;,
 }
@@ -252,12 +252,12 @@
 <span class="kw">impl </span>NetworkHandle {
     <span class="doccomment">/// Provides high-level status information about network.
     ///
-    /// Returns None if the `NetworkWorker` is no longer running.
+    /// Returns None if the `NetworkProcessor` is no longer running.
     </span><span class="kw">pub async fn </span>status(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;NetworkStatus&gt; {
         <span class="kw">let </span>(sender, receiver) = oneshot::channel();
 
-        <span class="self">self</span>.worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::RequestNetworkStatus(sender))
+        <span class="self">self</span>.processor_msg_sender
+            .unbounded_send(NetworkProcessorMessage::RequestNetworkStatus(sender))
             .ok();
 
         receiver.<span class="kw">await</span>.ok()
@@ -268,8 +268,8 @@
         <span class="kw">let </span>(sender, receiver) = oneshot::channel();
 
         <span class="kw">if </span><span class="self">self
-            </span>.worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::RequestSyncPeers(sender))
+            </span>.processor_msg_sender
+            .unbounded_send(NetworkProcessorMessage::RequestSyncPeers(sender))
             .is_err()
         {
             <span class="kw">return </span>Vec::new();
@@ -283,8 +283,8 @@
         <span class="kw">let </span>(sender, receiver) = oneshot::channel();
 
         <span class="kw">if </span><span class="self">self
-            </span>.worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::RequestTransaction((txid, sender)))
+            </span>.processor_msg_sender
+            .unbounded_send(NetworkProcessorMessage::RequestTransaction((txid, sender)))
             .is_err()
         {
             <span class="kw">return </span><span class="prelude-val">None</span>;
@@ -301,15 +301,15 @@
         <span class="kw">let </span>incoming_transaction = IncomingTransaction { txid, transaction };
 
         <span class="kw">if </span><span class="self">self
-            </span>.worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::SendTransaction((
+            </span>.processor_msg_sender
+            .unbounded_send(NetworkProcessorMessage::SendTransaction((
                 incoming_transaction,
                 sender,
             )))
             .is_err()
         {
             <span class="kw">return </span>SendTransactionResult::Failure(<span class="macro">format!</span>(
-                <span class="string">"Failed to send transaction ({txid}) to worker"
+                <span class="string">"Failed to send transaction ({txid}) to net processor"
             </span>));
         }
 
@@ -320,8 +320,8 @@
 
     <span class="doccomment">/// Starts the block sync in chain sync component.
     </span><span class="kw">pub fn </span>start_block_sync(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
-        <span class="self">self</span>.worker_msg_sender
-            .unbounded_send(NetworkWorkerMessage::StartBlockSync)
+        <span class="self">self</span>.processor_msg_sender
+            .unbounded_send(NetworkProcessorMessage::StartBlockSync)
             .is_ok()
     }
 

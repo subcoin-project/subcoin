@@ -468,8 +468,6 @@
 <a href="#468" id="468">468</a>
 <a href="#469" id="469">469</a>
 <a href="#470" id="470">470</a>
-<a href="#471" id="471">471</a>
-<a href="#472" id="472">472</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # Bitcoin Network
 //!
 //! This crate facilitates communication with other nodes in the Bitcoin P2P network. It handles
@@ -499,25 +497,23 @@
 //! to Bitcoin chain's tip by leveraging the advanced state sync provided by the Substrate networking stack.
 
 </span><span class="kw">mod </span>address_book;
-<span class="kw">mod </span>block_downloader;
 <span class="kw">mod </span>checkpoint;
 <span class="kw">mod </span>connection;
 <span class="kw">mod </span>metrics;
-<span class="kw">mod </span>network;
-<span class="kw">mod </span>orphan_blocks_pool;
+<span class="kw">mod </span>net_processor;
+<span class="kw">mod </span>network_api;
 <span class="kw">mod </span>peer_manager;
 <span class="kw">mod </span>peer_store;
 <span class="kw">mod </span>sync;
 <span class="attr">#[cfg(test)]
 </span><span class="kw">mod </span>tests;
 <span class="kw">mod </span>transaction_manager;
-<span class="kw">mod </span>worker;
 
 <span class="kw">use </span><span class="kw">crate</span>::connection::ConnectionInitiator;
 <span class="kw">use </span><span class="kw">crate</span>::metrics::BandwidthMetrics;
-<span class="kw">use </span><span class="kw">crate</span>::network::NetworkWorkerMessage;
+<span class="kw">use </span><span class="kw">crate</span>::net_processor::NetworkProcessor;
+<span class="kw">use </span><span class="kw">crate</span>::network_api::NetworkProcessorMessage;
 <span class="kw">use </span><span class="kw">crate</span>::peer_store::{PersistentPeerStore, PersistentPeerStoreHandle};
-<span class="kw">use </span><span class="kw">crate</span>::worker::NetworkWorker;
 <span class="kw">use </span>bitcoin::p2p::ServiceFlags;
 <span class="kw">use </span>bitcoin::{BlockHash, Network <span class="kw">as </span>BitcoinNetwork};
 <span class="kw">use </span>chrono::prelude::{DateTime, Local};
@@ -536,7 +532,7 @@
 <span class="kw">use </span>tokio::net::TcpListener;
 <span class="kw">use </span>tokio::sync::oneshot;
 
-<span class="kw">pub use </span><span class="kw">crate</span>::network::{NetworkHandle, NetworkStatus, SendTransactionResult, SyncStatus};
+<span class="kw">pub use </span><span class="kw">crate</span>::network_api::{NetworkHandle, NetworkStatus, SendTransactionResult, SyncStatus};
 <span class="kw">pub use </span><span class="kw">crate</span>::sync::{PeerSync, PeerSyncState};
 
 <span class="doccomment">/// Identifies a peer.
@@ -596,10 +592,8 @@
     </span>UnexpectedPong,
     <span class="attr">#[error(<span class="string">"Invalid pong message: bad nonce"</span>)]
     </span>BadPong,
-    <span class="attr">#[error(<span class="string">"Received an unrequested block: {0:?}"</span>)]
-    </span>UnrequestedBlock(BlockHash),
     <span class="attr">#[error(<span class="string">"Cannot find the parent of the first header in headers message"</span>)]
-    </span>ParentOfFirstHeaderEntryNotFound,
+    </span>MissingFirstHeaderParent,
     <span class="attr">#[error(<span class="string">"Other: {0}"</span>)]
     </span>Other(String),
     <span class="attr">#[error(transparent)]
@@ -743,8 +737,8 @@
     config: Config,
     import_queue: BlockImportQueue,
     spawn_handle: SpawnTaskHandle,
-    worker_msg_sender: TracingUnboundedSender&lt;NetworkWorkerMessage&gt;,
-    worker_msg_receiver: TracingUnboundedReceiver&lt;NetworkWorkerMessage&gt;,
+    processor_msg_sender: TracingUnboundedSender&lt;NetworkProcessorMessage&gt;,
+    processor_msg_receiver: TracingUnboundedReceiver&lt;NetworkProcessorMessage&gt;,
     is_major_syncing: Arc&lt;AtomicBool&gt;,
     registry: <span class="prelude-ty">Option</span>&lt;Registry&gt;,
     _phantom: PhantomData&lt;Block&gt;,
@@ -763,8 +757,8 @@
         spawn_handle: SpawnTaskHandle,
         registry: <span class="prelude-ty">Option</span>&lt;Registry&gt;,
     ) -&gt; (<span class="self">Self</span>, NetworkHandle) {
-        <span class="kw">let </span>(worker_msg_sender, worker_msg_receiver) =
-            tracing_unbounded(<span class="string">"mpsc_subcoin_network_worker"</span>, <span class="number">100</span>);
+        <span class="kw">let </span>(processor_msg_sender, processor_msg_receiver) =
+            tracing_unbounded(<span class="string">"mpsc_subcoin_network_processor"</span>, <span class="number">100</span>);
 
         <span class="kw">let </span>is_major_syncing = Arc::new(AtomicBool::new(<span class="bool-val">false</span>));
 
@@ -773,8 +767,8 @@
             config,
             import_queue,
             spawn_handle,
-            worker_msg_sender: worker_msg_sender.clone(),
-            worker_msg_receiver,
+            processor_msg_sender: processor_msg_sender.clone(),
+            processor_msg_receiver,
             is_major_syncing: is_major_syncing.clone(),
             registry,
             _phantom: Default::default(),
@@ -783,7 +777,7 @@
         (
             network,
             NetworkHandle {
-                worker_msg_sender,
+                processor_msg_sender,
                 is_major_syncing,
             },
         )
@@ -798,8 +792,8 @@
             config,
             import_queue,
             spawn_handle,
-            worker_msg_sender,
-            worker_msg_receiver,
+            processor_msg_sender,
+            processor_msg_receiver,
             is_major_syncing,
             registry,
             _phantom,
@@ -829,7 +823,7 @@
         );
 
         <span class="kw">if </span>!config.enable_block_sync_on_startup {
-            <span class="macro">tracing::info!</span>(<span class="string">"Subcoin block sync is disabled until Substrate fast sync is complete"</span>);
+            <span class="macro">tracing::info!</span>(<span class="string">"Subcoin block sync is disabled on startup"</span>);
         }
 
         <span class="kw">let </span>(sender, receiver) = tracing_unbounded(<span class="string">"mpsc_subcoin_peer_store"</span>, <span class="number">10_000</span>);
@@ -840,8 +834,8 @@
 
         spawn_handle.spawn(<span class="string">"peer-store"</span>, <span class="prelude-val">None</span>, persistent_peer_store.run(receiver));
 
-        <span class="kw">let </span>network_worker = NetworkWorker::new(
-            worker::Params {
+        <span class="kw">let </span>network_processor = NetworkProcessor::new(
+            net_processor::Params {
                 client: client.clone(),
                 header_verifier: HeaderVerifier::new(
                     client.clone(),
@@ -870,8 +864,8 @@
                 <span class="kw">while let </span><span class="prelude-val">Ok</span>((socket, peer_addr)) = listener.accept().<span class="kw">await </span>{
                     <span class="kw">let </span>(sender, receiver) = oneshot::channel();
 
-                    <span class="kw">if </span>worker_msg_sender
-                        .unbounded_send(NetworkWorkerMessage::RequestInboundPeersCount(sender))
+                    <span class="kw">if </span>processor_msg_sender
+                        .unbounded_send(NetworkProcessorMessage::RequestInboundPeersCount(sender))
                         .is_err()
                     {
                         <span class="kw">return</span>;
@@ -937,7 +931,9 @@
             }
         }
 
-        network_worker.run(worker_msg_receiver, bandwidth).<span class="kw">await</span>;
+        network_processor
+            .run(processor_msg_receiver, bandwidth)
+            .<span class="kw">await</span>;
 
         <span class="prelude-val">Ok</span>(())
     }

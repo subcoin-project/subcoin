@@ -793,10 +793,10 @@
 <a href="#793" id="793">793</a>
 <a href="#794" id="794">794</a>
 <a href="#795" id="795">795</a>
-<a href="#796" id="796">796</a>
-<a href="#797" id="797">797</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::address_book::AddressBook;
-<span class="kw">use </span><span class="kw">crate</span>::connection::{ConnectionInitiator, ConnectionWriter, Direction, NewConnection};
+<span class="kw">use </span><span class="kw">crate</span>::connection::{
+    ConnectionCloser, ConnectionInitiator, ConnectionWriter, Direction, NewConnection,
+};
 <span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
 <span class="kw">use crate</span>::{validate_outbound_services, Error, Latency, LocalTime, PeerId};
 <span class="kw">use </span>bitcoin::p2p::address::AddrV2Message;
@@ -808,7 +808,6 @@
 <span class="kw">use </span>sp_runtime::traits::Block <span class="kw">as </span>BlockT;
 <span class="kw">use </span>std::collections::HashMap;
 <span class="kw">use </span>std::marker::PhantomData;
-<span class="kw">use </span>std::sync::atomic::{AtomicBool, Ordering};
 <span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>std::time::{Duration, Instant};
 <span class="kw">use </span>subcoin_primitives::ClientExt;
@@ -876,7 +875,7 @@
 </span><span class="kw">struct </span>Connection {
     local_addr: PeerId,
     writer: ConnectionWriter,
-    disconnect_signal: Arc&lt;AtomicBool&gt;,
+    closer: ConnectionCloser,
 }
 
 <span class="kw">impl </span>Connection {
@@ -1260,12 +1259,9 @@
             <span class="kw">return</span>;
         }
 
-        <span class="kw">if let </span><span class="prelude-val">Some</span>(Connection {
-            disconnect_signal, ..
-        }) = <span class="self">self</span>.connections.remove(<span class="kw-2">&amp;</span>peer_id)
-        {
+        <span class="kw">if let </span><span class="prelude-val">Some</span>(connection) = <span class="self">self</span>.connections.remove(<span class="kw-2">&amp;</span>peer_id) {
             <span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>reason, <span class="question-mark">?</span>peer_id, <span class="string">"💔 Disconnecting peer"</span>);
-            disconnect_signal.store(<span class="bool-val">true</span>, Ordering::SeqCst);
+            connection.closer.terminate();
 
             <span class="kw">if let </span><span class="prelude-val">Some</span>(metrics) = <span class="kw-2">&amp;</span><span class="self">self</span>.metrics {
                 metrics.addresses.with_label_values(<span class="kw-2">&amp;</span>[<span class="string">"disconnected"</span>]).inc();
@@ -1341,13 +1337,13 @@
             local_addr,
             direction,
             writer,
-            disconnect_signal,
+            closer,
         } = new_connection;
 
         <span class="kw">let </span>connection = Connection {
             local_addr,
             writer,
-            disconnect_signal,
+            closer,
         };
 
         <span class="kw">let </span><span class="kw-2">mut </span>handshake_state = HandshakeState::ConnectionOpened;
@@ -1511,11 +1507,11 @@
             Direction::Inbound =&gt; {
                 <span class="comment">// Do not log the inbound connection success as what Bitcoin Core does.
                 </span><span class="attr">#[cfg(test)]
-                </span><span class="macro">tracing::debug!</span>(peer = <span class="question-mark">?</span>peer_id, <span class="question-mark">?</span>direction, <span class="string">"🤝 Completed handshake"</span>);
+                </span><span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>direction, <span class="string">"🤝 New peer {peer_id:?}"</span>);
             }
             Direction::Outbound =&gt; {
                 <span class="self">self</span>.send(peer_id, NetworkMessage::Verack)<span class="question-mark">?</span>;
-                <span class="macro">tracing::debug!</span>(peer = <span class="question-mark">?</span>peer_id, <span class="question-mark">?</span>direction, <span class="string">"🤝 Completed handshake"</span>);
+                <span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>direction, <span class="string">"🤝 New peer {peer_id:?}"</span>);
             }
         }
 
@@ -1532,7 +1528,7 @@
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>on_addr(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_id: PeerId, addresses: Vec&lt;(u32, Address)&gt;) {
         <span class="kw">let </span>added = <span class="self">self</span>.address_book.add_many(peer_id, addresses);
         <span class="kw">if </span>added &gt; <span class="number">0 </span>{
-            <span class="macro">tracing::debug!</span>(<span class="string">"Added {added} addresses from {peer_id:?}"</span>);
+            <span class="macro">tracing::trace!</span>(<span class="string">"Added {added} addresses from {peer_id:?}"</span>);
 
             <span class="kw">if let </span><span class="prelude-val">Some</span>(metrics) = <span class="kw-2">&amp;</span><span class="self">self</span>.metrics {
                 metrics
@@ -1546,7 +1542,7 @@
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>on_addr_v2(<span class="kw-2">&amp;mut </span><span class="self">self</span>, peer_id: PeerId, addresses: Vec&lt;AddrV2Message&gt;) {
         <span class="kw">let </span>added = <span class="self">self</span>.address_book.add_many_v2(peer_id, addresses);
         <span class="kw">if </span>added &gt; <span class="number">0 </span>{
-            <span class="macro">tracing::debug!</span>(<span class="string">"Added {added} addresses from {peer_id:?}"</span>);
+            <span class="macro">tracing::trace!</span>(<span class="string">"Added {added} addresses from {peer_id:?}"</span>);
 
             <span class="kw">if let </span><span class="prelude-val">Some</span>(metrics) = <span class="kw-2">&amp;</span><span class="self">self</span>.metrics {
                 metrics

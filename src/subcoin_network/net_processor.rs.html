@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/worker.rs`."><title>worker.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-970bf1bf55bd1c15.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (28a58f2fa 2024-07-31)" data-channel="nightly" data-search-js="search-ef54e092fea9c776.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-f9142fe437216fc3.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/net_processor.rs`."><title>net_processor.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-970bf1bf55bd1c15.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (28a58f2fa 2024-07-31)" data-channel="nightly" data-search-js="search-ef54e092fea9c776.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-f9142fe437216fc3.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -534,27 +534,185 @@
 <a href="#534" id="534">534</a>
 <a href="#535" id="535">535</a>
 <a href="#536" id="536">536</a>
+<a href="#537" id="537">537</a>
+<a href="#538" id="538">538</a>
+<a href="#539" id="539">539</a>
+<a href="#540" id="540">540</a>
+<a href="#541" id="541">541</a>
+<a href="#542" id="542">542</a>
+<a href="#543" id="543">543</a>
+<a href="#544" id="544">544</a>
+<a href="#545" id="545">545</a>
+<a href="#546" id="546">546</a>
+<a href="#547" id="547">547</a>
+<a href="#548" id="548">548</a>
+<a href="#549" id="549">549</a>
+<a href="#550" id="550">550</a>
+<a href="#551" id="551">551</a>
+<a href="#552" id="552">552</a>
+<a href="#553" id="553">553</a>
+<a href="#554" id="554">554</a>
+<a href="#555" id="555">555</a>
+<a href="#556" id="556">556</a>
+<a href="#557" id="557">557</a>
+<a href="#558" id="558">558</a>
+<a href="#559" id="559">559</a>
+<a href="#560" id="560">560</a>
+<a href="#561" id="561">561</a>
+<a href="#562" id="562">562</a>
+<a href="#563" id="563">563</a>
+<a href="#564" id="564">564</a>
+<a href="#565" id="565">565</a>
+<a href="#566" id="566">566</a>
+<a href="#567" id="567">567</a>
+<a href="#568" id="568">568</a>
+<a href="#569" id="569">569</a>
+<a href="#570" id="570">570</a>
+<a href="#571" id="571">571</a>
+<a href="#572" id="572">572</a>
+<a href="#573" id="573">573</a>
+<a href="#574" id="574">574</a>
+<a href="#575" id="575">575</a>
+<a href="#576" id="576">576</a>
+<a href="#577" id="577">577</a>
+<a href="#578" id="578">578</a>
+<a href="#579" id="579">579</a>
+<a href="#580" id="580">580</a>
+<a href="#581" id="581">581</a>
+<a href="#582" id="582">582</a>
+<a href="#583" id="583">583</a>
+<a href="#584" id="584">584</a>
+<a href="#585" id="585">585</a>
+<a href="#586" id="586">586</a>
+<a href="#587" id="587">587</a>
+<a href="#588" id="588">588</a>
+<a href="#589" id="589">589</a>
+<a href="#590" id="590">590</a>
+<a href="#591" id="591">591</a>
+<a href="#592" id="592">592</a>
+<a href="#593" id="593">593</a>
+<a href="#594" id="594">594</a>
+<a href="#595" id="595">595</a>
+<a href="#596" id="596">596</a>
+<a href="#597" id="597">597</a>
+<a href="#598" id="598">598</a>
+<a href="#599" id="599">599</a>
+<a href="#600" id="600">600</a>
+<a href="#601" id="601">601</a>
+<a href="#602" id="602">602</a>
+<a href="#603" id="603">603</a>
+<a href="#604" id="604">604</a>
+<a href="#605" id="605">605</a>
+<a href="#606" id="606">606</a>
+<a href="#607" id="607">607</a>
+<a href="#608" id="608">608</a>
+<a href="#609" id="609">609</a>
+<a href="#610" id="610">610</a>
+<a href="#611" id="611">611</a>
+<a href="#612" id="612">612</a>
+<a href="#613" id="613">613</a>
+<a href="#614" id="614">614</a>
+<a href="#615" id="615">615</a>
+<a href="#616" id="616">616</a>
+<a href="#617" id="617">617</a>
+<a href="#618" id="618">618</a>
+<a href="#619" id="619">619</a>
+<a href="#620" id="620">620</a>
+<a href="#621" id="621">621</a>
+<a href="#622" id="622">622</a>
+<a href="#623" id="623">623</a>
+<a href="#624" id="624">624</a>
+<a href="#625" id="625">625</a>
+<a href="#626" id="626">626</a>
+<a href="#627" id="627">627</a>
+<a href="#628" id="628">628</a>
+<a href="#629" id="629">629</a>
+<a href="#630" id="630">630</a>
+<a href="#631" id="631">631</a>
+<a href="#632" id="632">632</a>
+<a href="#633" id="633">633</a>
+<a href="#634" id="634">634</a>
+<a href="#635" id="635">635</a>
+<a href="#636" id="636">636</a>
+<a href="#637" id="637">637</a>
+<a href="#638" id="638">638</a>
+<a href="#639" id="639">639</a>
+<a href="#640" id="640">640</a>
+<a href="#641" id="641">641</a>
+<a href="#642" id="642">642</a>
+<a href="#643" id="643">643</a>
+<a href="#644" id="644">644</a>
+<a href="#645" id="645">645</a>
+<a href="#646" id="646">646</a>
+<a href="#647" id="647">647</a>
+<a href="#648" id="648">648</a>
+<a href="#649" id="649">649</a>
+<a href="#650" id="650">650</a>
+<a href="#651" id="651">651</a>
+<a href="#652" id="652">652</a>
+<a href="#653" id="653">653</a>
+<a href="#654" id="654">654</a>
+<a href="#655" id="655">655</a>
+<a href="#656" id="656">656</a>
+<a href="#657" id="657">657</a>
+<a href="#658" id="658">658</a>
+<a href="#659" id="659">659</a>
+<a href="#660" id="660">660</a>
+<a href="#661" id="661">661</a>
+<a href="#662" id="662">662</a>
+<a href="#663" id="663">663</a>
+<a href="#664" id="664">664</a>
+<a href="#665" id="665">665</a>
+<a href="#666" id="666">666</a>
+<a href="#667" id="667">667</a>
+<a href="#668" id="668">668</a>
+<a href="#669" id="669">669</a>
+<a href="#670" id="670">670</a>
+<a href="#671" id="671">671</a>
+<a href="#672" id="672">672</a>
+<a href="#673" id="673">673</a>
+<a href="#674" id="674">674</a>
+<a href="#675" id="675">675</a>
+<a href="#676" id="676">676</a>
+<a href="#677" id="677">677</a>
+<a href="#678" id="678">678</a>
+<a href="#679" id="679">679</a>
+<a href="#680" id="680">680</a>
+<a href="#681" id="681">681</a>
+<a href="#682" id="682">682</a>
+<a href="#683" id="683">683</a>
+<a href="#684" id="684">684</a>
+<a href="#685" id="685">685</a>
+<a href="#686" id="686">686</a>
+<a href="#687" id="687">687</a>
+<a href="#688" id="688">688</a>
+<a href="#689" id="689">689</a>
+<a href="#690" id="690">690</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::connection::{ConnectionInitiator, Direction, NewConnection};
 <span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
-<span class="kw">use </span><span class="kw">crate</span>::network::{
-    IncomingTransaction, NetworkStatus, NetworkWorkerMessage, SendTransactionResult,
+<span class="kw">use </span><span class="kw">crate</span>::network_api::{
+    IncomingTransaction, NetworkProcessorMessage, NetworkStatus, SendTransactionResult,
 };
 <span class="kw">use </span><span class="kw">crate</span>::peer_manager::{Config, NewPeer, PeerManager, SlowPeer, PEER_LATENCY_THRESHOLD};
 <span class="kw">use </span><span class="kw">crate</span>::peer_store::PeerStore;
 <span class="kw">use </span><span class="kw">crate</span>::sync::{ChainSync, LocatorRequest, RestartReason, SyncAction, SyncRequest};
 <span class="kw">use </span><span class="kw">crate</span>::transaction_manager::TransactionManager;
 <span class="kw">use crate</span>::{Bandwidth, Error, PeerId, SyncStrategy};
+<span class="kw">use </span>bitcoin::blockdata::block::Header <span class="kw">as </span>BitcoinHeader;
 <span class="kw">use </span>bitcoin::p2p::message::{NetworkMessage, MAX_INV_SIZE};
 <span class="kw">use </span>bitcoin::p2p::message_blockdata::{GetBlocksMessage, GetHeadersMessage, Inventory};
+<span class="kw">use </span>bitcoin::{Block <span class="kw">as </span>BitcoinBlock, BlockHash};
 <span class="kw">use </span>futures::stream::FusedStream;
 <span class="kw">use </span>futures::StreamExt;
 <span class="kw">use </span>sc_client_api::{AuxStore, HeaderBackend};
 <span class="kw">use </span>sc_consensus_nakamoto::{BlockImportQueue, HeaderVerifier};
 <span class="kw">use </span>sc_utils::mpsc::TracingUnboundedReceiver;
 <span class="kw">use </span>sp_runtime::traits::Block <span class="kw">as </span>BlockT;
+<span class="kw">use </span>std::collections::{HashMap, HashSet};
 <span class="kw">use </span>std::sync::atomic::{AtomicBool, Ordering};
 <span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>std::time::Duration;
+<span class="kw">use </span>subcoin_primitives::{BackendExt, ClientExt};
 <span class="kw">use </span>substrate_prometheus_endpoint::Registry;
 <span class="kw">use </span>tokio::sync::mpsc::UnboundedReceiver;
 <span class="kw">use </span>tokio::time::MissedTickBehavior;
@@ -570,7 +728,7 @@
     <span class="doccomment">/// Failed to make a connection to the given outbound peer.
     </span>OutboundConnectionFailure { peer_addr: PeerId, reason: Error },
     <span class="doccomment">/// TCP connection was closed, either properly or abruptly.
-    </span>Disconnect { peer_addr: PeerId, reason: Error },
+    </span>DisconnectPeer { peer_addr: PeerId, reason: Error },
     <span class="doccomment">/// New Bitcoin p2p network message received from the peer.
     </span>PeerMessage {
         from: PeerId,
@@ -579,7 +737,14 @@
     },
 }
 
-<span class="doccomment">/// Parameters for creating a [`NetworkWorker`].
+<span class="kw">impl </span>Event {
+    <span class="doccomment">/// Constructs a [`Event::DisconnectPeer`] variant.
+    </span><span class="kw">pub fn </span>disconnect(peer_addr: PeerId, reason: Error) -&gt; <span class="self">Self </span>{
+        <span class="self">Self</span>::DisconnectPeer { peer_addr, reason }
+    }
+}
+
+<span class="doccomment">/// Parameters for creating a [`NetworkProcessor`].
 </span><span class="kw">pub struct </span>Params&lt;Block, Client&gt; {
     <span class="kw">pub </span>client: Arc&lt;Client&gt;,
     <span class="kw">pub </span>header_verifier: HeaderVerifier&lt;Block, Client&gt;,
@@ -594,23 +759,27 @@
     <span class="kw">pub </span>peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;,
 }
 
-<span class="doccomment">/// [`NetworkWorker`] is responsible for processing the network events.
-</span><span class="kw">pub struct </span>NetworkWorker&lt;Block, Client&gt; {
+<span class="doccomment">/// [`NetworkProcessor`] is responsible for processing the network events.
+</span><span class="kw">pub struct </span>NetworkProcessor&lt;Block, Client&gt; {
     config: Config,
-    network_event_receiver: UnboundedReceiver&lt;Event&gt;,
-    peer_manager: PeerManager&lt;Block, Client&gt;,
-    peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;,
-    transaction_manager: TransactionManager,
+    client: Arc&lt;Client&gt;,
     chain_sync: ChainSync&lt;Block, Client&gt;,
+    peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;,
+    peer_manager: PeerManager&lt;Block, Client&gt;,
+    header_verifier: HeaderVerifier&lt;Block, Client&gt;,
+    transaction_manager: TransactionManager,
+    network_event_receiver: UnboundedReceiver&lt;Event&gt;,
+    <span class="doccomment">/// Broadcasted blocks that are being requested.
+    </span>inflight_announced_blocks: HashMap&lt;PeerId, HashSet&lt;BlockHash&gt;&gt;,
     metrics: <span class="prelude-ty">Option</span>&lt;Metrics&gt;,
 }
 
-<span class="kw">impl</span>&lt;Block, Client&gt; NetworkWorker&lt;Block, Client&gt;
+<span class="kw">impl</span>&lt;Block, Client&gt; NetworkProcessor&lt;Block, Client&gt;
 <span class="kw">where
     </span>Block: BlockT,
     Client: HeaderBackend&lt;Block&gt; + AuxStore,
 {
-    <span class="doccomment">/// Constructs a new instance of [`NetworkWorker`].
+    <span class="doccomment">/// Constructs a new instance of [`NetworkProcessor`].
     </span><span class="kw">pub fn </span>new(params: Params&lt;Block, Client&gt;, registry: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>Registry&gt;) -&gt; <span class="self">Self </span>{
         <span class="kw">let </span>Params {
             client,
@@ -643,8 +812,8 @@
         );
 
         <span class="kw">let </span>chain_sync = ChainSync::new(
-            client,
-            header_verifier,
+            client.clone(),
+            header_verifier.clone(),
             import_queue,
             sync_strategy,
             is_major_syncing,
@@ -653,13 +822,16 @@
         );
 
         <span class="self">Self </span>{
-            network_event_receiver,
-            peer_manager,
-            peer_store,
-            transaction_manager: TransactionManager::new(),
-            chain_sync,
-            metrics,
             config,
+            client,
+            chain_sync,
+            peer_store,
+            peer_manager,
+            header_verifier,
+            transaction_manager: TransactionManager::new(),
+            inflight_announced_blocks: HashMap::new(),
+            network_event_receiver,
+            metrics,
         }
     }
 
@@ -667,10 +839,10 @@
     ///
     /// This loop handles various tasks such as processing incoming network events,
     /// syncing the blockchain, managing peers, and updating metrics. It runs indefinitely
-    /// until the network worker is stopped.
+    /// until the network processor is stopped.
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">async fn </span>run(
         <span class="kw-2">mut </span><span class="self">self</span>,
-        worker_msg_receiver: TracingUnboundedReceiver&lt;NetworkWorkerMessage&gt;,
+        processor_msg_receiver: TracingUnboundedReceiver&lt;NetworkProcessorMessage&gt;,
         bandwidth: Bandwidth,
     ) {
         <span class="kw">let </span><span class="kw-2">mut </span>tick_timeout = {
@@ -679,7 +851,7 @@
             interval
         };
 
-        <span class="kw">let </span><span class="kw-2">mut </span>worker_msg_sink = worker_msg_receiver.fuse();
+        <span class="kw">let </span><span class="kw-2">mut </span>processor_msg_sink = processor_msg_receiver.fuse();
 
         <span class="kw">loop </span>{
             <span class="macro">tokio::select!</span> {
@@ -690,15 +862,15 @@
                     <span class="kw">let </span><span class="prelude-val">Some</span>(event) = maybe_event <span class="kw">else </span>{
                         <span class="kw">return</span>;
                     };
-                    <span class="self">self</span>.process_event(event).<span class="kw">await</span>;
+                    <span class="self">self</span>.handle_event(event).<span class="kw">await</span>;
                 }
-                maybe_worker_msg = worker_msg_sink.next(), <span class="kw">if </span>!worker_msg_sink.is_terminated() =&gt; {
-                    <span class="kw">if let </span><span class="prelude-val">Some</span>(worker_msg) = maybe_worker_msg {
-                        <span class="self">self</span>.process_worker_message(worker_msg, <span class="kw-2">&amp;</span>bandwidth);
+                maybe_processor_msg = processor_msg_sink.next(), <span class="kw">if </span>!processor_msg_sink.is_terminated() =&gt; {
+                    <span class="kw">if let </span><span class="prelude-val">Some</span>(processor_msg) = maybe_processor_msg {
+                        <span class="self">self</span>.handle_processor_message(processor_msg, <span class="kw-2">&amp;</span>bandwidth);
                     }
                 }
                 <span class="kw">_ </span>= tick_timeout.tick() =&gt; {
-                    <span class="self">self</span>.perform_periodic_actions();
+                    <span class="self">self</span>.execute_periodic_tasks();
                 }
             }
 
@@ -706,7 +878,7 @@
         }
     }
 
-    <span class="kw">async fn </span>process_event(<span class="kw-2">&amp;mut </span><span class="self">self</span>, event: Event) {
+    <span class="kw">async fn </span>handle_event(<span class="kw-2">&amp;mut </span><span class="self">self</span>, event: Event) {
         <span class="kw">match </span>event {
             Event::NewConnection(new_connection) =&gt; {
                 <span class="self">self</span>.peer_manager.on_new_connection(new_connection);
@@ -716,7 +888,7 @@
                     .on_outbound_connection_failure(peer_addr, reason);
                 <span class="self">self</span>.peer_store.remove_peer(peer_addr);
             }
-            Event::Disconnect { peer_addr, reason } =&gt; {
+            Event::DisconnectPeer { peer_addr, reason } =&gt; {
                 <span class="self">self</span>.peer_manager.disconnect(peer_addr, reason);
                 <span class="self">self</span>.chain_sync.disconnect(peer_addr);
                 <span class="self">self</span>.peer_store.remove_peer(peer_addr);
@@ -747,7 +919,7 @@
         }
     }
 
-    <span class="kw">fn </span>perform_periodic_actions(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
+    <span class="kw">fn </span>execute_periodic_tasks(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
         <span class="kw">let </span>sync_action = <span class="self">self</span>.chain_sync.on_tick();
         <span class="self">self</span>.do_sync_action(sync_action);
 
@@ -778,9 +950,13 @@
         }
     }
 
-    <span class="kw">fn </span>process_worker_message(<span class="kw-2">&amp;mut </span><span class="self">self</span>, worker_msg: NetworkWorkerMessage, bandwidth: <span class="kw-2">&amp;</span>Bandwidth) {
-        <span class="kw">match </span>worker_msg {
-            NetworkWorkerMessage::RequestNetworkStatus(result_sender) =&gt; {
+    <span class="kw">fn </span>handle_processor_message(
+        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
+        processor_msg: NetworkProcessorMessage,
+        bandwidth: <span class="kw-2">&amp;</span>Bandwidth,
+    ) {
+        <span class="kw">match </span>processor_msg {
+            NetworkProcessorMessage::RequestNetworkStatus(result_sender) =&gt; {
                 <span class="kw">let </span>net_status = NetworkStatus {
                     num_connected_peers: <span class="self">self</span>.peer_manager.connected_peers_count(),
                     total_bytes_inbound: bandwidth.total_bytes_inbound.load(Ordering::Relaxed),
@@ -789,17 +965,17 @@
                 };
                 <span class="kw">let _ </span>= result_sender.send(net_status);
             }
-            NetworkWorkerMessage::RequestSyncPeers(result_sender) =&gt; {
+            NetworkProcessorMessage::RequestSyncPeers(result_sender) =&gt; {
                 <span class="kw">let </span>sync_peers = <span class="self">self</span>.chain_sync.peers.values().cloned().collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
                 <span class="kw">let _ </span>= result_sender.send(sync_peers);
             }
-            NetworkWorkerMessage::RequestInboundPeersCount(result_sender) =&gt; {
+            NetworkProcessorMessage::RequestInboundPeersCount(result_sender) =&gt; {
                 <span class="kw">let _ </span>= result_sender.send(<span class="self">self</span>.peer_manager.inbound_peers_count());
             }
-            NetworkWorkerMessage::RequestTransaction((txid, result_sender)) =&gt; {
+            NetworkProcessorMessage::RequestTransaction((txid, result_sender)) =&gt; {
                 <span class="kw">let _ </span>= result_sender.send(<span class="self">self</span>.transaction_manager.get_transaction(<span class="kw-2">&amp;</span>txid));
             }
-            NetworkWorkerMessage::SendTransaction((incoming_transaction, result_sender)) =&gt; {
+            NetworkProcessorMessage::SendTransaction((incoming_transaction, result_sender)) =&gt; {
                 <span class="kw">let </span>send_transaction_result = <span class="kw">match </span><span class="self">self
                     </span>.transaction_manager
                     .add_transaction(incoming_transaction)
@@ -809,7 +985,7 @@
                 };
                 <span class="kw">let _ </span>= result_sender.send(send_transaction_result);
             }
-            NetworkWorkerMessage::StartBlockSync =&gt; {
+            NetworkProcessorMessage::StartBlockSync =&gt; {
                 <span class="kw">let </span>sync_action = <span class="self">self</span>.chain_sync.start_block_sync();
                 <span class="self">self</span>.do_sync_action(sync_action);
             }
@@ -881,39 +1057,7 @@
                 <span class="self">self</span>.send(from, NetworkMessage::Pong(nonce))<span class="question-mark">?</span>;
                 <span class="prelude-val">Ok</span>(SyncAction::None)
             }
-            NetworkMessage::Pong(nonce) =&gt; {
-                <span class="kw">match </span><span class="self">self</span>.peer_manager.on_pong(from, nonce) {
-                    <span class="prelude-val">Ok</span>(avg_latency) =&gt; {
-                        <span class="comment">// Disconnect the peer directly if the latency is higher than the threshold.
-                        </span><span class="kw">if </span>avg_latency &gt; PEER_LATENCY_THRESHOLD {
-                            <span class="self">self</span>.peer_manager
-                                .disconnect(from, Error::PingLatencyTooHigh(avg_latency));
-                            <span class="self">self</span>.chain_sync.disconnect(from);
-                            <span class="self">self</span>.peer_store.remove_peer(from);
-                        } <span class="kw">else </span>{
-                            <span class="kw">if </span><span class="self">self</span>.chain_sync.peers.contains_key(<span class="kw-2">&amp;</span>from) {
-                                <span class="self">self</span>.chain_sync.update_peer_latency(from, avg_latency);
-                            } <span class="kw">else </span>{
-                                <span class="self">self</span>.chain_sync.add_new_peer(NewPeer {
-                                    peer_id: from,
-                                    best_number: <span class="self">self
-                                        </span>.peer_manager
-                                        .peer_best_number(from)
-                                        .ok_or(Error::ConnectionNotFound(from))<span class="question-mark">?</span>,
-                                    latency: avg_latency,
-                                });
-                            }
-                            <span class="self">self</span>.peer_store.try_add_peer(from, avg_latency);
-                        }
-                    }
-                    <span class="prelude-val">Err</span>(err) =&gt; {
-                        <span class="self">self</span>.peer_manager.disconnect(from, err);
-                        <span class="self">self</span>.chain_sync.disconnect(from);
-                        <span class="self">self</span>.peer_store.remove_peer(from);
-                    }
-                }
-                <span class="prelude-val">Ok</span>(SyncAction::None)
-            }
+            NetworkMessage::Pong(nonce) =&gt; <span class="prelude-val">Ok</span>(<span class="self">self</span>.process_pong(from, nonce)<span class="question-mark">?</span>),
             NetworkMessage::AddrV2(addresses) =&gt; {
                 <span class="self">self</span>.peer_manager.on_addr_v2(from, addresses);
                 <span class="prelude-val">Ok</span>(SyncAction::None)
@@ -931,8 +1075,8 @@
                 <span class="prelude-val">Ok</span>(SyncAction::None)
             }
             NetworkMessage::Inv(inv) =&gt; <span class="self">self</span>.process_inv(from, inv),
-            NetworkMessage::Block(block) =&gt; <span class="prelude-val">Ok</span>(<span class="self">self</span>.chain_sync.on_block(block, from)),
-            NetworkMessage::Headers(headers) =&gt; <span class="prelude-val">Ok</span>(<span class="self">self</span>.chain_sync.on_headers(headers, from)),
+            NetworkMessage::Block(block) =&gt; <span class="self">self</span>.process_block(from, block),
+            NetworkMessage::Headers(headers) =&gt; <span class="self">self</span>.process_headers(from, headers),
             NetworkMessage::MerkleBlock(<span class="kw">_</span>) =&gt; <span class="prelude-val">Ok</span>(SyncAction::None),
             NetworkMessage::Unknown { .. }
             | NetworkMessage::NotFound(<span class="kw">_</span>)
@@ -956,79 +1100,176 @@
         }
     }
 
-    <span class="kw">fn </span>do_sync_action(<span class="kw-2">&amp;mut </span><span class="self">self</span>, sync_action: SyncAction) {
-        <span class="kw">match </span>sync_action {
-            SyncAction::Request(sync_request) =&gt; <span class="kw">match </span>sync_request {
-                SyncRequest::Headers(request) =&gt; {
-                    <span class="kw">let </span>LocatorRequest {
-                        locator_hashes,
-                        stop_hash,
-                        to,
-                    } = request;
+    <span class="kw">fn </span>process_pong(<span class="kw-2">&amp;mut </span><span class="self">self</span>, from: PeerId, nonce: u64) -&gt; <span class="prelude-ty">Result</span>&lt;SyncAction, Error&gt; {
+        <span class="kw">match </span><span class="self">self</span>.peer_manager.on_pong(from, nonce) {
+            <span class="prelude-val">Ok</span>(avg_latency) =&gt; {
+                <span class="comment">// DisconnectPeer the peer directly if the latency is higher than the threshold.
+                </span><span class="kw">if </span>avg_latency &gt; PEER_LATENCY_THRESHOLD {
+                    <span class="self">self</span>.peer_manager
+                        .disconnect(from, Error::PingLatencyTooHigh(avg_latency));
+                    <span class="self">self</span>.chain_sync.disconnect(from);
+                    <span class="self">self</span>.peer_store.remove_peer(from);
+                } <span class="kw">else </span>{
+                    <span class="self">self</span>.peer_store.try_add_peer(from, avg_latency);
 
-                    <span class="kw">if </span>!locator_hashes.is_empty() {
-                        <span class="kw">let </span>msg = GetHeadersMessage {
-                            version: <span class="self">self</span>.config.protocol_version,
-                            locator_hashes,
-                            stop_hash,
-                        };
-                        <span class="kw">let _ </span>= <span class="self">self</span>.send(to, NetworkMessage::GetHeaders(msg));
+                    <span class="kw">if </span><span class="self">self</span>.chain_sync.peers.contains_key(<span class="kw-2">&amp;</span>from) {
+                        <span class="self">self</span>.chain_sync.update_peer_latency(from, avg_latency);
+                    } <span class="kw">else </span>{
+                        <span class="kw">let </span>peer_best = <span class="self">self
+                            </span>.peer_manager
+                            .peer_best_number(from)
+                            .ok_or(Error::ConnectionNotFound(from))<span class="question-mark">?</span>;
+
+                        <span class="kw">let </span>maybe_sync_start = <span class="self">self</span>.chain_sync.add_new_peer(NewPeer {
+                            peer_id: from,
+                            best_number: peer_best,
+                            latency: avg_latency,
+                        });
+
+                        <span class="kw">return </span><span class="prelude-val">Ok</span>(maybe_sync_start);
                     }
                 }
-                SyncRequest::Blocks(request) =&gt; {
-                    <span class="self">self</span>.send_get_blocks_request(request);
-                }
-                SyncRequest::Data(invs, to) =&gt; {
-                    <span class="kw">if </span>!invs.is_empty() {
-                        <span class="kw">let _ </span>= <span class="self">self</span>.send(to, NetworkMessage::GetData(invs));
-                    }
-                }
-            },
-            SyncAction::SwitchToBlocksFirstSync =&gt; {
-                <span class="kw">if let </span><span class="prelude-val">Some</span>(SyncRequest::Blocks(request)) =
-                    <span class="self">self</span>.chain_sync.attempt_blocks_first_sync()
-                {
-                    <span class="self">self</span>.send_get_blocks_request(request);
-                }
             }
-            SyncAction::SetIdle =&gt; {
-                <span class="self">self</span>.chain_sync.set_idle();
+            <span class="prelude-val">Err</span>(err) =&gt; {
+                <span class="self">self</span>.peer_manager.disconnect(from, err);
+                <span class="self">self</span>.chain_sync.disconnect(from);
+                <span class="self">self</span>.peer_store.remove_peer(from);
             }
-            SyncAction::RestartSyncWithStalledPeer(stalled_peer_id) =&gt; {
-                <span class="self">self</span>.chain_sync
-                    .restart_sync(stalled_peer_id, RestartReason::Stalled);
-            }
-            SyncAction::Disconnect(peer_id, reason) =&gt; {
-                <span class="self">self</span>.peer_manager.disconnect(peer_id, reason);
-                <span class="self">self</span>.chain_sync.disconnect(peer_id);
-            }
-            SyncAction::None =&gt; {}
         }
-    }
 
-    <span class="kw">fn </span>send_get_blocks_request(<span class="kw-2">&amp;</span><span class="self">self</span>, request: LocatorRequest) {
-        <span class="kw">let </span>LocatorRequest {
-            locator_hashes,
-            stop_hash,
-            to,
-        } = request;
-
-        <span class="kw">if </span>!locator_hashes.is_empty() {
-            <span class="kw">let </span>msg = GetBlocksMessage {
-                version: <span class="self">self</span>.config.protocol_version,
-                locator_hashes,
-                stop_hash,
-            };
-            <span class="kw">let _ </span>= <span class="self">self</span>.send(to, NetworkMessage::GetBlocks(msg));
-        }
+        <span class="prelude-val">Ok</span>(SyncAction::None)
     }
 
     <span class="kw">fn </span>process_inv(<span class="kw-2">&amp;mut </span><span class="self">self</span>, from: PeerId, inv: Vec&lt;Inventory&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;SyncAction, Error&gt; {
         <span class="kw">if </span>inv.len() &gt; MAX_INV_SIZE {
-            <span class="kw">return </span><span class="prelude-val">Ok</span>(SyncAction::Disconnect(from, Error::TooManyInventoryItems));
+            <span class="kw">return </span><span class="prelude-val">Ok</span>(SyncAction::DisconnectPeer(
+                from,
+                Error::TooManyInventoryItems,
+            ));
+        }
+
+        <span class="kw">if </span>inv.len() == <span class="number">1 </span>{
+            <span class="kw">if let </span>Inventory::Block(block_hash) = inv[<span class="number">0</span>] {
+                <span class="kw">if </span><span class="self">self</span>.client.block_number(block_hash).is_none() {
+                    <span class="comment">// TODO: peers may sent us duplicate block announcements.
+                    </span><span class="macro">tracing::debug!</span>(<span class="string">"Recv possible block announcement {inv:?} from {from:?}"</span>);
+
+                    <span class="kw">let </span><span class="kw-2">mut </span>is_new_block_announce = <span class="bool-val">false</span>;
+
+                    <span class="self">self</span>.inflight_announced_blocks
+                        .entry(from)
+                        .and_modify(|announcements| {
+                            is_new_block_announce = announcements.insert(block_hash);
+                        })
+                        .or_insert_with(|| {
+                            is_new_block_announce = <span class="bool-val">true</span>;
+                            HashSet::from([block_hash])
+                        });
+
+                    <span class="comment">// A new block is broadcasted via `inv` message.
+                    </span><span class="kw">if </span>is_new_block_announce {
+                        <span class="macro">tracing::debug!</span>(<span class="string">"Requesting announced block {block_hash} from {from:?}"</span>);
+                        <span class="kw">let _ </span>= <span class="self">self</span>.send(from, NetworkMessage::GetData(inv));
+                    }
+                }
+                <span class="kw">return </span><span class="prelude-val">Ok</span>(SyncAction::None);
+            }
         }
 
         <span class="prelude-val">Ok</span>(<span class="self">self</span>.chain_sync.on_inv(inv, from))
+    }
+
+    <span class="kw">fn </span>process_block(<span class="kw-2">&amp;mut </span><span class="self">self</span>, from: PeerId, block: BitcoinBlock) -&gt; <span class="prelude-ty">Result</span>&lt;SyncAction, Error&gt; {
+        <span class="kw">let </span>block_hash = block.block_hash();
+
+        <span class="kw">if </span><span class="self">self
+            </span>.inflight_announced_blocks
+            .get(<span class="kw-2">&amp;</span>from)
+            .map(|annoucements| annoucements.contains(<span class="kw-2">&amp;</span>block_hash))
+            .unwrap_or(<span class="bool-val">false</span>)
+        {
+            <span class="macro">tracing::debug!</span>(<span class="string">"Recv announced block {block_hash} from {from:?}"</span>);
+            <span class="self">self</span>.inflight_announced_blocks.entry(from).and_modify(|e| {
+                e.remove(<span class="kw-2">&amp;</span>block_hash);
+            });
+
+            <span class="kw">if let </span><span class="prelude-val">Ok</span>(height) = block.bip34_block_height() {
+                <span class="self">self</span>.chain_sync.update_peer_best(from, height <span class="kw">as </span>u32);
+            } <span class="kw">else </span>{
+                <span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>block_hash, <span class="string">"No height in coinbase transaction"</span>);
+            }
+
+            <span class="kw">let </span><span class="prelude-val">Some</span>(best_hash) = <span class="self">self</span>.client.block_hash(<span class="self">self</span>.client.best_number()) <span class="kw">else </span>{
+                <span class="kw">return </span><span class="prelude-val">Ok</span>(SyncAction::None);
+            };
+
+            <span class="kw">if </span>block.header.prev_blockhash == best_hash
+                &amp;&amp; <span class="self">self</span>.client.block_number(block_hash).is_none()
+            {
+                <span class="self">self</span>.chain_sync
+                    .import_queue
+                    .import_blocks(sc_consensus_nakamoto::ImportBlocks {
+                        origin: sp_consensus::BlockOrigin::NetworkBroadcast,
+                        blocks: <span class="macro">vec!</span>[block],
+                    });
+            }
+
+            <span class="kw">return </span><span class="prelude-val">Ok</span>(SyncAction::None);
+        }
+
+        <span class="prelude-val">Ok</span>(<span class="self">self</span>.chain_sync.on_block(block, from))
+    }
+
+    <span class="kw">fn </span>process_headers(
+        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
+        from: PeerId,
+        headers: Vec&lt;BitcoinHeader&gt;,
+    ) -&gt; <span class="prelude-ty">Result</span>&lt;SyncAction, Error&gt; {
+        <span class="kw">if </span>headers.is_empty() {
+            <span class="kw">return </span><span class="prelude-val">Ok</span>(SyncAction::None);
+        }
+
+        <span class="comment">// New blocks maybe broadcasted via `headers` message.
+        </span><span class="kw">let </span><span class="prelude-val">Some</span>(best_hash) = <span class="self">self</span>.client.block_hash(<span class="self">self</span>.client.best_number()) <span class="kw">else </span>{
+            <span class="kw">return </span><span class="prelude-val">Ok</span>(SyncAction::None);
+        };
+
+        <span class="kw">if </span><span class="self">self</span>.chain_sync.is_idle() {
+            <span class="comment">// New blocks, extending the chain tip.
+            </span><span class="kw">if </span>headers[<span class="number">0</span>].prev_blockhash == best_hash {
+                <span class="kw">for </span>(index, header) <span class="kw">in </span>headers.iter().enumerate() {
+                    <span class="kw">if </span>!<span class="self">self</span>.header_verifier.has_valid_proof_of_work(header) {
+                        <span class="macro">tracing::error!</span>(<span class="question-mark">?</span>from, <span class="string">"Invalid header at index {index} in headers"</span>);
+                        <span class="kw">return </span><span class="prelude-val">Ok</span>(SyncAction::DisconnectPeer(
+                            from,
+                            Error::BadProofOfWork(header.block_hash()),
+                        ));
+                    }
+                }
+
+                <span class="kw">let </span>inv = headers
+                    .into_iter()
+                    .map(|header| {
+                        <span class="kw">let </span>block_hash = header.block_hash();
+
+                        <span class="self">self</span>.inflight_announced_blocks
+                            .entry(from)
+                            .and_modify(|e| {
+                                e.insert(block_hash);
+                            })
+                            .or_insert_with(|| HashSet::from([block_hash]));
+
+                        Inventory::Block(block_hash)
+                    })
+                    .collect();
+
+                <span class="kw">let _ </span>= <span class="self">self</span>.send(from, NetworkMessage::GetData(inv));
+
+                <span class="kw">return </span><span class="prelude-val">Ok</span>(SyncAction::None);
+            }
+        }
+
+        <span class="prelude-val">Ok</span>(<span class="self">self</span>.chain_sync.on_headers(headers, from))
     }
 
     <span class="kw">fn </span>process_get_data(<span class="kw-2">&amp;</span><span class="self">self</span>, from: PeerId, get_data_requests: Vec&lt;Inventory&gt;) {
@@ -1058,6 +1299,73 @@
     <span class="kw">fn </span>process_get_block_data(<span class="kw-2">&amp;</span><span class="self">self</span>, _inv: <span class="kw-2">&amp;</span>Inventory) {
         <span class="comment">// TODO: load the requested block and send them back.
     </span>}
+
+    <span class="kw">fn </span>do_sync_action(<span class="kw-2">&amp;mut </span><span class="self">self</span>, sync_action: SyncAction) {
+        <span class="kw">match </span>sync_action {
+            SyncAction::Request(sync_request) =&gt; <span class="kw">match </span>sync_request {
+                SyncRequest::GetHeaders(request) =&gt; {
+                    <span class="kw">let </span>LocatorRequest {
+                        locator_hashes,
+                        stop_hash,
+                        to,
+                    } = request;
+
+                    <span class="kw">if </span>!locator_hashes.is_empty() {
+                        <span class="kw">let </span>msg = GetHeadersMessage {
+                            version: <span class="self">self</span>.config.protocol_version,
+                            locator_hashes,
+                            stop_hash,
+                        };
+                        <span class="kw">let _ </span>= <span class="self">self</span>.send(to, NetworkMessage::GetHeaders(msg));
+                    }
+                }
+                SyncRequest::GetBlocks(request) =&gt; {
+                    <span class="self">self</span>.send_get_blocks_request(request);
+                }
+                SyncRequest::GetData(invs, to) =&gt; {
+                    <span class="kw">if </span>!invs.is_empty() {
+                        <span class="kw">let _ </span>= <span class="self">self</span>.send(to, NetworkMessage::GetData(invs));
+                    }
+                }
+            },
+            SyncAction::SwitchToBlocksFirstSync =&gt; {
+                <span class="kw">if let </span><span class="prelude-val">Some</span>(SyncAction::Request(SyncRequest::GetBlocks(request))) =
+                    <span class="self">self</span>.chain_sync.attempt_blocks_first_sync()
+                {
+                    <span class="self">self</span>.send_get_blocks_request(request);
+                }
+            }
+            SyncAction::SetIdle =&gt; {
+                <span class="self">self</span>.chain_sync.set_idle();
+            }
+            SyncAction::RestartSyncWithStalledPeer(stalled_peer_id) =&gt; {
+                <span class="self">self</span>.chain_sync
+                    .restart_sync(stalled_peer_id, RestartReason::Stalled);
+            }
+            SyncAction::DisconnectPeer(peer_id, reason) =&gt; {
+                <span class="self">self</span>.peer_manager.disconnect(peer_id, reason);
+                <span class="self">self</span>.chain_sync.disconnect(peer_id);
+            }
+            SyncAction::None =&gt; {}
+        }
+    }
+
+    <span class="kw">fn </span>send_get_blocks_request(<span class="kw-2">&amp;</span><span class="self">self</span>, request: LocatorRequest) {
+        <span class="kw">let </span>LocatorRequest {
+            locator_hashes,
+            stop_hash,
+            to,
+        } = request;
+
+        <span class="kw">if </span>!locator_hashes.is_empty() {
+            <span class="kw">let </span>msg = GetBlocksMessage {
+                version: <span class="self">self</span>.config.protocol_version,
+                locator_hashes,
+                stop_hash,
+            };
+            <span class="kw">let _ </span>= <span class="self">self</span>.send(to, NetworkMessage::GetBlocks(msg));
+        }
+    }
 
     <span class="doccomment">/// Send a network message to given peer.
     </span><span class="attr">#[inline]

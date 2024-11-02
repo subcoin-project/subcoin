@@ -424,7 +424,31 @@
 <a href="#424" id="424">424</a>
 <a href="#425" id="425">425</a>
 <a href="#426" id="426">426</a>
-</pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::worker::Event;
+<a href="#427" id="427">427</a>
+<a href="#428" id="428">428</a>
+<a href="#429" id="429">429</a>
+<a href="#430" id="430">430</a>
+<a href="#431" id="431">431</a>
+<a href="#432" id="432">432</a>
+<a href="#433" id="433">433</a>
+<a href="#434" id="434">434</a>
+<a href="#435" id="435">435</a>
+<a href="#436" id="436">436</a>
+<a href="#437" id="437">437</a>
+<a href="#438" id="438">438</a>
+<a href="#439" id="439">439</a>
+<a href="#440" id="440">440</a>
+<a href="#441" id="441">441</a>
+<a href="#442" id="442">442</a>
+<a href="#443" id="443">443</a>
+<a href="#444" id="444">444</a>
+<a href="#445" id="445">445</a>
+<a href="#446" id="446">446</a>
+<a href="#447" id="447">447</a>
+<a href="#448" id="448">448</a>
+<a href="#449" id="449">449</a>
+<a href="#450" id="450">450</a>
+</pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::net_processor::Event;
 <span class="kw">use crate</span>::{Bandwidth, Error, PeerId};
 <span class="kw">use </span>bitcoin::consensus::{encode, Decodable, Encodable};
 <span class="kw">use </span>bitcoin::p2p::message::{NetworkMessage, RawNetworkMessage, MAX_MSG_SIZE};
@@ -432,11 +456,11 @@
 <span class="kw">use </span>sc_service::SpawnTaskHandle;
 <span class="kw">use </span>std::collections::VecDeque;
 <span class="kw">use </span>std::fmt::Debug;
-<span class="kw">use </span>std::sync::atomic::{AtomicBool, Ordering};
-<span class="kw">use </span>std::sync::Arc;
+<span class="kw">use </span>std::sync::atomic::Ordering;
 <span class="kw">use </span>std::time::{Duration, Instant};
 <span class="kw">use </span>tokio::net::TcpStream;
 <span class="kw">use </span>tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+<span class="kw">use </span>tokio::sync::watch;
 
 <span class="kw">const </span>MSG_HEADER_SIZE: usize = <span class="number">24</span>;
 
@@ -470,6 +494,24 @@
     }
 }
 
+<span class="doccomment">/// A handle to signal termination of a connection.
+</span><span class="attr">#[derive(Debug)]
+</span><span class="kw">pub struct </span>ConnectionCloser {
+    sender: watch::Sender&lt;()&gt;,
+}
+
+<span class="kw">impl </span>ConnectionCloser {
+    <span class="doccomment">/// Consumes this [`ConnectionCloser`], sending a termination signal for the connection.
+    ///
+    /// By taking ownership of `self`, we enforce that the disconnect signal
+    /// can only be sent once.
+    </span><span class="kw">pub fn </span>terminate(<span class="self">self</span>) {
+        <span class="kw">if let </span><span class="prelude-val">Err</span>(err) = <span class="self">self</span>.sender.send(()) {
+            <span class="macro">tracing::warn!</span>(<span class="string">"Failed to send disconnect signal: {err}"</span>);
+        }
+    }
+}
+
 <span class="doccomment">/// An incoming peer connection.
 </span><span class="attr">#[derive(Debug)]
 </span><span class="kw">pub struct </span>NewConnection {
@@ -487,12 +529,8 @@
     /// This `ConnectionWriter` enables the local node to transmit data
     /// and messages to the connected peer.
     </span><span class="kw">pub </span>writer: ConnectionWriter,
-    <span class="doccomment">/// Signal to request disconnection of the connection.
-    ///
-    /// This `AtomicBool` is used to signal when the connection should
-    /// be terminated. When set to `true`, it indicates that the connection
-    /// should be gracefully disconnected.
-    </span><span class="kw">pub </span>disconnect_signal: Arc&lt;AtomicBool&gt;,
+    <span class="doccomment">/// Handle to close the connection.
+    </span><span class="kw">pub </span>closer: ConnectionCloser,
 }
 
 <span class="doccomment">/// Message stream decoder.
@@ -633,7 +671,7 @@
 
         <span class="kw">let </span>(network_message_sender, network_message_receiver) = unbounded_channel();
 
-        <span class="kw">let </span>disconnect_signal = Arc::new(AtomicBool::new(<span class="bool-val">false</span>));
+        <span class="kw">let </span>(disconnect_sender, disconnect_receiver) = watch::channel(());
 
         <span class="self">self</span>.network_event_sender
             .send(Event::NewConnection(NewConnection {
@@ -641,7 +679,9 @@
                 local_addr,
                 direction,
                 writer: network_message_sender,
-                disconnect_signal: disconnect_signal.clone(),
+                closer: ConnectionCloser {
+                    sender: disconnect_sender,
+                },
             }))
             .map_err(|<span class="kw">_</span>| Error::NetworkEventStreamError)<span class="question-mark">?</span>;
 
@@ -654,7 +694,7 @@
             {
                 <span class="kw">let </span>bandwidth = <span class="self">self</span>.bandwidth.clone();
                 <span class="kw">let </span>network_event_sender = <span class="self">self</span>.network_event_sender.clone();
-                <span class="kw">let </span>disconnect_signal = disconnect_signal.clone();
+                <span class="kw">let </span>disconnect_receiver = disconnect_receiver.clone();
 
                 <span class="kw">async move </span>{
                     <span class="kw">if let </span><span class="prelude-val">Err</span>(err) = read_peer_messages(
@@ -662,15 +702,12 @@
                         direction,
                         readable,
                         network_event_sender.clone(),
-                        disconnect_signal,
+                        disconnect_receiver,
                         bandwidth,
                     )
                     .<span class="kw">await
                     </span>{
-                        <span class="kw">let _ </span>= network_event_sender.send(Event::Disconnect {
-                            peer_addr,
-                            reason: err,
-                        });
+                        <span class="kw">let _ </span>= network_event_sender.send(Event::disconnect(peer_addr, err));
                     }
                 }
             }
@@ -688,15 +725,12 @@
                     network,
                     writable,
                     network_message_receiver,
-                    disconnect_signal,
+                    disconnect_receiver,
                     bandwidth,
                 )
                 .<span class="kw">await
                 </span>{
-                    <span class="kw">let _ </span>= network_event_sender.send(Event::Disconnect {
-                        peer_addr,
-                        reason: err,
-                    });
+                    <span class="kw">let _ </span>= network_event_sender.send(Event::disconnect(peer_addr, err));
                 }
             }
             .boxed()
@@ -711,54 +745,61 @@
     direction: Direction,
     readable: tokio::net::tcp::OwnedReadHalf,
     network_event_sender: UnboundedSender&lt;Event&gt;,
-    disconnect_signal: Arc&lt;AtomicBool&gt;,
+    <span class="kw-2">mut </span>disconnect_receiver: watch::Receiver&lt;()&gt;,
     bandwidth: Bandwidth,
 ) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
     <span class="kw">let </span><span class="kw-2">mut </span>decoder = NetworkMessageDecoder::new(<span class="number">1024 </span>* <span class="number">192</span>);
 
+    <span class="macro">tokio::pin!</span> {
+        <span class="kw">let </span>disconnect_signal_fired = disconnect_receiver.changed();
+    }
+
     <span class="kw">loop </span>{
-        <span class="kw">if </span>disconnect_signal.load(Ordering::SeqCst) {
-            <span class="macro">tracing::trace!</span>(<span class="question-mark">?</span>peer, <span class="string">"Stopping the reader task"</span>);
-            <span class="kw">return </span><span class="prelude-val">Ok</span>(());
-        }
-
-        readable.readable().<span class="kw">await</span><span class="question-mark">?</span>;
-
-        <span class="comment">// TODO: optimize this, no need to always allocate the maximum buffer.
-        </span><span class="kw">let </span><span class="kw-2">mut </span>read_buffer = <span class="macro">vec!</span>[<span class="number">0</span>; MAX_MSG_SIZE];
-
-        <span class="comment">// Try to read data, this may still fail with `WouldBlock`
-        // if the readiness event is a false positive.
-        </span><span class="kw">match </span>readable.as_ref().try_read(<span class="kw-2">&amp;mut </span>read_buffer) {
-            <span class="prelude-val">Ok</span>(<span class="number">0</span>) =&gt; {
-                <span class="macro">tracing::trace!</span>(from = <span class="question-mark">?</span>peer, <span class="string">"&lt;= recv 0 bytes"</span>);
-                <span class="kw">return </span><span class="prelude-val">Err</span>(Error::PeerShutdown);
+        <span class="macro">tokio::select!</span> {
+            <span class="kw">_ </span>= <span class="kw-2">&amp;mut </span>disconnect_signal_fired =&gt; {
+                <span class="macro">tracing::trace!</span>(<span class="question-mark">?</span>peer, <span class="string">"Stopping the reader task"</span>);
+                <span class="kw">return </span><span class="prelude-val">Ok</span>(());
             }
-            <span class="prelude-val">Ok</span>(n) =&gt; {
-                <span class="macro">tracing::trace!</span>(from = <span class="question-mark">?</span>peer, <span class="string">"&lt;= recv {n} bytes"</span>);
+            result = readable.readable() =&gt; {
+                result<span class="question-mark">?</span>;
 
-                <span class="kw">let </span>old = bandwidth
-                    .total_bytes_inbound
-                    .fetch_add(n <span class="kw">as </span>u64, Ordering::Relaxed);
-                bandwidth.report(<span class="string">"in"</span>, old + n <span class="kw">as </span>u64);
+                <span class="comment">// TODO: optimize this, no need to always allocate the maximum buffer.
+                </span><span class="kw">let </span><span class="kw-2">mut </span>read_buffer = <span class="macro">vec!</span>[<span class="number">0</span>; MAX_MSG_SIZE];
 
-                decoder.input(<span class="kw-2">&amp;</span>read_buffer[..n]);
+                <span class="comment">// Try to read data, this may still fail with `WouldBlock`
+                // if the readiness event is a false positive.
+                </span><span class="kw">match </span>readable.as_ref().try_read(<span class="kw-2">&amp;mut </span>read_buffer) {
+                    <span class="prelude-val">Ok</span>(<span class="number">0</span>) =&gt; {
+                        <span class="macro">tracing::trace!</span>(from = <span class="question-mark">?</span>peer, <span class="string">"&lt;= recv 0 bytes"</span>);
+                        <span class="kw">return </span><span class="prelude-val">Err</span>(Error::PeerShutdown);
+                    }
+                    <span class="prelude-val">Ok</span>(n) =&gt; {
+                        <span class="macro">tracing::trace!</span>(from = <span class="question-mark">?</span>peer, <span class="string">"&lt;= recv {n} bytes"</span>);
 
-                <span class="kw">while let </span><span class="prelude-val">Some</span>(msg) = decoder.decode_next::&lt;RawNetworkMessage&gt;()<span class="question-mark">? </span>{
-                    network_event_sender
-                        .send(Event::PeerMessage {
-                            from: peer,
-                            direction,
-                            payload: msg.into_payload(),
-                        })
-                        .map_err(|<span class="kw">_</span>| Error::NetworkEventStreamError)<span class="question-mark">?</span>;
+                        <span class="kw">let </span>old = bandwidth
+                            .total_bytes_inbound
+                            .fetch_add(n <span class="kw">as </span>u64, Ordering::Relaxed);
+                        bandwidth.report(<span class="string">"in"</span>, old + n <span class="kw">as </span>u64);
+
+                        decoder.input(<span class="kw-2">&amp;</span>read_buffer[..n]);
+
+                        <span class="kw">while let </span><span class="prelude-val">Some</span>(msg) = decoder.decode_next::&lt;RawNetworkMessage&gt;()<span class="question-mark">? </span>{
+                            network_event_sender
+                                .send(Event::PeerMessage {
+                                    from: peer,
+                                    direction,
+                                    payload: msg.into_payload(),
+                                })
+                                .map_err(|<span class="kw">_</span>| Error::NetworkEventStreamError)<span class="question-mark">?</span>;
+                        }
+                    }
+                    <span class="prelude-val">Err</span>(e) <span class="kw">if </span>e.kind() == std::io::ErrorKind::WouldBlock =&gt; {
+                        <span class="kw">continue</span>;
+                    }
+                    <span class="prelude-val">Err</span>(e) =&gt; {
+                        <span class="kw">return </span><span class="prelude-val">Err</span>(e.into());
+                    }
                 }
-            }
-            <span class="prelude-val">Err</span>(e) <span class="kw">if </span>e.kind() == std::io::ErrorKind::WouldBlock =&gt; {
-                <span class="kw">continue</span>;
-            }
-            <span class="prelude-val">Err</span>(e) =&gt; {
-                <span class="kw">return </span><span class="prelude-val">Err</span>(e.into());
             }
         }
     }
@@ -769,7 +810,7 @@
     network: bitcoin::Network,
     writable: tokio::net::tcp::OwnedWriteHalf,
     <span class="kw-2">mut </span>network_message_receiver: UnboundedReceiver&lt;NetworkMessage&gt;,
-    disconnect_signal: Arc&lt;AtomicBool&gt;,
+    <span class="kw-2">mut </span>disconnect_receiver: watch::Receiver&lt;()&gt;,
     bandwidth: Bandwidth,
 ) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
     <span class="kw">let </span>magic = network.magic();
@@ -777,73 +818,80 @@
     <span class="comment">// Cache the messages yet to be processed due to the false positive readiness.
     </span><span class="kw">let </span><span class="kw-2">mut </span>msg_buffer: VecDeque&lt;(<span class="kw-2">&amp;</span><span class="lifetime">'static </span>str, Vec&lt;u8&gt;)&gt; = VecDeque::with_capacity(<span class="number">32</span>);
 
+    <span class="macro">tokio::pin!</span> {
+        <span class="kw">let </span>disconnect_signal_fired = disconnect_receiver.changed();
+    }
+
     <span class="kw">loop </span>{
-        <span class="kw">if </span>disconnect_signal.load(Ordering::SeqCst) {
-            <span class="macro">tracing::trace!</span>(<span class="question-mark">?</span>peer, <span class="string">"Stopping the writer task"</span>);
-            <span class="kw">return </span><span class="prelude-val">Ok</span>(());
-        }
+        <span class="macro">tokio::select!</span> {
+            <span class="kw">_ </span>= <span class="kw-2">&amp;mut </span>disconnect_signal_fired =&gt; {
+                <span class="macro">tracing::trace!</span>(<span class="question-mark">?</span>peer, <span class="string">"Stopping the writer task"</span>);
+                <span class="kw">return </span><span class="prelude-val">Ok</span>(());
+            },
+            result = writable.writable() =&gt; {
+                result<span class="question-mark">?</span>;
 
-        writable.writable().<span class="kw">await</span><span class="question-mark">?</span>;
+                <span class="kw">let </span><span class="kw-2">mut </span>buffered_front_sent = <span class="bool-val">false</span>;
 
-        <span class="kw">let </span><span class="kw-2">mut </span>buffered_front_sent = <span class="bool-val">false</span>;
+                <span class="kw">if let </span><span class="prelude-val">Some</span>((cmd, msg)) = msg_buffer.front() {
+                    <span class="comment">// Try to write data, this may still fail with `WouldBlock`
+                    // if the readiness event is a false positive.
+                    </span><span class="kw">match </span>writable.as_ref().try_write(msg) {
+                        <span class="prelude-val">Ok</span>(n) =&gt; {
+                            <span class="kw">let </span>old = bandwidth
+                                .total_bytes_outbound
+                                .fetch_add(n <span class="kw">as </span>u64, Ordering::Relaxed);
+                            bandwidth.report(<span class="string">"out"</span>, old + n <span class="kw">as </span>u64);
 
-        <span class="kw">if let </span><span class="prelude-val">Some</span>((cmd, msg)) = msg_buffer.front() {
-            <span class="comment">// Try to write data, this may still fail with `WouldBlock`
-            // if the readiness event is a false positive.
-            </span><span class="kw">match </span>writable.as_ref().try_write(msg) {
-                <span class="prelude-val">Ok</span>(n) =&gt; {
-                    <span class="kw">let </span>old = bandwidth
-                        .total_bytes_outbound
-                        .fetch_add(n <span class="kw">as </span>u64, Ordering::Relaxed);
-                    bandwidth.report(<span class="string">"out"</span>, old + n <span class="kw">as </span>u64);
-
-                    <span class="kw">let </span>msg_len = msg.len().saturating_sub(MSG_HEADER_SIZE);
-                    <span class="macro">tracing::trace!</span>(to = <span class="question-mark">?</span>peer, <span class="string">"=&gt; {cmd} ({msg_len} bytes) sent successfully"</span>);
-                    buffered_front_sent = <span class="bool-val">true</span>;
+                            <span class="kw">let </span>msg_len = msg.len().saturating_sub(MSG_HEADER_SIZE);
+                            <span class="macro">tracing::trace!</span>(to = <span class="question-mark">?</span>peer, <span class="string">"=&gt; {cmd} ({msg_len} bytes) sent successfully"</span>);
+                            buffered_front_sent = <span class="bool-val">true</span>;
+                        }
+                        <span class="prelude-val">Err</span>(e) =&gt; {
+                            <span class="kw">if </span>e.kind() == std::io::ErrorKind::WouldBlock {
+                                <span class="kw">continue</span>;
+                            } <span class="kw">else </span>{
+                                <span class="kw">return </span><span class="prelude-val">Err</span>(e.into());
+                            }
+                        }
+                    };
                 }
-                <span class="prelude-val">Err</span>(e) =&gt; {
-                    <span class="kw">if </span>e.kind() == std::io::ErrorKind::WouldBlock {
-                        <span class="kw">continue</span>;
-                    } <span class="kw">else </span>{
-                        <span class="kw">return </span><span class="prelude-val">Err</span>(e.into());
-                    }
+
+                <span class="kw">if </span>buffered_front_sent {
+                    msg_buffer.pop_front();
+                    <span class="kw">continue</span>;
                 }
-            };
-        }
 
-        <span class="kw">if </span>buffered_front_sent {
-            msg_buffer.pop_front();
-            <span class="kw">continue</span>;
-        }
+                <span class="kw">if let </span><span class="prelude-val">Some</span>(network_message) = network_message_receiver.recv().<span class="kw">await </span>{
+                    <span class="macro">tracing::trace!</span>(to = <span class="question-mark">?</span>peer, <span class="string">"Sending {network_message:?}"</span>);
 
-        <span class="kw">if let </span><span class="prelude-val">Some</span>(network_message) = network_message_receiver.recv().<span class="kw">await </span>{
-            <span class="macro">tracing::trace!</span>(to = <span class="question-mark">?</span>peer, <span class="string">"Sending {network_message:?}"</span>);
+                    <span class="kw">let </span>raw_network_message = RawNetworkMessage::new(magic, network_message);
 
-            <span class="kw">let </span>raw_network_message = RawNetworkMessage::new(magic, network_message);
+                    <span class="kw">let </span><span class="kw-2">mut </span>msg = Vec::with_capacity(MAX_MSG_SIZE);
+                    raw_network_message.consensus_encode(<span class="kw-2">&amp;mut </span>msg)<span class="question-mark">?</span>;
 
-            <span class="kw">let </span><span class="kw-2">mut </span>msg = Vec::with_capacity(MAX_MSG_SIZE);
-            raw_network_message.consensus_encode(<span class="kw-2">&amp;mut </span>msg)<span class="question-mark">?</span>;
+                    <span class="kw">let </span>cmd = raw_network_message.cmd();
 
-            <span class="kw">let </span>cmd = raw_network_message.cmd();
+                    <span class="comment">// Try to write data, this may still fail with `WouldBlock` if
+                    // the readiness event is a false positive.
+                    </span><span class="kw">match </span>writable.as_ref().try_write(<span class="kw-2">&amp;</span>msg) {
+                        <span class="prelude-val">Ok</span>(n) =&gt; {
+                            <span class="kw">let </span>old = bandwidth
+                                .total_bytes_outbound
+                                .fetch_add(n <span class="kw">as </span>u64, Ordering::Relaxed);
+                            bandwidth.report(<span class="string">"out"</span>, old + n <span class="kw">as </span>u64);
 
-            <span class="comment">// Try to write data, this may still fail with `WouldBlock` if
-            // the readiness event is a false positive.
-            </span><span class="kw">match </span>writable.as_ref().try_write(<span class="kw-2">&amp;</span>msg) {
-                <span class="prelude-val">Ok</span>(n) =&gt; {
-                    <span class="kw">let </span>old = bandwidth
-                        .total_bytes_outbound
-                        .fetch_add(n <span class="kw">as </span>u64, Ordering::Relaxed);
-                    bandwidth.report(<span class="string">"out"</span>, old + n <span class="kw">as </span>u64);
-
-                    <span class="comment">// Bitcoin Core logs the message size without counting in the header.
-                    </span><span class="kw">let </span>msg_len = msg.len().saturating_sub(MSG_HEADER_SIZE);
-                    <span class="macro">tracing::trace!</span>(to = <span class="question-mark">?</span>peer, <span class="string">"=&gt; {cmd} ({msg_len} bytes) sent successfully"</span>);
-                }
-                <span class="prelude-val">Err</span>(e) =&gt; {
-                    <span class="kw">if </span>e.kind() == std::io::ErrorKind::WouldBlock {
-                        msg_buffer.push_back((cmd, msg));
-                    } <span class="kw">else </span>{
-                        <span class="kw">return </span><span class="prelude-val">Err</span>(e.into());
+                            <span class="comment">// Bitcoin Core logs the message size without counting in the header.
+                            </span><span class="kw">let </span>msg_len = msg.len().saturating_sub(MSG_HEADER_SIZE);
+                            <span class="macro">tracing::trace!</span>(to = <span class="question-mark">?</span>peer, <span class="string">"=&gt; {cmd} ({msg_len} bytes) sent successfully"</span>);
+                        }
+                        <span class="prelude-val">Err</span>(e) =&gt; {
+                            <span class="kw">if </span>e.kind() == std::io::ErrorKind::WouldBlock {
+                                msg_buffer.push_back((cmd, msg));
+                            } <span class="kw">else </span>{
+                                <span class="kw">return </span><span class="prelude-val">Err</span>(e.into());
+                            }
+                        }
                     }
                 }
             }
