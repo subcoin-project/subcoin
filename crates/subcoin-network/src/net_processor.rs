@@ -1,6 +1,6 @@
 use crate::connection::{ConnectionInitiator, Direction, NewConnection};
 use crate::metrics::Metrics;
-use crate::network::{
+use crate::network_api::{
     IncomingTransaction, NetworkProcessorMessage, NetworkStatus, SendTransactionResult,
 };
 use crate::peer_manager::{Config, NewPeer, PeerManager, SlowPeer, PEER_LATENCY_THRESHOLD};

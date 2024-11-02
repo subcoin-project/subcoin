@@ -31,7 +31,7 @@ mod checkpoint;
 mod connection;
 mod metrics;
 mod net_processor;
-mod network;
+mod network_api;
 mod peer_manager;
 mod peer_store;
 mod sync;
@@ -42,7 +42,7 @@ mod transaction_manager;
 use crate::connection::ConnectionInitiator;
 use crate::metrics::BandwidthMetrics;
 use crate::net_processor::NetworkProcessor;
-use crate::network::NetworkProcessorMessage;
+use crate::network_api::NetworkProcessorMessage;
 use crate::peer_store::{PersistentPeerStore, PersistentPeerStoreHandle};
 use bitcoin::p2p::ServiceFlags;
 use bitcoin::{BlockHash, Network as BitcoinNetwork};
@@ -62,7 +62,7 @@ use substrate_prometheus_endpoint::Registry;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
-pub use crate::network::{NetworkHandle, NetworkStatus, SendTransactionResult, SyncStatus};
+pub use crate::network_api::{NetworkHandle, NetworkStatus, SendTransactionResult, SyncStatus};
 pub use crate::sync::{PeerSync, PeerSyncState};
 
 /// Identifies a peer.
