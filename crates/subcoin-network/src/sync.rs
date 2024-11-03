@@ -128,6 +128,20 @@ pub(crate) enum SyncAction {
     None,
 }
 
+impl SyncAction {
+    pub(crate) fn get_headers(request: LocatorRequest) -> Self {
+        Self::Request(SyncRequest::GetHeaders(request))
+    }
+
+    pub(crate) fn get_blocks(request: LocatorRequest) -> Self {
+        Self::Request(SyncRequest::GetBlocks(request))
+    }
+
+    pub(crate) fn get_data(inv: Vec<Inventory>, from: PeerId) -> Self {
+        Self::Request(SyncRequest::GetData(inv, from))
+    }
+}
+
 #[derive(Debug)]
 pub(crate) enum RestartReason {
     Stalled,

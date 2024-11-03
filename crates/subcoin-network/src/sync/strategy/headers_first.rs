@@ -1,6 +1,6 @@
 use crate::peer_store::PeerStore;
 use crate::sync::block_downloader::BlockDownloader;
-use crate::sync::{LocatorRequest, SyncAction, SyncRequest};
+use crate::sync::{LocatorRequest, SyncAction};
 use crate::{Error, PeerId, SyncStatus};
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::p2p::message_blockdata::Inventory;
@@ -373,7 +373,7 @@ where
             } => {
                 tracing::debug!("Downloading headers ({start}, {end}]");
                 self.state = State::DownloadingHeaders { start, end };
-                SyncAction::Request(SyncRequest::GetHeaders(payload))
+                SyncAction::get_headers(payload)
             }
         }
     }
@@ -459,11 +459,11 @@ where
         } else {
             tracing::debug!("📄 Downloaded headers ({final_block_number}/{target_block_number})");
 
-            SyncAction::Request(SyncRequest::GetHeaders(LocatorRequest {
+            SyncAction::get_headers(LocatorRequest {
                 locator_hashes: vec![prev_hash],
                 stop_hash: target_block_hash,
                 to: self.peer_id,
-            }))
+            })
         }
     }
 
@@ -501,13 +501,12 @@ where
 
             self.state = State::DownloadingBlocks(BlockDownload::AllBlocks { start, end });
 
-            SyncAction::Request(SyncRequest::GetData(
-                missing_blocks
-                    .into_iter()
-                    .map(Inventory::Block)
-                    .collect::<Vec<_>>(),
-                self.peer_id,
-            ))
+            let inv = missing_blocks
+                .into_iter()
+                .map(Inventory::Block)
+                .collect::<Vec<_>>();
+
+            SyncAction::get_data(inv, self.peer_id)
         } else {
             self.state = State::DownloadingBlocks(BlockDownload::Batches { paused: false });
             self.block_downloader.set_missing_blocks(missing_blocks);

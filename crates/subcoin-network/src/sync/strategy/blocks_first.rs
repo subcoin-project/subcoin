@@ -1,6 +1,6 @@
 use crate::peer_store::PeerStore;
 use crate::sync::block_downloader::BlockDownloader;
-use crate::sync::{LocatorRequest, SyncAction, SyncRequest};
+use crate::sync::{LocatorRequest, SyncAction};
 use crate::{Error, PeerId, SyncStatus};
 use bitcoin::hashes::Hash;
 use bitcoin::p2p::message_blockdata::Inventory;
@@ -481,7 +481,7 @@ where
             GetBlocksRequestOutcome::RepeatedRequest => SyncAction::None,
             GetBlocksRequestOutcome::NewGetBlocks { payload, range } => {
                 self.state = State::DownloadingBlockList(range);
-                SyncAction::Request(SyncRequest::GetBlocks(payload))
+                SyncAction::get_blocks(payload)
             }
         }
     }

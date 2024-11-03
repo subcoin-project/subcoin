@@ -1,6 +1,6 @@
 use super::orphan_blocks_pool::OrphanBlocksPool;
 use crate::peer_store::PeerStore;
-use crate::sync::{SyncAction, SyncRequest};
+use crate::sync::SyncAction;
 use crate::PeerId;
 use bitcoin::p2p::message_blockdata::Inventory;
 use bitcoin::{Block as BitcoinBlock, BlockHash};
@@ -191,7 +191,7 @@ impl BlockDownloader {
             self.requested_blocks.len(),
         );
 
-        SyncAction::Request(SyncRequest::GetData(block_data_request, self.peer_id))
+        SyncAction::get_data(block_data_request, self.peer_id)
     }
 
     /// Determine if the downloader is stalled based on the time elapsed since the last progress
