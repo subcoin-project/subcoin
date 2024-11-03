@@ -488,6 +488,7 @@ where
 mod tests {
     use super::*;
     use crate::peer_store::NoPeerStore;
+    use crate::sync::SyncRequest;
     use subcoin_test_service::block_data;
 
     #[test]
@@ -514,7 +515,7 @@ mod tests {
             SyncAction::Request(SyncRequest::GetData(blocks_request, _)) => {
                 assert_eq!(blocks_request, vec![Inventory::Block(block_hash)])
             }
-            action => panic!("Should request block data but got: {action:?}"),
+            action => panic!("Expected SyncAction::Request(SyncRequest::GetData), got: {action:?}"),
         }
 
         let parent_hash = block.header.prev_blockhash;
