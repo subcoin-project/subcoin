@@ -512,7 +512,7 @@ mod tests {
         let sync_action = strategy.on_inv(vec![Inventory::Block(block_hash)], peer_id);
 
         match sync_action {
-            SyncAction::Request(SyncRequest::GetData(blocks_request, _)) => {
+            SyncAction::Request(SyncRequest::Inventory(blocks_request, _)) => {
                 assert_eq!(blocks_request, vec![Inventory::Block(block_hash)])
             }
             action => panic!("Expected SyncAction::Request(SyncRequest::GetData), got: {action:?}"),
