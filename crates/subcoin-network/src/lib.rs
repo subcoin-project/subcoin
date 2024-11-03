@@ -28,10 +28,10 @@
 
 mod address_book;
 mod checkpoint;
-mod connection;
 mod metrics;
 mod net_processor;
 mod network_api;
+mod peer_connection;
 mod peer_manager;
 mod peer_store;
 mod sync;
@@ -39,10 +39,10 @@ mod sync;
 mod tests;
 mod transaction_manager;
 
-use crate::connection::ConnectionInitiator;
 use crate::metrics::BandwidthMetrics;
 use crate::net_processor::NetworkProcessor;
 use crate::network_api::NetworkProcessorMessage;
+use crate::peer_connection::ConnectionInitiator;
 use crate::peer_store::{PersistentPeerStore, PersistentPeerStoreHandle};
 use bitcoin::p2p::ServiceFlags;
 use bitcoin::{BlockHash, Network as BitcoinNetwork};
@@ -120,8 +120,8 @@ pub enum Error {
     SlowPeer(Latency),
     #[error("Unexpected pong message")]
     UnexpectedPong,
-    #[error("Invalid pong message: bad nonce")]
-    BadPong,
+    #[error("Bad nonce in pong, expected: {expected}, got: {got}")]
+    BadPong { expected: u64, got: u64 },
     #[error("Cannot find the parent of the first header in headers message")]
     MissingFirstHeaderParent,
     #[error("Other: {0}")]
