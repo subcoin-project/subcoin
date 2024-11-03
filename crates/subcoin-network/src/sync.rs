@@ -98,15 +98,13 @@ pub(crate) struct LocatorRequest {
 
 /// Represents different kinds of sync requests.
 #[derive(Debug)]
-// We prefer the variant to align with the actual message mame.
-#[allow(clippy::enum_variant_names)]
 pub(crate) enum SyncRequest {
     /// Request headers via `getheaders`.
-    GetHeaders(LocatorRequest),
+    Header(LocatorRequest),
     /// Request inventories via `getblocks`.
-    GetBlocks(LocatorRequest),
+    Inventory(LocatorRequest),
     /// Request blocks via `getdata`.
-    GetData(Vec<Inventory>, PeerId),
+    Data(Vec<Inventory>, PeerId),
 }
 
 /// Represents actions that can be taken during the syncing.
@@ -130,15 +128,15 @@ pub(crate) enum SyncAction {
 
 impl SyncAction {
     pub(crate) fn get_headers(request: LocatorRequest) -> Self {
-        Self::Request(SyncRequest::GetHeaders(request))
+        Self::Request(SyncRequest::Header(request))
     }
 
-    pub(crate) fn get_blocks(request: LocatorRequest) -> Self {
-        Self::Request(SyncRequest::GetBlocks(request))
+    pub(crate) fn get_inventory(request: LocatorRequest) -> Self {
+        Self::Request(SyncRequest::Inventory(request))
     }
 
     pub(crate) fn get_data(inv: Vec<Inventory>, from: PeerId) -> Self {
-        Self::Request(SyncRequest::GetData(inv, from))
+        Self::Request(SyncRequest::Data(inv, from))
     }
 }
 
@@ -411,8 +409,8 @@ where
     pub(super) fn update_sync_peer_on_lower_latency(&mut self) {
         let maybe_sync_peer_id = match &self.syncing {
             Syncing::Idle => return,
-            Syncing::BlocksFirst(strategy) => strategy.replaceable_sync_peer(),
-            Syncing::HeadersFirst(strategy) => strategy.replaceable_sync_peer(),
+            Syncing::BlocksFirst(strategy) => strategy.can_swap_sync_peer(),
+            Syncing::HeadersFirst(strategy) => strategy.can_swap_sync_peer(),
         };
 
         let Some(current_sync_peer_id) = maybe_sync_peer_id else {
@@ -459,11 +457,11 @@ where
 
             let sync_peer_updated = match &mut self.syncing {
                 Syncing::BlocksFirst(strategy) => {
-                    strategy.replace_sync_peer(peer_id, target_block_number);
+                    strategy.swap_sync_peer(peer_id, target_block_number);
                     true
                 }
                 Syncing::HeadersFirst(strategy) => {
-                    strategy.replace_sync_peer(peer_id, target_block_number);
+                    strategy.swap_sync_peer(peer_id, target_block_number);
                     true
                 }
                 Syncing::Idle => unreachable!("Must not be Idle as checked; qed"),

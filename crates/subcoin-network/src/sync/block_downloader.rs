@@ -217,8 +217,9 @@ impl BlockDownloader {
 
             if self
                 .last_overloaded_queue_log_time
-                .map(|last_time| last_time.elapsed() > BUSY_QUEUE_LOG_INTERVAL)
-                .unwrap_or(true)
+                .map_or(true, |last_time| {
+                    last_time.elapsed() > BUSY_QUEUE_LOG_INTERVAL
+                })
             {
                 tracing::debug!(
                     best_number,
@@ -323,10 +324,9 @@ impl BlockDownloader {
 
     /// Takes downloaded blocks and prepares them for import.
     pub(crate) fn prepare_blocks_for_import(&mut self) -> (Vec<BlockHash>, Vec<BitcoinBlock>) {
-        let blocks = std::mem::take(&mut self.downloaded_blocks);
-
-        let mut blocks = blocks
-            .into_iter()
+        let mut blocks = self
+            .downloaded_blocks
+            .drain(..)
             .map(|block| {
                 let block_hash = block.block_hash();
 
@@ -341,7 +341,7 @@ impl BlockDownloader {
             .collect::<Vec<_>>();
 
         // Ensure the blocks sent to the import queue are ordered.
-        blocks.sort_by(|a, b| a.0.cmp(&b.0));
+        blocks.sort_unstable_by_key(|(number, _)| *number);
 
         blocks
             .into_iter()

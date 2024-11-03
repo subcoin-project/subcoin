@@ -613,7 +613,7 @@ where
     fn do_sync_action(&mut self, sync_action: SyncAction) {
         match sync_action {
             SyncAction::Request(sync_request) => match sync_request {
-                SyncRequest::GetHeaders(request) => {
+                SyncRequest::Header(request) => {
                     let LocatorRequest {
                         locator_hashes,
                         stop_hash,
@@ -629,20 +629,20 @@ where
                         let _ = self.send(to, NetworkMessage::GetHeaders(msg));
                     }
                 }
-                SyncRequest::GetBlocks(request) => {
-                    self.send_get_blocks_request(request);
+                SyncRequest::Inventory(request) => {
+                    self.send_get_blocks_message(request);
                 }
-                SyncRequest::GetData(invs, to) => {
+                SyncRequest::Data(invs, to) => {
                     if !invs.is_empty() {
                         let _ = self.send(to, NetworkMessage::GetData(invs));
                     }
                 }
             },
             SyncAction::SwitchToBlocksFirstSync => {
-                if let Some(SyncAction::Request(SyncRequest::GetBlocks(request))) =
+                if let Some(SyncAction::Request(SyncRequest::Inventory(request))) =
                     self.chain_sync.attempt_blocks_first_sync()
                 {
-                    self.send_get_blocks_request(request);
+                    self.send_get_blocks_message(request);
                 }
             }
             SyncAction::SetIdle => {
@@ -660,7 +660,7 @@ where
         }
     }
 
-    fn send_get_blocks_request(&self, request: LocatorRequest) {
+    fn send_get_blocks_message(&self, request: LocatorRequest) {
         let LocatorRequest {
             locator_hashes,
             stop_hash,
