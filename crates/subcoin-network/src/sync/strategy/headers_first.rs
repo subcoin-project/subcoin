@@ -278,7 +278,7 @@ where
         self.header_requester.peer_id = peer_id;
     }
 
-    pub(crate) fn update_peer_best(&mut self, peer_id: PeerId, peer_best: u32) {
+    pub(crate) fn set_peer_best(&mut self, peer_id: PeerId, peer_best: u32) {
         if self.peer_id == peer_id {
             self.target_block_number = peer_best;
         }

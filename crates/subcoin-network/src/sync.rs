@@ -269,18 +269,25 @@ where
     }
 
     pub(super) fn update_peer_best(&mut self, peer_id: PeerId, peer_best: u32) {
+        let mut peer_best_updated = false;
+
         self.peers.entry(peer_id).and_modify(|e| {
-            tracing::debug!(
-                "Tip of {peer_id:?} updated from #{} to #{peer_best}",
-                e.best_number
-            );
-            e.best_number = peer_best;
+            if peer_best > e.best_number {
+                e.best_number = peer_best;
+                peer_best_updated = true;
+                tracing::debug!(
+                    "Tip of {peer_id:?} updated from #{} to #{peer_best}",
+                    e.best_number
+                );
+            }
         });
 
-        match &mut self.syncing {
-            Syncing::Idle => {}
-            Syncing::BlocksFirst(strategy) => strategy.update_peer_best(peer_id, peer_best),
-            Syncing::HeadersFirst(strategy) => strategy.update_peer_best(peer_id, peer_best),
+        if peer_best_updated {
+            match &mut self.syncing {
+                Syncing::Idle => {}
+                Syncing::BlocksFirst(strategy) => strategy.set_peer_best(peer_id, peer_best),
+                Syncing::HeadersFirst(strategy) => strategy.set_peer_best(peer_id, peer_best),
+            }
         }
     }
 
