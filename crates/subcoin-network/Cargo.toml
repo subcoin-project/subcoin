@@ -15,7 +15,6 @@ fastrand = { workspace = true }
 futures = { workspace = true }
 indexmap = { workspace = true }
 ip_network = { workspace = true }
-once_cell = { workspace = true }
 parking_lot = { workspace = true }
 sc-client-api = { workspace = true }
 sc-consensus = { workspace = true }
