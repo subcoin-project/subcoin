@@ -29,8 +29,8 @@
 mod address_book;
 mod checkpoint;
 mod metrics;
-mod net_processor;
 mod network_api;
+mod network_processor;
 mod peer_connection;
 mod peer_manager;
 mod peer_store;
@@ -40,8 +40,8 @@ mod tests;
 mod transaction_manager;
 
 use crate::metrics::BandwidthMetrics;
-use crate::net_processor::NetworkProcessor;
 use crate::network_api::NetworkProcessorMessage;
+use crate::network_processor::NetworkProcessor;
 use crate::peer_connection::ConnectionInitiator;
 use crate::peer_store::{PersistentPeerStore, PersistentPeerStoreHandle};
 use bitcoin::p2p::ServiceFlags;
@@ -364,8 +364,8 @@ where
 
         spawn_handle.spawn("peer-store", None, persistent_peer_store.run(receiver));
 
-        let network_processor = NetworkProcessor::new(
-            net_processor::Params {
+        let net_processor = NetworkProcessor::new(
+            network_processor::Params {
                 client: client.clone(),
                 header_verifier: HeaderVerifier::new(
                     client.clone(),
@@ -461,9 +461,7 @@ where
             }
         }
 
-        network_processor
-            .run(processor_msg_receiver, bandwidth)
-            .await;
+        net_processor.run(processor_msg_receiver, bandwidth).await;
 
         Ok(())
     }
