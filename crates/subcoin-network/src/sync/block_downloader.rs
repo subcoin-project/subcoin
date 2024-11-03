@@ -77,40 +77,40 @@ impl ImportQueueStatus {
 /// the state of blocks during the sync process.
 #[derive(Clone)]
 pub(crate) struct BlockDownloader {
-    pub(crate) peer_id: PeerId,
+    pub(super) peer_id: PeerId,
     /// Blocks awaiting to be downloaded.
-    pub(crate) missing_blocks: Vec<BlockHash>,
+    pub(super) missing_blocks: Vec<BlockHash>,
     /// A set of block hashes that have been requested from the network.
     ///
-    /// This helps in tracking which blocks are pending download.
-    pub(crate) requested_blocks: HashSet<BlockHash>,
+    /// This helps tracking which blocks are pending download.
+    pub(super) requested_blocks: HashSet<BlockHash>,
     /// A vector of blocks that have been downloaded from the network.
     ///
     /// These blocks are ready to be sent to the import queue.
-    pub(crate) downloaded_blocks: Vec<BitcoinBlock>,
-    /// A map of block hashes to their respective heights in the import queue.
-    /// This helps in tracking which blocks are currently being processed in the import queue.
-    pub(crate) blocks_in_queue: HashMap<BlockHash, u32>,
-    /// Pending blocks that either in the queue or waiting to be queued.
-    pub(crate) queued_blocks: QueuedBlocks,
-    /// The highest block number that is either in the queue or waiting to be queued.
-    pub(crate) best_queued_number: u32,
+    pub(super) downloaded_blocks: Vec<BitcoinBlock>,
+    /// A map of block hashes to their respective heights the import queue.
+    /// This helps tracking which blocks are currently being processed in the import queue.
+    pub(super) blocks_in_queue: HashMap<BlockHash, u32>,
+    /// Pending blocks that either the queue or waiting to be queued.
+    pub(super) queued_blocks: QueuedBlocks,
+    /// The highest block number that is either the queue or waiting to be queued.
+    pub(super) best_queued_number: u32,
     /// Orphan blocks
-    pub(crate) orphan_blocks_pool: OrphanBlocksPool,
+    pub(super) orphan_blocks_pool: OrphanBlocksPool,
     /// Last time at which the block was received or imported.
     ///
     /// This is updated whenever a block is received from the network or
     /// when the results of processed blocks are notified. It helps track
     /// the most recent activity related to block processing.
-    pub(crate) last_progress_time: Instant,
+    pub(super) last_progress_time: Instant,
     /// Import queue status.
-    pub(crate) queue_status: ImportQueueStatus,
-    /// Last time the log of too many blocks in the queue was printed.
-    pub(crate) last_overloaded_queue_log_time: Option<Instant>,
+    pub(super) queue_status: ImportQueueStatus,
+    /// Last time the log of too many blocks the queue was printed.
+    pub(super) last_overloaded_queue_log_time: Option<Instant>,
     /// Peer store.
-    pub(crate) peer_store: Arc<dyn PeerStore>,
+    pub(super) peer_store: Arc<dyn PeerStore>,
     /// Tracks the number of blocks downloaded from the current sync peer.
-    pub(crate) downloaded_blocks_count: usize,
+    pub(super) downloaded_blocks_count: usize,
 }
 
 impl BlockDownloader {
@@ -136,62 +136,36 @@ impl BlockDownloader {
         }
     }
 
-    pub(crate) fn set_missing_blocks(&mut self, new: Vec<BlockHash>) {
-        self.missing_blocks = new;
+    pub(crate) fn block_exists(&self, block_hash: BlockHash) -> bool {
+        self.queued_blocks.block_number(block_hash).is_some()
     }
 
-    /// Prepares the next block data request, ensuring the request size aligns with the current
-    /// blockchain height to avoid overly large downloads and improve latency.
-    ///
-    /// This function selects a batch of blocks from `self.missing_blocks` based on the
-    /// `self.best_queued_number`. As the chain grows, the maximum request size decreases to
-    /// reduce the burden on peers. If the number of blocks exceeds the `max_request_size`,
-    /// the function truncates the list to the maximum allowed, storing any remaining blocks
-    /// back in `self.missing_blocks` for future requests.
-    ///
-    /// # Returns
-    ///
-    /// A `SyncAction::Request` containing a `SyncRequest::GetData` with the list of blocks to
-    /// request from the peer.
-    pub(crate) fn schedule_next_download_batch(&mut self) -> SyncAction {
-        let max_request_size = match self.best_queued_number {
-            0..=99_999 => 1024,
-            100_000..=199_999 => 512,
-            200_000..=299_999 => 128,
-            300_000..=399_999 => 64,
-            400_000..=499_999 => 32,
-            500_000..=599_999 => 16,
-            600_000..=699_999 => 8,
-            700_000..=799_999 => 4,
-            _ => 2,
-        };
+    pub(crate) fn block_number(&self, block_hash: BlockHash) -> Option<u32> {
+        self.queued_blocks.block_number(block_hash)
+    }
 
-        let mut blocks_to_download = std::mem::take(&mut self.missing_blocks);
+    pub(crate) fn is_unknown_block(&self, block_hash: BlockHash) -> bool {
+        self.queued_blocks.block_number(block_hash).is_none()
+            && !self.requested_blocks.contains(&block_hash)
+            && !self.orphan_blocks_pool.block_exists(&block_hash)
+    }
 
-        let new_missing_blocks = if blocks_to_download.len() > max_request_size {
-            blocks_to_download.split_off(max_request_size)
-        } else {
-            vec![]
-        };
+    /// Checks if there are blocks ready to be imported.
+    pub(crate) fn has_pending_blocks(&self) -> bool {
+        !self.downloaded_blocks.is_empty()
+    }
 
-        self.missing_blocks = new_missing_blocks;
+    pub(crate) fn blocks_in_queue_count(&self) -> usize {
+        self.blocks_in_queue.len()
+    }
 
-        let block_data_request = blocks_to_download
-            .clone()
-            .into_iter()
-            .map(Inventory::Block)
-            .collect::<Vec<_>>();
+    pub(super) fn on_block_response(&mut self, block_hash: BlockHash) -> bool {
+        self.last_progress_time = Instant::now();
+        self.requested_blocks.remove(&block_hash)
+    }
 
-        self.requested_blocks = blocks_to_download.into_iter().collect::<HashSet<_>>();
-
-        tracing::debug!(
-            from = ?self.peer_id,
-            pending_blocks_to_download = self.missing_blocks.len(),
-            "📦 Downloading {} blocks",
-            self.requested_blocks.len(),
-        );
-
-        SyncAction::get_data(block_data_request, self.peer_id)
+    pub(super) fn set_missing_blocks(&mut self, new: Vec<BlockHash>) {
+        self.missing_blocks = new;
     }
 
     /// Determine if the downloader is stalled based on the time elapsed since the last progress
@@ -225,27 +199,8 @@ impl BlockDownloader {
         }
     }
 
-    pub(crate) fn block_exists(&self, block_hash: BlockHash) -> bool {
-        self.queued_blocks.block_number(block_hash).is_some()
-    }
-
-    pub(crate) fn block_number(&self, block_hash: BlockHash) -> Option<u32> {
-        self.queued_blocks.block_number(block_hash)
-    }
-
-    pub(crate) fn is_unknown_block(&self, block_hash: BlockHash) -> bool {
-        self.queued_blocks.block_number(block_hash).is_none()
-            && !self.requested_blocks.contains(&block_hash)
-            && !self.orphan_blocks_pool.block_exists(&block_hash)
-    }
-
-    pub(crate) fn on_block_response(&mut self, block_hash: BlockHash) -> bool {
-        self.last_progress_time = Instant::now();
-        self.requested_blocks.remove(&block_hash)
-    }
-
     /// Checks if the import queue is overloaded and updates the internal state.
-    pub(crate) fn evaluate_queue_status(&mut self, best_number: u32) -> ImportQueueStatus {
+    pub(super) fn evaluate_queue_status(&mut self, best_number: u32) -> ImportQueueStatus {
         // Maximum number of pending blocks in the import queue.
         let max_queued_blocks = match best_number {
             0..=100_000 => 8192,
@@ -279,7 +234,64 @@ impl BlockDownloader {
         self.queue_status
     }
 
-    pub(crate) fn restart(&mut self, new_peer: PeerId) {
+    /// Prepares the next block data request, ensuring the request size aligns with the current
+    /// blockchain height to avoid overly large downloads and improve latency.
+    ///
+    /// This function selects a batch of blocks from `self.missing_blocks` based on the
+    /// `self.best_queued_number`. As the chain grows, the maximum request size decreases to
+    /// reduce the burden on peers. If the number of blocks exceeds the `max_request_size`,
+    /// the function truncates the list to the maximum allowed, storing any remaining blocks
+    /// back in `self.missing_blocks` for future requests.
+    ///
+    /// # Returns
+    ///
+    /// A `SyncAction::Request` containing a `SyncRequest::GetData` with the list of blocks to
+    /// request from the peer.
+    pub(super) fn schedule_next_download_batch(&mut self) -> SyncAction {
+        // TODO: adpative batch size based on the latency of response.
+        let max_request_size = match self.best_queued_number {
+            0..=99_999 => 1024,
+            100_000..=199_999 => 512,
+            200_000..=299_999 => 128,
+            300_000..=399_999 => 64,
+            400_000..=499_999 => 32,
+            500_000..=599_999 => 16,
+            600_000..=699_999 => 8,
+            700_000..=799_999 => 4,
+            _ => 2,
+        };
+
+        let mut blocks_to_download = std::mem::take(&mut self.missing_blocks);
+
+        let new_missing_blocks = if blocks_to_download.len() > max_request_size {
+            blocks_to_download.split_off(max_request_size)
+        } else {
+            vec![]
+        };
+
+        self.missing_blocks = new_missing_blocks;
+
+        self.requested_blocks = blocks_to_download
+            .clone()
+            .into_iter()
+            .collect::<HashSet<_>>();
+
+        tracing::debug!(
+            from = ?self.peer_id,
+            pending_blocks_to_download = self.missing_blocks.len(),
+            "📦 Downloading {} blocks",
+            self.requested_blocks.len(),
+        );
+
+        let block_data_request = blocks_to_download
+            .into_iter()
+            .map(Inventory::Block)
+            .collect::<Vec<_>>();
+
+        SyncAction::get_data(block_data_request, self.peer_id)
+    }
+
+    pub(super) fn restart(&mut self, new_peer: PeerId) {
         self.peer_id = new_peer;
         self.downloaded_blocks_count = 0;
         self.requested_blocks.clear();
@@ -289,15 +301,6 @@ impl BlockDownloader {
         self.orphan_blocks_pool.clear();
         self.last_progress_time = Instant::now();
         self.queue_status = ImportQueueStatus::Ready;
-    }
-
-    /// Checks if there are blocks ready to be imported.
-    pub(crate) fn has_pending_blocks(&self) -> bool {
-        !self.downloaded_blocks.is_empty()
-    }
-
-    pub(crate) fn blocks_in_queue_count(&self) -> usize {
-        self.blocks_in_queue.len()
     }
 
     /// Handles blocks that have been processed.
@@ -354,7 +357,7 @@ impl BlockDownloader {
     }
 
     /// Add the block that is ready to be imported.
-    pub(crate) fn add_block(
+    pub(super) fn add_block(
         &mut self,
         block_number: u32,
         block_hash: BlockHash,
@@ -386,7 +389,7 @@ impl BlockDownloader {
         self.peer_store.record_block_download(from);
     }
 
-    pub(crate) fn add_orphan_block(&mut self, block_hash: BlockHash, orphan_block: BitcoinBlock) {
+    pub(super) fn add_orphan_block(&mut self, block_hash: BlockHash, orphan_block: BitcoinBlock) {
         self.orphan_blocks_pool.insert_orphan_block(orphan_block);
         tracing::debug!(
             orphan_blocks_count = self.orphan_blocks_pool.len(),
@@ -394,7 +397,7 @@ impl BlockDownloader {
         );
     }
 
-    pub(crate) fn add_unknown_block(&mut self, block_hash: BlockHash, unknown_block: BitcoinBlock) {
+    pub(super) fn add_unknown_block(&mut self, block_hash: BlockHash, unknown_block: BitcoinBlock) {
         self.orphan_blocks_pool.insert_unknown_block(unknown_block);
         tracing::debug!(
             orphan_blocks_count = self.orphan_blocks_pool.len(),
