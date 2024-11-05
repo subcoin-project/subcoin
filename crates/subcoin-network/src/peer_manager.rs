@@ -1,8 +1,8 @@
 use crate::address_book::AddressBook;
-use crate::connection::{
+use crate::metrics::Metrics;
+use crate::peer_connection::{
     ConnectionCloser, ConnectionInitiator, ConnectionWriter, Direction, NewConnection,
 };
-use crate::metrics::Metrics;
 use crate::{validate_outbound_services, Error, Latency, LocalTime, PeerId};
 use bitcoin::p2p::address::AddrV2Message;
 use bitcoin::p2p::message::NetworkMessage;
@@ -434,7 +434,7 @@ where
     }
 
     pub(crate) fn on_outbound_connection_failure(&mut self, addr: PeerId, err: Error) {
-        tracing::trace!(?err, ?addr, "Failed to initiate outbound connection");
+        tracing::trace!(?err, "Failed to initiate outbound connection to {addr:?}");
 
         self.address_book.note_failed_address(addr);
 
@@ -465,7 +465,7 @@ where
         }
 
         if let Some(connection) = self.connections.remove(&peer_id) {
-            tracing::debug!(?reason, ?peer_id, "💔 Disconnecting peer");
+            tracing::debug!(?reason, "💔 Disconnecting peer {peer_id:?}");
             connection.closer.terminate();
 
             if let Some(metrics) = &self.metrics {
@@ -710,7 +710,7 @@ where
 
         match direction {
             Direction::Inbound => {
-                // Do not log the inbound connection success as what Bitcoin Core does.
+                // Do not log the inbound connection success, following Bitcoin Core's behaviour.
                 #[cfg(test)]
                 tracing::debug!(?direction, "🤝 New peer {peer_id:?}");
             }
@@ -769,8 +769,9 @@ where
                 last_ping_at,
                 nonce: expected,
             } => {
-                if nonce != expected {
-                    return Err(Error::BadPong);
+                let got = nonce;
+                if got != expected {
+                    return Err(Error::BadPong { expected, got });
                 }
 
                 let duration = last_ping_at.elapsed();

@@ -98,15 +98,13 @@ pub(crate) struct LocatorRequest {
 
 /// Represents different kinds of sync requests.
 #[derive(Debug)]
-// We prefer the variant to align with the actual message mame.
-#[allow(clippy::enum_variant_names)]
 pub(crate) enum SyncRequest {
     /// Request headers via `getheaders`.
-    GetHeaders(LocatorRequest),
+    Header(LocatorRequest),
     /// Request inventories via `getblocks`.
-    GetBlocks(LocatorRequest),
+    Inventory(LocatorRequest),
     /// Request blocks via `getdata`.
-    GetData(Vec<Inventory>, PeerId),
+    Data(Vec<Inventory>, PeerId),
 }
 
 /// Represents actions that can be taken during the syncing.
@@ -126,6 +124,20 @@ pub(crate) enum SyncAction {
     SetIdle,
     /// No action needed.
     None,
+}
+
+impl SyncAction {
+    pub(crate) fn get_headers(request: LocatorRequest) -> Self {
+        Self::Request(SyncRequest::Header(request))
+    }
+
+    pub(crate) fn get_inventory(request: LocatorRequest) -> Self {
+        Self::Request(SyncRequest::Inventory(request))
+    }
+
+    pub(crate) fn get_data(inv: Vec<Inventory>, from: PeerId) -> Self {
+        Self::Request(SyncRequest::Data(inv, from))
+    }
 }
 
 #[derive(Debug)]
@@ -257,18 +269,25 @@ where
     }
 
     pub(super) fn update_peer_best(&mut self, peer_id: PeerId, peer_best: u32) {
+        let mut peer_best_updated = false;
+
         self.peers.entry(peer_id).and_modify(|e| {
-            tracing::debug!(
-                "Tip of {peer_id:?} updated from #{} to #{peer_best}",
-                e.best_number
-            );
-            e.best_number = peer_best;
+            if peer_best > e.best_number {
+                e.best_number = peer_best;
+                peer_best_updated = true;
+                tracing::debug!(
+                    "Tip of {peer_id:?} updated from #{} to #{peer_best}",
+                    e.best_number
+                );
+            }
         });
 
-        match &mut self.syncing {
-            Syncing::Idle => {}
-            Syncing::BlocksFirst(strategy) => strategy.update_peer_best(peer_id, peer_best),
-            Syncing::HeadersFirst(strategy) => strategy.update_peer_best(peer_id, peer_best),
+        if peer_best_updated {
+            match &mut self.syncing {
+                Syncing::Idle => {}
+                Syncing::BlocksFirst(strategy) => strategy.set_peer_best(peer_id, peer_best),
+                Syncing::HeadersFirst(strategy) => strategy.set_peer_best(peer_id, peer_best),
+            }
         }
     }
 
@@ -397,8 +416,8 @@ where
     pub(super) fn update_sync_peer_on_lower_latency(&mut self) {
         let maybe_sync_peer_id = match &self.syncing {
             Syncing::Idle => return,
-            Syncing::BlocksFirst(strategy) => strategy.replaceable_sync_peer(),
-            Syncing::HeadersFirst(strategy) => strategy.replaceable_sync_peer(),
+            Syncing::BlocksFirst(strategy) => strategy.can_swap_sync_peer(),
+            Syncing::HeadersFirst(strategy) => strategy.can_swap_sync_peer(),
         };
 
         let Some(current_sync_peer_id) = maybe_sync_peer_id else {
@@ -445,11 +464,11 @@ where
 
             let sync_peer_updated = match &mut self.syncing {
                 Syncing::BlocksFirst(strategy) => {
-                    strategy.replace_sync_peer(peer_id, target_block_number);
+                    strategy.swap_sync_peer(peer_id, target_block_number);
                     true
                 }
                 Syncing::HeadersFirst(strategy) => {
-                    strategy.replace_sync_peer(peer_id, target_block_number);
+                    strategy.swap_sync_peer(peer_id, target_block_number);
                     true
                 }
                 Syncing::Idle => unreachable!("Must not be Idle as checked; qed"),

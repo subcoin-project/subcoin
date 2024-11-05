@@ -40,7 +40,7 @@ pub type ChainSpec = sc_service::GenericChainSpec;
 /// Disk backend client type.
 pub type FullClient =
     sc_service::TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<SubcoinExecutorDispatch>>;
-type FullBackend = sc_service::TFullBackend<Block>;
+pub type FullBackend = sc_service::TFullBackend<Block>;
 type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
 /// Subcoin executor.

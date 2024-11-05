@@ -1,8 +1,8 @@
-use crate::connection::{ConnectionInitiator, Direction, NewConnection};
 use crate::metrics::Metrics;
 use crate::network_api::{
     IncomingTransaction, NetworkProcessorMessage, NetworkStatus, SendTransactionResult,
 };
+use crate::peer_connection::{ConnectionInitiator, Direction, NewConnection};
 use crate::peer_manager::{Config, NewPeer, PeerManager, SlowPeer, PEER_LATENCY_THRESHOLD};
 use crate::peer_store::PeerStore;
 use crate::sync::{ChainSync, LocatorRequest, RestartReason, SyncAction, SyncRequest};
@@ -80,7 +80,7 @@ pub struct NetworkProcessor<Block, Client> {
     transaction_manager: TransactionManager,
     network_event_receiver: UnboundedReceiver<Event>,
     /// Broadcasted blocks that are being requested.
-    inflight_announced_blocks: HashMap<PeerId, HashSet<BlockHash>>,
+    requested_block_announce: HashMap<PeerId, HashSet<BlockHash>>,
     metrics: Option<Metrics>,
 }
 
@@ -139,7 +139,7 @@ where
             peer_manager,
             header_verifier,
             transaction_manager: TransactionManager::new(),
-            inflight_announced_blocks: HashMap::new(),
+            requested_block_announce: HashMap::new(),
             network_event_receiver,
             metrics,
         }
@@ -466,7 +466,7 @@ where
 
                     let mut is_new_block_announce = false;
 
-                    self.inflight_announced_blocks
+                    self.requested_block_announce
                         .entry(from)
                         .and_modify(|announcements| {
                             is_new_block_announce = announcements.insert(block_hash);
@@ -493,13 +493,13 @@ where
         let block_hash = block.block_hash();
 
         if self
-            .inflight_announced_blocks
+            .requested_block_announce
             .get(&from)
-            .map(|annoucements| annoucements.contains(&block_hash))
-            .unwrap_or(false)
+            .map_or(false, |annoucements| annoucements.contains(&block_hash))
         {
             tracing::debug!("Recv announced block {block_hash} from {from:?}");
-            self.inflight_announced_blocks.entry(from).and_modify(|e| {
+
+            self.requested_block_announce.entry(from).and_modify(|e| {
                 e.remove(&block_hash);
             });
 
@@ -509,19 +509,23 @@ where
                 tracing::debug!(?block_hash, "No height in coinbase transaction");
             }
 
-            let Some(best_hash) = self.client.block_hash(self.client.best_number()) else {
-                return Ok(SyncAction::None);
-            };
+            if self.client.substrate_block_hash_for(block_hash).is_some() {
+                // Block has already been processed.
+            } else {
+                let best_hash = self
+                    .client
+                    .block_hash(self.client.best_number())
+                    .expect("Best hash must exist; qed");
 
-            if block.header.prev_blockhash == best_hash
-                && self.client.block_number(block_hash).is_none()
-            {
-                self.chain_sync
-                    .import_queue
-                    .import_blocks(sc_consensus_nakamoto::ImportBlocks {
-                        origin: sp_consensus::BlockOrigin::NetworkBroadcast,
-                        blocks: vec![block],
-                    });
+                // TODO: handle the orphan block?
+                if block.header.prev_blockhash == best_hash {
+                    self.chain_sync.import_queue.import_blocks(
+                        sc_consensus_nakamoto::ImportBlocks {
+                            origin: sp_consensus::BlockOrigin::NetworkBroadcast,
+                            blocks: vec![block],
+                        },
+                    );
+                }
             }
 
             return Ok(SyncAction::None);
@@ -562,7 +566,7 @@ where
                     .map(|header| {
                         let block_hash = header.block_hash();
 
-                        self.inflight_announced_blocks
+                        self.requested_block_announce
                             .entry(from)
                             .and_modify(|e| {
                                 e.insert(block_hash);
@@ -613,7 +617,7 @@ where
     fn do_sync_action(&mut self, sync_action: SyncAction) {
         match sync_action {
             SyncAction::Request(sync_request) => match sync_request {
-                SyncRequest::GetHeaders(request) => {
+                SyncRequest::Header(request) => {
                     let LocatorRequest {
                         locator_hashes,
                         stop_hash,
@@ -629,20 +633,20 @@ where
                         let _ = self.send(to, NetworkMessage::GetHeaders(msg));
                     }
                 }
-                SyncRequest::GetBlocks(request) => {
-                    self.send_get_blocks_request(request);
+                SyncRequest::Inventory(request) => {
+                    self.send_get_blocks_message(request);
                 }
-                SyncRequest::GetData(invs, to) => {
+                SyncRequest::Data(invs, to) => {
                     if !invs.is_empty() {
                         let _ = self.send(to, NetworkMessage::GetData(invs));
                     }
                 }
             },
             SyncAction::SwitchToBlocksFirstSync => {
-                if let Some(SyncAction::Request(SyncRequest::GetBlocks(request))) =
+                if let Some(SyncAction::Request(SyncRequest::Inventory(request))) =
                     self.chain_sync.attempt_blocks_first_sync()
                 {
-                    self.send_get_blocks_request(request);
+                    self.send_get_blocks_message(request);
                 }
             }
             SyncAction::SetIdle => {
@@ -660,7 +664,7 @@ where
         }
     }
 
-    fn send_get_blocks_request(&self, request: LocatorRequest) {
+    fn send_get_blocks_message(&self, request: LocatorRequest) {
         let LocatorRequest {
             locator_hashes,
             stop_hash,

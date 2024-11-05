@@ -1,9 +1,9 @@
 use bitcoin::p2p::message::MAX_INV_SIZE;
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 use subcoin_primitives::IndexedBlock;
 
 // NOTE: The checkpoints were initially copied from btcd.
-static CHECKPOINTS: Lazy<Vec<IndexedBlock>> = Lazy::new(|| {
+static CHECKPOINTS: LazyLock<Vec<IndexedBlock>> = LazyLock::new(|| {
     let mut start = 0u32;
     [
         (

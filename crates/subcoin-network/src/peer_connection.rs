@@ -1,4 +1,4 @@
-use crate::net_processor::Event;
+use crate::network_processor::Event;
 use crate::{Bandwidth, Error, PeerId};
 use bitcoin::consensus::{encode, Decodable, Encodable};
 use bitcoin::p2p::message::{NetworkMessage, RawNetworkMessage, MAX_MSG_SIZE};

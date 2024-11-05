@@ -8923,7 +8923,6 @@ dependencies = [
  "futures",
  "indexmap 2.2.6",
  "ip_network",
- "once_cell",
  "parking_lot 0.12.3",
  "sc-client-api",
  "sc-consensus",
