@@ -190,11 +190,11 @@
 <a href="#190" id="190">190</a>
 <a href="#191" id="191">191</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>bitcoin::p2p::message::MAX_INV_SIZE;
-<span class="kw">use </span>once_cell::sync::Lazy;
+<span class="kw">use </span>std::sync::LazyLock;
 <span class="kw">use </span>subcoin_primitives::IndexedBlock;
 
 <span class="comment">// NOTE: The checkpoints were initially copied from btcd.
-</span><span class="kw">static </span>CHECKPOINTS: Lazy&lt;Vec&lt;IndexedBlock&gt;&gt; = Lazy::new(|| {
+</span><span class="kw">static </span>CHECKPOINTS: LazyLock&lt;Vec&lt;IndexedBlock&gt;&gt; = LazyLock::new(|| {
     <span class="kw">let </span><span class="kw-2">mut </span>start = <span class="number">0u32</span>;
     [
         (

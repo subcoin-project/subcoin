@@ -793,11 +793,12 @@
 <a href="#793" id="793">793</a>
 <a href="#794" id="794">794</a>
 <a href="#795" id="795">795</a>
+<a href="#796" id="796">796</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::address_book::AddressBook;
-<span class="kw">use </span><span class="kw">crate</span>::connection::{
+<span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
+<span class="kw">use </span><span class="kw">crate</span>::peer_connection::{
     ConnectionCloser, ConnectionInitiator, ConnectionWriter, Direction, NewConnection,
 };
-<span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
 <span class="kw">use crate</span>::{validate_outbound_services, Error, Latency, LocalTime, PeerId};
 <span class="kw">use </span>bitcoin::p2p::address::AddrV2Message;
 <span class="kw">use </span>bitcoin::p2p::message::NetworkMessage;
@@ -1229,7 +1230,7 @@
     }
 
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>on_outbound_connection_failure(<span class="kw-2">&amp;mut </span><span class="self">self</span>, addr: PeerId, err: Error) {
-        <span class="macro">tracing::trace!</span>(<span class="question-mark">?</span>err, <span class="question-mark">?</span>addr, <span class="string">"Failed to initiate outbound connection"</span>);
+        <span class="macro">tracing::trace!</span>(<span class="question-mark">?</span>err, <span class="string">"Failed to initiate outbound connection to {addr:?}"</span>);
 
         <span class="self">self</span>.address_book.note_failed_address(addr);
 
@@ -1260,7 +1261,7 @@
         }
 
         <span class="kw">if let </span><span class="prelude-val">Some</span>(connection) = <span class="self">self</span>.connections.remove(<span class="kw-2">&amp;</span>peer_id) {
-            <span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>reason, <span class="question-mark">?</span>peer_id, <span class="string">"💔 Disconnecting peer"</span>);
+            <span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>reason, <span class="string">"💔 Disconnecting peer {peer_id:?}"</span>);
             connection.closer.terminate();
 
             <span class="kw">if let </span><span class="prelude-val">Some</span>(metrics) = <span class="kw-2">&amp;</span><span class="self">self</span>.metrics {
@@ -1505,7 +1506,7 @@
 
         <span class="kw">match </span>direction {
             Direction::Inbound =&gt; {
-                <span class="comment">// Do not log the inbound connection success as what Bitcoin Core does.
+                <span class="comment">// Do not log the inbound connection success, following Bitcoin Core's behaviour.
                 </span><span class="attr">#[cfg(test)]
                 </span><span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>direction, <span class="string">"🤝 New peer {peer_id:?}"</span>);
             }
@@ -1564,8 +1565,9 @@
                 last_ping_at,
                 nonce: expected,
             } =&gt; {
-                <span class="kw">if </span>nonce != expected {
-                    <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadPong);
+                <span class="kw">let </span>got = nonce;
+                <span class="kw">if </span>got != expected {
+                    <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadPong { expected, got });
                 }
 
                 <span class="kw">let </span>duration = last_ping_at.elapsed();

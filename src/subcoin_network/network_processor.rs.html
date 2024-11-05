@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/net_processor.rs`."><title>net_processor.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-970bf1bf55bd1c15.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (28a58f2fa 2024-07-31)" data-channel="nightly" data-search-js="search-ef54e092fea9c776.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-f9142fe437216fc3.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/subcoin-network/src/network_processor.rs`."><title>network_processor.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-970bf1bf55bd1c15.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="subcoin_network" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (28a58f2fa 2024-07-31)" data-channel="nightly" data-search-js="search-ef54e092fea9c776.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../../static.files/storage-118b08c4c78b968e.js"></script><script defer src="../../static.files/src-script-e66d777a5a92e9b2.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-f9142fe437216fc3.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
 <a href="#2" id="2">2</a>
 <a href="#3" id="3">3</a>
 <a href="#4" id="4">4</a>
@@ -688,11 +688,15 @@
 <a href="#688" id="688">688</a>
 <a href="#689" id="689">689</a>
 <a href="#690" id="690">690</a>
-</pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::connection::{ConnectionInitiator, Direction, NewConnection};
-<span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
+<a href="#691" id="691">691</a>
+<a href="#692" id="692">692</a>
+<a href="#693" id="693">693</a>
+<a href="#694" id="694">694</a>
+</pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
 <span class="kw">use </span><span class="kw">crate</span>::network_api::{
     IncomingTransaction, NetworkProcessorMessage, NetworkStatus, SendTransactionResult,
 };
+<span class="kw">use </span><span class="kw">crate</span>::peer_connection::{ConnectionInitiator, Direction, NewConnection};
 <span class="kw">use </span><span class="kw">crate</span>::peer_manager::{Config, NewPeer, PeerManager, SlowPeer, PEER_LATENCY_THRESHOLD};
 <span class="kw">use </span><span class="kw">crate</span>::peer_store::PeerStore;
 <span class="kw">use </span><span class="kw">crate</span>::sync::{ChainSync, LocatorRequest, RestartReason, SyncAction, SyncRequest};
@@ -770,7 +774,7 @@
     transaction_manager: TransactionManager,
     network_event_receiver: UnboundedReceiver&lt;Event&gt;,
     <span class="doccomment">/// Broadcasted blocks that are being requested.
-    </span>inflight_announced_blocks: HashMap&lt;PeerId, HashSet&lt;BlockHash&gt;&gt;,
+    </span>requested_block_announce: HashMap&lt;PeerId, HashSet&lt;BlockHash&gt;&gt;,
     metrics: <span class="prelude-ty">Option</span>&lt;Metrics&gt;,
 }
 
@@ -829,7 +833,7 @@
             peer_manager,
             header_verifier,
             transaction_manager: TransactionManager::new(),
-            inflight_announced_blocks: HashMap::new(),
+            requested_block_announce: HashMap::new(),
             network_event_receiver,
             metrics,
         }
@@ -1156,7 +1160,7 @@
 
                     <span class="kw">let </span><span class="kw-2">mut </span>is_new_block_announce = <span class="bool-val">false</span>;
 
-                    <span class="self">self</span>.inflight_announced_blocks
+                    <span class="self">self</span>.requested_block_announce
                         .entry(from)
                         .and_modify(|announcements| {
                             is_new_block_announce = announcements.insert(block_hash);
@@ -1183,13 +1187,13 @@
         <span class="kw">let </span>block_hash = block.block_hash();
 
         <span class="kw">if </span><span class="self">self
-            </span>.inflight_announced_blocks
+            </span>.requested_block_announce
             .get(<span class="kw-2">&amp;</span>from)
-            .map(|annoucements| annoucements.contains(<span class="kw-2">&amp;</span>block_hash))
-            .unwrap_or(<span class="bool-val">false</span>)
+            .map_or(<span class="bool-val">false</span>, |annoucements| annoucements.contains(<span class="kw-2">&amp;</span>block_hash))
         {
             <span class="macro">tracing::debug!</span>(<span class="string">"Recv announced block {block_hash} from {from:?}"</span>);
-            <span class="self">self</span>.inflight_announced_blocks.entry(from).and_modify(|e| {
+
+            <span class="self">self</span>.requested_block_announce.entry(from).and_modify(|e| {
                 e.remove(<span class="kw-2">&amp;</span>block_hash);
             });
 
@@ -1199,19 +1203,23 @@
                 <span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>block_hash, <span class="string">"No height in coinbase transaction"</span>);
             }
 
-            <span class="kw">let </span><span class="prelude-val">Some</span>(best_hash) = <span class="self">self</span>.client.block_hash(<span class="self">self</span>.client.best_number()) <span class="kw">else </span>{
-                <span class="kw">return </span><span class="prelude-val">Ok</span>(SyncAction::None);
-            };
+            <span class="kw">if </span><span class="self">self</span>.client.substrate_block_hash_for(block_hash).is_some() {
+                <span class="comment">// Block has already been processed.
+            </span>} <span class="kw">else </span>{
+                <span class="kw">let </span>best_hash = <span class="self">self
+                    </span>.client
+                    .block_hash(<span class="self">self</span>.client.best_number())
+                    .expect(<span class="string">"Best hash must exist; qed"</span>);
 
-            <span class="kw">if </span>block.header.prev_blockhash == best_hash
-                &amp;&amp; <span class="self">self</span>.client.block_number(block_hash).is_none()
-            {
-                <span class="self">self</span>.chain_sync
-                    .import_queue
-                    .import_blocks(sc_consensus_nakamoto::ImportBlocks {
-                        origin: sp_consensus::BlockOrigin::NetworkBroadcast,
-                        blocks: <span class="macro">vec!</span>[block],
-                    });
+                <span class="comment">// TODO: handle the orphan block?
+                </span><span class="kw">if </span>block.header.prev_blockhash == best_hash {
+                    <span class="self">self</span>.chain_sync.import_queue.import_blocks(
+                        sc_consensus_nakamoto::ImportBlocks {
+                            origin: sp_consensus::BlockOrigin::NetworkBroadcast,
+                            blocks: <span class="macro">vec!</span>[block],
+                        },
+                    );
+                }
             }
 
             <span class="kw">return </span><span class="prelude-val">Ok</span>(SyncAction::None);
@@ -1252,7 +1260,7 @@
                     .map(|header| {
                         <span class="kw">let </span>block_hash = header.block_hash();
 
-                        <span class="self">self</span>.inflight_announced_blocks
+                        <span class="self">self</span>.requested_block_announce
                             .entry(from)
                             .and_modify(|e| {
                                 e.insert(block_hash);
@@ -1303,7 +1311,7 @@
     <span class="kw">fn </span>do_sync_action(<span class="kw-2">&amp;mut </span><span class="self">self</span>, sync_action: SyncAction) {
         <span class="kw">match </span>sync_action {
             SyncAction::Request(sync_request) =&gt; <span class="kw">match </span>sync_request {
-                SyncRequest::GetHeaders(request) =&gt; {
+                SyncRequest::Header(request) =&gt; {
                     <span class="kw">let </span>LocatorRequest {
                         locator_hashes,
                         stop_hash,
@@ -1319,20 +1327,20 @@
                         <span class="kw">let _ </span>= <span class="self">self</span>.send(to, NetworkMessage::GetHeaders(msg));
                     }
                 }
-                SyncRequest::GetBlocks(request) =&gt; {
-                    <span class="self">self</span>.send_get_blocks_request(request);
+                SyncRequest::Inventory(request) =&gt; {
+                    <span class="self">self</span>.send_get_blocks_message(request);
                 }
-                SyncRequest::GetData(invs, to) =&gt; {
+                SyncRequest::Data(invs, to) =&gt; {
                     <span class="kw">if </span>!invs.is_empty() {
                         <span class="kw">let _ </span>= <span class="self">self</span>.send(to, NetworkMessage::GetData(invs));
                     }
                 }
             },
             SyncAction::SwitchToBlocksFirstSync =&gt; {
-                <span class="kw">if let </span><span class="prelude-val">Some</span>(SyncAction::Request(SyncRequest::GetBlocks(request))) =
+                <span class="kw">if let </span><span class="prelude-val">Some</span>(SyncAction::Request(SyncRequest::Inventory(request))) =
                     <span class="self">self</span>.chain_sync.attempt_blocks_first_sync()
                 {
-                    <span class="self">self</span>.send_get_blocks_request(request);
+                    <span class="self">self</span>.send_get_blocks_message(request);
                 }
             }
             SyncAction::SetIdle =&gt; {
@@ -1350,7 +1358,7 @@
         }
     }
 
-    <span class="kw">fn </span>send_get_blocks_request(<span class="kw-2">&amp;</span><span class="self">self</span>, request: LocatorRequest) {
+    <span class="kw">fn </span>send_get_blocks_message(<span class="kw-2">&amp;</span><span class="self">self</span>, request: LocatorRequest) {
         <span class="kw">let </span>LocatorRequest {
             locator_hashes,
             stop_hash,

@@ -466,8 +466,6 @@
 <a href="#466" id="466">466</a>
 <a href="#467" id="467">467</a>
 <a href="#468" id="468">468</a>
-<a href="#469" id="469">469</a>
-<a href="#470" id="470">470</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # Bitcoin Network
 //!
 //! This crate facilitates communication with other nodes in the Bitcoin P2P network. It handles
@@ -498,10 +496,10 @@
 
 </span><span class="kw">mod </span>address_book;
 <span class="kw">mod </span>checkpoint;
-<span class="kw">mod </span>connection;
 <span class="kw">mod </span>metrics;
-<span class="kw">mod </span>net_processor;
 <span class="kw">mod </span>network_api;
+<span class="kw">mod </span>network_processor;
+<span class="kw">mod </span>peer_connection;
 <span class="kw">mod </span>peer_manager;
 <span class="kw">mod </span>peer_store;
 <span class="kw">mod </span>sync;
@@ -509,10 +507,10 @@
 </span><span class="kw">mod </span>tests;
 <span class="kw">mod </span>transaction_manager;
 
-<span class="kw">use </span><span class="kw">crate</span>::connection::ConnectionInitiator;
 <span class="kw">use </span><span class="kw">crate</span>::metrics::BandwidthMetrics;
-<span class="kw">use </span><span class="kw">crate</span>::net_processor::NetworkProcessor;
 <span class="kw">use </span><span class="kw">crate</span>::network_api::NetworkProcessorMessage;
+<span class="kw">use </span><span class="kw">crate</span>::network_processor::NetworkProcessor;
+<span class="kw">use </span><span class="kw">crate</span>::peer_connection::ConnectionInitiator;
 <span class="kw">use </span><span class="kw">crate</span>::peer_store::{PersistentPeerStore, PersistentPeerStoreHandle};
 <span class="kw">use </span>bitcoin::p2p::ServiceFlags;
 <span class="kw">use </span>bitcoin::{BlockHash, Network <span class="kw">as </span>BitcoinNetwork};
@@ -590,8 +588,8 @@
     </span>SlowPeer(Latency),
     <span class="attr">#[error(<span class="string">"Unexpected pong message"</span>)]
     </span>UnexpectedPong,
-    <span class="attr">#[error(<span class="string">"Invalid pong message: bad nonce"</span>)]
-    </span>BadPong,
+    <span class="attr">#[error(<span class="string">"Bad nonce in pong, expected: {expected}, got: {got}"</span>)]
+    </span>BadPong { expected: u64, got: u64 },
     <span class="attr">#[error(<span class="string">"Cannot find the parent of the first header in headers message"</span>)]
     </span>MissingFirstHeaderParent,
     <span class="attr">#[error(<span class="string">"Other: {0}"</span>)]
@@ -834,8 +832,8 @@
 
         spawn_handle.spawn(<span class="string">"peer-store"</span>, <span class="prelude-val">None</span>, persistent_peer_store.run(receiver));
 
-        <span class="kw">let </span>network_processor = NetworkProcessor::new(
-            net_processor::Params {
+        <span class="kw">let </span>net_processor = NetworkProcessor::new(
+            network_processor::Params {
                 client: client.clone(),
                 header_verifier: HeaderVerifier::new(
                     client.clone(),
@@ -931,9 +929,7 @@
             }
         }
 
-        network_processor
-            .run(processor_msg_receiver, bandwidth)
-            .<span class="kw">await</span>;
+        net_processor.run(processor_msg_receiver, bandwidth).<span class="kw">await</span>;
 
         <span class="prelude-val">Ok</span>(())
     }
