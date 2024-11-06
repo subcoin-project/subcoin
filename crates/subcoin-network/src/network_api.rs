@@ -65,7 +65,10 @@ pub(crate) enum NetworkProcessorMessage {
     /// Request the number of inbound connected peers.
     RequestInboundPeersCount(oneshot::Sender<usize>),
     /// Request a specific transaction by its Txid.
-    RequestTransaction((Txid, oneshot::Sender<Option<Transaction>>)),
+    RequestTransaction(Txid, oneshot::Sender<Option<Transaction>>),
+    /// Request a local addr for the connection to given peer_id if any.
+    #[cfg(test)]
+    RequestLocalAddr(PeerId, oneshot::Sender<Option<PeerId>>),
     /// Submit a transaction to the transaction manager.
     SendTransaction((IncomingTransaction, oneshot::Sender<SendTransactionResult>)),
     /// Enable the block sync within the chain sync component.
@@ -78,7 +81,7 @@ pub(crate) enum NetworkProcessorMessage {
 /// way to check if the node is performing a major synchronization.
 #[derive(Debug, Clone)]
 pub struct NetworkHandle {
-    pub(crate) local_addr: PeerId,
+    pub(crate) local_listen_addr: PeerId,
     pub(crate) processor_msg_sender: TracingUnboundedSender<NetworkProcessorMessage>,
     // A simple flag to know whether the node is doing the major sync.
     pub(crate) is_major_syncing: Arc<AtomicBool>,
@@ -119,7 +122,7 @@ impl NetworkHandle {
 
         if self
             .processor_msg_sender
-            .unbounded_send(NetworkProcessorMessage::RequestTransaction((txid, sender)))
+            .unbounded_send(NetworkProcessorMessage::RequestTransaction(txid, sender))
             .is_err()
         {
             return None;
@@ -163,5 +166,16 @@ impl NetworkHandle {
     /// Returns a flag indicating whether the node is actively performing a major sync.
     pub fn is_major_syncing(&self) -> Arc<AtomicBool> {
         self.is_major_syncing.clone()
+    }
+
+    #[cfg(test)]
+    pub async fn local_addr_for(&self, peer_addr: PeerId) -> Option<PeerId> {
+        let (sender, receiver) = oneshot::channel();
+
+        self.processor_msg_sender
+            .unbounded_send(NetworkProcessorMessage::RequestLocalAddr(peer_addr, sender))
+            .expect("Failed to request local addr");
+
+        receiver.await.unwrap_or_default()
     }
 }

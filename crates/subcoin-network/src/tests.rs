@@ -312,30 +312,22 @@ async fn test_block_announcement_via_headers() {
 
     let bitcoind = new_mock_bitcoind(spawn_handle.clone()).await;
 
-    test_node
+    let network_handle = test_node
         .start_network(vec![bitcoind.local_addr.to_string()])
         .await;
 
     // Wait for the connection to be established.
-    for _ in 0..10 {
-        if bitcoind.connections.read().keys().next().is_none() {
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let subcoin_node_addr = loop {
+        if let Some(addr) = network_handle.local_addr_for(bitcoind.local_addr).await {
+            break addr;
         } else {
-            break;
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
-    }
-
-    let subcoin_node = bitcoind
-        .connections
-        .read()
-        .keys()
-        .next()
-        .copied()
-        .expect("Connection has been established");
+    };
 
     // Assume block 1 is a new block and broadcast it to the subcoin node via headers.
     let header1 = bitcoind.blocks[1].header.clone();
-    bitcoind.send(subcoin_node, NetworkMessage::Headers(vec![header1]));
+    bitcoind.send(subcoin_node_addr, NetworkMessage::Headers(vec![header1]));
 
     // TODO: could be flaky.
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;

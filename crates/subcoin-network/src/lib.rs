@@ -450,7 +450,7 @@ where
     let local_addr = listener.local_addr()?;
 
     let network_handle = NetworkHandle {
-        local_addr,
+        local_listen_addr: local_addr,
         processor_msg_sender: processor_msg_sender.clone(),
         is_major_syncing: is_major_syncing.clone(),
     };

@@ -516,6 +516,11 @@ where
         self.connected_peers.keys()
     }
 
+    #[cfg(test)]
+    pub(crate) fn local_addr(&self, peer_id: PeerId) -> Option<PeerId> {
+        self.connections.get(&peer_id).map(|conn| conn.local_addr)
+    }
+
     /// Returns the number of connected peers.
     pub(crate) fn connected_peers_count(&self) -> usize {
         self.connected_peers.len()

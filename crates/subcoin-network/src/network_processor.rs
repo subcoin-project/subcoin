@@ -282,8 +282,12 @@ where
             NetworkProcessorMessage::RequestInboundPeersCount(result_sender) => {
                 let _ = result_sender.send(self.peer_manager.inbound_peers_count());
             }
-            NetworkProcessorMessage::RequestTransaction((txid, result_sender)) => {
+            NetworkProcessorMessage::RequestTransaction(txid, result_sender) => {
                 let _ = result_sender.send(self.transaction_manager.get_transaction(&txid));
+            }
+            #[cfg(test)]
+            NetworkProcessorMessage::RequestLocalAddr(peer_id, result_sender) => {
+                let _ = result_sender.send(self.peer_manager.local_addr(peer_id));
             }
             NetworkProcessorMessage::SendTransaction((incoming_transaction, result_sender)) => {
                 let send_transaction_result = match self
