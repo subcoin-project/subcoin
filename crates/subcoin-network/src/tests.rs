@@ -1,3 +1,4 @@
+use crate::peer_connection::Direction;
 use crate::peer_store::NoPeerStore;
 use crate::sync::SyncRequest;
 use crate::{Local, NetworkHandle, PeerId};
@@ -46,6 +47,7 @@ impl MockBitcoind {
 
     // MockBitcoind only supports the inbound connection.
     async fn handle_message(&mut self, msg: NetworkMessage, from: PeerId) -> Result<(), ()> {
+        tracing::debug!("Processing {} from {from:?}", msg.cmd());
         match msg {
             NetworkMessage::Version(_v) => {
                 let services = ServiceFlags::NETWORK | ServiceFlags::WITNESS;
@@ -181,7 +183,7 @@ async fn bitcoind_main_loop(
 
                 let cmd = raw_network_message.cmd();
 
-                tracing::trace!("Sending {cmd}");
+                tracing::trace!("Sending {cmd} to {peer_addr:?}");
 
                 writer
                     .try_write(&msg)
@@ -301,16 +303,14 @@ impl TestNode {
 }
 
 #[tokio::test]
-async fn test_block_announcement_via_headers() {
+async fn block_announcement_via_headers_should_work() {
     let _ = sc_tracing::logging::LoggerBuilder::new("").init();
 
     let runtime_handle = Handle::current();
 
     let test_node = TestNode::new(runtime_handle).await;
 
-    let spawn_handle = test_node.task_manager.spawn_handle();
-
-    let bitcoind = new_mock_bitcoind(spawn_handle.clone()).await;
+    let bitcoind = new_mock_bitcoind(test_node.task_manager.spawn_handle()).await;
 
     let network_handle = test_node
         .start_network(vec![bitcoind.local_addr.to_string()])
@@ -327,10 +327,17 @@ async fn test_block_announcement_via_headers() {
 
     // Assume block 1 is a new block and broadcast it to the subcoin node via headers.
     let header1 = bitcoind.blocks[1].header.clone();
-    bitcoind.send(subcoin_node_addr, NetworkMessage::Headers(vec![header1]));
 
-    // TODO: could be flaky.
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    network_handle
+        .process_peer_message(
+            bitcoind.local_addr,
+            Direction::Outbound,
+            NetworkMessage::Headers(vec![header1]),
+        )
+        .await;
+
+    // TODO: this might be flaky.
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     assert_eq!(test_node.client.info().best_number, 1);
 }

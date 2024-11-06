@@ -1,7 +1,9 @@
 //! This module provides the interfaces for external interaction with Subcoin network.
 
+use crate::peer_connection::Direction;
 use crate::sync::PeerSync;
 use crate::PeerId;
+use bitcoin::p2p::message::NetworkMessage;
 use bitcoin::{Transaction, Txid};
 use sc_utils::mpsc::TracingUnboundedSender;
 use serde::{Deserialize, Serialize};
@@ -66,13 +68,20 @@ pub(crate) enum NetworkProcessorMessage {
     RequestInboundPeersCount(oneshot::Sender<usize>),
     /// Request a specific transaction by its Txid.
     RequestTransaction(Txid, oneshot::Sender<Option<Transaction>>),
-    /// Request a local addr for the connection to given peer_id if any.
-    #[cfg(test)]
-    RequestLocalAddr(PeerId, oneshot::Sender<Option<PeerId>>),
     /// Submit a transaction to the transaction manager.
     SendTransaction((IncomingTransaction, oneshot::Sender<SendTransactionResult>)),
     /// Enable the block sync within the chain sync component.
     StartBlockSync,
+    /// Request a local addr for the connection to given peer_id if any.
+    #[cfg(test)]
+    RequestLocalAddr(PeerId, oneshot::Sender<Option<PeerId>>),
+    #[cfg(test)]
+    ProcessPeerMessage {
+        from: PeerId,
+        direction: Direction,
+        payload: NetworkMessage,
+        result_sender: oneshot::Sender<()>,
+    },
 }
 
 /// A handle for interacting with the network processor.
@@ -177,5 +186,26 @@ impl NetworkHandle {
             .expect("Failed to request local addr");
 
         receiver.await.unwrap_or_default()
+    }
+
+    #[cfg(test)]
+    pub async fn process_peer_message(
+        &self,
+        from: PeerId,
+        direction: Direction,
+        msg: NetworkMessage,
+    ) {
+        let (sender, receiver) = oneshot::channel();
+
+        self.processor_msg_sender
+            .unbounded_send(NetworkProcessorMessage::ProcessPeerMessage {
+                from,
+                direction,
+                payload: msg,
+                result_sender: sender,
+            })
+            .expect("Failed to send outbound peer message");
+
+        receiver.await.unwrap();
     }
 }

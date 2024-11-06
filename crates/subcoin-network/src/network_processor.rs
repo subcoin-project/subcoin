@@ -176,7 +176,7 @@ where
                 }
                 maybe_processor_msg = processor_msg_sink.next(), if !processor_msg_sink.is_terminated() => {
                     if let Some(processor_msg) = maybe_processor_msg {
-                        self.handle_processor_message(processor_msg, &bandwidth);
+                        self.handle_processor_message(processor_msg, &bandwidth).await;
                     }
                 }
                 _ = tick_timeout.tick() => {
@@ -207,24 +207,31 @@ where
                 from,
                 direction,
                 payload,
-            } => {
-                let msg_cmd = payload.cmd();
+            } => self.process_peer_message(from, direction, payload).await,
+        }
+    }
 
-                tracing::trace!(?from, "Recv {msg_cmd}");
+    async fn process_peer_message(
+        &mut self,
+        from: PeerId,
+        direction: Direction,
+        payload: NetworkMessage,
+    ) {
+        let msg_cmd = payload.cmd();
 
-                if let Some(metrics) = &self.metrics {
-                    metrics
-                        .messages_received
-                        .with_label_values(&[msg_cmd])
-                        .inc();
-                }
+        tracing::trace!(?from, "Recv {msg_cmd}");
 
-                match self.process_network_message(from, direction, payload).await {
-                    Ok(action) => self.do_sync_action(action),
-                    Err(err) => {
-                        tracing::error!(?from, ?err, "Failed to process peer message: {msg_cmd}");
-                    }
-                }
+        if let Some(metrics) = &self.metrics {
+            metrics
+                .messages_received
+                .with_label_values(&[msg_cmd])
+                .inc();
+        }
+
+        match self.process_network_message(from, direction, payload).await {
+            Ok(action) => self.do_sync_action(action),
+            Err(err) => {
+                tracing::error!(?from, ?err, "Failed to process peer message: {msg_cmd}");
             }
         }
     }
@@ -260,7 +267,7 @@ where
         }
     }
 
-    fn handle_processor_message(
+    async fn handle_processor_message(
         &mut self,
         processor_msg: NetworkProcessorMessage,
         bandwidth: &Bandwidth,
@@ -285,10 +292,6 @@ where
             NetworkProcessorMessage::RequestTransaction(txid, result_sender) => {
                 let _ = result_sender.send(self.transaction_manager.get_transaction(&txid));
             }
-            #[cfg(test)]
-            NetworkProcessorMessage::RequestLocalAddr(peer_id, result_sender) => {
-                let _ = result_sender.send(self.peer_manager.local_addr(peer_id));
-            }
             NetworkProcessorMessage::SendTransaction((incoming_transaction, result_sender)) => {
                 let send_transaction_result = match self
                     .transaction_manager
@@ -302,6 +305,20 @@ where
             NetworkProcessorMessage::StartBlockSync => {
                 let sync_action = self.chain_sync.start_block_sync();
                 self.do_sync_action(sync_action);
+            }
+            #[cfg(test)]
+            NetworkProcessorMessage::RequestLocalAddr(peer_id, result_sender) => {
+                let _ = result_sender.send(self.peer_manager.local_addr(peer_id));
+            }
+            #[cfg(test)]
+            NetworkProcessorMessage::ProcessPeerMessage {
+                from,
+                direction,
+                payload,
+                result_sender,
+            } => {
+                self.process_peer_message(from, direction, payload).await;
+                let _ = result_sender.send(());
             }
         }
     }
