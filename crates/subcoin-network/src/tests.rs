@@ -281,7 +281,7 @@ impl TestNode {
             bitcoin_block_import,
         );
 
-        let (subcoin_networking, _subcoin_network_handle) = crate::Network::new(
+        let (subcoin_networking, _subcoin_network_handle) = crate::Network::initialize(
             self.client.clone(),
             crate::Config {
                 network: bitcoin::Network::Bitcoin,

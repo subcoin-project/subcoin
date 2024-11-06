@@ -195,7 +195,7 @@ impl RunCmd {
 
         let subcoin_network_config = run.subcoin_network_config(bitcoin_network);
 
-        let (subcoin_networking, subcoin_network_handle) = subcoin_network::Network::new(
+        let (subcoin_networking, subcoin_network_handle) = subcoin_network::Network::initialize(
             client.clone(),
             subcoin_network_config,
             import_queue,

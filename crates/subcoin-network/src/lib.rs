@@ -261,6 +261,87 @@ fn builtin_seednodes(network: BitcoinNetwork) -> &'static [&'static str] {
     }
 }
 
+async fn listen_for_inbound_connections(
+    listener: TcpListener,
+    max_inbound_peers: usize,
+    connection_initiator: ConnectionInitiator,
+    processor_msg_sender: TracingUnboundedSender<NetworkProcessorMessage>,
+) {
+    let local_addr = listener
+        .local_addr()
+        .expect("Failed to obtain the local listen address");
+
+    tracing::info!("🔊 Listening on {local_addr:?}",);
+
+    while let Ok((socket, peer_addr)) = listener.accept().await {
+        let (sender, receiver) = oneshot::channel();
+
+        if processor_msg_sender
+            .unbounded_send(NetworkProcessorMessage::RequestInboundPeersCount(sender))
+            .is_err()
+        {
+            return;
+        }
+
+        let Ok(inbound_peers_count) = receiver.await else {
+            return;
+        };
+
+        if inbound_peers_count < max_inbound_peers {
+            tracing::debug!(?peer_addr, "New peer accepted");
+
+            if let Err(err) = connection_initiator.initiate_inbound_connection(socket) {
+                tracing::debug!(?err, ?peer_addr, "Failed to initiate inbound connection");
+            }
+        }
+    }
+}
+
+async fn initialize_outbound_connections(
+    network: bitcoin::Network,
+    seednodes: Vec<String>,
+    seednode_only: bool,
+    persistent_peers: Vec<PeerId>,
+    connection_initiator: ConnectionInitiator,
+) {
+    let mut bootnodes = seednodes;
+
+    if !seednode_only {
+        bootnodes.extend(builtin_seednodes(network).iter().map(|s| s.to_string()));
+    }
+
+    bootnodes.extend(persistent_peers.into_iter().map(|s| s.to_string()));
+
+    // Create a vector of futures for DNS lookups
+    let lookup_futures = bootnodes.into_iter().map(|bootnode| async move {
+        tokio::net::lookup_host(&bootnode).await.map(|mut addrs| {
+            addrs
+                .next()
+                .ok_or_else(|| Error::InvalidBootnode(bootnode.to_string()))
+        })
+    });
+
+    // Await all futures concurrently
+    let lookup_results = futures::future::join_all(lookup_futures).await;
+
+    for result in lookup_results {
+        match result {
+            Ok(Ok(addr)) => {
+                connection_initiator.initiate_outbound_connection(addr);
+            }
+            Ok(Err(e)) => {
+                tracing::error!("Failed to resolve bootnode address: {e}");
+            }
+            Err(e) => {
+                tracing::error!("Failed to perform bootnode DNS lookup: {e}");
+            }
+        }
+    }
+}
+
+///
+pub fn build_network() {}
+
 /// Represents the Subcoin network component.
 pub struct Network<Block, Client> {
     client: Arc<Client>,
@@ -279,8 +360,8 @@ where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore,
 {
-    /// Constructs a new instance of [`Network`].
-    pub fn new(
+    /// Constructs a new instance of [`Network`] and [`NetworkHandle`].
+    pub fn initialize(
         client: Arc<Client>,
         config: Config,
         import_queue: BlockImportQueue,
@@ -352,116 +433,73 @@ where
             config.ipv4_only,
         );
 
-        if !config.enable_block_sync_on_startup {
-            tracing::info!("Subcoin block sync is disabled on startup");
-        }
-
         let (sender, receiver) = tracing_unbounded("mpsc_subcoin_peer_store", 10_000);
         let (persistent_peer_store, persistent_peers) =
             PersistentPeerStore::new(&config.base_path, config.max_outbound_peers);
         let persistent_peer_store_handle =
             PersistentPeerStoreHandle::new(config.persistent_peer_latency_threshold, sender);
 
-        spawn_handle.spawn("peer-store", None, persistent_peer_store.run(receiver));
-
-        let net_processor = NetworkProcessor::new(
-            network_processor::Params {
-                client: client.clone(),
-                header_verifier: HeaderVerifier::new(
-                    client.clone(),
-                    ChainParams::new(config.network),
-                ),
-                network_event_receiver,
-                import_queue,
-                sync_strategy: config.sync_strategy,
-                is_major_syncing,
-                connection_initiator: connection_initiator.clone(),
-                max_outbound_peers: config.max_outbound_peers,
-                enable_block_sync: config.enable_block_sync_on_startup,
-                peer_store: Arc::new(persistent_peer_store_handle),
-            },
-            registry.as_ref(),
+        spawn_handle.spawn(
+            "peer-store",
+            Some("subcoin-networking"),
+            persistent_peer_store.run(receiver),
         );
-
-        spawn_handle.spawn("inbound-connection", None, {
-            let local_addr = listener.local_addr()?;
-            let connection_initiator = connection_initiator.clone();
-            let max_inbound_peers = config.max_inbound_peers;
-
-            async move {
-                tracing::info!("🔊 Listening on {local_addr:?}",);
-
-                while let Ok((socket, peer_addr)) = listener.accept().await {
-                    let (sender, receiver) = oneshot::channel();
-
-                    if processor_msg_sender
-                        .unbounded_send(NetworkProcessorMessage::RequestInboundPeersCount(sender))
-                        .is_err()
-                    {
-                        return;
-                    }
-
-                    let Ok(inbound_peers_count) = receiver.await else {
-                        return;
-                    };
-
-                    if inbound_peers_count < max_inbound_peers {
-                        tracing::debug!(?peer_addr, "New peer accepted");
-
-                        if let Err(err) = connection_initiator.initiate_inbound_connection(socket) {
-                            tracing::debug!(
-                                ?err,
-                                ?peer_addr,
-                                "Failed to initiate inbound connection"
-                            );
-                        }
-                    }
-                }
-            }
-        });
 
         let Config {
             seednode_only,
             seednodes,
             network,
+            max_inbound_peers,
+            max_outbound_peers,
+            sync_strategy,
+            enable_block_sync_on_startup,
             ..
         } = config;
 
-        let mut bootnodes = seednodes;
+        spawn_handle.spawn(
+            "inbound-connection",
+            Some("subcoin-networking"),
+            listen_for_inbound_connections(
+                listener,
+                max_inbound_peers,
+                connection_initiator.clone(),
+                processor_msg_sender.clone(),
+            ),
+        );
 
-        if !seednode_only {
-            bootnodes.extend(builtin_seednodes(network).iter().map(|s| s.to_string()));
+        spawn_handle.spawn(
+            "init-outbound-connection",
+            Some("subcoin-networking"),
+            initialize_outbound_connections(
+                network,
+                seednodes,
+                seednode_only,
+                persistent_peers,
+                connection_initiator.clone(),
+            ),
+        );
+
+        if !enable_block_sync_on_startup {
+            tracing::info!("Subcoin block sync is disabled on startup");
         }
 
-        bootnodes.extend(persistent_peers.into_iter().map(|s| s.to_string()));
-
-        // Create a vector of futures for DNS lookups
-        let lookup_futures = bootnodes.into_iter().map(|bootnode| async move {
-            tokio::net::lookup_host(&bootnode).await.map(|mut addrs| {
-                addrs
-                    .next()
-                    .ok_or_else(|| Error::InvalidBootnode(bootnode.to_string()))
-            })
-        });
-
-        // Await all futures concurrently
-        let lookup_results = futures::future::join_all(lookup_futures).await;
-
-        for result in lookup_results {
-            match result {
-                Ok(Ok(addr)) => {
-                    connection_initiator.initiate_outbound_connection(addr);
-                }
-                Ok(Err(e)) => {
-                    tracing::error!("Failed to resolve bootnode address: {e}");
-                }
-                Err(e) => {
-                    tracing::error!("Failed to perform bootnode DNS lookup: {e}");
-                }
-            }
-        }
-
-        net_processor.run(processor_msg_receiver, bandwidth).await;
+        NetworkProcessor::new(
+            network_processor::Params {
+                client: client.clone(),
+                header_verifier: HeaderVerifier::new(client, ChainParams::new(network)),
+                network_event_receiver,
+                import_queue,
+                sync_strategy,
+                is_major_syncing,
+                connection_initiator,
+                max_outbound_peers,
+                enable_block_sync: enable_block_sync_on_startup,
+                peer_store: Arc::new(persistent_peer_store_handle),
+            },
+            registry.as_ref(),
+        )
+        .run(processor_msg_receiver, bandwidth)
+        .await;
 
         Ok(())
     }
