@@ -19,6 +19,7 @@ parking_lot = { workspace = true }
 sc-client-api = { workspace = true }
 sc-consensus = { workspace = true }
 sc-consensus-nakamoto = { workspace = true }
+sc-network-sync = { workspace = true }
 sc-service = { workspace = true }
 sc-utils = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

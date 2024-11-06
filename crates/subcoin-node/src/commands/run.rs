@@ -10,7 +10,7 @@ use sc_service::config::{IpNetwork, RpcBatchRequestConfig};
 use sc_service::{BasePath, Configuration, TaskManager};
 use std::num::NonZeroU32;
 use std::sync::Arc;
-use subcoin_network::SyncStrategy;
+use subcoin_network::{BlockSyncOption, SyncStrategy};
 use subcoin_primitives::CONFIRMATION_DEPTH;
 
 /// The `run` command used to start a Subcoin node.
@@ -24,9 +24,9 @@ pub struct Run {
     #[clap(long)]
     pub no_finalizer: bool,
 
-    /// Disable the Bitcoin networking.
+    /// Disable the block sync from Bitcoin P2P network.
     #[clap(long)]
-    pub disable_subcoin_networking: bool,
+    pub disable_bitcoin_block_sync: bool,
 
     /// Disable automatic hardware benchmarks.
     ///
@@ -81,7 +81,7 @@ impl Run {
                 .network_params
                 .persistent_peer_latency_threshold,
             sync_strategy: self.sync_strategy,
-            enable_block_sync_on_startup: !self.substrate_fast_sync_enabled(),
+            block_sync: self.block_sync_option(),
             base_path: base_path_or_default(
                 self.common_params.base_path.clone().map(Into::into),
                 &crate::substrate_cli::SubstrateCli::executable_name(),
@@ -91,11 +91,20 @@ impl Run {
         }
     }
 
-    fn substrate_fast_sync_enabled(&self) -> bool {
-        matches!(
+    fn block_sync_option(&self) -> BlockSyncOption {
+        let fast_sync_enabled = matches!(
             self.substrate_network_params.sync,
             SyncMode::Fast | SyncMode::FastUnsafe
-        )
+        );
+
+        // The block sync from bitcoin P2P network will be temporarily disabled
+        // if the fast sync is enabled.
+        match (self.disable_bitcoin_block_sync, fast_sync_enabled) {
+            (true, true) => BlockSyncOption::Off,
+            (false, true) => BlockSyncOption::PausedUntilFastSync,
+            (true, false) => BlockSyncOption::Off,
+            (false, false) => BlockSyncOption::AlwaysOn,
+        }
     }
 }
 
@@ -195,38 +204,16 @@ impl RunCmd {
 
         let subcoin_network_config = run.subcoin_network_config(bitcoin_network);
 
-        let (subcoin_networking, subcoin_network_handle) = subcoin_network::Network::initialize(
+        let subcoin_network_handle = subcoin_network::build_network(
             client.clone(),
             subcoin_network_config,
             import_queue,
-            spawn_handle.clone(),
+            &&task_manager,
             config.prometheus_registry().cloned(),
-        );
-
-        if !run.disable_subcoin_networking {
-            task_manager.spawn_essential_handle().spawn_blocking(
-                "subcoin-networking",
-                None,
-                async move {
-                    if let Err(err) = subcoin_networking.run().await {
-                        tracing::error!(?err, "Error occurred in subcoin networking");
-                    }
-                },
-            );
-
-            if run.substrate_fast_sync_enabled() {
-                spawn_handle.spawn(
-                    "substrate-fast-sync-watcher",
-                    None,
-                    subcoin_service::watch_substrate_fast_sync(
-                        subcoin_network_handle.clone(),
-                        substrate_sync_service.clone(),
-                    ),
-                );
-            }
-        } else {
-            task_manager.keep_alive(subcoin_networking);
-        }
+            Some(substrate_sync_service.clone()),
+        )
+        .await
+        .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
 
         // Start JSON-RPC server.
         let gen_rpc_module = || {

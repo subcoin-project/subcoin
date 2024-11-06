@@ -78,6 +78,7 @@ pub(crate) enum NetworkProcessorMessage {
 /// way to check if the node is performing a major synchronization.
 #[derive(Debug, Clone)]
 pub struct NetworkHandle {
+    pub(crate) local_addr: PeerId,
     pub(crate) processor_msg_sender: TracingUnboundedSender<NetworkProcessorMessage>,
     // A simple flag to know whether the node is doing the major sync.
     pub(crate) is_major_syncing: Arc<AtomicBool>,

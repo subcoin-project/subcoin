@@ -1,6 +1,6 @@
 use crate::peer_store::NoPeerStore;
 use crate::sync::SyncRequest;
-use crate::{Local, PeerId};
+use crate::{Local, NetworkHandle, PeerId};
 use bitcoin::consensus::{deserialize_partial, Encodable};
 use bitcoin::p2p::message::{NetworkMessage, RawNetworkMessage, MAX_MSG_SIZE};
 use bitcoin::p2p::message_blockdata::Inventory;
@@ -219,7 +219,6 @@ struct TestNode {
     client: Arc<subcoin_service::FullClient>,
     backend: Arc<subcoin_service::FullBackend>,
     base_path: PathBuf,
-    local_addr: PeerId,
     task_manager: TaskManager,
 }
 
@@ -242,21 +241,16 @@ impl TestNode {
         })
         .expect("Failed to create node");
 
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-
-        // tracing::debug!("listens on {listen_on:?}");
-
         Self {
             client,
             backend,
             base_path,
-            local_addr: listener.local_addr().unwrap(),
             task_manager,
         }
     }
 
     #[sc_tracing::logging::prefix_logs_with("Subcoin")]
-    fn start_network(&self, seednodes: Vec<String>) {
+    async fn start_network(&self, seednodes: Vec<String>) -> NetworkHandle {
         let bitcoin_block_import = sc_consensus_nakamoto::BitcoinBlockImporter::<
             _,
             _,
@@ -281,11 +275,11 @@ impl TestNode {
             bitcoin_block_import,
         );
 
-        let (subcoin_networking, _subcoin_network_handle) = crate::Network::initialize(
+        crate::build_network(
             self.client.clone(),
             crate::Config {
                 network: bitcoin::Network::Bitcoin,
-                listen_on: self.local_addr,
+                listen_on: "127.0.0.1:0".parse().unwrap(),
                 seednodes,
                 seednode_only: true,
                 ipv4_only: true,
@@ -293,21 +287,16 @@ impl TestNode {
                 max_inbound_peers: 10,
                 persistent_peer_latency_threshold: 200,
                 sync_strategy: crate::SyncStrategy::HeadersFirst,
-                enable_block_sync_on_startup: false,
+                block_sync: crate::BlockSyncOption::Off,
                 base_path: self.base_path.clone(),
             },
             import_queue,
-            self.task_manager.spawn_handle(),
+            &self.task_manager,
             None,
-        );
-
-        self.task_manager
-            .spawn_essential_handle()
-            .spawn("subcoin-networking", None, async move {
-                if let Err(err) = subcoin_networking.run().await {
-                    panic!("Fatal error in subcoin networking: {err:?}");
-                }
-            });
+            None,
+        )
+        .await
+        .unwrap()
     }
 }
 
@@ -323,7 +312,9 @@ async fn test_block_announcement_via_headers() {
 
     let bitcoind = new_mock_bitcoind(spawn_handle.clone()).await;
 
-    test_node.start_network(vec![bitcoind.local_addr.to_string()]);
+    test_node
+        .start_network(vec![bitcoind.local_addr.to_string()])
+        .await;
 
     // Wait for the connection to be established.
     for _ in 0..10 {
