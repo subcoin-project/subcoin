@@ -473,9 +473,10 @@ where
         }
     }
 
-    task_manager
-        .spawn_essential_handle()
-        .spawn("net-processor", Some("subcoin-networking"), {
+    task_manager.spawn_essential_handle().spawn_blocking(
+        "net-processor",
+        Some("subcoin-networking"),
+        {
             let is_major_syncing = is_major_syncing.clone();
             let connection_initiator = connection_initiator.clone();
             let client = client.clone();
@@ -496,7 +497,8 @@ where
                 registry.as_ref(),
             )
             .run(processor_msg_receiver, bandwidth)
-        });
+        },
+    );
 
     spawn_handle.spawn(
         "inbound-connection",
