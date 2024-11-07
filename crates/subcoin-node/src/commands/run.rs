@@ -208,7 +208,7 @@ impl RunCmd {
             client.clone(),
             subcoin_network_config,
             import_queue,
-            &&task_manager,
+            &task_manager,
             config.prometheus_registry().cloned(),
             Some(substrate_sync_service.clone()),
         )

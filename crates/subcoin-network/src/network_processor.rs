@@ -311,13 +311,18 @@ where
                 let _ = result_sender.send(self.peer_manager.local_addr(peer_id));
             }
             #[cfg(test)]
-            NetworkProcessorMessage::ProcessPeerMessage {
+            NetworkProcessorMessage::ProcessNetworkMessage {
                 from,
                 direction,
                 payload,
                 result_sender,
             } => {
-                self.process_peer_message(from, direction, payload).await;
+                let res = self.process_network_message(from, direction, payload).await;
+                let _ = result_sender.send(res);
+            }
+            #[cfg(test)]
+            NetworkProcessorMessage::ExecuteSyncAction(sync_action, result_sender) => {
+                self.do_sync_action(sync_action);
                 let _ = result_sender.send(());
             }
         }
@@ -500,7 +505,7 @@ where
                     // A new block is broadcasted via `inv` message.
                     if is_new_block_announce {
                         tracing::debug!("Requesting announced block {block_hash} from {from:?}");
-                        let _ = self.send(from, NetworkMessage::GetData(inv));
+                        return Ok(SyncAction::get_data(inv, from));
                     }
                 }
                 return Ok(SyncAction::None);
@@ -527,7 +532,9 @@ where
             if let Ok(height) = block.bip34_block_height() {
                 self.chain_sync.update_peer_best(from, height as u32);
             } else {
-                tracing::debug!(?block_hash, "No height in coinbase transaction");
+                tracing::debug!(
+                    "No height in coinbase transaction, ignored block announce {block_hash:?}"
+                );
             }
 
             if self.client.substrate_block_hash_for(block_hash).is_some() {
@@ -538,7 +545,6 @@ where
                     .block_hash(self.client.best_number())
                     .expect("Best hash must exist; qed");
 
-                // TODO: handle the orphan block?
                 if block.header.prev_blockhash == best_hash {
                     self.chain_sync.import_queue.import_blocks(
                         sc_consensus_nakamoto::ImportBlocks {
@@ -546,6 +552,9 @@ where
                             blocks: vec![block],
                         },
                     );
+                } else {
+                    // TODO: handle the orphan block?
+                    tracing::debug!("Received orphan block announce {block_hash:?}");
                 }
             }
 
@@ -598,9 +607,7 @@ where
                     })
                     .collect();
 
-                let _ = self.send(from, NetworkMessage::GetData(inv));
-
-                return Ok(SyncAction::None);
+                return Ok(SyncAction::get_data(inv, from));
             }
         }
 

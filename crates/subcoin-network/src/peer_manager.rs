@@ -120,7 +120,7 @@ pub struct NewPeer {
 /// 2. Send our `version` message.
 /// 3. Send our `verack` message.
 /// 4. Expect `verack` message from remote.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum HandshakeState {
     /// TCP connection was just opened.
     #[default]

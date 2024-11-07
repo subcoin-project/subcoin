@@ -1,8 +1,14 @@
 //! This module provides the interfaces for external interaction with Subcoin network.
 
+#[cfg(test)]
 use crate::peer_connection::Direction;
 use crate::sync::PeerSync;
+#[cfg(test)]
+use crate::sync::SyncAction;
+#[cfg(test)]
+use crate::Error;
 use crate::PeerId;
+#[cfg(test)]
 use bitcoin::p2p::message::NetworkMessage;
 use bitcoin::{Transaction, Txid};
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -76,12 +82,14 @@ pub(crate) enum NetworkProcessorMessage {
     #[cfg(test)]
     RequestLocalAddr(PeerId, oneshot::Sender<Option<PeerId>>),
     #[cfg(test)]
-    ProcessPeerMessage {
+    ProcessNetworkMessage {
         from: PeerId,
         direction: Direction,
         payload: NetworkMessage,
-        result_sender: oneshot::Sender<()>,
+        result_sender: oneshot::Sender<Result<SyncAction, Error>>,
     },
+    #[cfg(test)]
+    ExecuteSyncAction(SyncAction, oneshot::Sender<()>),
 }
 
 /// A handle for interacting with the network processor.
@@ -90,7 +98,6 @@ pub(crate) enum NetworkProcessorMessage {
 /// way to check if the node is performing a major synchronization.
 #[derive(Debug, Clone)]
 pub struct NetworkHandle {
-    pub(crate) local_listen_addr: PeerId,
     pub(crate) processor_msg_sender: TracingUnboundedSender<NetworkProcessorMessage>,
     // A simple flag to know whether the node is doing the major sync.
     pub(crate) is_major_syncing: Arc<AtomicBool>,
@@ -189,22 +196,36 @@ impl NetworkHandle {
     }
 
     #[cfg(test)]
-    pub async fn process_peer_message(
+    pub async fn process_network_message(
         &self,
         from: PeerId,
         direction: Direction,
         msg: NetworkMessage,
-    ) {
+    ) -> Result<SyncAction, Error> {
         let (sender, receiver) = oneshot::channel();
 
         self.processor_msg_sender
-            .unbounded_send(NetworkProcessorMessage::ProcessPeerMessage {
+            .unbounded_send(NetworkProcessorMessage::ProcessNetworkMessage {
                 from,
                 direction,
                 payload: msg,
                 result_sender: sender,
             })
             .expect("Failed to send outbound peer message");
+
+        receiver.await.unwrap()
+    }
+
+    #[cfg(test)]
+    pub async fn execute_sync_action(&self, sync_action: SyncAction) {
+        let (sender, receiver) = oneshot::channel();
+
+        self.processor_msg_sender
+            .unbounded_send(NetworkProcessorMessage::ExecuteSyncAction(
+                sync_action,
+                sender,
+            ))
+            .expect("Failed to execute sync action");
 
         receiver.await.unwrap();
     }

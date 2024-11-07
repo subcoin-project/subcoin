@@ -1,7 +1,6 @@
 use crate::peer_connection::Direction;
-use crate::peer_store::NoPeerStore;
-use crate::sync::SyncRequest;
-use crate::{Local, NetworkHandle, PeerId};
+use crate::sync::{SyncAction, SyncRequest};
+use crate::{Local, NetworkHandle, PeerId, SyncStrategy};
 use bitcoin::consensus::{deserialize_partial, Encodable};
 use bitcoin::p2p::message::{NetworkMessage, RawNetworkMessage, MAX_MSG_SIZE};
 use bitcoin::p2p::message_blockdata::Inventory;
@@ -15,7 +14,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subcoin_service::{new_node, NodeComponents, SubcoinConfiguration};
-use subcoin_test_service::block_data;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio::runtime::Handle;
@@ -252,7 +250,11 @@ impl TestNode {
     }
 
     #[sc_tracing::logging::prefix_logs_with("Subcoin")]
-    async fn start_network(&self, seednodes: Vec<String>) -> NetworkHandle {
+    async fn start_network(
+        &self,
+        seednodes: Vec<String>,
+        sync_strategy: SyncStrategy,
+    ) -> NetworkHandle {
         let bitcoin_block_import = sc_consensus_nakamoto::BitcoinBlockImporter::<
             _,
             _,
@@ -288,7 +290,7 @@ impl TestNode {
                 max_outbound_peers: 10,
                 max_inbound_peers: 10,
                 persistent_peer_latency_threshold: 200,
-                sync_strategy: crate::SyncStrategy::HeadersFirst,
+                sync_strategy,
                 block_sync: crate::BlockSyncOption::Off,
                 base_path: self.base_path.clone(),
             },
@@ -309,15 +311,17 @@ async fn block_announcement_via_headers_should_work() {
     let runtime_handle = Handle::current();
 
     let test_node = TestNode::new(runtime_handle).await;
-
     let bitcoind = new_mock_bitcoind(test_node.task_manager.spawn_handle()).await;
 
     let network_handle = test_node
-        .start_network(vec![bitcoind.local_addr.to_string()])
+        .start_network(
+            vec![bitcoind.local_addr.to_string()],
+            SyncStrategy::HeadersFirst,
+        )
         .await;
 
     // Wait for the connection to be established.
-    let subcoin_node_addr = loop {
+    let _subcoin_node_addr = loop {
         if let Some(addr) = network_handle.local_addr_for(bitcoind.local_addr).await {
             break addr;
         } else {
@@ -325,78 +329,40 @@ async fn block_announcement_via_headers_should_work() {
         }
     };
 
-    // Assume block 1 is a new block and broadcast it to the subcoin node via headers.
-    let header1 = bitcoind.blocks[1].header.clone();
+    let block1 = bitcoind.blocks[1].clone();
+    let header1 = block1.header.clone();
 
-    network_handle
-        .process_peer_message(
+    // Receive new block #1 in headers.
+    let sync_action = network_handle
+        .process_network_message(
             bitcoind.local_addr,
             Direction::Outbound,
-            NetworkMessage::Headers(vec![header1]),
+            NetworkMessage::Headers(vec![header1.clone()]),
         )
-        .await;
+        .await
+        .unwrap();
 
-    // TODO: this might be flaky.
+    if let SyncAction::Request(SyncRequest::Data(inv, from)) = &sync_action {
+        assert_eq!(inv, &[Inventory::Block(header1.block_hash())]);
+        assert_eq!(*from, bitcoind.local_addr);
+    } else {
+        panic!("Expected SyncAction::Request(SyncRequest::Data), got: {sync_action:?}");
+    }
+
+    // Download the block data for #1.
+    network_handle.execute_sync_action(sync_action).await;
+
+    network_handle
+        .process_network_message(
+            bitcoind.local_addr,
+            Direction::Outbound,
+            NetworkMessage::Block(block1),
+        )
+        .await
+        .unwrap();
+
+    // Wait for some time as the block will be imported in async.
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     assert_eq!(test_node.client.info().best_number, 1);
 }
-
-/*
-#[test]
-fn duplicate_block_announcement_should_not_be_downloaded_again() {
-    sp_tracing::try_init_simple();
-
-    let runtime = tokio::runtime::Runtime::new().expect("Create tokio runtime");
-
-    let subcoin_service::NodeComponents { client, .. } =
-        subcoin_test_service::new_test_node(runtime.handle().clone()).expect("Create test node");
-
-    let peer_id: PeerId = "0.0.0.0:0".parse().unwrap();
-    let (mut strategy, _initial_request) =
-        BlocksFirstStrategy::new(client, peer_id, 800000, Arc::new(NoPeerStore));
-
-    let block = block_data()[3].clone();
-    let block_hash = block.block_hash();
-
-    // Request the block when peer sent us a block announcement via inv.
-    let sync_action = strategy.on_inv(vec![Inventory::Block(block_hash)], peer_id);
-
-    match sync_action {
-        SyncAction::Request(SyncRequest::Data(block_data_request, _)) => {
-            assert_eq!(blocks_request, vec![Inventory::Block(block_hash)])
-        }
-        action => panic!("Expected SyncAction::Request(SyncRequest::GetData), got: {action:?}"),
-    }
-
-    let parent_hash = block.header.prev_blockhash;
-    assert!(!strategy
-        .block_downloader
-        .orphan_blocks_pool
-        .contains_orphan_block(&parent_hash));
-    assert!(!strategy
-        .block_downloader
-        .orphan_blocks_pool
-        .block_exists(&block_hash));
-
-    // Block received, but the parent is still missing, we add this block to the orphan blocks
-    // pool.
-    strategy.on_block(block, peer_id);
-    assert!(strategy
-        .block_downloader
-        .orphan_blocks_pool
-        .contains_orphan_block(&parent_hash));
-    assert!(strategy
-        .block_downloader
-        .orphan_blocks_pool
-        .block_exists(&block_hash));
-
-    // The same block announcement was received, but we don't download it again.
-    let sync_action = strategy.on_inv(vec![Inventory::Block(block_hash)], peer_id);
-
-    assert!(
-        matches!(sync_action, SyncAction::None),
-        "Should do nothing but got: {sync_action:?}"
-    );
-}
-*/

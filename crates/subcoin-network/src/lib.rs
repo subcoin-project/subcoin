@@ -308,11 +308,14 @@ async fn watch_substrate_fast_sync<Block>(
 
 async fn listen_for_inbound_connections(
     listener: TcpListener,
-    local_addr: PeerId,
     max_inbound_peers: usize,
     connection_initiator: ConnectionInitiator,
     processor_msg_sender: TracingUnboundedSender<NetworkProcessorMessage>,
 ) {
+    let local_addr = listener
+        .local_addr()
+        .expect("Local listen addr must be available; qed");
+
     tracing::info!("🔊 Listening on {local_addr:?}",);
 
     while let Ok((socket, peer_addr)) = listener.accept().await {
@@ -447,10 +450,7 @@ where
         ..
     } = config;
 
-    let local_addr = listener.local_addr()?;
-
     let network_handle = NetworkHandle {
-        local_listen_addr: local_addr,
         processor_msg_sender: processor_msg_sender.clone(),
         is_major_syncing: is_major_syncing.clone(),
     };
@@ -503,7 +503,6 @@ where
         Some("subcoin-networking"),
         listen_for_inbound_connections(
             listener,
-            local_addr,
             max_inbound_peers,
             connection_initiator.clone(),
             processor_msg_sender,
