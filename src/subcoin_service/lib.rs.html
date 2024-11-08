@@ -465,11 +465,6 @@
 <a href="#465" id="465">465</a>
 <a href="#466" id="466">466</a>
 <a href="#467" id="467">467</a>
-<a href="#468" id="468">468</a>
-<a href="#469" id="469">469</a>
-<a href="#470" id="470">470</a>
-<a href="#471" id="471">471</a>
-<a href="#472" id="472">472</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! Subcoin service implementation. Specialized wrapper over substrate service.
 
 </span><span class="attr">#![allow(deprecated)]
@@ -480,7 +475,6 @@
 <span class="kw">mod </span>transaction_adapter;
 
 <span class="kw">use </span>bitcoin::hashes::Hash;
-<span class="kw">use </span>frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE;
 <span class="kw">use </span>futures::FutureExt;
 <span class="kw">use </span>genesis_block_builder::GenesisBlockBuilder;
 <span class="kw">use </span>sc_client_api::{AuxStore, HeaderBackend};
@@ -608,7 +602,7 @@
     <span class="kw">let </span>SubcoinConfiguration {
         network: bitcoin_network,
         config,
-        no_hardware_benchmarks,
+        no_hardware_benchmarks: <span class="kw">_</span>,
         storage_monitor,
     } = config;
 
@@ -651,7 +645,7 @@
 
     <span class="kw">let </span>client = Arc::new(client);
 
-    <span class="kw">let </span><span class="kw-2">mut </span>telemetry = telemetry.map(|(worker, telemetry)| {
+    <span class="kw">let </span>telemetry = telemetry.map(|(worker, telemetry)| {
         task_manager
             .spawn_handle()
             .spawn(<span class="string">"telemetry"</span>, <span class="prelude-val">None</span>, worker.run());
@@ -659,35 +653,38 @@
     });
 
     <span class="kw">let </span>database_path = config.database.path().map(Path::to_path_buf);
-    <span class="kw">let </span>maybe_hwbench = (!no_hardware_benchmarks)
-        .then_some(database_path.as_ref().map(|db_path| {
-            <span class="kw">let _ </span>= std::fs::create_dir_all(db_path);
-            sc_sysinfo::gather_hwbench(<span class="prelude-val">Some</span>(db_path), <span class="kw-2">&amp;</span>SUBSTRATE_REFERENCE_HARDWARE)
-        }))
-        .flatten();
 
-    <span class="kw">if let </span><span class="prelude-val">Some</span>(hwbench) = maybe_hwbench {
-        sc_sysinfo::print_hwbench(<span class="kw-2">&amp;</span>hwbench);
-        <span class="kw">match </span>SUBSTRATE_REFERENCE_HARDWARE.check_hardware(<span class="kw-2">&amp;</span>hwbench, config.role.is_authority()) {
-            <span class="prelude-val">Err</span>(err) <span class="kw">if </span>config.role.is_authority() =&gt; {
-                <span class="macro">tracing::warn!</span>(
-					<span class="string">"⚠️  The hardware does not meet the minimal requirements {err} for role 'Authority'."</span>,
-				);
-            }
-            <span class="kw">_ </span>=&gt; {}
-        }
+    <span class="comment">// TODO: frame_benchmarking_cli pulls in rocksdb due to its dep
+    // cumulus-client-parachain-inherent.
+    // let maybe_hwbench = (!no_hardware_benchmarks)
+    // .then_some(database_path.as_ref().map(|db_path| {
+    // let _ = std::fs::create_dir_all(db_path);
+    // sc_sysinfo::gather_hwbench(Some(db_path), &amp;frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE)
+    // }))
+    // .flatten();
 
-        <span class="kw">if let </span><span class="prelude-val">Some</span>(<span class="kw-2">ref mut </span>telemetry) = telemetry {
-            <span class="kw">let </span>telemetry_handle = telemetry.handle();
-            task_manager.spawn_handle().spawn(
-                <span class="string">"telemetry_hwbench"</span>,
-                <span class="prelude-val">None</span>,
-                sc_sysinfo::initialize_hwbench_telemetry(telemetry_handle, hwbench),
-            );
-        }
-    }
+    // if let Some(hwbench) = maybe_hwbench {
+    // sc_sysinfo::print_hwbench(&amp;hwbench);
+    // match frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE.check_hardware(&amp;hwbench, config.role.is_authority()) {
+    // Err(err) if config.role.is_authority() =&gt; {
+    // tracing::warn!(
+    // "⚠️  The hardware does not meet the minimal requirements {err} for role 'Authority'.",
+    // );
+    // }
+    // _ =&gt; {}
+    // }
 
-    <span class="kw">if let </span><span class="prelude-val">Some</span>(database_path) = database_path {
+    // if let Some(ref mut telemetry) = telemetry {
+    // let telemetry_handle = telemetry.handle();
+    // task_manager.spawn_handle().spawn(
+    // "telemetry_hwbench",
+    // None,
+    // sc_sysinfo::initialize_hwbench_telemetry(telemetry_handle, hwbench),
+    // );
+    // }
+    // }
+
+    </span><span class="kw">if let </span><span class="prelude-val">Some</span>(database_path) = database_path {
         sc_storage_monitor::StorageMonitorService::try_spawn(
             storage_monitor,
             database_path,
@@ -723,19 +720,22 @@
 <span class="kw">where
     </span>N: sc_network::NetworkBackend&lt;Block, &lt;Block <span class="kw">as </span>BlockT&gt;::Hash&gt;,
 {
-    <span class="kw">let </span><span class="kw-2">mut </span>net_config = sc_network::config::FullNetworkConfiguration::&lt;
+    <span class="kw">let </span>net_config = sc_network::config::FullNetworkConfiguration::&lt;
         Block,
         &lt;Block <span class="kw">as </span>BlockT&gt;::Hash,
         N,
     &gt;::new(<span class="kw-2">&amp;</span>config.network, config.prometheus_registry().cloned());
     <span class="kw">let </span>metrics = N::register_notification_metrics(config.prometheus_registry());
 
-    <span class="kw">let </span>transaction_pool = sc_transaction_pool::BasicPool::new_full(
-        config.transaction_pool.clone(),
-        config.role.is_authority().into(),
-        config.prometheus_registry(),
-        task_manager.spawn_essential_handle(),
-        client.clone(),
+    <span class="kw">let </span>transaction_pool = Arc::from(
+        sc_transaction_pool::Builder::new(
+            task_manager.spawn_essential_handle(),
+            client.clone(),
+            config.role.is_authority().into(),
+        )
+        .with_options(config.transaction_pool.clone())
+        .with_prometheus(config.prometheus_registry())
+        .build(),
     );
 
     <span class="kw">let </span>import_queue = BasicQueue::new(
@@ -746,19 +746,6 @@
         <span class="prelude-val">None</span>,
     );
 
-    <span class="kw">let </span>syncing_strategy = sc_service::build_polkadot_syncing_strategy(
-        config.protocol_id(),
-        config.chain_spec.fork_id(),
-        <span class="kw-2">&amp;mut </span>net_config,
-        <span class="prelude-val">None</span>,
-        client.clone(),
-        <span class="kw-2">&amp;</span>task_manager.spawn_handle(),
-        config
-            .prometheus_config
-            .as_ref()
-            .map(|config| <span class="kw-2">&amp;</span>config.registry),
-    )<span class="question-mark">?</span>;
-
     <span class="kw">let </span>(network, system_rpc_tx, _tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config,
@@ -768,7 +755,7 @@
             spawn_handle: task_manager.spawn_handle(),
             import_queue,
             block_announce_validator_builder: <span class="prelude-val">None</span>,
-            syncing_strategy,
+            warp_sync_config: <span class="prelude-val">None</span>,
             block_relay: <span class="prelude-val">None</span>,
             metrics,
         })<span class="question-mark">?</span>;
@@ -846,7 +833,7 @@
     FullBackend,
     FullSelectChain,
     sc_consensus::DefaultImportQueue&lt;Block&gt;,
-    sc_transaction_pool::FullPool&lt;Block, FullClient&gt;,
+    sc_transaction_pool::TransactionPoolHandle&lt;Block, FullClient&gt;,
     <span class="prelude-ty">Option</span>&lt;Telemetry&gt;,
 &gt;;
 
@@ -885,12 +872,15 @@
 
     <span class="kw">let </span>select_chain = sc_consensus::LongestChain::new(backend.clone());
 
-    <span class="kw">let </span>transaction_pool = sc_transaction_pool::BasicPool::new_full(
-        config.transaction_pool.clone(),
-        config.role.is_authority().into(),
-        config.prometheus_registry(),
-        task_manager.spawn_essential_handle(),
-        client.clone(),
+    <span class="kw">let </span>transaction_pool = Arc::from(
+        sc_transaction_pool::Builder::new(
+            task_manager.spawn_essential_handle(),
+            client.clone(),
+            config.role.is_authority().into(),
+        )
+        .with_options(config.transaction_pool.clone())
+        .with_prometheus(config.prometheus_registry())
+        .build(),
     );
 
     <span class="kw">let </span>import_queue = BasicQueue::new(

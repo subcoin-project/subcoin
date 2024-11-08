@@ -306,6 +306,8 @@
 <a href="#306" id="306">306</a>
 <a href="#307" id="307">307</a>
 <a href="#308" id="308">308</a>
+<a href="#309" id="309">309</a>
+<a href="#310" id="310">310</a>
 </pre></div><pre class="rust"><code><span class="comment">// This file is part of Substrate.
 
 // Copyright (C) Parity Technologies (UK) Ltd.
@@ -333,6 +335,8 @@
 </span><span class="attr">#[cfg(feature = <span class="string">"std"</span>)]
 </span><span class="macro">include!</span>(<span class="macro">concat!</span>(<span class="macro">env!</span>(<span class="string">"OUT_DIR"</span>), <span class="string">"/wasm_binary.rs"</span>));
 
+<span class="kw">extern crate </span>alloc;
+
 <span class="kw">use </span>frame_support::dispatch::PerDispatchClass;
 <span class="kw">use </span>frame_support::genesis_builder_helper::{build_state, get_preset};
 <span class="kw">use </span>frame_support::pallet_prelude::<span class="kw-2">*</span>;
@@ -350,7 +354,7 @@
 <span class="kw">use </span>sp_std::vec::Vec;
 <span class="attr">#[cfg(feature = <span class="string">"std"</span>)]
 </span><span class="kw">use </span>sp_version::NativeVersion;
-<span class="kw">use </span>sp_version::{create_runtime_str, runtime_version, RuntimeVersion};
+<span class="kw">use </span>sp_version::{runtime_version, RuntimeVersion};
 
 <span class="doccomment">/// header weight (80 * 4) + tx_data_len(4)
 </span><span class="kw">const </span>BITCOIN_BASE_BLOCK_WEIGHT: u64 = <span class="number">80 </span>* <span class="number">4 </span>+ <span class="number">4</span>;
@@ -361,8 +365,8 @@
 
 <span class="attr">#[runtime_version]
 </span><span class="kw">pub const </span>VERSION: RuntimeVersion = RuntimeVersion {
-    spec_name: <span class="macro">create_runtime_str!</span>(<span class="string">"subcoin"</span>),
-    impl_name: <span class="macro">create_runtime_str!</span>(<span class="string">"subcoin"</span>),
+    spec_name: alloc::borrow::Cow::Borrowed(<span class="string">"subcoin"</span>),
+    impl_name: alloc::borrow::Cow::Borrowed(<span class="string">"subcoin"</span>),
     authoring_version: <span class="number">0</span>,
     spec_version: <span class="number">0</span>,
     impl_version: <span class="number">0</span>,

@@ -160,12 +160,25 @@
 <a href="#160" id="160">160</a>
 <a href="#161" id="161">161</a>
 <a href="#162" id="162">162</a>
+<a href="#163" id="163">163</a>
+<a href="#164" id="164">164</a>
+<a href="#165" id="165">165</a>
+<a href="#166" id="166">166</a>
+<a href="#167" id="167">167</a>
+<a href="#168" id="168">168</a>
+<a href="#169" id="169">169</a>
+<a href="#170" id="170">170</a>
+<a href="#171" id="171">171</a>
+<a href="#172" id="172">172</a>
+<a href="#173" id="173">173</a>
+<a href="#174" id="174">174</a>
+<a href="#175" id="175">175</a>
+<a href="#176" id="176">176</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>futures::Future;
 <span class="kw">use </span>sc_transaction_pool_api::{
     ImportNotificationStream, PoolFuture, PoolStatus, ReadyTransactions, TransactionFor,
     TransactionSource, TransactionStatusStreamFor, TxHash,
 };
-<span class="kw">use </span>sp_runtime::traits::NumberFor;
 <span class="kw">use </span>sp_runtime::OpaqueExtrinsic;
 <span class="kw">use </span>std::collections::HashMap;
 <span class="kw">use </span>std::pin::Pin;
@@ -174,21 +187,21 @@
 
 <span class="attr">#[derive(Clone, Debug)]
 </span><span class="kw">pub struct </span>PoolTransaction {
-    data: OpaqueExtrinsic,
+    data: Arc&lt;OpaqueExtrinsic&gt;,
     hash: sp_core::H256,
 }
 
 <span class="kw">impl </span>From&lt;OpaqueExtrinsic&gt; <span class="kw">for </span>PoolTransaction {
     <span class="kw">fn </span>from(e: OpaqueExtrinsic) -&gt; <span class="self">Self </span>{
         <span class="self">Self </span>{
-            data: e,
+            data: Arc::from(e),
             hash: sp_core::H256::zero(),
         }
     }
 }
 
 <span class="kw">impl </span>sc_transaction_pool_api::InPoolTransaction <span class="kw">for </span>PoolTransaction {
-    <span class="kw">type </span>Transaction = OpaqueExtrinsic;
+    <span class="kw">type </span>Transaction = Arc&lt;OpaqueExtrinsic&gt;;
     <span class="kw">type </span>Hash = sp_core::H256;
 
     <span class="kw">fn </span>data(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="self">Self</span>::Transaction {
@@ -277,7 +290,7 @@
 
     <span class="kw">fn </span>ready_at(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
-        _at: NumberFor&lt;<span class="self">Self</span>::Block&gt;,
+        _at: <span class="self">Self</span>::Hash,
     ) -&gt; Pin&lt;
         Box&lt;
             <span class="kw">dyn </span>Future&lt;
@@ -319,6 +332,21 @@
     }
 
     <span class="kw">fn </span>ready_transaction(<span class="kw-2">&amp;</span><span class="self">self</span>, _hash: <span class="kw-2">&amp;</span>TxHash&lt;<span class="self">Self</span>&gt;) -&gt; <span class="prelude-ty">Option</span>&lt;Arc&lt;<span class="self">Self</span>::InPoolTransaction&gt;&gt; {
+        <span class="macro">unimplemented!</span>()
+    }
+
+    <span class="kw">fn </span>ready_at_with_timeout(
+        <span class="kw-2">&amp;</span><span class="self">self</span>,
+        _at: <span class="self">Self</span>::Hash,
+        _timeout: std::time::Duration,
+    ) -&gt; Pin&lt;
+        Box&lt;
+            <span class="kw">dyn </span>Future&lt;
+                    Output = Box&lt;<span class="kw">dyn </span>ReadyTransactions&lt;Item = Arc&lt;<span class="self">Self</span>::InPoolTransaction&gt;&gt; + Send&gt;,
+                &gt; + Send
+                + <span class="lifetime">'_</span>,
+        &gt;,
+    &gt; {
         <span class="macro">unimplemented!</span>()
     }
 }

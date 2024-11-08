@@ -270,6 +270,9 @@
 <a href="#270" id="270">270</a>
 <a href="#271" id="271">271</a>
 <a href="#272" id="272">272</a>
+<a href="#273" id="273">273</a>
+<a href="#274" id="274">274</a>
+<a href="#275" id="275">275</a>
 </pre></div><pre class="rust"><code><span class="kw">pub mod </span>subcoin_params;
 
 <span class="kw">use </span><span class="kw">crate</span>::commands::blockchain::{Blockchain, BlockchainCmd};
@@ -278,7 +281,8 @@
 <span class="kw">use </span><span class="kw">crate</span>::commands::tools::Tools;
 <span class="kw">use </span><span class="kw">crate</span>::substrate_cli::SubstrateCli;
 <span class="kw">use </span>clap::Parser;
-<span class="kw">use </span>frame_benchmarking_cli::{BenchmarkCmd, SUBSTRATE_REFERENCE_HARDWARE};
+<span class="attr">#[cfg(feature = <span class="string">"benchmark"</span>)]
+</span><span class="kw">use </span>frame_benchmarking_cli::{BenchmarkCmd, SUBSTRATE_REFERENCE_HARDWARE};
 <span class="kw">use </span>sc_cli::SubstrateCli <span class="kw">as </span>SubstrateCliT;
 <span class="kw">use </span>sc_client_api::UsageProvider;
 <span class="kw">use </span>sc_consensus_nakamoto::ImportConfig;
@@ -321,7 +325,8 @@
     </span>Revert(sc_cli::RevertCmd),
 
     <span class="doccomment">/// Sub-commands concerned with benchmarking.
-    </span><span class="attr">#[command(subcommand)]
+    </span><span class="attr">#[cfg(feature = <span class="string">"benchmark"</span>)]
+    #[command(subcommand)]
     </span>Benchmark(Box&lt;frame_benchmarking_cli::BenchmarkCmd&gt;),
 
     <span class="doccomment">/// Db meta columns information.
@@ -494,7 +499,8 @@
                 <span class="prelude-val">Ok</span>((cmd.run(client, backend, <span class="prelude-val">None</span>), task_manager))
             })
         }
-        Command::Benchmark(cmd) =&gt; {
+        <span class="attr">#[cfg(feature = <span class="string">"benchmark"</span>)]
+        </span>Command::Benchmark(cmd) =&gt; {
             <span class="kw">let </span>runner = SubstrateCli.create_runner(<span class="kw-2">&amp;*</span>cmd)<span class="question-mark">?</span>;
 
             runner.sync_run(|config| {
