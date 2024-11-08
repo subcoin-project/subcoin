@@ -78,6 +78,7 @@ sc-service = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sd
 sc-storage-monitor = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/storage-monitor" }
 sc-sysinfo = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/sysinfo" }
 sc-telemetry = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/telemetry" }
+sc-tracing = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/tracing" }
 sc-transaction-pool = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/transaction-pool" }
 sc-transaction-pool-api = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/transaction-pool/api" }
 sc-utils = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/utils" }
