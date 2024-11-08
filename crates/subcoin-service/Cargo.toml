@@ -9,7 +9,7 @@ license.workspace = true
 [dependencies]
 async-trait = { workspace = true }
 bitcoin = { workspace = true }
-frame-benchmarking-cli = { workspace = true }
+# frame-benchmarking-cli = { workspace = true }
 frame-system = { workspace = true }
 futures = { workspace = true }
 jsonrpsee = { workspace = true }

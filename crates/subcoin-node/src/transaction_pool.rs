@@ -3,7 +3,6 @@ use sc_transaction_pool_api::{
     ImportNotificationStream, PoolFuture, PoolStatus, ReadyTransactions, TransactionFor,
     TransactionSource, TransactionStatusStreamFor, TxHash,
 };
-use sp_runtime::traits::NumberFor;
 use sp_runtime::OpaqueExtrinsic;
 use std::collections::HashMap;
 use std::pin::Pin;
@@ -12,21 +11,21 @@ use subcoin_runtime::interface::OpaqueBlock;
 
 #[derive(Clone, Debug)]
 pub struct PoolTransaction {
-    data: OpaqueExtrinsic,
+    data: Arc<OpaqueExtrinsic>,
     hash: sp_core::H256,
 }
 
 impl From<OpaqueExtrinsic> for PoolTransaction {
     fn from(e: OpaqueExtrinsic) -> Self {
         Self {
-            data: e,
+            data: Arc::from(e),
             hash: sp_core::H256::zero(),
         }
     }
 }
 
 impl sc_transaction_pool_api::InPoolTransaction for PoolTransaction {
-    type Transaction = OpaqueExtrinsic;
+    type Transaction = Arc<OpaqueExtrinsic>;
     type Hash = sp_core::H256;
 
     fn data(&self) -> &Self::Transaction {
@@ -115,7 +114,7 @@ impl sc_transaction_pool_api::TransactionPool for Transactions {
 
     fn ready_at(
         &self,
-        _at: NumberFor<Self::Block>,
+        _at: Self::Hash,
     ) -> Pin<
         Box<
             dyn Future<
@@ -157,6 +156,21 @@ impl sc_transaction_pool_api::TransactionPool for Transactions {
     }
 
     fn ready_transaction(&self, _hash: &TxHash<Self>) -> Option<Arc<Self::InPoolTransaction>> {
+        unimplemented!()
+    }
+
+    fn ready_at_with_timeout(
+        &self,
+        _at: Self::Hash,
+        _timeout: std::time::Duration,
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = Box<dyn ReadyTransactions<Item = Arc<Self::InPoolTransaction>> + Send>,
+                > + Send
+                + '_,
+        >,
+    > {
         unimplemented!()
     }
 }

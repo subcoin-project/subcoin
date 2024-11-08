@@ -487,8 +487,7 @@ where
         if inv.len() == 1 {
             if let Inventory::Block(block_hash) = inv[0] {
                 if self.client.block_number(block_hash).is_none() {
-                    // TODO: peers may sent us duplicate block announcements.
-                    tracing::debug!("Recv possible block announcement {inv:?} from {from:?}");
+                    tracing::debug!("Recv block announcement {inv:?} from {from:?}");
 
                     let mut is_new_block_announce = false;
 

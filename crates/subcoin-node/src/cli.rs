@@ -6,6 +6,7 @@ use crate::commands::run::{Run, RunCmd};
 use crate::commands::tools::Tools;
 use crate::substrate_cli::SubstrateCli;
 use clap::Parser;
+#[cfg(feature = "benchmark")]
 use frame_benchmarking_cli::{BenchmarkCmd, SUBSTRATE_REFERENCE_HARDWARE};
 use sc_cli::SubstrateCli as SubstrateCliT;
 use sc_client_api::UsageProvider;
@@ -49,6 +50,7 @@ pub enum Command {
     Revert(sc_cli::RevertCmd),
 
     /// Sub-commands concerned with benchmarking.
+    #[cfg(feature = "benchmark")]
     #[command(subcommand)]
     Benchmark(Box<frame_benchmarking_cli::BenchmarkCmd>),
 
@@ -222,6 +224,7 @@ pub fn run() -> sc_cli::Result<()> {
                 Ok((cmd.run(client, backend, None), task_manager))
             })
         }
+        #[cfg(feature = "benchmark")]
         Command::Benchmark(cmd) => {
             let runner = SubstrateCli.create_runner(&*cmd)?;
 
