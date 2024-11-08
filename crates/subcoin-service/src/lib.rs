@@ -251,19 +251,22 @@ pub fn start_substrate_network<N>(
 where
     N: sc_network::NetworkBackend<Block, <Block as BlockT>::Hash>,
 {
-    let mut net_config = sc_network::config::FullNetworkConfiguration::<
+    let net_config = sc_network::config::FullNetworkConfiguration::<
         Block,
         <Block as BlockT>::Hash,
         N,
     >::new(&config.network, config.prometheus_registry().cloned());
     let metrics = N::register_notification_metrics(config.prometheus_registry());
 
-    let transaction_pool = sc_transaction_pool::BasicPool::new_full(
-        config.transaction_pool.clone(),
-        config.role.is_authority().into(),
-        config.prometheus_registry(),
-        task_manager.spawn_essential_handle(),
-        client.clone(),
+    let transaction_pool = Arc::from(
+        sc_transaction_pool::Builder::new(
+            task_manager.spawn_essential_handle(),
+            client.clone(),
+            config.role.is_authority().into(),
+        )
+        .with_options(config.transaction_pool.clone())
+        .with_prometheus(config.prometheus_registry())
+        .build(),
     );
 
     let import_queue = BasicQueue::new(
@@ -274,19 +277,6 @@ where
         None,
     );
 
-    let syncing_strategy = sc_service::build_polkadot_syncing_strategy(
-        config.protocol_id(),
-        config.chain_spec.fork_id(),
-        &mut net_config,
-        None,
-        client.clone(),
-        &task_manager.spawn_handle(),
-        config
-            .prometheus_config
-            .as_ref()
-            .map(|config| &config.registry),
-    )?;
-
     let (network, system_rpc_tx, _tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config,
@@ -296,7 +286,7 @@ where
             spawn_handle: task_manager.spawn_handle(),
             import_queue,
             block_announce_validator_builder: None,
-            syncing_strategy,
+            warp_sync_config: None,
             block_relay: None,
             metrics,
         })?;
@@ -374,7 +364,7 @@ type PartialComponents = sc_service::PartialComponents<
     FullBackend,
     FullSelectChain,
     sc_consensus::DefaultImportQueue<Block>,
-    sc_transaction_pool::FullPool<Block, FullClient>,
+    sc_transaction_pool::TransactionPoolHandle<Block, FullClient>,
     Option<Telemetry>,
 >;
 
@@ -413,12 +403,15 @@ pub fn new_partial(
 
     let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
-    let transaction_pool = sc_transaction_pool::BasicPool::new_full(
-        config.transaction_pool.clone(),
-        config.role.is_authority().into(),
-        config.prometheus_registry(),
-        task_manager.spawn_essential_handle(),
-        client.clone(),
+    let transaction_pool = Arc::from(
+        sc_transaction_pool::Builder::new(
+            task_manager.spawn_essential_handle(),
+            client.clone(),
+            config.role.is_authority().into(),
+        )
+        .with_options(config.transaction_pool.clone())
+        .with_prometheus(config.prometheus_registry())
+        .build(),
     );
 
     let import_queue = BasicQueue::new(

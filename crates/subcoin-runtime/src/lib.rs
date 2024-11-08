@@ -25,6 +25,8 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
+extern crate alloc;
+
 use frame_support::dispatch::PerDispatchClass;
 use frame_support::genesis_builder_helper::{build_state, get_preset};
 use frame_support::pallet_prelude::*;
@@ -42,7 +44,7 @@ use sp_std::vec;
 use sp_std::vec::Vec;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
-use sp_version::{create_runtime_str, runtime_version, RuntimeVersion};
+use sp_version::{runtime_version, RuntimeVersion};
 
 /// header weight (80 * 4) + tx_data_len(4)
 const BITCOIN_BASE_BLOCK_WEIGHT: u64 = 80 * 4 + 4;
@@ -53,8 +55,8 @@ const BITCOIN_MAX_WEIGHT: u64 = 4_000_000;
 
 #[runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-    spec_name: create_runtime_str!("subcoin"),
-    impl_name: create_runtime_str!("subcoin"),
+    spec_name: alloc::borrow::Cow::Borrowed("subcoin"),
+    impl_name: alloc::borrow::Cow::Borrowed("subcoin"),
     authoring_version: 0,
     spec_version: 0,
     impl_version: 0,
