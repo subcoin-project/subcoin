@@ -90,15 +90,15 @@ pub struct PeerSync {
 
 /// Locator based sync request, for requesting either Headers or Blocks.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct LocatorRequest {
+pub struct LocatorRequest {
     pub locator_hashes: Vec<BlockHash>,
     pub stop_hash: BlockHash,
     pub to: PeerId,
 }
 
 /// Represents different kinds of sync requests.
-#[derive(Debug)]
-pub(crate) enum SyncRequest {
+#[derive(Debug, PartialEq, Eq)]
+pub enum SyncRequest {
     /// Request headers via `getheaders`.
     Header(LocatorRequest),
     /// Request inventories via `getblocks`.
@@ -109,7 +109,7 @@ pub(crate) enum SyncRequest {
 
 /// Represents actions that can be taken during the syncing.
 #[derive(Debug)]
-pub(crate) enum SyncAction {
+pub enum SyncAction {
     /// Fetch headers, blocks and data.
     Request(SyncRequest),
     /// Transitions to a Blocks-First sync after Headers-First sync

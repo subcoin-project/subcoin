@@ -50,10 +50,10 @@ use chrono::prelude::{DateTime, Local};
 use peer_manager::HandshakeState;
 use sc_client_api::{AuxStore, HeaderBackend};
 use sc_consensus_nakamoto::{BlockImportQueue, ChainParams, HeaderVerifier};
-use sc_service::SpawnTaskHandle;
-use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
+use sc_network_sync::SyncingService;
+use sc_service::TaskManager;
+use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use sp_runtime::traits::Block as BlockT;
-use std::marker::PhantomData;
 use std::net::{AddrParseError, SocketAddr};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64};
@@ -205,6 +205,17 @@ impl Clone for Bandwidth {
     }
 }
 
+/// Controls the block sync from Bitcoin P2P network.
+pub enum BlockSyncOption {
+    /// Bitcoin block sync is enabled on startup.
+    AlwaysOn,
+    /// Bitcoin block sync is fully disabled.
+    Off,
+    /// Bitcoin block sync is paused until Substrate fast sync completes,
+    /// after which it resumes automatically.
+    PausedUntilFastSync,
+}
+
 /// Network configuration.
 pub struct Config {
     /// Bitcoin network type.
@@ -231,7 +242,7 @@ pub struct Config {
     ///
     /// The block sync from Bitcoin P2P network may be disabled temporarily when
     /// performing fast sync from the Subcoin network.
-    pub enable_block_sync_on_startup: bool,
+    pub block_sync: BlockSyncOption,
 }
 
 fn builtin_seednodes(network: BitcoinNetwork) -> &'static [&'static str] {
@@ -261,208 +272,256 @@ fn builtin_seednodes(network: BitcoinNetwork) -> &'static [&'static str] {
     }
 }
 
-/// Represents the Subcoin network component.
-pub struct Network<Block, Client> {
+/// Watch the Substrate sync status and enable the subcoin block sync when the Substate
+/// state sync is finished.
+// TODO: I'm not super happy with pulling in the dep sc-network-sync just for SyncingService.
+async fn watch_substrate_fast_sync<Block>(
+    subcoin_network_handle: NetworkHandle,
+    substate_sync_service: Arc<SyncingService<Block>>,
+) where
+    Block: BlockT,
+{
+    let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
+
+    let mut state_sync_has_started = false;
+
+    loop {
+        interval.tick().await;
+
+        let state_sync_is_active = substate_sync_service
+            .status()
+            .await
+            .map(|status| status.state_sync.is_some())
+            .unwrap_or(false);
+
+        if state_sync_is_active {
+            if !state_sync_has_started {
+                state_sync_has_started = true;
+            }
+        } else if state_sync_has_started {
+            tracing::info!("Detected state sync is complete, starting Subcoin block sync");
+            subcoin_network_handle.start_block_sync();
+            return;
+        }
+    }
+}
+
+async fn listen_for_inbound_connections(
+    listener: TcpListener,
+    max_inbound_peers: usize,
+    connection_initiator: ConnectionInitiator,
+    processor_msg_sender: TracingUnboundedSender<NetworkProcessorMessage>,
+) {
+    let local_addr = listener
+        .local_addr()
+        .expect("Local listen addr must be available; qed");
+
+    tracing::info!("🔊 Listening on {local_addr:?}",);
+
+    while let Ok((socket, peer_addr)) = listener.accept().await {
+        let (sender, receiver) = oneshot::channel();
+
+        if processor_msg_sender
+            .unbounded_send(NetworkProcessorMessage::RequestInboundPeersCount(sender))
+            .is_err()
+        {
+            return;
+        }
+
+        let Ok(inbound_peers_count) = receiver.await else {
+            return;
+        };
+
+        if inbound_peers_count < max_inbound_peers {
+            tracing::debug!(?peer_addr, "New peer accepted");
+
+            if let Err(err) = connection_initiator.initiate_inbound_connection(socket) {
+                tracing::debug!(?err, ?peer_addr, "Failed to initiate inbound connection");
+            }
+        }
+    }
+}
+
+async fn initialize_outbound_connections(
+    network: bitcoin::Network,
+    seednodes: Vec<String>,
+    seednode_only: bool,
+    persistent_peers: Vec<PeerId>,
+    connection_initiator: ConnectionInitiator,
+) {
+    let mut bootnodes = seednodes;
+
+    if !seednode_only {
+        bootnodes.extend(builtin_seednodes(network).iter().map(|s| s.to_string()));
+    }
+
+    bootnodes.extend(persistent_peers.into_iter().map(|s| s.to_string()));
+
+    // Create a vector of futures for DNS lookups
+    let lookup_futures = bootnodes.into_iter().map(|bootnode| async move {
+        tokio::net::lookup_host(&bootnode).await.map(|mut addrs| {
+            addrs
+                .next()
+                .ok_or_else(|| Error::InvalidBootnode(bootnode.to_string()))
+        })
+    });
+
+    // Await all futures concurrently
+    let lookup_results = futures::future::join_all(lookup_futures).await;
+
+    for result in lookup_results {
+        match result {
+            Ok(Ok(addr)) => {
+                connection_initiator.initiate_outbound_connection(addr);
+            }
+            Ok(Err(e)) => {
+                tracing::error!("Failed to resolve bootnode address: {e}");
+            }
+            Err(e) => {
+                tracing::error!("Failed to perform bootnode DNS lookup: {e}");
+            }
+        }
+    }
+}
+
+/// Creates Subcoin network.
+pub async fn build_network<Block, Client>(
     client: Arc<Client>,
     config: Config,
     import_queue: BlockImportQueue,
-    spawn_handle: SpawnTaskHandle,
-    processor_msg_sender: TracingUnboundedSender<NetworkProcessorMessage>,
-    processor_msg_receiver: TracingUnboundedReceiver<NetworkProcessorMessage>,
-    is_major_syncing: Arc<AtomicBool>,
+    task_manager: &TaskManager,
     registry: Option<Registry>,
-    _phantom: PhantomData<Block>,
-}
-
-impl<Block, Client> Network<Block, Client>
+    substrate_sync_service: Option<Arc<SyncingService<Block>>>,
+) -> Result<NetworkHandle, Error>
 where
     Block: BlockT,
-    Client: HeaderBackend<Block> + AuxStore,
+    Client: HeaderBackend<Block> + AuxStore + 'static,
 {
-    /// Constructs a new instance of [`Network`].
-    pub fn new(
-        client: Arc<Client>,
-        config: Config,
-        import_queue: BlockImportQueue,
-        spawn_handle: SpawnTaskHandle,
-        registry: Option<Registry>,
-    ) -> (Self, NetworkHandle) {
-        let (processor_msg_sender, processor_msg_receiver) =
-            tracing_unbounded("mpsc_subcoin_network_processor", 100);
+    let (processor_msg_sender, processor_msg_receiver) =
+        tracing_unbounded("mpsc_subcoin_network_processor", 100);
 
-        let is_major_syncing = Arc::new(AtomicBool::new(false));
+    let is_major_syncing = Arc::new(AtomicBool::new(false));
 
-        let network = Self {
-            client,
-            config,
-            import_queue,
-            spawn_handle,
-            processor_msg_sender: processor_msg_sender.clone(),
-            processor_msg_receiver,
-            is_major_syncing: is_major_syncing.clone(),
-            registry,
-            _phantom: Default::default(),
-        };
+    let mut listen_on = config.listen_on;
+    let listener = match TcpListener::bind(&listen_on).await {
+        Ok(listener) => listener,
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+            tracing::warn!("{listen_on} is occupied, trying any available port.");
+            listen_on.set_port(0);
+            TcpListener::bind(listen_on).await?
+        }
+        Err(err) => return Err(err.into()),
+    };
 
-        (
-            network,
-            NetworkHandle {
-                processor_msg_sender,
-                is_major_syncing,
-            },
-        )
+    let (network_event_sender, network_event_receiver) = tokio::sync::mpsc::unbounded_channel();
+
+    let bandwidth = Bandwidth::new(registry.as_ref());
+
+    let spawn_handle = task_manager.spawn_handle();
+
+    let connection_initiator = ConnectionInitiator::new(
+        config.network,
+        network_event_sender,
+        spawn_handle.clone(),
+        bandwidth.clone(),
+        config.ipv4_only,
+    );
+
+    let (sender, receiver) = tracing_unbounded("mpsc_subcoin_peer_store", 10_000);
+    let (persistent_peer_store, persistent_peers) =
+        PersistentPeerStore::new(&config.base_path, config.max_outbound_peers);
+    let persistent_peer_store_handle =
+        PersistentPeerStoreHandle::new(config.persistent_peer_latency_threshold, sender);
+
+    spawn_handle.spawn(
+        "peer-store",
+        Some("subcoin-networking"),
+        persistent_peer_store.run(receiver),
+    );
+
+    let Config {
+        seednode_only,
+        seednodes,
+        network,
+        max_inbound_peers,
+        max_outbound_peers,
+        sync_strategy,
+        block_sync,
+        ..
+    } = config;
+
+    let network_handle = NetworkHandle {
+        processor_msg_sender: processor_msg_sender.clone(),
+        is_major_syncing: is_major_syncing.clone(),
+    };
+
+    let enable_block_sync = matches!(block_sync, BlockSyncOption::AlwaysOn);
+
+    if !enable_block_sync {
+        tracing::info!("Subcoin block sync is disabled on startup");
     }
 
-    /// Starts the network.
-    ///
-    /// This must be run in a background task.
-    pub async fn run(self) -> Result<(), Error> {
-        let Self {
-            client,
-            config,
-            import_queue,
-            spawn_handle,
-            processor_msg_sender,
-            processor_msg_receiver,
-            is_major_syncing,
-            registry,
-            _phantom,
-        } = self;
-
-        let mut listen_on = config.listen_on;
-        let listener = match TcpListener::bind(&listen_on).await {
-            Ok(listener) => listener,
-            Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
-                tracing::warn!("{listen_on} is occupied, trying any available port.");
-                listen_on.set_port(0);
-                TcpListener::bind(listen_on).await?
-            }
-            Err(err) => return Err(err.into()),
-        };
-
-        let (network_event_sender, network_event_receiver) = tokio::sync::mpsc::unbounded_channel();
-
-        let bandwidth = Bandwidth::new(registry.as_ref());
-
-        let connection_initiator = ConnectionInitiator::new(
-            config.network,
-            network_event_sender,
-            spawn_handle.clone(),
-            bandwidth.clone(),
-            config.ipv4_only,
-        );
-
-        if !config.enable_block_sync_on_startup {
-            tracing::info!("Subcoin block sync is disabled on startup");
+    if matches!(block_sync, BlockSyncOption::PausedUntilFastSync) {
+        if let Some(substrate_sync_service) = substrate_sync_service {
+            spawn_handle.spawn(
+                "substrate-fast-sync-watcher",
+                None,
+                watch_substrate_fast_sync(network_handle.clone(), substrate_sync_service),
+            );
+        } else {
+            tracing::warn!("Block sync from Bitcoin P2P network will not be started automatically on Substrate fast sync completion");
         }
+    }
 
-        let (sender, receiver) = tracing_unbounded("mpsc_subcoin_peer_store", 10_000);
-        let (persistent_peer_store, persistent_peers) =
-            PersistentPeerStore::new(&config.base_path, config.max_outbound_peers);
-        let persistent_peer_store_handle =
-            PersistentPeerStoreHandle::new(config.persistent_peer_latency_threshold, sender);
-
-        spawn_handle.spawn("peer-store", None, persistent_peer_store.run(receiver));
-
-        let net_processor = NetworkProcessor::new(
-            network_processor::Params {
-                client: client.clone(),
-                header_verifier: HeaderVerifier::new(
-                    client.clone(),
-                    ChainParams::new(config.network),
-                ),
-                network_event_receiver,
-                import_queue,
-                sync_strategy: config.sync_strategy,
-                is_major_syncing,
-                connection_initiator: connection_initiator.clone(),
-                max_outbound_peers: config.max_outbound_peers,
-                enable_block_sync: config.enable_block_sync_on_startup,
-                peer_store: Arc::new(persistent_peer_store_handle),
-            },
-            registry.as_ref(),
-        );
-
-        spawn_handle.spawn("inbound-connection", None, {
-            let local_addr = listener.local_addr()?;
+    task_manager.spawn_essential_handle().spawn_blocking(
+        "net-processor",
+        Some("subcoin-networking"),
+        {
+            let is_major_syncing = is_major_syncing.clone();
             let connection_initiator = connection_initiator.clone();
-            let max_inbound_peers = config.max_inbound_peers;
+            let client = client.clone();
 
-            async move {
-                tracing::info!("🔊 Listening on {local_addr:?}",);
+            NetworkProcessor::new(
+                network_processor::Params {
+                    client: client.clone(),
+                    header_verifier: HeaderVerifier::new(client, ChainParams::new(network)),
+                    network_event_receiver,
+                    import_queue,
+                    sync_strategy,
+                    is_major_syncing,
+                    connection_initiator,
+                    max_outbound_peers,
+                    enable_block_sync,
+                    peer_store: Arc::new(persistent_peer_store_handle),
+                },
+                registry.as_ref(),
+            )
+            .run(processor_msg_receiver, bandwidth)
+        },
+    );
 
-                while let Ok((socket, peer_addr)) = listener.accept().await {
-                    let (sender, receiver) = oneshot::channel();
+    spawn_handle.spawn(
+        "inbound-connection",
+        Some("subcoin-networking"),
+        listen_for_inbound_connections(
+            listener,
+            max_inbound_peers,
+            connection_initiator.clone(),
+            processor_msg_sender,
+        ),
+    );
 
-                    if processor_msg_sender
-                        .unbounded_send(NetworkProcessorMessage::RequestInboundPeersCount(sender))
-                        .is_err()
-                    {
-                        return;
-                    }
-
-                    let Ok(inbound_peers_count) = receiver.await else {
-                        return;
-                    };
-
-                    if inbound_peers_count < max_inbound_peers {
-                        tracing::debug!(?peer_addr, "New peer accepted");
-
-                        if let Err(err) = connection_initiator.initiate_inbound_connection(socket) {
-                            tracing::debug!(
-                                ?err,
-                                ?peer_addr,
-                                "Failed to initiate inbound connection"
-                            );
-                        }
-                    }
-                }
-            }
-        });
-
-        let Config {
-            seednode_only,
-            seednodes,
+    spawn_handle.spawn(
+        "init-outbound-connection",
+        Some("subcoin-networking"),
+        initialize_outbound_connections(
             network,
-            ..
-        } = config;
+            seednodes,
+            seednode_only,
+            persistent_peers,
+            connection_initiator,
+        ),
+    );
 
-        let mut bootnodes = seednodes;
-
-        if !seednode_only {
-            bootnodes.extend(builtin_seednodes(network).iter().map(|s| s.to_string()));
-        }
-
-        bootnodes.extend(persistent_peers.into_iter().map(|s| s.to_string()));
-
-        // Create a vector of futures for DNS lookups
-        let lookup_futures = bootnodes.into_iter().map(|bootnode| async move {
-            tokio::net::lookup_host(&bootnode).await.map(|mut addrs| {
-                addrs
-                    .next()
-                    .ok_or_else(|| Error::InvalidBootnode(bootnode.to_string()))
-            })
-        });
-
-        // Await all futures concurrently
-        let lookup_results = futures::future::join_all(lookup_futures).await;
-
-        for result in lookup_results {
-            match result {
-                Ok(Ok(addr)) => {
-                    connection_initiator.initiate_outbound_connection(addr);
-                }
-                Ok(Err(e)) => {
-                    tracing::error!("Failed to resolve bootnode address: {e}");
-                }
-                Err(e) => {
-                    tracing::error!("Failed to perform bootnode DNS lookup: {e}");
-                }
-            }
-        }
-
-        net_processor.run(processor_msg_receiver, bandwidth).await;
-
-        Ok(())
-    }
+    Ok(network_handle)
 }

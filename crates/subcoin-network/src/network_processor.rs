@@ -176,7 +176,7 @@ where
                 }
                 maybe_processor_msg = processor_msg_sink.next(), if !processor_msg_sink.is_terminated() => {
                     if let Some(processor_msg) = maybe_processor_msg {
-                        self.handle_processor_message(processor_msg, &bandwidth);
+                        self.handle_processor_message(processor_msg, &bandwidth).await;
                     }
                 }
                 _ = tick_timeout.tick() => {
@@ -207,24 +207,31 @@ where
                 from,
                 direction,
                 payload,
-            } => {
-                let msg_cmd = payload.cmd();
+            } => self.process_peer_message(from, direction, payload).await,
+        }
+    }
 
-                tracing::trace!(?from, "Recv {msg_cmd}");
+    async fn process_peer_message(
+        &mut self,
+        from: PeerId,
+        direction: Direction,
+        payload: NetworkMessage,
+    ) {
+        let msg_cmd = payload.cmd();
 
-                if let Some(metrics) = &self.metrics {
-                    metrics
-                        .messages_received
-                        .with_label_values(&[msg_cmd])
-                        .inc();
-                }
+        tracing::trace!(?from, "Recv {msg_cmd}");
 
-                match self.process_network_message(from, direction, payload).await {
-                    Ok(action) => self.do_sync_action(action),
-                    Err(err) => {
-                        tracing::error!(?from, ?err, "Failed to process peer message: {msg_cmd}");
-                    }
-                }
+        if let Some(metrics) = &self.metrics {
+            metrics
+                .messages_received
+                .with_label_values(&[msg_cmd])
+                .inc();
+        }
+
+        match self.process_network_message(from, direction, payload).await {
+            Ok(action) => self.do_sync_action(action),
+            Err(err) => {
+                tracing::error!(?from, ?err, "Failed to process peer message: {msg_cmd}");
             }
         }
     }
@@ -260,7 +267,7 @@ where
         }
     }
 
-    fn handle_processor_message(
+    async fn handle_processor_message(
         &mut self,
         processor_msg: NetworkProcessorMessage,
         bandwidth: &Bandwidth,
@@ -282,7 +289,7 @@ where
             NetworkProcessorMessage::RequestInboundPeersCount(result_sender) => {
                 let _ = result_sender.send(self.peer_manager.inbound_peers_count());
             }
-            NetworkProcessorMessage::RequestTransaction((txid, result_sender)) => {
+            NetworkProcessorMessage::RequestTransaction(txid, result_sender) => {
                 let _ = result_sender.send(self.transaction_manager.get_transaction(&txid));
             }
             NetworkProcessorMessage::SendTransaction((incoming_transaction, result_sender)) => {
@@ -298,6 +305,25 @@ where
             NetworkProcessorMessage::StartBlockSync => {
                 let sync_action = self.chain_sync.start_block_sync();
                 self.do_sync_action(sync_action);
+            }
+            #[cfg(test)]
+            NetworkProcessorMessage::RequestLocalAddr(peer_id, result_sender) => {
+                let _ = result_sender.send(self.peer_manager.local_addr(peer_id));
+            }
+            #[cfg(test)]
+            NetworkProcessorMessage::ProcessNetworkMessage {
+                from,
+                direction,
+                payload,
+                result_sender,
+            } => {
+                let res = self.process_network_message(from, direction, payload).await;
+                let _ = result_sender.send(res);
+            }
+            #[cfg(test)]
+            NetworkProcessorMessage::ExecuteSyncAction(sync_action, result_sender) => {
+                self.do_sync_action(sync_action);
+                let _ = result_sender.send(());
             }
         }
     }
@@ -479,7 +505,7 @@ where
                     // A new block is broadcasted via `inv` message.
                     if is_new_block_announce {
                         tracing::debug!("Requesting announced block {block_hash} from {from:?}");
-                        let _ = self.send(from, NetworkMessage::GetData(inv));
+                        return Ok(SyncAction::get_data(inv, from));
                     }
                 }
                 return Ok(SyncAction::None);
@@ -506,7 +532,9 @@ where
             if let Ok(height) = block.bip34_block_height() {
                 self.chain_sync.update_peer_best(from, height as u32);
             } else {
-                tracing::debug!(?block_hash, "No height in coinbase transaction");
+                tracing::debug!(
+                    "No height in coinbase transaction, ignored block announce {block_hash:?}"
+                );
             }
 
             if self.client.substrate_block_hash_for(block_hash).is_some() {
@@ -517,7 +545,6 @@ where
                     .block_hash(self.client.best_number())
                     .expect("Best hash must exist; qed");
 
-                // TODO: handle the orphan block?
                 if block.header.prev_blockhash == best_hash {
                     self.chain_sync.import_queue.import_blocks(
                         sc_consensus_nakamoto::ImportBlocks {
@@ -525,6 +552,9 @@ where
                             blocks: vec![block],
                         },
                     );
+                } else {
+                    // TODO: handle the orphan block?
+                    tracing::debug!("Received orphan block announce {block_hash:?}");
                 }
             }
 
@@ -577,9 +607,7 @@ where
                     })
                     .collect();
 
-                let _ = self.send(from, NetworkMessage::GetData(inv));
-
-                return Ok(SyncAction::None);
+                return Ok(SyncAction::get_data(inv, from));
             }
         }
 

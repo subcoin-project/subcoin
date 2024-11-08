@@ -1,7 +1,15 @@
 //! This module provides the interfaces for external interaction with Subcoin network.
 
+#[cfg(test)]
+use crate::peer_connection::Direction;
 use crate::sync::PeerSync;
+#[cfg(test)]
+use crate::sync::SyncAction;
+#[cfg(test)]
+use crate::Error;
 use crate::PeerId;
+#[cfg(test)]
+use bitcoin::p2p::message::NetworkMessage;
 use bitcoin::{Transaction, Txid};
 use sc_utils::mpsc::TracingUnboundedSender;
 use serde::{Deserialize, Serialize};
@@ -65,11 +73,23 @@ pub(crate) enum NetworkProcessorMessage {
     /// Request the number of inbound connected peers.
     RequestInboundPeersCount(oneshot::Sender<usize>),
     /// Request a specific transaction by its Txid.
-    RequestTransaction((Txid, oneshot::Sender<Option<Transaction>>)),
+    RequestTransaction(Txid, oneshot::Sender<Option<Transaction>>),
     /// Submit a transaction to the transaction manager.
     SendTransaction((IncomingTransaction, oneshot::Sender<SendTransactionResult>)),
     /// Enable the block sync within the chain sync component.
     StartBlockSync,
+    /// Request a local addr for the connection to given peer_id if any.
+    #[cfg(test)]
+    RequestLocalAddr(PeerId, oneshot::Sender<Option<PeerId>>),
+    #[cfg(test)]
+    ProcessNetworkMessage {
+        from: PeerId,
+        direction: Direction,
+        payload: NetworkMessage,
+        result_sender: oneshot::Sender<Result<SyncAction, Error>>,
+    },
+    #[cfg(test)]
+    ExecuteSyncAction(SyncAction, oneshot::Sender<()>),
 }
 
 /// A handle for interacting with the network processor.
@@ -118,7 +138,7 @@ impl NetworkHandle {
 
         if self
             .processor_msg_sender
-            .unbounded_send(NetworkProcessorMessage::RequestTransaction((txid, sender)))
+            .unbounded_send(NetworkProcessorMessage::RequestTransaction(txid, sender))
             .is_err()
         {
             return None;
@@ -162,5 +182,51 @@ impl NetworkHandle {
     /// Returns a flag indicating whether the node is actively performing a major sync.
     pub fn is_major_syncing(&self) -> Arc<AtomicBool> {
         self.is_major_syncing.clone()
+    }
+
+    #[cfg(test)]
+    pub async fn local_addr_for(&self, peer_addr: PeerId) -> Option<PeerId> {
+        let (sender, receiver) = oneshot::channel();
+
+        self.processor_msg_sender
+            .unbounded_send(NetworkProcessorMessage::RequestLocalAddr(peer_addr, sender))
+            .expect("Failed to request local addr");
+
+        receiver.await.unwrap_or_default()
+    }
+
+    #[cfg(test)]
+    pub async fn process_network_message(
+        &self,
+        from: PeerId,
+        direction: Direction,
+        msg: NetworkMessage,
+    ) -> Result<SyncAction, Error> {
+        let (sender, receiver) = oneshot::channel();
+
+        self.processor_msg_sender
+            .unbounded_send(NetworkProcessorMessage::ProcessNetworkMessage {
+                from,
+                direction,
+                payload: msg,
+                result_sender: sender,
+            })
+            .expect("Failed to send outbound peer message");
+
+        receiver.await.unwrap()
+    }
+
+    #[cfg(test)]
+    pub async fn execute_sync_action(&self, sync_action: SyncAction) {
+        let (sender, receiver) = oneshot::channel();
+
+        self.processor_msg_sender
+            .unbounded_send(NetworkProcessorMessage::ExecuteSyncAction(
+                sync_action,
+                sender,
+            ))
+            .expect("Failed to execute sync action");
+
+        receiver.await.unwrap();
     }
 }

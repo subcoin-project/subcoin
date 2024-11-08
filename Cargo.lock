@@ -8927,6 +8927,7 @@ dependencies = [
  "sc-client-api",
  "sc-consensus",
  "sc-consensus-nakamoto",
+ "sc-network-sync",
  "sc-service",
  "sc-tracing",
  "sc-utils",

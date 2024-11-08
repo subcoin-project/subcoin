@@ -120,7 +120,7 @@ pub struct NewPeer {
 /// 2. Send our `version` message.
 /// 3. Send our `verack` message.
 /// 4. Expect `verack` message from remote.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum HandshakeState {
     /// TCP connection was just opened.
     #[default]
@@ -514,6 +514,11 @@ where
     /// Returns the list of connected peers.
     pub(crate) fn connected_peers(&self) -> impl Iterator<Item = &PeerId> {
         self.connected_peers.keys()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn local_addr(&self, peer_id: PeerId) -> Option<PeerId> {
+        self.connections.get(&peer_id).map(|conn| conn.local_addr)
     }
 
     /// Returns the number of connected peers.
