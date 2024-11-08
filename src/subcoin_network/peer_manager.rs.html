@@ -794,6 +794,11 @@
 <a href="#794" id="794">794</a>
 <a href="#795" id="795">795</a>
 <a href="#796" id="796">796</a>
+<a href="#797" id="797">797</a>
+<a href="#798" id="798">798</a>
+<a href="#799" id="799">799</a>
+<a href="#800" id="800">800</a>
+<a href="#801" id="801">801</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::address_book::AddressBook;
 <span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
 <span class="kw">use </span><span class="kw">crate</span>::peer_connection::{
@@ -916,7 +921,7 @@
 /// 2. Send our `version` message.
 /// 3. Send our `verack` message.
 /// 4. Expect `verack` message from remote.
-</span><span class="attr">#[derive(Debug, Clone, Default)]
+</span><span class="attr">#[derive(Debug, Clone, Default, PartialEq, Eq)]
 </span><span class="kw">pub enum </span>HandshakeState {
     <span class="doccomment">/// TCP connection was just opened.
     </span><span class="attr">#[default]
@@ -1310,6 +1315,11 @@
     <span class="doccomment">/// Returns the list of connected peers.
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>connected_peers(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw">impl </span>Iterator&lt;Item = <span class="kw-2">&amp;</span>PeerId&gt; {
         <span class="self">self</span>.connected_peers.keys()
+    }
+
+    <span class="attr">#[cfg(test)]
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>local_addr(<span class="kw-2">&amp;</span><span class="self">self</span>, peer_id: PeerId) -&gt; <span class="prelude-ty">Option</span>&lt;PeerId&gt; {
+        <span class="self">self</span>.connections.get(<span class="kw-2">&amp;</span>peer_id).map(|conn| conn.local_addr)
     }
 
     <span class="doccomment">/// Returns the number of connected peers.

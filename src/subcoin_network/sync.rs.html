@@ -835,15 +835,15 @@
 
 <span class="doccomment">/// Locator based sync request, for requesting either Headers or Blocks.
 </span><span class="attr">#[derive(Debug, PartialEq, Eq)]
-</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">struct </span>LocatorRequest {
+</span><span class="kw">pub struct </span>LocatorRequest {
     <span class="kw">pub </span>locator_hashes: Vec&lt;BlockHash&gt;,
     <span class="kw">pub </span>stop_hash: BlockHash,
     <span class="kw">pub </span>to: PeerId,
 }
 
 <span class="doccomment">/// Represents different kinds of sync requests.
-</span><span class="attr">#[derive(Debug)]
-</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">enum </span>SyncRequest {
+</span><span class="attr">#[derive(Debug, PartialEq, Eq)]
+</span><span class="kw">pub enum </span>SyncRequest {
     <span class="doccomment">/// Request headers via `getheaders`.
     </span>Header(LocatorRequest),
     <span class="doccomment">/// Request inventories via `getblocks`.
@@ -854,7 +854,7 @@
 
 <span class="doccomment">/// Represents actions that can be taken during the syncing.
 </span><span class="attr">#[derive(Debug)]
-</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">enum </span>SyncAction {
+</span><span class="kw">pub enum </span>SyncAction {
     <span class="doccomment">/// Fetch headers, blocks and data.
     </span>Request(SyncRequest),
     <span class="doccomment">/// Transitions to a Blocks-First sync after Headers-First sync

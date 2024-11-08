@@ -692,6 +692,34 @@
 <a href="#692" id="692">692</a>
 <a href="#693" id="693">693</a>
 <a href="#694" id="694">694</a>
+<a href="#695" id="695">695</a>
+<a href="#696" id="696">696</a>
+<a href="#697" id="697">697</a>
+<a href="#698" id="698">698</a>
+<a href="#699" id="699">699</a>
+<a href="#700" id="700">700</a>
+<a href="#701" id="701">701</a>
+<a href="#702" id="702">702</a>
+<a href="#703" id="703">703</a>
+<a href="#704" id="704">704</a>
+<a href="#705" id="705">705</a>
+<a href="#706" id="706">706</a>
+<a href="#707" id="707">707</a>
+<a href="#708" id="708">708</a>
+<a href="#709" id="709">709</a>
+<a href="#710" id="710">710</a>
+<a href="#711" id="711">711</a>
+<a href="#712" id="712">712</a>
+<a href="#713" id="713">713</a>
+<a href="#714" id="714">714</a>
+<a href="#715" id="715">715</a>
+<a href="#716" id="716">716</a>
+<a href="#717" id="717">717</a>
+<a href="#718" id="718">718</a>
+<a href="#719" id="719">719</a>
+<a href="#720" id="720">720</a>
+<a href="#721" id="721">721</a>
+<a href="#722" id="722">722</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
 <span class="kw">use </span><span class="kw">crate</span>::network_api::{
     IncomingTransaction, NetworkProcessorMessage, NetworkStatus, SendTransactionResult,
@@ -870,7 +898,7 @@
                 }
                 maybe_processor_msg = processor_msg_sink.next(), <span class="kw">if </span>!processor_msg_sink.is_terminated() =&gt; {
                     <span class="kw">if let </span><span class="prelude-val">Some</span>(processor_msg) = maybe_processor_msg {
-                        <span class="self">self</span>.handle_processor_message(processor_msg, <span class="kw-2">&amp;</span>bandwidth);
+                        <span class="self">self</span>.handle_processor_message(processor_msg, <span class="kw-2">&amp;</span>bandwidth).<span class="kw">await</span>;
                     }
                 }
                 <span class="kw">_ </span>= tick_timeout.tick() =&gt; {
@@ -901,24 +929,31 @@
                 from,
                 direction,
                 payload,
-            } =&gt; {
-                <span class="kw">let </span>msg_cmd = payload.cmd();
+            } =&gt; <span class="self">self</span>.process_peer_message(from, direction, payload).<span class="kw">await</span>,
+        }
+    }
 
-                <span class="macro">tracing::trace!</span>(<span class="question-mark">?</span>from, <span class="string">"Recv {msg_cmd}"</span>);
+    <span class="kw">async fn </span>process_peer_message(
+        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
+        from: PeerId,
+        direction: Direction,
+        payload: NetworkMessage,
+    ) {
+        <span class="kw">let </span>msg_cmd = payload.cmd();
 
-                <span class="kw">if let </span><span class="prelude-val">Some</span>(metrics) = <span class="kw-2">&amp;</span><span class="self">self</span>.metrics {
-                    metrics
-                        .messages_received
-                        .with_label_values(<span class="kw-2">&amp;</span>[msg_cmd])
-                        .inc();
-                }
+        <span class="macro">tracing::trace!</span>(<span class="question-mark">?</span>from, <span class="string">"Recv {msg_cmd}"</span>);
 
-                <span class="kw">match </span><span class="self">self</span>.process_network_message(from, direction, payload).<span class="kw">await </span>{
-                    <span class="prelude-val">Ok</span>(action) =&gt; <span class="self">self</span>.do_sync_action(action),
-                    <span class="prelude-val">Err</span>(err) =&gt; {
-                        <span class="macro">tracing::error!</span>(<span class="question-mark">?</span>from, <span class="question-mark">?</span>err, <span class="string">"Failed to process peer message: {msg_cmd}"</span>);
-                    }
-                }
+        <span class="kw">if let </span><span class="prelude-val">Some</span>(metrics) = <span class="kw-2">&amp;</span><span class="self">self</span>.metrics {
+            metrics
+                .messages_received
+                .with_label_values(<span class="kw-2">&amp;</span>[msg_cmd])
+                .inc();
+        }
+
+        <span class="kw">match </span><span class="self">self</span>.process_network_message(from, direction, payload).<span class="kw">await </span>{
+            <span class="prelude-val">Ok</span>(action) =&gt; <span class="self">self</span>.do_sync_action(action),
+            <span class="prelude-val">Err</span>(err) =&gt; {
+                <span class="macro">tracing::error!</span>(<span class="question-mark">?</span>from, <span class="question-mark">?</span>err, <span class="string">"Failed to process peer message: {msg_cmd}"</span>);
             }
         }
     }
@@ -954,7 +989,7 @@
         }
     }
 
-    <span class="kw">fn </span>handle_processor_message(
+    <span class="kw">async fn </span>handle_processor_message(
         <span class="kw-2">&amp;mut </span><span class="self">self</span>,
         processor_msg: NetworkProcessorMessage,
         bandwidth: <span class="kw-2">&amp;</span>Bandwidth,
@@ -976,7 +1011,7 @@
             NetworkProcessorMessage::RequestInboundPeersCount(result_sender) =&gt; {
                 <span class="kw">let _ </span>= result_sender.send(<span class="self">self</span>.peer_manager.inbound_peers_count());
             }
-            NetworkProcessorMessage::RequestTransaction((txid, result_sender)) =&gt; {
+            NetworkProcessorMessage::RequestTransaction(txid, result_sender) =&gt; {
                 <span class="kw">let _ </span>= result_sender.send(<span class="self">self</span>.transaction_manager.get_transaction(<span class="kw-2">&amp;</span>txid));
             }
             NetworkProcessorMessage::SendTransaction((incoming_transaction, result_sender)) =&gt; {
@@ -992,6 +1027,25 @@
             NetworkProcessorMessage::StartBlockSync =&gt; {
                 <span class="kw">let </span>sync_action = <span class="self">self</span>.chain_sync.start_block_sync();
                 <span class="self">self</span>.do_sync_action(sync_action);
+            }
+            <span class="attr">#[cfg(test)]
+            </span>NetworkProcessorMessage::RequestLocalAddr(peer_id, result_sender) =&gt; {
+                <span class="kw">let _ </span>= result_sender.send(<span class="self">self</span>.peer_manager.local_addr(peer_id));
+            }
+            <span class="attr">#[cfg(test)]
+            </span>NetworkProcessorMessage::ProcessNetworkMessage {
+                from,
+                direction,
+                payload,
+                result_sender,
+            } =&gt; {
+                <span class="kw">let </span>res = <span class="self">self</span>.process_network_message(from, direction, payload).<span class="kw">await</span>;
+                <span class="kw">let _ </span>= result_sender.send(res);
+            }
+            <span class="attr">#[cfg(test)]
+            </span>NetworkProcessorMessage::ExecuteSyncAction(sync_action, result_sender) =&gt; {
+                <span class="self">self</span>.do_sync_action(sync_action);
+                <span class="kw">let _ </span>= result_sender.send(());
             }
         }
     }
@@ -1173,7 +1227,7 @@
                     <span class="comment">// A new block is broadcasted via `inv` message.
                     </span><span class="kw">if </span>is_new_block_announce {
                         <span class="macro">tracing::debug!</span>(<span class="string">"Requesting announced block {block_hash} from {from:?}"</span>);
-                        <span class="kw">let _ </span>= <span class="self">self</span>.send(from, NetworkMessage::GetData(inv));
+                        <span class="kw">return </span><span class="prelude-val">Ok</span>(SyncAction::get_data(inv, from));
                     }
                 }
                 <span class="kw">return </span><span class="prelude-val">Ok</span>(SyncAction::None);
@@ -1200,7 +1254,9 @@
             <span class="kw">if let </span><span class="prelude-val">Ok</span>(height) = block.bip34_block_height() {
                 <span class="self">self</span>.chain_sync.update_peer_best(from, height <span class="kw">as </span>u32);
             } <span class="kw">else </span>{
-                <span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>block_hash, <span class="string">"No height in coinbase transaction"</span>);
+                <span class="macro">tracing::debug!</span>(
+                    <span class="string">"No height in coinbase transaction, ignored block announce {block_hash:?}"
+                </span>);
             }
 
             <span class="kw">if </span><span class="self">self</span>.client.substrate_block_hash_for(block_hash).is_some() {
@@ -1211,14 +1267,16 @@
                     .block_hash(<span class="self">self</span>.client.best_number())
                     .expect(<span class="string">"Best hash must exist; qed"</span>);
 
-                <span class="comment">// TODO: handle the orphan block?
-                </span><span class="kw">if </span>block.header.prev_blockhash == best_hash {
+                <span class="kw">if </span>block.header.prev_blockhash == best_hash {
                     <span class="self">self</span>.chain_sync.import_queue.import_blocks(
                         sc_consensus_nakamoto::ImportBlocks {
                             origin: sp_consensus::BlockOrigin::NetworkBroadcast,
                             blocks: <span class="macro">vec!</span>[block],
                         },
                     );
+                } <span class="kw">else </span>{
+                    <span class="comment">// TODO: handle the orphan block?
+                    </span><span class="macro">tracing::debug!</span>(<span class="string">"Received orphan block announce {block_hash:?}"</span>);
                 }
             }
 
@@ -1271,9 +1329,7 @@
                     })
                     .collect();
 
-                <span class="kw">let _ </span>= <span class="self">self</span>.send(from, NetworkMessage::GetData(inv));
-
-                <span class="kw">return </span><span class="prelude-val">Ok</span>(SyncAction::None);
+                <span class="kw">return </span><span class="prelude-val">Ok</span>(SyncAction::get_data(inv, from));
             }
         }
 
