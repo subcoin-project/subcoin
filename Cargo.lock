@@ -10548,7 +10548,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bitcoin 0.32.2",
- "frame-benchmarking-cli",
  "frame-system",
  "futures",
  "jsonrpsee 0.24.3",

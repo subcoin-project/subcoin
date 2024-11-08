@@ -8,7 +8,6 @@ mod genesis_block_builder;
 mod transaction_adapter;
 
 use bitcoin::hashes::Hash;
-use frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE;
 use futures::FutureExt;
 use genesis_block_builder::GenesisBlockBuilder;
 use sc_client_api::{AuxStore, HeaderBackend};
@@ -136,7 +135,7 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
     let SubcoinConfiguration {
         network: bitcoin_network,
         config,
-        no_hardware_benchmarks,
+        no_hardware_benchmarks: _,
         storage_monitor,
     } = config;
 
@@ -179,7 +178,7 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
 
     let client = Arc::new(client);
 
-    let mut telemetry = telemetry.map(|(worker, telemetry)| {
+    let telemetry = telemetry.map(|(worker, telemetry)| {
         task_manager
             .spawn_handle()
             .spawn("telemetry", None, worker.run());
@@ -187,33 +186,36 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
     });
 
     let database_path = config.database.path().map(Path::to_path_buf);
-    let maybe_hwbench = (!no_hardware_benchmarks)
-        .then_some(database_path.as_ref().map(|db_path| {
-            let _ = std::fs::create_dir_all(db_path);
-            sc_sysinfo::gather_hwbench(Some(db_path), &SUBSTRATE_REFERENCE_HARDWARE)
-        }))
-        .flatten();
 
-    if let Some(hwbench) = maybe_hwbench {
-        sc_sysinfo::print_hwbench(&hwbench);
-        match SUBSTRATE_REFERENCE_HARDWARE.check_hardware(&hwbench, config.role.is_authority()) {
-            Err(err) if config.role.is_authority() => {
-                tracing::warn!(
-					"⚠️  The hardware does not meet the minimal requirements {err} for role 'Authority'.",
-				);
-            }
-            _ => {}
-        }
+    // TODO: frame_benchmarking_cli pulls in rocksdb due to its dep
+    // cumulus-client-parachain-inherent.
+    // let maybe_hwbench = (!no_hardware_benchmarks)
+    // .then_some(database_path.as_ref().map(|db_path| {
+    // let _ = std::fs::create_dir_all(db_path);
+    // sc_sysinfo::gather_hwbench(Some(db_path), &frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE)
+    // }))
+    // .flatten();
 
-        if let Some(ref mut telemetry) = telemetry {
-            let telemetry_handle = telemetry.handle();
-            task_manager.spawn_handle().spawn(
-                "telemetry_hwbench",
-                None,
-                sc_sysinfo::initialize_hwbench_telemetry(telemetry_handle, hwbench),
-            );
-        }
-    }
+    // if let Some(hwbench) = maybe_hwbench {
+    // sc_sysinfo::print_hwbench(&hwbench);
+    // match frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE.check_hardware(&hwbench, config.role.is_authority()) {
+    // Err(err) if config.role.is_authority() => {
+    // tracing::warn!(
+    // "⚠️  The hardware does not meet the minimal requirements {err} for role 'Authority'.",
+    // );
+    // }
+    // _ => {}
+    // }
+
+    // if let Some(ref mut telemetry) = telemetry {
+    // let telemetry_handle = telemetry.handle();
+    // task_manager.spawn_handle().spawn(
+    // "telemetry_hwbench",
+    // None,
+    // sc_sysinfo::initialize_hwbench_telemetry(telemetry_handle, hwbench),
+    // );
+    // }
+    // }
 
     if let Some(database_path) = database_path {
         sc_storage_monitor::StorageMonitorService::try_spawn(
