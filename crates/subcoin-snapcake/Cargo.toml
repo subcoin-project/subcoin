@@ -14,6 +14,7 @@ path = "src/main.rs"
 bitcoin = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 codec = { workspace = true }
+hex = { workspace = true }
 pallet-bitcoin = { workspace = true }
 sc-consensus = { workspace = true }
 sc-cli = { workspace = true }
@@ -26,6 +27,7 @@ sc-network-common = { workspace = true }
 sc-network-sync = { workspace = true }
 sc-service = { workspace = true }
 sc-transaction-pool = { workspace = true }
+serde = { workspace = true }
 sp-blockchain = { workspace = true }
 sp-consensus = { workspace = true }
 sp-runtime = { workspace = true }
@@ -37,3 +39,4 @@ subcoin-service = { workspace = true }
 subcoin-utils = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
+csv = "1.3.0"
