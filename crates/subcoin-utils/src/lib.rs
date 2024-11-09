@@ -4,6 +4,17 @@ use std::fs::File;
 use std::io::Write;
 use subcoin_primitives::runtime::Coin;
 
+/// Represents a single UTXO (Unspent Transaction Output) in Bitcoin.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Utxo {
+    /// The transaction ID that contains this UTXO.
+    pub txid: bitcoin::Txid,
+    /// The output index within the transaction.
+    pub vout: u32,
+    /// The coin data associated with this UTXO (e.g., amount and any relevant metadata).
+    pub coin: Coin,
+}
+
 /// Responsible for dumping the UTXO set snapshot compatible with Bitcoin Core.
 pub struct UtxoSetGenerator {
     output_file: File,
@@ -77,11 +88,11 @@ impl UtxoSetGenerator {
         &mut self,
         bitcoin_block_hash: BlockHash,
         utxos_count: u64,
-        utxos: impl IntoIterator<Item = (bitcoin::Txid, u32, Coin)>,
+        utxos: impl IntoIterator<Item = Utxo>,
     ) -> std::io::Result<()> {
         self.write_snapshot_metadata(bitcoin_block_hash, utxos_count)?;
 
-        for (txid, vout, coin) in utxos {
+        for Utxo { txid, vout, coin } in utxos {
             self.write_utxo_entry(txid, vout, coin)?;
         }
 

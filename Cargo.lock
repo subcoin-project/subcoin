@@ -10682,6 +10682,7 @@ name = "subcoin-utils"
 version = "0.1.0"
 dependencies = [
  "bitcoin 0.32.2",
+ "serde",
  "subcoin-primitives",
  "txoutset",
 ]

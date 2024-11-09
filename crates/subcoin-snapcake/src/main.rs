@@ -36,6 +36,7 @@
 mod cli;
 mod network;
 mod params;
+mod state_sync_wrapper;
 
 use self::cli::{App, Command};
 use clap::Parser;
