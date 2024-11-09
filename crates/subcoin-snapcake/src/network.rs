@@ -323,29 +323,7 @@ where
             } else {
                 tracing::error!(target: LOG_TARGET, "State sync failed. Falling back to full sync.");
             }
-            let chain_sync = match ChainSync::new(
-                chain_sync_mode(self.config.mode),
-                self.client.clone(),
-                self.config.max_parallel_downloads,
-                self.config.max_blocks_per_request,
-                self.config.state_request_protocol_name.clone(),
-                self.config.block_downloader.clone(),
-                self.config.metrics_registry.as_ref(),
-                self.peer_best_blocks
-                    .iter()
-                    .map(|(peer_id, (best_hash, best_number))| {
-                        (*peer_id, *best_hash, *best_number)
-                    }),
-            ) {
-                Ok(chain_sync) => chain_sync,
-                Err(e) => {
-                    tracing::error!(target: LOG_TARGET, "Failed to start `ChainSync`.");
-                    return Err(e);
-                }
-            };
-
             self.state = None;
-            self.chain_sync = Some(chain_sync);
             Ok(())
         } else {
             unreachable!("Only warp & state strategies can finish; qed")
@@ -409,8 +387,8 @@ where
             fields: BlockAttributes::HEADER,
             from: FromBlock::Hash(best_hash),
             direction: Direction::Descending,
-            // Attempt to download the most recent finalized block, i.e., peer_best_block -
-            // confirmation_depth(6).
+            // Attempt to download the most recent finalized block, i.e.,
+            // `peer_best_block - confirmation_depth(6)`.
             max: Some(6),
         };
 
@@ -491,10 +469,8 @@ where
         protocol_name: ProtocolName,
         response: Box<dyn Any + Send>,
     ) {
-        tracing::debug!(target: LOG_TARGET, "=========== [on_generic_response] key: {key:?}, protocol_name: {protocol_name:?}");
         match key {
             StateStrategy::<B>::STRATEGY_KEY => {
-                tracing::debug!(target: LOG_TARGET, "=========== [on_generic_response] Processing state response, state is some: {:?}", self.state.is_some());
                 if let Some(state) = &mut self.state {
                     let Ok(response) = response.downcast::<Vec<u8>>() else {
                         tracing::warn!(target: LOG_TARGET, "Failed to downcast state response");
@@ -502,11 +478,7 @@ where
                         return;
                     };
 
-                    tracing::debug!(target: LOG_TARGET, "=========== [on_generic_response] Calling state.on_state_response");
                     state.on_state_response(peer_id, *response);
-                // }
-                // } else if let Some(chain_sync) = &mut self.chain_sync {
-                // chain_sync.on_generic_response(peer_id, key, protocol_name, response);
                 } else {
                     tracing::error!(
                         target: LOG_TARGET,
@@ -536,9 +508,7 @@ where
                         Err(BlockResponseError::DecodeFailed(e)) => {
                             tracing::debug!(
                                 target: LOG_TARGET,
-                                "Failed to decode block response from peer {:?}: {:?}.",
-                                peer_id,
-                                e
+                                "Failed to decode block response from peer {peer_id:?}: {e:?}.",
                             );
                             // self.actions.push(SyncingAction::DropPeer(BadPeer(*peer_id, rep::BAD_MESSAGE)));
                             return;
@@ -546,9 +516,7 @@ where
                         Err(BlockResponseError::ExtractionFailed(e)) => {
                             tracing::debug!(
                                 target: LOG_TARGET,
-                                "Failed to extract blocks from peer response {:?}: {:?}.",
-                                peer_id,
-                                e
+                                "Failed to extract blocks from peer response {peer_id:?}: {e:?}.",
                             );
                             // self.actions.push(SyncingAction::DropPeer(BadPeer(*peer_id, rep::BAD_MESSAGE)));
                             return;
@@ -556,6 +524,8 @@ where
                     };
 
                     self.on_block_response(*peer_id, request, blocks);
+                } else {
+                    tracing::debug!(target: LOG_TARGET, "Ignored chain sync reponse, protocol_name: {protocol_name:?}");
                 }
             }
             key => {
@@ -687,7 +657,7 @@ where
             tracing::debug!(target: LOG_TARGET, "✅ State sync is complete");
             self.state.take();
             self.state_sync_complete = true;
-            // Exit the entire program once the state sync is complete.
+            // Exit the entire program directly once the state sync is complete.
             std::process::exit(0);
         }
 
