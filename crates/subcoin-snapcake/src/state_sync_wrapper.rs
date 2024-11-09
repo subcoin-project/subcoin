@@ -9,11 +9,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subcoin_crypto::muhash::MuHash3072;
 use subcoin_runtime_primitives::Coin;
-use subcoin_utils::Utxo;
-use subcoin_utils::UtxoSetGenerator;
+use subcoin_utils::{Utxo, UtxoSetGenerator};
 
 /// Wrapped [`StateSync`] to intercept the state response for parsing the UTXO state.
-pub(crate) struct WrappedStateSync<B: BlockT, Client> {
+pub(crate) struct StateSyncWrapper<B: BlockT, Client> {
     inner: StateSync<B, Client>,
     muhash: MuHash3072,
     target_bitcoin_block_hash: bitcoin::BlockHash,
@@ -21,7 +20,7 @@ pub(crate) struct WrappedStateSync<B: BlockT, Client> {
     utxo_set_generator: UtxoSetGenerator,
 }
 
-impl<B, Client> WrappedStateSync<B, Client>
+impl<B, Client> StateSyncWrapper<B, Client>
 where
     B: BlockT,
     Client: ProofProvider<B> + Send + Sync + 'static,
@@ -110,7 +109,7 @@ where
     }
 }
 
-impl<B, Client> StateSyncProvider<B> for WrappedStateSync<B, Client>
+impl<B, Client> StateSyncProvider<B> for StateSyncWrapper<B, Client>
 where
     B: BlockT,
     Client: ProofProvider<B> + Send + Sync + 'static,

@@ -1,4 +1,4 @@
-use crate::state_sync_wrapper::WrappedStateSync;
+use crate::state_sync_wrapper::StateSyncWrapper;
 use sc_client_api::{BlockBackend, HeaderBackend, ProofProvider};
 use sc_consensus::{BlockImportError, BlockImportStatus};
 use sc_network::config::{FullNetworkConfiguration, ProtocolId};
@@ -8,16 +8,14 @@ use sc_network_common::sync::message::{
     BlockAnnounce, BlockAttributes, BlockData, BlockRequest, Direction, FromBlock,
 };
 use sc_network_common::sync::SyncMode;
-use sc_network_sync::block_relay_protocol::BlockDownloader;
-use sc_network_sync::block_relay_protocol::BlockResponseError;
+use sc_network_sync::block_relay_protocol::{BlockDownloader, BlockResponseError};
 use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_network_sync::state_request_handler::StateRequestHandler;
 use sc_network_sync::strategy::chain_sync::{ChainSync, ChainSyncMode};
+use sc_network_sync::strategy::polkadot::PolkadotSyncingStrategyConfig;
 use sc_network_sync::strategy::state::StateStrategy;
 use sc_network_sync::strategy::warp::WarpSync;
-use sc_network_sync::strategy::{
-    polkadot::PolkadotSyncingStrategyConfig, StrategyKey, SyncingAction, SyncingStrategy,
-};
+use sc_network_sync::strategy::{StrategyKey, SyncingAction, SyncingStrategy};
 use sc_network_sync::SyncStatus;
 use sc_service::SpawnTaskHandle;
 use sp_blockchain::HeaderMetadata;
@@ -484,7 +482,7 @@ where
                     target_header.number(), target_header.hash(),
                 );
                 let state_sync = StateStrategy::new_with_provider(
-                    Box::new(WrappedStateSync::new(
+                    Box::new(StateSyncWrapper::new(
                         self.client.clone(),
                         target_header,
                         self.skip_proof,

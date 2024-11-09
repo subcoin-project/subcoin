@@ -2,7 +2,7 @@ use crate::params::{BitcoinChain, StateSyncNetworkParams};
 use clap::Parser;
 use sc_cli::{CliConfiguration, NetworkParams, SharedParams};
 use sc_service::BasePath;
-use std::path::{PathBuf};
+use std::path::PathBuf;
 use subcoin_service::ChainSpec;
 
 const BITCOIN_MAINNET_CHAIN_SPEC: &str =
