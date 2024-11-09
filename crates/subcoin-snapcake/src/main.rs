@@ -44,6 +44,10 @@ use sc_consensus::import_queue::BasicQueue;
 use sc_consensus_nakamoto::SubstrateImportQueueVerifier;
 use sc_executor::WasmExecutor;
 use sc_network::config::NetworkBackendType;
+use sc_network::Roles;
+use sc_network_sync::engine::SyncingEngine;
+use sc_network_sync::service::network::NetworkServiceProvider;
+use sc_service::ImportQueue;
 use sc_service::{Configuration, TaskManager};
 use sp_runtime::traits::Block as BlockT;
 use std::path::PathBuf;
@@ -146,12 +150,15 @@ where
         N,
     >::new(&config.network, None);
 
-    let transaction_pool = sc_transaction_pool::BasicPool::new_full(
-        config.transaction_pool.clone(),
-        false.into(),
-        None,
-        task_manager.spawn_essential_handle(),
-        client.clone(),
+    let transaction_pool = Arc::from(
+        sc_transaction_pool::Builder::new(
+            task_manager.spawn_essential_handle(),
+            client.clone(),
+            config.role.is_authority().into(),
+        )
+        .with_options(config.transaction_pool.clone())
+        .with_prometheus(config.prometheus_registry())
+        .build(),
     );
 
     let import_queue = BasicQueue::new(
@@ -162,33 +169,77 @@ where
         None,
     );
 
+    let metrics = N::register_notification_metrics(config.prometheus_registry());
+
+    let block_announce_validator =
+        Box::new(sp_consensus::block_validation::DefaultBlockAnnounceValidator);
+
+    let network_service_provider = NetworkServiceProvider::new();
+    let protocol_id = config.protocol_id();
+    let fork_id = config.chain_spec.fork_id();
+    let metrics_registry = config
+        .prometheus_config
+        .as_ref()
+        .map(|config| &config.registry);
+
+    let spawn_handle = task_manager.spawn_handle();
+
+    let block_downloader = sc_service::build_default_block_downloader(
+        &protocol_id,
+        fork_id,
+        &mut net_config,
+        network_service_provider.handle(),
+        client.clone(),
+        100,
+        &spawn_handle,
+    );
+
     let syncing_strategy = crate::network::build_snapcake_syncing_strategy(
-        config.protocol_id(),
-        config.chain_spec.fork_id(),
+        protocol_id.clone(),
+        fork_id,
         &mut net_config,
         client.clone(),
-        &task_manager.spawn_handle(),
+        &spawn_handle,
+        block_downloader,
         skip_proof,
         snapshot_dir,
     )?;
 
-    let metrics = N::register_notification_metrics(config.prometheus_registry());
+    let (syncing_engine, sync_service, block_announce_config) = SyncingEngine::new(
+        Roles::from(&config.role),
+        Arc::clone(&client),
+        metrics_registry,
+        metrics.clone(),
+        &net_config,
+        protocol_id.clone(),
+        fork_id,
+        block_announce_validator,
+        syncing_strategy,
+        network_service_provider.handle(),
+        import_queue.service(),
+        net_config.peer_store_handle(),
+    )?;
+
+    spawn_handle.spawn_blocking("syncing", None, syncing_engine.run());
 
     let (network, _system_rpc_tx, _tx_handler_controller, network_starter, sync_service) =
-        sc_service::build_network(sc_service::BuildNetworkParams {
-            config,
+        sc_service::build_network_advanced(sc_service::BuildNetworkAdvancedParams {
+            role: config.role,
+            protocol_id,
+            fork_id,
+            ipfs_server: false,
+            announce_block: false,
             net_config,
             client: client.clone(),
-            transaction_pool: transaction_pool.clone(),
+            transaction_pool,
             spawn_handle: task_manager.spawn_handle(),
             import_queue,
-            block_announce_validator_builder: None,
-            syncing_strategy,
-            block_relay: None,
+            sync_service,
+            block_announce_config,
+            network_service_provider,
+            metrics_registry: None,
             metrics,
         })?;
-
-    let spawn_handle = task_manager.spawn_handle();
 
     spawn_handle.spawn(
         "substrate-informant",
@@ -200,3 +251,78 @@ where
 
     Ok(())
 }
+
+/*
+use sc_client_api::{BlockBackend, HeaderBackend, ProofProvider};
+use sc_network::NetworkBackend;
+use sc_network::Roles;
+use sc_network_sync::SyncingService;
+use sc_service::build_default_block_downloader;
+use sc_service::ImportQueue;
+use sp_blockchain::HeaderMetadata;
+
+/// Build default syncing engine using [`build_default_block_downloader`] and
+/// [`build_polkadot_syncing_strategy`] internally.
+fn build_syncing_engine<Block, Client, Net>(
+    config: DefaultSyncingEngineConfig<Block, Client, Net>,
+    task_manager: &mut sc_service::TaskManager,
+    skip_proof: bool,
+    snapshot_dir: PathBuf,
+) -> Result<(SyncingService<Block>, Net::NotificationProtocolConfig), sc_service::error::Error>
+where
+    Block: BlockT,
+    Client: HeaderBackend<Block>
+        + BlockBackend<Block>
+        + HeaderMetadata<Block, Error = sp_blockchain::Error>
+        + ProofProvider<Block>
+        + Send
+        + Sync
+        + 'static,
+    Net: NetworkBackend<Block, <Block as BlockT>::Hash>,
+{
+    let DefaultSyncingEngineConfig {
+        role,
+        protocol_id,
+        fork_id,
+        net_config,
+        block_announce_validator,
+        network_service_handle,
+        warp_sync_config,
+        client,
+        import_queue_service,
+        num_peers_hint,
+        spawn_handle,
+        metrics_registry,
+        metrics,
+    } = config;
+
+    let block_downloader = build_default_block_downloader(
+        &protocol_id,
+        fork_id,
+        net_config,
+        network_service_handle.clone(),
+        client.clone(),
+        num_peers_hint,
+        spawn_handle,
+    );
+
+    let (syncing_engine, sync_service, block_announce_config) = SyncingEngine::new(
+        Roles::from(&role),
+        client,
+        metrics_registry,
+        metrics,
+        &net_config,
+        protocol_id,
+        fork_id,
+        block_announce_validator,
+        syncing_strategy,
+        network_service_handle,
+        import_queue_service,
+        net_config.peer_store_handle(),
+    )?;
+
+    spawn_handle.spawn_blocking("syncing", None, syncing_engine.run());
+
+    Ok((sync_service, block_announce_config))
+}
+*/

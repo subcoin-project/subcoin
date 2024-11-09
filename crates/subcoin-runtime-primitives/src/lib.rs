@@ -26,7 +26,7 @@ const HALVING_INTERVAL: u32 = 210_000;
 const MAX_SCRIPT_SIZE: usize = 10_000;
 
 /// Unspent transaction output.
-#[derive(Debug, Clone, PartialEq, Eq, TypeInfo, Encode, Decode)]
+#[derive(Debug, TypeInfo, Encode, Decode)]
 #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
 pub struct Coin {
     /// Whether the coin is from a coinbase transaction.

@@ -3,32 +3,37 @@ use sc_client_api::{BlockBackend, HeaderBackend, ProofProvider};
 use sc_consensus::{BlockImportError, BlockImportStatus};
 use sc_network::config::{FullNetworkConfiguration, ProtocolId};
 use sc_network::service::traits::RequestResponseConfig;
-use sc_network::{NetworkBackend, PeerId};
+use sc_network::{NetworkBackend, PeerId, ProtocolName};
 use sc_network_common::sync::message::{
     BlockAnnounce, BlockAttributes, BlockData, BlockRequest, Direction, FromBlock,
 };
 use sc_network_common::sync::SyncMode;
+use sc_network_sync::block_relay_protocol::BlockDownloader;
+use sc_network_sync::block_relay_protocol::BlockResponseError;
+use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_network_sync::state_request_handler::StateRequestHandler;
 use sc_network_sync::strategy::chain_sync::{ChainSync, ChainSyncMode};
 use sc_network_sync::strategy::state::StateStrategy;
 use sc_network_sync::strategy::state_sync::{
     ImportResult, StateSync, StateSyncProgress, StateSyncProvider,
 };
-use sc_network_sync::strategy::warp::EncodedProof;
-use sc_network_sync::strategy::{StrategyKey, SyncingAction, SyncingConfig, SyncingStrategy};
-use sc_network_sync::types::OpaqueStateResponse;
+use sc_network_sync::strategy::warp::WarpSync;
+use sc_network_sync::strategy::{
+    polkadot::PolkadotSyncingStrategyConfig, StrategyKey, SyncingAction, SyncingStrategy,
+};
 use sc_network_sync::{StateRequest, StateResponse, SyncStatus};
 use sc_service::SpawnTaskHandle;
 use sp_blockchain::HeaderMetadata;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
+use std::any::Any;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use subcoin_crypto::muhash::MuHash3072;
 use subcoin_runtime_primitives::Coin;
 use subcoin_utils::UtxoSetGenerator;
 
-const LOG_TARGET: &'static str = "sync::subcoin";
+const LOG_TARGET: &'static str = "sync::snapcake";
 
 /// Maximum blocks per response.
 const MAX_BLOCKS_IN_RESPONSE: usize = 128;
@@ -48,7 +53,7 @@ fn chain_sync_mode(sync_mode: SyncMode) -> ChainSyncMode {
     }
 }
 
-/// Wrapped [`StateSync`] to intercept the state response.
+/// Wrapped [`StateSync`] to intercept the state response for parsing the UTXO state.
 struct WrappedStateSync<B: BlockT, Client> {
     inner: StateSync<B, Client>,
     muhash: MuHash3072,
@@ -139,7 +144,7 @@ where
             );
 
             self.utxo_set_generator
-                .write_utxo_snapshot(self.target_bitcoin_block_hash, utxos)
+                .write_utxo_snapshot(self.target_bitcoin_block_hash, utxos.len() as u64, utxos)
                 .expect("Failed to write binary output");
         }
     }
@@ -178,6 +183,7 @@ pub fn build_snapcake_syncing_strategy<Block, Client, Net>(
     net_config: &mut FullNetworkConfiguration<Block, <Block as BlockT>::Hash, Net>,
     client: Arc<Client>,
     spawn_handle: &SpawnTaskHandle,
+    block_downloader: Arc<dyn BlockDownloader<Block>>,
     skip_proof: bool,
     snapshot_dir: PathBuf,
 ) -> Result<Box<dyn SyncingStrategy<Block>>, sc_service::Error>
@@ -210,12 +216,13 @@ where
     };
     net_config.add_request_response_protocol(state_request_protocol_config);
 
-    let syncing_config = SyncingConfig {
+    let syncing_config = PolkadotSyncingStrategyConfig {
         mode: net_config.network_config.sync_mode,
         max_parallel_downloads: net_config.network_config.max_parallel_downloads,
         max_blocks_per_request: net_config.network_config.max_blocks_per_request,
         metrics_registry: None,
         state_request_protocol_name,
+        block_downloader,
     };
 
     // Ensure the snapshot directory exists, creating it if necessary
@@ -232,7 +239,7 @@ where
 /// Proxy to specific syncing strategies used in Polkadot.
 pub struct SnapcakeSyncingStrategy<B: BlockT, Client> {
     /// Initial syncing configuration.
-    config: SyncingConfig,
+    config: PolkadotSyncingStrategyConfig<B>,
     /// Client used by syncing strategies.
     client: Arc<Client>,
     /// State strategy.
@@ -269,7 +276,7 @@ where
 {
     /// Initialize a new syncing strategy.
     pub fn new(
-        mut config: SyncingConfig,
+        mut config: PolkadotSyncingStrategyConfig<B>,
         client: Arc<Client>,
         skip_proof: bool,
         snapshot_dir: PathBuf,
@@ -288,6 +295,7 @@ where
             config.max_parallel_downloads,
             config.max_blocks_per_request,
             config.state_request_protocol_name.clone(),
+            config.block_downloader.clone(),
             config.metrics_registry.as_ref(),
             std::iter::empty(),
         )?;
@@ -321,6 +329,7 @@ where
                 self.config.max_parallel_downloads,
                 self.config.max_blocks_per_request,
                 self.config.state_request_protocol_name.clone(),
+                self.config.block_downloader.clone(),
                 self.config.metrics_registry.as_ref(),
                 self.peer_best_blocks
                     .iter()
@@ -340,6 +349,35 @@ where
             Ok(())
         } else {
             unreachable!("Only warp & state strategies can finish; qed")
+        }
+    }
+
+    fn on_block_response(
+        &mut self,
+        peer_id: PeerId,
+        request: BlockRequest<B>,
+        blocks: Vec<BlockData<B>>,
+    ) {
+        // Process the header requests only and ignore any other block response.
+        if let Some(index) = self
+            .pending_header_requests
+            .iter()
+            .position(|x| x.0 == peer_id && x.1 == request)
+        {
+            self.pending_header_requests.remove(index);
+
+            // TODO: validate_blocks
+            if blocks.len() < 6 {
+                tracing::error!(target: LOG_TARGET, "No finalized block in the block response: {blocks:?}");
+            }
+
+            if let Some(block) = blocks.into_iter().nth(5) {
+                let finalized_header = block.header.expect("Header must exist as requested");
+                self.peer_best_finalized_headers
+                    .insert(peer_id, finalized_header);
+            }
+        } else {
+            // Recv unexpected block response, drop peer?
         }
     }
 }
@@ -446,74 +484,88 @@ where
         }
     }
 
-    fn on_block_response(
+    fn on_generic_response(
         &mut self,
-        peer_id: PeerId,
+        peer_id: &PeerId,
         key: StrategyKey,
-        request: BlockRequest<B>,
-        blocks: Vec<BlockData<B>>,
+        protocol_name: ProtocolName,
+        response: Box<dyn Any + Send>,
     ) {
-        if let (StrategyKey::ChainSync, Some(ref mut _chain_sync)) = (key, &mut self.chain_sync) {
-            // Process the header requests only and ignore any other block response.
-            if let Some(index) = self
-                .pending_header_requests
-                .iter()
-                .position(|x| x.0 == peer_id && x.1 == request)
-            {
-                self.pending_header_requests.remove(index);
+        tracing::debug!(target: LOG_TARGET, "=========== [on_generic_response] key: {key:?}, protocol_name: {protocol_name:?}");
+        match key {
+            StateStrategy::<B>::STRATEGY_KEY => {
+                tracing::debug!(target: LOG_TARGET, "=========== [on_generic_response] Processing state response, state is some: {:?}", self.state.is_some());
+                if let Some(state) = &mut self.state {
+                    let Ok(response) = response.downcast::<Vec<u8>>() else {
+                        tracing::warn!(target: LOG_TARGET, "Failed to downcast state response");
+                        debug_assert!(false);
+                        return;
+                    };
 
-                // TODO: validate_blocks
-                if blocks.len() < 6 {
-                    tracing::error!(target: LOG_TARGET, "No finalized block in the block response: {blocks:?}");
+                    tracing::debug!(target: LOG_TARGET, "=========== [on_generic_response] Calling state.on_state_response");
+                    state.on_state_response(peer_id, *response);
+                // }
+                // } else if let Some(chain_sync) = &mut self.chain_sync {
+                // chain_sync.on_generic_response(peer_id, key, protocol_name, response);
+                } else {
+                    tracing::error!(
+                        target: LOG_TARGET,
+                        "`on_generic_response()` called with unexpected key {key:?} \
+                         or corresponding strategy is not active.",
+                    );
+                    debug_assert!(false);
                 }
-
-                if let Some(block) = blocks.into_iter().nth(5) {
-                    let finalized_header = block.header.expect("Header must exist as requested");
-                    self.peer_best_finalized_headers
-                        .insert(peer_id, finalized_header);
-                }
-            } else {
-                // Recv unexpected block response, drop peer?
             }
-        } else {
-            tracing::error!(
-                target: LOG_TARGET,
-                "`on_block_response()` called with unexpected key {key:?} \
-                 or corresponding strategy is not active.",
-            );
-            debug_assert!(false);
-        }
-    }
+            WarpSync::<B, Client>::STRATEGY_KEY => {
+                unreachable!("Warp sync unsupported")
+            }
+            ChainSync::<B, Client>::STRATEGY_KEY => {
+                if &protocol_name == self.config.block_downloader.protocol_name() {
+                    let Ok(response) = response.downcast::<(
+                        BlockRequest<B>,
+                        Result<Vec<BlockData<B>>, BlockResponseError>,
+                    )>() else {
+                        tracing::warn!(target: LOG_TARGET, "Failed to downcast block response");
+                        debug_assert!(false);
+                        return;
+                    };
 
-    fn on_state_response(
-        &mut self,
-        peer_id: PeerId,
-        key: StrategyKey,
-        response: OpaqueStateResponse,
-    ) {
-        if let (StrategyKey::State, Some(ref mut state)) = (key, &mut self.state) {
-            state.on_state_response(peer_id, response);
-        } else if let (StrategyKey::ChainSync, Some(ref mut chain_sync)) =
-            (key, &mut self.chain_sync)
-        {
-            chain_sync.on_state_response(peer_id, key, response);
-        } else {
-            tracing::error!(
-                target: LOG_TARGET,
-                "`on_state_response()` called with unexpected key {key:?} \
-                 or corresponding strategy is not active.",
-            );
-            debug_assert!(false);
-        }
-    }
+                    let (request, response) = *response;
+                    let blocks = match response {
+                        Ok(blocks) => blocks,
+                        Err(BlockResponseError::DecodeFailed(e)) => {
+                            tracing::debug!(
+                                target: LOG_TARGET,
+                                "Failed to decode block response from peer {:?}: {:?}.",
+                                peer_id,
+                                e
+                            );
+                            // self.actions.push(SyncingAction::DropPeer(BadPeer(*peer_id, rep::BAD_MESSAGE)));
+                            return;
+                        }
+                        Err(BlockResponseError::ExtractionFailed(e)) => {
+                            tracing::debug!(
+                                target: LOG_TARGET,
+                                "Failed to extract blocks from peer response {:?}: {:?}.",
+                                peer_id,
+                                e
+                            );
+                            // self.actions.push(SyncingAction::DropPeer(BadPeer(*peer_id, rep::BAD_MESSAGE)));
+                            return;
+                        }
+                    };
 
-    fn on_warp_proof_response(
-        &mut self,
-        _peer_id: &PeerId,
-        _key: StrategyKey,
-        _response: EncodedProof,
-    ) {
-        unreachable!("Warp sync unsupported")
+                    self.on_block_response(*peer_id, request, blocks);
+                }
+            }
+            key => {
+                tracing::warn!(
+                    target: LOG_TARGET,
+                    "Unexpected generic response strategy key {key:?}, protocol {protocol_name}",
+                );
+                debug_assert!(false);
+            }
+        }
     }
 
     fn on_blocks_processed(
@@ -575,7 +627,10 @@ where
             .map_or(0, |chain_sync| chain_sync.num_sync_requests())
     }
 
-    fn actions(&mut self) -> Result<Vec<SyncingAction<B>>, sp_blockchain::Error> {
+    fn actions(
+        &mut self,
+        network_service: &NetworkServiceHandle,
+    ) -> Result<Vec<SyncingAction<B>>, sp_blockchain::Error> {
         if self.state.is_none() && !self.state_sync_complete {
             // TODO: proper algo to select state sync target.
             if let Some((peer_id, finalized_header)) =
@@ -605,17 +660,20 @@ where
 
         // We only handle the actions of requesting best headers and the actions from state sync.
         let actions: Vec<_> = if !self.pending_header_requests.is_empty() {
-            self.pending_header_requests
-                .clone()
-                .into_iter()
-                .map(|(peer_id, request)| SyncingAction::SendBlockRequest {
-                    peer_id,
-                    key: StrategyKey::ChainSync,
-                    request,
-                })
-                .collect()
+            let mut chain_sync_actions = vec![];
+
+            for (peer_id, request) in self.pending_header_requests.clone() {
+                chain_sync_actions.push(
+                    self.chain_sync
+                        .as_ref()
+                        .expect("Chain sync must be available")
+                        .create_block_request_action(peer_id, request),
+                );
+            }
+
+            chain_sync_actions
         } else if let Some(ref mut state) = self.state {
-            state.actions().map(Into::into).collect()
+            state.actions(network_service).map(Into::into).collect()
         } else {
             return Ok(Vec::new());
         };

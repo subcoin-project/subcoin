@@ -19,6 +19,7 @@ serde = { workspace = true, optional = true }
 default = ["std"]
 std = [
 	"codec/std",
+	"serde",
 	"scale-info/std",
 	"serde",
 	"sp-api/std",

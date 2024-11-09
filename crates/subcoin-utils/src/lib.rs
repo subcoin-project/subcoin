@@ -76,9 +76,10 @@ impl UtxoSetGenerator {
     pub fn write_utxo_snapshot(
         &mut self,
         bitcoin_block_hash: BlockHash,
-        utxos: Vec<(bitcoin::Txid, u32, Coin)>,
+        utxos_count: u64,
+        utxos: impl IntoIterator<Item = (bitcoin::Txid, u32, Coin)>,
     ) -> std::io::Result<()> {
-        self.write_snapshot_metadata(bitcoin_block_hash, utxos.len() as u64)?;
+        self.write_snapshot_metadata(bitcoin_block_hash, utxos_count)?;
 
         for (txid, vout, coin) in utxos {
             self.write_utxo_entry(txid, vout, coin)?;
