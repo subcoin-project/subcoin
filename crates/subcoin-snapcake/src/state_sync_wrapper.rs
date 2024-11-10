@@ -181,7 +181,7 @@ where
                     let reader = std::io::BufReader::new(file.try_clone().unwrap()); // Clone file handle for reading
                     let csv_reader = csv::Reader::from_reader(reader);
 
-                    let iter = csv_reader
+                    let utxo_iter = csv_reader
                         .into_deserialize::<UtxoCsvEntry>()
                         .filter_map(Result::ok)
                         .map(|csv_entry| {
@@ -194,21 +194,19 @@ where
                                 script_pubkey,
                             } = csv_entry;
 
-                            Utxo {
-                                txid,
-                                vout,
-                                coin: Coin {
-                                    is_coinbase,
-                                    amount,
-                                    height,
-                                    script_pubkey: hex::decode(script_pubkey)
-                                        .expect("Failed to decode script_pubkey"),
-                                },
-                            }
+                            let coin = Coin {
+                                is_coinbase,
+                                amount,
+                                height,
+                                script_pubkey: hex::decode(script_pubkey)
+                                    .expect("Failed to decode script_pubkey"),
+                            };
+
+                            Utxo { txid, vout, coin }
                         });
 
                     self.snapshot_generator
-                        .write_utxo_snapshot(self.target_bitcoin_block_hash, utxos_count, iter)
+                        .write_utxo_snapshot(self.target_bitcoin_block_hash, utxos_count, utxo_iter)
                         .expect("Failed to write UTXO set snapshot");
                 }
             }
