@@ -45,3 +45,27 @@ impl sc_cli::SubstrateCli for SubstrateCli {
         Ok(Box::new(chain_spec))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sc_cli::SubstrateCli;
+    use sc_client_api::HeaderBackend;
+    use subcoin_service::{new_node, NodeComponents, SubcoinConfiguration};
+    use tokio::runtime::Handle;
+
+    #[tokio::test]
+    async fn subcoin_mainnet_chain_is_stable_unless_breaking_changes() {
+        let runtime_handle = Handle::current();
+        let mainnet_chain_spec = SubstrateCli.load_spec("bitcoin-mainnet").unwrap();
+        let config =
+            subcoin_test_service::full_test_configuration(runtime_handle, mainnet_chain_spec);
+        let NodeComponents { client, .. } =
+            new_node(SubcoinConfiguration::test_config(&config)).expect("Failed to create node");
+
+        assert_eq!(
+            format!("{:?}", client.info().genesis_hash),
+            "0x594ab67f8a784863e7597996bdc3bf37fee1ddc704a17897821a2b0507f99a58"
+        );
+    }
+}
