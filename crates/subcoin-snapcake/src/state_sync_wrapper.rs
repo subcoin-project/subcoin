@@ -147,7 +147,7 @@ where
                         .expect("Coin in state response must be decoded successfully; qed");
 
                     let data =
-                        subcoin_primitives::tx_out_ser(bitcoin::OutPoint { txid, vout }, &coin)
+                        subcoin_utxo_snapshot::tx_out_ser(bitcoin::OutPoint { txid, vout }, &coin)
                             .expect("Failed to serialize txout");
 
                     self.muhash.insert(&data);
