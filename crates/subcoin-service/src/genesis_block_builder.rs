@@ -86,7 +86,7 @@ where
     let extrinsics_root = frame_system::extrinsics_data_root::<HashingFor<Block>>(
         extrinsics.iter().map(|xt| xt.encode()).collect(),
         sp_core::storage::StateVersion::try_from(subcoin_runtime::VERSION.system_version)
-            .expect("Invalid system version"),
+            .expect("Runtime system version config must be valid; qed"),
     );
 
     let digest = subcoin_primitives::substrate_header_digest(&block.header);

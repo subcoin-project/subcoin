@@ -11,6 +11,8 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(test)]
+mod mock;
+#[cfg(test)]
 mod tests;
 pub mod types;
 
@@ -34,6 +36,12 @@ pub type OutputIndex = u32;
 pub trait WeightInfo {
     /// Calculates the weight of [`Call::transact`].
     fn transact(btc_tx: &Transaction) -> Weight;
+}
+
+impl WeightInfo for () {
+    fn transact(_: &Transaction) -> Weight {
+        Weight::zero()
+    }
 }
 
 /// A struct that implements the [`WeightInfo`] trait for Bitcoin transactions.
@@ -185,11 +193,16 @@ impl<T: Config> Pallet<T> {
             (out_point, coin)
         });
 
+        let num_created = new_coins.len();
+
         if is_coinbase {
             for (out_point, coin) in new_coins {
                 let OutPoint { txid, output_index } = OutPoint::from(out_point);
                 Coins::<T>::insert(txid, output_index, coin);
             }
+            CoinsCount::<T>::mutate(|v| {
+                *v = *v + num_created as u64;
+            });
             return;
         }
 
