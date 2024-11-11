@@ -162,6 +162,8 @@ impl<T: Config> Pallet<T> {
             }
         }
 
+        let num_created = new_coins.len();
+
         // Process outputs.
         for (out_point, coin) in new_coins {
             let OutPoint { txid, output_index } = OutPoint::from(out_point);

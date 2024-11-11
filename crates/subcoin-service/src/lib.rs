@@ -5,6 +5,7 @@
 pub mod chain_spec;
 mod finalizer;
 mod genesis_block_builder;
+pub mod network_request_handler;
 mod transaction_adapter;
 
 use bitcoin::hashes::Hash;
@@ -257,11 +258,30 @@ pub fn start_substrate_network<N>(
 where
     N: sc_network::NetworkBackend<Block, <Block as BlockT>::Hash>,
 {
-    let net_config = sc_network::config::FullNetworkConfiguration::<
+    let mut net_config = sc_network::config::FullNetworkConfiguration::<
         Block,
         <Block as BlockT>::Hash,
         N,
     >::new(&config.network, config.prometheus_registry().cloned());
+
+    let network_request_protocol_config = {
+        // Allow both outgoing and incoming requests.
+        let (handler, protocol_config) = network_request_handler::NetworkRequestHandler::new::<N>(
+            &config.protocol_id(),
+            config.chain_spec.fork_id(),
+            client.clone(),
+            100,
+        );
+        task_manager.spawn_handle().spawn(
+            "subcoin-network-request-handler",
+            Some("networking"),
+            handler.run(),
+        );
+        protocol_config
+    };
+
+    net_config.add_request_response_protocol(network_request_protocol_config);
+
     let metrics = N::register_notification_metrics(config.prometheus_registry());
 
     let transaction_pool = Arc::from(

@@ -14,6 +14,7 @@ path = "src/main.rs"
 bitcoin = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 codec = { workspace = true }
+futures = { workspace = true }
 hex = { workspace = true }
 pallet-bitcoin = { workspace = true }
 sc-consensus = { workspace = true }

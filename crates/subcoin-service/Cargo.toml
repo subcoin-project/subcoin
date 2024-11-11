@@ -9,6 +9,8 @@ license.workspace = true
 [dependencies]
 async-trait = { workspace = true }
 bitcoin = { workspace = true }
+codec = { workspace = true }
+thiserror = { workspace = true }
 # frame-benchmarking-cli = { workspace = true }
 frame-system = { workspace = true }
 futures = { workspace = true }
@@ -50,6 +52,8 @@ substrate-frame-rpc-system = { workspace = true }
 substrate-prometheus-endpoint = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+array-bytes = "6.2.2"
+async-channel = "1.8.0"
 
 [dev-dependencies]
 sp-tracing = { workspace = true }

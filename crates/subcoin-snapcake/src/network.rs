@@ -1,4 +1,6 @@
 use crate::state_sync_wrapper::StateSyncWrapper;
+use codec::{Decode, Encode};
+use futures::FutureExt;
 use sc_client_api::{BlockBackend, HeaderBackend, ProofProvider};
 use sc_consensus::{BlockImportError, BlockImportStatus};
 use sc_network::config::{FullNetworkConfiguration, ProtocolId};
@@ -24,8 +26,11 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use subcoin_service::network_request_handler::{SubNetworkRequest, SubNetworkResponse};
 
 const LOG_TARGET: &'static str = "sync::snapcake";
+
+const SUBCOIN_STRATEGY_KEY: StrategyKey = StrategyKey::new("Subcoin");
 
 /// Maximum blocks per response.
 const MAX_BLOCKS_IN_RESPONSE: usize = 128;
@@ -85,6 +90,22 @@ where
     };
     net_config.add_request_response_protocol(state_request_protocol_config);
 
+    let network_request_protocol_config = {
+        // Allow outgoing requests only.
+        let (_handler, protocol_config) =
+            subcoin_service::network_request_handler::NetworkRequestHandler::new::<Net>(
+                &protocol_id,
+                fork_id,
+                client.clone(),
+                100,
+            );
+        protocol_config
+    };
+
+    let subcoin_network_request_protocol_name =
+        network_request_protocol_config.protocol_name().clone();
+    net_config.add_request_response_protocol(network_request_protocol_config);
+
     let syncing_config = PolkadotSyncingStrategyConfig {
         mode: net_config.network_config.sync_mode,
         max_parallel_downloads: net_config.network_config.max_parallel_downloads,
@@ -102,6 +123,7 @@ where
         client,
         skip_proof,
         snapshot_dir,
+        subcoin_network_request_protocol_name,
     )?))
 }
 
@@ -128,8 +150,10 @@ pub struct SnapcakeSyncingStrategy<B: BlockT, Client> {
     state_sync_complete: bool,
     /// Whether to skip proof in state sync.
     skip_proof: bool,
-    // Snapshot directory.
+    /// Snapshot directory.
     snapshot_dir: PathBuf,
+    /// Subcoin network request protocol name.
+    subcoin_network_request_protocol_name: ProtocolName,
 }
 
 impl<B, Client> SnapcakeSyncingStrategy<B, Client>
@@ -149,6 +173,7 @@ where
         client: Arc<Client>,
         skip_proof: bool,
         snapshot_dir: PathBuf,
+        subcoin_network_request_protocol_name: ProtocolName,
     ) -> Result<Self, sp_blockchain::Error> {
         if config.max_blocks_per_request > MAX_BLOCKS_IN_RESPONSE as u32 {
             tracing::info!(
@@ -180,6 +205,7 @@ where
             state_sync_complete: false,
             skip_proof,
             snapshot_dir,
+            subcoin_network_request_protocol_name,
         })
     }
 
@@ -225,6 +251,35 @@ where
             }
         } else {
             // Recv unexpected block response, drop peer?
+        }
+    }
+
+    fn create_state_key_value_count_action(
+        &self,
+        peer_id: sc_network::PeerId,
+        request: subcoin_service::network_request_handler::SubNetworkRequest<B>,
+        network_service: &NetworkServiceHandle,
+    ) -> SyncingAction<B> {
+        let (tx, rx) = futures::channel::oneshot::channel();
+
+        network_service.start_request(
+            peer_id,
+            self.subcoin_network_request_protocol_name.clone(),
+            request.encode(),
+            tx,
+            sc_network::IfDisconnected::ImmediateError,
+        );
+
+        SyncingAction::StartRequest {
+            peer_id,
+            key: SUBCOIN_STRATEGY_KEY,
+            request: async move {
+                Ok(rx.await?.and_then(|(response, protocol_name)| {
+                    Ok((Box::new(response) as Box<dyn Any + Send>, protocol_name))
+                }))
+            }
+            .boxed(),
+            remove_obsolete: false,
         }
     }
 }
@@ -397,6 +452,21 @@ where
                     tracing::debug!(target: LOG_TARGET, "Ignored chain sync reponse, protocol_name: {protocol_name:?}");
                 }
             }
+            SUBCOIN_STRATEGY_KEY => {
+                tracing::info!(target: LOG_TARGET, "============== Recv Subcoin key: {key:?}, protocol: {protocol_name}, peer_id: {peer_id:?}");
+                let Ok(response) = response.downcast::<Vec<u8>>() else {
+                    tracing::warn!(target: LOG_TARGET, "Failed to downcast SubNetworkResponse");
+                    debug_assert!(false);
+                    return;
+                };
+                let response = match SubNetworkResponse::<B>::decode(&mut response.as_slice()) {
+                    Ok(res) => res,
+                    Err(err) => {
+                        tracing::warn!(target: LOG_TARGET, "Failed to decode SubNetworkResponse: {err:?}");
+                    }
+                };
+                tracing::info!(target: LOG_TARGET, "============== Recv response: {response:?}");
+            }
             key => {
                 tracing::warn!(
                     target: LOG_TARGET,
@@ -502,12 +572,23 @@ where
             let mut chain_sync_actions = vec![];
 
             for (peer_id, request) in self.pending_header_requests.clone() {
+                let block_hash = match request.from {
+                    FromBlock::Hash(hash) => hash,
+                    FromBlock::Number(number) => unreachable!("number"),
+                };
+
                 chain_sync_actions.push(
                     self.chain_sync
                         .as_ref()
                         .expect("Chain sync must be available")
                         .create_block_request_action(peer_id, request),
                 );
+
+                chain_sync_actions.push(self.create_state_key_value_count_action(
+                    peer_id,
+                    SubNetworkRequest::<B>::GetStateKeyValueCount { block_hash },
+                    network_service,
+                ));
             }
 
             chain_sync_actions
