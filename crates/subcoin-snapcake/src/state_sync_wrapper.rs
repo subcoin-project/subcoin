@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subcoin_crypto::muhash::MuHash3072;
 use subcoin_runtime_primitives::Coin;
-use subcoin_utils::{Utxo, UtxoSetGenerator};
+use subcoin_utils::{Utxo, UtxoSnapshotGenerator};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct UtxoCsvEntry {
@@ -83,7 +83,7 @@ pub(crate) struct StateSyncWrapper<B: BlockT, Client> {
     muhash: MuHash3072,
     target_bitcoin_block_hash: bitcoin::BlockHash,
     utxo_store: UtxoStore,
-    snapshot_generator: UtxoSetGenerator,
+    snapshot_generator: UtxoSnapshotGenerator,
 }
 
 impl<B, Client> StateSyncWrapper<B, Client>
@@ -104,7 +104,7 @@ where
 
         let file_name = format!("{target_block_number}_{target_bitcoin_block_hash}_snapshot.dat");
         let snapshot_file = snapshot_dir.join(file_name);
-        let snapshot_generator = UtxoSetGenerator::new(
+        let snapshot_generator = UtxoSnapshotGenerator::new(
             std::fs::File::create(snapshot_file).expect("Failed to create output file"),
         );
 

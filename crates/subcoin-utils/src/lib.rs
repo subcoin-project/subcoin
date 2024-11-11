@@ -16,12 +16,12 @@ pub struct Utxo {
 }
 
 /// Responsible for dumping the UTXO set snapshot compatible with Bitcoin Core.
-pub struct UtxoSetGenerator {
+pub struct UtxoSnapshotGenerator {
     output_file: File,
 }
 
-impl UtxoSetGenerator {
-    /// Constructs a new instance of [`UtxoSetGenerator`].
+impl UtxoSnapshotGenerator {
+    /// Constructs a new instance of [`UtxoSnapshotGenerator`].
     pub fn new(output_file: File) -> Self {
         Self { output_file }
     }
