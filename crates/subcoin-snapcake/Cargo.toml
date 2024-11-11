@@ -37,7 +37,7 @@ subcoin-primitives = { workspace = true }
 subcoin-runtime = { workspace = true }
 subcoin-runtime-primitives = { workspace = true }
 subcoin-service = { workspace = true }
-subcoin-utils = { workspace = true }
+subcoin-utxo-snapshot = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
 csv = "1.3.0"

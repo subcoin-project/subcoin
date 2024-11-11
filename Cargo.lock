@@ -10523,7 +10523,7 @@ dependencies = [
  "subcoin-runtime",
  "subcoin-service",
  "subcoin-test-service",
- "subcoin-utils",
+ "subcoin-utxo-snapshot",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
@@ -10685,7 +10685,7 @@ dependencies = [
  "subcoin-runtime",
  "subcoin-runtime-primitives",
  "subcoin-service",
- "subcoin-utils",
+ "subcoin-utxo-snapshot",
  "tokio",
  "tracing",
 ]
@@ -10707,7 +10707,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "subcoin-utils"
+name = "subcoin-utxo-snapshot"
 version = "0.1.0"
 dependencies = [
  "bitcoin 0.32.2",

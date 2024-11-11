@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subcoin_crypto::muhash::MuHash3072;
 use subcoin_runtime_primitives::Coin;
-use subcoin_utils::{Utxo, UtxoSnapshotGenerator};
+use subcoin_utxo_snapshot::{Utxo, UtxoSnapshotGenerator};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct UtxoCsvEntry {
