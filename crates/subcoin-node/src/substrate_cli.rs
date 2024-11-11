@@ -36,6 +36,9 @@ impl sc_cli::SubstrateCli for SubstrateCli {
     fn load_spec(&self, id: &str) -> Result<Box<dyn sc_service::ChainSpec>, String> {
         let chain_spec = match id {
             "bitcoin-mainnet" => ChainSpec::from_json_bytes(BITCOIN_MAINNET_CHAIN_SPEC.as_bytes())?,
+            "bitcoin-mainnet-compile" => {
+                subcoin_service::chain_spec::config(bitcoin::Network::Bitcoin)?
+            }
             "bitcoin-testnet" | "bitcoin-signet" => {
                 unimplemented!("Bitcoin testnet and signet are unsupported")
             }
