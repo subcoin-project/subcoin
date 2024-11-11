@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["Call","Event"],"mod":["dispatchables","storage_types"],"struct":["GenesisConfig","Pallet"],"trait":["Config"],"type":["Coins","Module"]};
+window.SIDEBAR_ITEMS = {"enum":["Call","Event"],"mod":["dispatchables","storage_types"],"struct":["Pallet"],"trait":["Config"],"type":["Coins","CoinsCount","Module"]};

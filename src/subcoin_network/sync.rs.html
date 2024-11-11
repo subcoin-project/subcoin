@@ -1018,12 +1018,12 @@
 
         <span class="self">self</span>.peers.entry(peer_id).and_modify(|e| {
             <span class="kw">if </span>peer_best &gt; e.best_number {
-                e.best_number = peer_best;
-                peer_best_updated = <span class="bool-val">true</span>;
                 <span class="macro">tracing::debug!</span>(
                     <span class="string">"Tip of {peer_id:?} updated from #{} to #{peer_best}"</span>,
                     e.best_number
                 );
+                e.best_number = peer_best;
+                peer_best_updated = <span class="bool-val">true</span>;
             }
         });
 

@@ -27,17 +27,8 @@
 <a href="#27" id="27">27</a>
 <a href="#28" id="28">28</a>
 <a href="#29" id="29">29</a>
-<a href="#30" id="30">30</a>
-<a href="#31" id="31">31</a>
-<a href="#32" id="32">32</a>
-<a href="#33" id="33">33</a>
-<a href="#34" id="34">34</a>
-<a href="#35" id="35">35</a>
-<a href="#36" id="36">36</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::ChainSpec;
 <span class="kw">use </span>sc_service::{ChainType, Properties};
-<span class="kw">use </span>serde_json::json;
-<span class="kw">use </span>subcoin_primitives::raw_genesis_tx;
 <span class="kw">use </span>subcoin_runtime::WASM_BINARY;
 
 <span class="kw">fn </span>props() -&gt; Properties {
@@ -62,11 +53,6 @@
     .with_name(name)
     .with_id(id)
     .with_chain_type(ChainType::Live)
-    .with_genesis_config_patch(<span class="macro">json!</span>({
-        <span class="string">"bitcoin"</span>: {
-            <span class="string">"genesisTx"</span>: raw_genesis_tx(network),
-        }
-    }))
     .with_properties(props())
     .build())
 }

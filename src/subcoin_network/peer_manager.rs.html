@@ -799,6 +799,9 @@
 <a href="#799" id="799">799</a>
 <a href="#800" id="800">800</a>
 <a href="#801" id="801">801</a>
+<a href="#802" id="802">802</a>
+<a href="#803" id="803">803</a>
+<a href="#804" id="804">804</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::address_book::AddressBook;
 <span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
 <span class="kw">use </span><span class="kw">crate</span>::peer_connection::{
@@ -1417,13 +1420,6 @@
     ) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
         <span class="kw">let </span>greatest_common_version = <span class="self">self</span>.config.protocol_version.min(version_message.version);
 
-        <span class="macro">tracing::debug!</span>(
-            version = version_message.version,
-            user_agent = version_message.user_agent,
-            start_height = version_message.start_height,
-            <span class="string">"Received version from {peer_id:?}"
-        </span>);
-
         <span class="kw">match </span>direction {
             Direction::Inbound =&gt; {
                 <span class="kw">let </span>local_addr = <span class="self">self
@@ -1510,21 +1506,31 @@
             <span class="kw">return </span><span class="prelude-val">Err</span>(Error::UnexpectedHandshakeState(Box::new(handshake_state)));
         };
 
-        <span class="kw">let </span>peer_info = PeerInfo::new(version, direction);
-
-        <span class="self">self</span>.connected_peers.insert(peer_id, peer_info);
-
         <span class="kw">match </span>direction {
             Direction::Inbound =&gt; {
                 <span class="comment">// Do not log the inbound connection success, following Bitcoin Core's behaviour.
                 </span><span class="attr">#[cfg(test)]
-                </span><span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>direction, <span class="string">"🤝 New peer {peer_id:?}"</span>);
+                </span><span class="macro">tracing::debug!</span>(
+                    version = version.version,
+                    user_agent = %version.user_agent,
+                    start_height = version.start_height,
+                    <span class="string">"🤝 New {direction} peer {peer_id:?}"</span>,
+                );
             }
             Direction::Outbound =&gt; {
                 <span class="self">self</span>.send(peer_id, NetworkMessage::Verack)<span class="question-mark">?</span>;
-                <span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>direction, <span class="string">"🤝 New peer {peer_id:?}"</span>);
+                <span class="macro">tracing::debug!</span>(
+                    version = version.version,
+                    user_agent = %version.user_agent,
+                    start_height = version.start_height,
+                    <span class="string">"🤝 New {direction} peer {peer_id:?}"</span>,
+                );
             }
         }
+
+        <span class="kw">let </span>peer_info = PeerInfo::new(version, direction);
+
+        <span class="self">self</span>.connected_peers.insert(peer_id, peer_info);
 
         <span class="kw">if </span>!<span class="self">self</span>.address_book.has_max_addresses() {
             <span class="self">self</span>.send(peer_id, NetworkMessage::GetAddr)<span class="question-mark">?</span>;

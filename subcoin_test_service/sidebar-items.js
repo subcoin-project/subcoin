@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["block_data","new_test_node","new_test_node_and_produce_blocks","test_configuration"]};
+window.SIDEBAR_ITEMS = {"fn":["block_data","full_test_configuration","new_test_node","new_test_node_and_produce_blocks","test_configuration"]};

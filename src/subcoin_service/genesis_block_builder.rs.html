@@ -225,7 +225,7 @@
     <span class="kw">let </span>extrinsics_root = frame_system::extrinsics_data_root::&lt;HashingFor&lt;Block&gt;&gt;(
         extrinsics.iter().map(|xt| xt.encode()).collect(),
         sp_core::storage::StateVersion::try_from(subcoin_runtime::VERSION.system_version)
-            .expect(<span class="string">"Invalid system version"</span>),
+            .expect(<span class="string">"Runtime system version config must be valid; qed"</span>),
     );
 
     <span class="kw">let </span>digest = subcoin_primitives::substrate_header_digest(<span class="kw-2">&amp;</span>block.header);

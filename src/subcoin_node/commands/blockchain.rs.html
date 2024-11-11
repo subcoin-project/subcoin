@@ -590,16 +590,6 @@
 <a href="#590" id="590">590</a>
 <a href="#591" id="591">591</a>
 <a href="#592" id="592">592</a>
-<a href="#593" id="593">593</a>
-<a href="#594" id="594">594</a>
-<a href="#595" id="595">595</a>
-<a href="#596" id="596">596</a>
-<a href="#597" id="597">597</a>
-<a href="#598" id="598">598</a>
-<a href="#599" id="599">599</a>
-<a href="#600" id="600">600</a>
-<a href="#601" id="601">601</a>
-<a href="#602" id="602">602</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::subcoin_params::Chain;
 <span class="kw">use </span><span class="kw">crate</span>::utils::Yield;
 <span class="kw">use </span>bitcoin::consensus::Encodable;
@@ -612,19 +602,13 @@
 <span class="kw">use </span>std::fs::File;
 <span class="kw">use </span>std::io::{Stdout, Write};
 <span class="kw">use </span>std::path::PathBuf;
-<span class="kw">use </span>std::sync::{Arc, LazyLock};
+<span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>std::time::{Duration, Instant};
 <span class="kw">use </span>subcoin_primitives::runtime::Coin;
 <span class="kw">use </span>subcoin_primitives::{BackendExt, CoinStorageKey};
 <span class="kw">use </span>subcoin_service::FullClient;
 
 <span class="kw">const </span>FINAL_STORAGE_PREFIX_LEN: usize = <span class="number">32</span>;
-
-<span class="kw">static </span>GENESIS_TXID: LazyLock&lt;bitcoin::Txid&gt; = LazyLock::new(|| {
-    <span class="string">"4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"
-        </span>.parse()
-        .expect(<span class="string">"Genesis txid must be correct; qed"</span>)
-});
 
 <span class="doccomment">/// Blockchain.
 </span><span class="attr">#[derive(Debug, clap::Subcommand)]
@@ -874,24 +858,20 @@
         bitcoin_block_hash,
         client
             .storage_pairs(substrate_block_hash, <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>storage_key), <span class="prelude-val">None</span>)<span class="question-mark">?
-            </span>.filter_map(|(key, value)| {
+            </span>.map(|(key, value)| {
                 <span class="kw">let </span>(txid, vout) = &lt;(pallet_bitcoin::types::Txid, u32)&gt;::decode(
                     <span class="kw-2">&amp;mut &amp;</span>key.<span class="number">0</span>.as_slice()[FINAL_STORAGE_PREFIX_LEN..],
                 )
-                .expect(<span class="string">"UTXO key type must be correct; qed"</span>);
+                .expect(<span class="string">"Key type of `Coins` must be correct; qed"</span>);
 
                 <span class="kw">let </span>txid = txid.into_bitcoin_txid();
 
                 <span class="comment">// output in genesis tx is excluded in gettxoutsetinfo and dumptxoutset in Bitcoin
                 // Core.
-                </span><span class="kw">if </span>txid == <span class="kw-2">*</span>GENESIS_TXID {
-                    <span class="prelude-val">None
-                </span>} <span class="kw">else </span>{
-                    <span class="kw">let </span>coin = Coin::decode(<span class="kw-2">&amp;mut </span>value.<span class="number">0</span>.as_slice())
-                        .expect(<span class="string">"Coin read from DB must be decoded successfully; qed"</span>);
+                </span><span class="kw">let </span>coin = Coin::decode(<span class="kw-2">&amp;mut </span>value.<span class="number">0</span>.as_slice())
+                    .expect(<span class="string">"Coin read from DB must be decoded successfully; qed"</span>);
 
-                    <span class="prelude-val">Some</span>((txid, vout, coin))
-                }
+                (txid, vout, coin)
             }),
     ))
 }

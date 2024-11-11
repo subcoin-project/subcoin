@@ -160,6 +160,13 @@
 <a href="#160" id="160">160</a>
 <a href="#161" id="161">161</a>
 <a href="#162" id="162">162</a>
+<a href="#163" id="163">163</a>
+<a href="#164" id="164">164</a>
+<a href="#165" id="165">165</a>
+<a href="#166" id="166">166</a>
+<a href="#167" id="167">167</a>
+<a href="#168" id="168">168</a>
+<a href="#169" id="169">169</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>bitcoin::consensus::Decodable;
 <span class="kw">use </span>bitcoin::hex::FromHex;
 <span class="kw">use </span>bitcoin::Block;
@@ -172,7 +179,7 @@
     WasmExecutionMethod, WasmtimeInstantiationStrategy,
 };
 <span class="kw">use </span>sc_service::error::Error <span class="kw">as </span>ServiceError;
-<span class="kw">use </span>sc_service::{BasePath, Configuration, Role};
+<span class="kw">use </span>sc_service::{BasePath, ChainSpec, Configuration, Role};
 <span class="kw">use </span>sp_consensus::BlockOrigin;
 <span class="kw">use </span>sp_keyring::sr25519::Keyring <span class="kw">as </span>Sr25519Keyring;
 <span class="kw">use </span>std::sync::Arc;
@@ -198,7 +205,10 @@
     <span class="macro">vec!</span>[block0, block1, block2, block3]
 }
 
-<span class="kw">pub fn </span>test_configuration(tokio_handle: tokio::runtime::Handle) -&gt; Configuration {
+<span class="kw">pub fn </span>full_test_configuration(
+    tokio_handle: tokio::runtime::Handle,
+    chain_spec: Box&lt;<span class="kw">dyn </span>ChainSpec&gt;,
+) -&gt; Configuration {
     <span class="kw">let </span>tmp = tempfile::tempdir().unwrap();
     <span class="kw">let </span>base_path = BasePath::new(tmp.path());
     <span class="kw">let </span>root = base_path.path().to_path_buf();
@@ -209,9 +219,6 @@
         Default::default(),
         <span class="prelude-val">None</span>,
     );
-
-    <span class="kw">let </span>spec = subcoin_service::chain_spec::config(bitcoin::Network::Bitcoin)
-        .expect(<span class="string">"Failed to create chain spec"</span>);
 
     Configuration {
         impl_name: <span class="string">"subcoin-test-node"</span>.to_string(),
@@ -227,7 +234,7 @@
         trie_cache_maximum_size: <span class="prelude-val">Some</span>(<span class="number">64 </span>* <span class="number">1024 </span>* <span class="number">1024</span>),
         state_pruning: <span class="prelude-val">Some</span>(PruningMode::ArchiveAll),
         blocks_pruning: BlocksPruning::KeepAll,
-        chain_spec: Box::new(spec),
+        chain_spec,
         executor: ExecutorConfiguration {
             wasm_method: WasmExecutionMethod::Compiled {
                 instantiation_strategy: WasmtimeInstantiationStrategy::PoolingCopyOnWrite,
@@ -268,6 +275,13 @@
         base_path,
         wasm_runtime_overrides: <span class="prelude-val">None</span>,
     }
+}
+
+<span class="kw">pub fn </span>test_configuration(tokio_handle: tokio::runtime::Handle) -&gt; Configuration {
+    <span class="kw">let </span>spec = subcoin_service::chain_spec::config(bitcoin::Network::Bitcoin)
+        .expect(<span class="string">"Failed to create chain spec"</span>);
+
+    full_test_configuration(tokio_handle, Box::new(spec))
 }
 
 <span class="kw">pub fn </span>new_test_node(tokio_handle: tokio::runtime::Handle) -&gt; <span class="prelude-ty">Result</span>&lt;NodeComponents, ServiceError&gt; {
