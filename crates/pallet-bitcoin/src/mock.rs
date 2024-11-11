@@ -29,11 +29,8 @@ impl Config for Test {
 
 // Build test environment by setting the root `key` for the Genesis.
 pub fn new_test_ext() -> sp_io::TestExternalities {
-    let mut t = frame_system::GenesisConfig::<Test>::default()
+    let t = frame_system::GenesisConfig::<Test>::default()
         .build_storage()
-        .unwrap();
-    crate::GenesisConfig::<Test>::default()
-        .assimilate_storage(&mut t)
         .unwrap();
     let mut ext: sp_io::TestExternalities = t.into();
     ext.execute_with(|| System::set_block_number(1));

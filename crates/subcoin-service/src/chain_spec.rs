@@ -1,7 +1,5 @@
 use crate::ChainSpec;
 use sc_service::{ChainType, Properties};
-use serde_json::json;
-use subcoin_primitives::raw_genesis_tx;
 use subcoin_runtime::WASM_BINARY;
 
 fn props() -> Properties {
@@ -26,11 +24,6 @@ pub fn config(network: bitcoin::Network) -> Result<ChainSpec, String> {
     .with_name(name)
     .with_id(id)
     .with_chain_type(ChainType::Live)
-    .with_genesis_config_patch(json!({
-        "bitcoin": {
-            "genesisTx": raw_genesis_tx(network),
-        }
-    }))
     .with_properties(props())
     .build())
 }
