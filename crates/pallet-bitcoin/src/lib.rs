@@ -142,6 +142,7 @@ pub mod pallet {
                         height: 0u32,
                     };
                     Coins::<T>::insert(txid, index as u32, coin);
+                    // Coins in genesis block are not counted in storage CoinsCount.
                 });
         }
     }
@@ -155,6 +156,10 @@ pub mod pallet {
     #[pallet::storage]
     pub type Coins<T> =
         StorageDoubleMap<_, Identity, Txid, Identity, OutputIndex, Coin, OptionQuery>;
+
+    /// Size of the entire UTXO set.
+    #[pallet::storage]
+    pub type CoinsCount<T> = StorageValue<_, u64, ValueQuery>;
 }
 
 /// Returns the storage key for the referenced output.
@@ -206,6 +211,8 @@ impl<T: Config> Pallet<T> {
             return;
         }
 
+        let num_consumed = tx.input.len();
+
         // Process inputs.
         for input in tx.input {
             let previous_output = input.previous_output;
@@ -221,5 +228,9 @@ impl<T: Config> Pallet<T> {
             let OutPoint { txid, output_index } = OutPoint::from(out_point);
             Coins::<T>::insert(txid, output_index, coin);
         }
+
+        CoinsCount::<T>::mutate(|v| {
+            *v = *v + num_created as u64 - num_consumed as u64;
+        });
     }
 }
