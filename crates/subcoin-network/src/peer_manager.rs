@@ -616,13 +616,6 @@ where
     ) -> Result<(), Error> {
         let greatest_common_version = self.config.protocol_version.min(version_message.version);
 
-        tracing::debug!(
-            version = version_message.version,
-            user_agent = version_message.user_agent,
-            start_height = version_message.start_height,
-            "Received version from {peer_id:?}"
-        );
-
         match direction {
             Direction::Inbound => {
                 let local_addr = self
@@ -709,21 +702,31 @@ where
             return Err(Error::UnexpectedHandshakeState(Box::new(handshake_state)));
         };
 
-        let peer_info = PeerInfo::new(version, direction);
-
-        self.connected_peers.insert(peer_id, peer_info);
-
         match direction {
             Direction::Inbound => {
                 // Do not log the inbound connection success, following Bitcoin Core's behaviour.
                 #[cfg(test)]
-                tracing::debug!(?direction, "🤝 New peer {peer_id:?}");
+                tracing::debug!(
+                    version = version.version,
+                    user_agent = %version.user_agent,
+                    start_height = version.start_height,
+                    "🤝 New {direction} peer {peer_id:?}",
+                );
             }
             Direction::Outbound => {
                 self.send(peer_id, NetworkMessage::Verack)?;
-                tracing::debug!(?direction, "🤝 New peer {peer_id:?}");
+                tracing::debug!(
+                    version = version.version,
+                    user_agent = %version.user_agent,
+                    start_height = version.start_height,
+                    "🤝 New {direction} peer {peer_id:?}",
+                );
             }
         }
+
+        let peer_info = PeerInfo::new(version, direction);
+
+        self.connected_peers.insert(peer_id, peer_info);
 
         if !self.address_book.has_max_addresses() {
             self.send(peer_id, NetworkMessage::GetAddr)?;

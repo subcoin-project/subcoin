@@ -10,19 +10,13 @@ use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{Stdout, Write};
 use std::path::PathBuf;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subcoin_primitives::runtime::Coin;
 use subcoin_primitives::{BackendExt, CoinStorageKey};
 use subcoin_service::FullClient;
 
 const FINAL_STORAGE_PREFIX_LEN: usize = 32;
-
-static GENESIS_TXID: LazyLock<bitcoin::Txid> = LazyLock::new(|| {
-    "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"
-        .parse()
-        .expect("Genesis txid must be correct; qed")
-});
 
 /// Blockchain.
 #[derive(Debug, clap::Subcommand)]
@@ -272,24 +266,20 @@ fn fetch_utxo_set_at(
         bitcoin_block_hash,
         client
             .storage_pairs(substrate_block_hash, Some(&storage_key), None)?
-            .filter_map(|(key, value)| {
+            .map(|(key, value)| {
                 let (txid, vout) = <(pallet_bitcoin::types::Txid, u32)>::decode(
                     &mut &key.0.as_slice()[FINAL_STORAGE_PREFIX_LEN..],
                 )
-                .expect("UTXO key type must be correct; qed");
+                .expect("Key type of `Coins` must be correct; qed");
 
                 let txid = txid.into_bitcoin_txid();
 
                 // output in genesis tx is excluded in gettxoutsetinfo and dumptxoutset in Bitcoin
                 // Core.
-                if txid == *GENESIS_TXID {
-                    None
-                } else {
-                    let coin = Coin::decode(&mut value.0.as_slice())
-                        .expect("Coin read from DB must be decoded successfully; qed");
+                let coin = Coin::decode(&mut value.0.as_slice())
+                    .expect("Coin read from DB must be decoded successfully; qed");
 
-                    Some((txid, vout, coin))
-                }
+                (txid, vout, coin)
             }),
     ))
 }

@@ -273,12 +273,12 @@ where
 
         self.peers.entry(peer_id).and_modify(|e| {
             if peer_best > e.best_number {
-                e.best_number = peer_best;
-                peer_best_updated = true;
                 tracing::debug!(
                     "Tip of {peer_id:?} updated from #{} to #{peer_best}",
                     e.best_number
                 );
+                e.best_number = peer_best;
+                peer_best_updated = true;
             }
         });
 

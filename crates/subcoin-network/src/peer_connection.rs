@@ -5,7 +5,7 @@ use bitcoin::p2p::message::{NetworkMessage, RawNetworkMessage, MAX_MSG_SIZE};
 use futures::FutureExt;
 use sc_service::SpawnTaskHandle;
 use std::collections::VecDeque;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
@@ -41,6 +41,15 @@ impl Direction {
     /// Returns `true` if it's an outbound connection.
     pub fn is_outbound(&self) -> bool {
         matches!(self, Self::Outbound)
+    }
+}
+
+impl Display for Direction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Inbound => write!(f, "inbound"),
+            Self::Outbound => write!(f, "outbound"),
+        }
     }
 }
 

@@ -36,6 +36,9 @@ impl sc_cli::SubstrateCli for SubstrateCli {
     fn load_spec(&self, id: &str) -> Result<Box<dyn sc_service::ChainSpec>, String> {
         let chain_spec = match id {
             "bitcoin-mainnet" => ChainSpec::from_json_bytes(BITCOIN_MAINNET_CHAIN_SPEC.as_bytes())?,
+            "bitcoin-mainnet-compile" => {
+                subcoin_service::chain_spec::config(bitcoin::Network::Bitcoin)?
+            }
             "bitcoin-testnet" | "bitcoin-signet" => {
                 unimplemented!("Bitcoin testnet and signet are unsupported")
             }
@@ -43,5 +46,29 @@ impl sc_cli::SubstrateCli for SubstrateCli {
         };
 
         Ok(Box::new(chain_spec))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sc_cli::SubstrateCli;
+    use sc_client_api::HeaderBackend;
+    use subcoin_service::{new_node, NodeComponents, SubcoinConfiguration};
+    use tokio::runtime::Handle;
+
+    #[tokio::test]
+    async fn subcoin_mainnet_chain_is_stable_unless_breaking_changes() {
+        let runtime_handle = Handle::current();
+        let mainnet_chain_spec = SubstrateCli.load_spec("bitcoin-mainnet").unwrap();
+        let config =
+            subcoin_test_service::full_test_configuration(runtime_handle, mainnet_chain_spec);
+        let NodeComponents { client, .. } =
+            new_node(SubcoinConfiguration::test_config(&config)).expect("Failed to create node");
+
+        assert_eq!(
+            format!("{:?}", client.info().genesis_hash),
+            "0x1e8ddda1fe2e1dd1c183d628ee6f04be752aca5eb8d21eeb9898d8678b4b0212"
+        );
     }
 }

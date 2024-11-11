@@ -10,7 +10,7 @@ use sc_service::config::{
     WasmExecutionMethod, WasmtimeInstantiationStrategy,
 };
 use sc_service::error::Error as ServiceError;
-use sc_service::{BasePath, Configuration, Role};
+use sc_service::{BasePath, ChainSpec, Configuration, Role};
 use sp_consensus::BlockOrigin;
 use sp_keyring::sr25519::Keyring as Sr25519Keyring;
 use std::sync::Arc;
@@ -36,7 +36,10 @@ pub fn block_data() -> Vec<Block> {
     vec![block0, block1, block2, block3]
 }
 
-pub fn test_configuration(tokio_handle: tokio::runtime::Handle) -> Configuration {
+pub fn full_test_configuration(
+    tokio_handle: tokio::runtime::Handle,
+    chain_spec: Box<dyn ChainSpec>,
+) -> Configuration {
     let tmp = tempfile::tempdir().unwrap();
     let base_path = BasePath::new(tmp.path());
     let root = base_path.path().to_path_buf();
@@ -47,9 +50,6 @@ pub fn test_configuration(tokio_handle: tokio::runtime::Handle) -> Configuration
         Default::default(),
         None,
     );
-
-    let spec = subcoin_service::chain_spec::config(bitcoin::Network::Bitcoin)
-        .expect("Failed to create chain spec");
 
     Configuration {
         impl_name: "subcoin-test-node".to_string(),
@@ -65,7 +65,7 @@ pub fn test_configuration(tokio_handle: tokio::runtime::Handle) -> Configuration
         trie_cache_maximum_size: Some(64 * 1024 * 1024),
         state_pruning: Some(PruningMode::ArchiveAll),
         blocks_pruning: BlocksPruning::KeepAll,
-        chain_spec: Box::new(spec),
+        chain_spec,
         executor: ExecutorConfiguration {
             wasm_method: WasmExecutionMethod::Compiled {
                 instantiation_strategy: WasmtimeInstantiationStrategy::PoolingCopyOnWrite,
@@ -106,6 +106,13 @@ pub fn test_configuration(tokio_handle: tokio::runtime::Handle) -> Configuration
         base_path,
         wasm_runtime_overrides: None,
     }
+}
+
+pub fn test_configuration(tokio_handle: tokio::runtime::Handle) -> Configuration {
+    let spec = subcoin_service::chain_spec::config(bitcoin::Network::Bitcoin)
+        .expect("Failed to create chain spec");
+
+    full_test_configuration(tokio_handle, Box::new(spec))
 }
 
 pub fn new_test_node(tokio_handle: tokio::runtime::Handle) -> Result<NodeComponents, ServiceError> {
