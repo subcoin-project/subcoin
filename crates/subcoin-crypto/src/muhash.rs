@@ -4,6 +4,7 @@ use crate::chacha20_block;
 use num_bigint::{BigUint, ToBigUint};
 use num_traits::One;
 use sha2::{Digest, Sha256};
+use std::fmt::Write;
 
 // Function to hash a 32-byte array into a 3072-bit number using 6 ChaCha20 operations
 fn data_to_num3072(data: &[u8; 32]) -> BigUint {
@@ -66,6 +67,16 @@ impl MuHash3072 {
         let mut bytes384 = val.to_bytes_le();
         bytes384.resize(384, 0); // Ensure it is exactly 384 bytes
         Sha256::digest(&bytes384).to_vec()
+    }
+
+    /// Returns the value of `muhash` in Bitcoin Core's dumptxoutset output.
+    pub fn txoutset_muhash(&self) -> String {
+        let finalized = self.digest();
+
+        finalized.iter().rev().fold(String::new(), |mut output, b| {
+            let _ = write!(output, "{b:02x}");
+            output
+        })
     }
 }
 

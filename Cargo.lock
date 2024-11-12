@@ -10467,6 +10467,7 @@ dependencies = [
  "subcoin-runtime",
  "subcoin-service",
  "subcoin-test-service",
+ "subcoin-utxo-snapshot",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
@@ -10537,6 +10538,7 @@ version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
+ "serde",
  "sp-api",
  "sp-runtime",
  "sp-std 14.0.0 (git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v3)",
@@ -10606,6 +10608,16 @@ dependencies = [
  "subcoin-service",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "subcoin-utxo-snapshot"
+version = "0.1.0"
+dependencies = [
+ "bitcoin 0.32.2",
+ "serde",
+ "subcoin-primitives",
+ "txoutset",
 ]
 
 [[package]]

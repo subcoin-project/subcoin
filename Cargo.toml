@@ -22,6 +22,7 @@ members = [
     "crates/subcoin-runtime-primitives",
     "crates/subcoin-service",
     "crates/subcoin-test-service",
+    "crates/subcoin-utxo-snapshot",
 ]
 
 default-members = ["crates/subcoin-node"]
@@ -119,6 +120,7 @@ subcoin-runtime = { path = "crates/subcoin-runtime" }
 subcoin-runtime-primitives = { path = "crates/subcoin-runtime-primitives", default-features = false }
 subcoin-service = { path = "crates/subcoin-service" }
 subcoin-test-service = { path = "crates/subcoin-test-service" }
+subcoin-utxo-snapshot = { path = "crates/subcoin-utxo-snapshot" }
 
 [profile.release]
 panic = "abort"

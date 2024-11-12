@@ -6,7 +6,6 @@ use sc_client_api::{HeaderBackend, StorageProvider};
 use serde::Serialize;
 use sp_core::storage::StorageKey;
 use sp_core::Decode;
-use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{Stdout, Write};
 use std::path::PathBuf;
@@ -15,6 +14,7 @@ use std::time::{Duration, Instant};
 use subcoin_primitives::runtime::Coin;
 use subcoin_primitives::{BackendExt, CoinStorageKey};
 use subcoin_service::FullClient;
+use subcoin_utxo_snapshot::UtxoSnapshotGenerator;
 
 const FINAL_STORAGE_PREFIX_LEN: usize = 32;
 
@@ -284,30 +284,6 @@ fn fetch_utxo_set_at(
     ))
 }
 
-// Equivalent function in Rust for serializing an OutPoint and Coin
-//
-// https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/kernel/coinstats.cpp#L51
-fn tx_out_ser(outpoint: bitcoin::OutPoint, coin: &Coin) -> bitcoin::io::Result<Vec<u8>> {
-    let mut data = Vec::new();
-
-    // Serialize the OutPoint (txid and vout)
-    outpoint.consensus_encode(&mut data)?;
-
-    // Serialize the coin's height and coinbase flag
-    let height_and_coinbase = (coin.height << 1) | (coin.is_coinbase as u32);
-    height_and_coinbase.consensus_encode(&mut data)?;
-
-    let txout = bitcoin::TxOut {
-        value: bitcoin::Amount::from_sat(coin.amount),
-        script_pubkey: bitcoin::ScriptBuf::from_bytes(coin.script_pubkey.clone()),
-    };
-
-    // Serialize the actual UTXO (value and script)
-    txout.consensus_encode(&mut data)?;
-
-    Ok(data)
-}
-
 // Custom serializer for total_amount to display 8 decimal places
 fn serialize_as_btc<S>(amount: &u64, serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -350,7 +326,7 @@ async fn gettxoutsetinfo(
     let mut muhash = subcoin_crypto::muhash::MuHash3072::new();
 
     for (txid, vout, coin) in utxo_iter {
-        let data = tx_out_ser(bitcoin::OutPoint { txid, vout }, &coin)
+        let data = subcoin_utxo_snapshot::tx_out_ser(bitcoin::OutPoint { txid, vout }, &coin)
             .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
         muhash.insert(&data);
 
@@ -375,19 +351,14 @@ async fn gettxoutsetinfo(
     }
 
     // Hash the combined hash of all UTXOs
-    let finalized = muhash.digest();
-
-    let utxo_set_hash = finalized.iter().rev().fold(String::new(), |mut output, b| {
-        let _ = write!(output, "{b:02x}");
-        output
-    });
+    let muhash = muhash.txoutset_muhash();
 
     let tx_out_set_info = TxOutSetInfo {
         height: block_number,
         bestblock: bitcoin_block_hash,
         txouts,
         bogosize,
-        muhash: utxo_set_hash,
+        muhash,
         total_amount,
     };
 
@@ -492,7 +463,7 @@ async fn dumptxoutset(
 
         let _ = file.write(data.as_slice())?;
 
-        UtxoSetOutput::Binary(file)
+        UtxoSetOutput::Snapshot(UtxoSnapshotGenerator::new(file))
     } else {
         println!("Dumping UTXO set at #{block_number},{bitcoin_block_hash}");
         UtxoSetOutput::Stdout(std::io::stdout())
@@ -509,42 +480,27 @@ async fn dumptxoutset(
 }
 
 enum UtxoSetOutput {
-    Binary(File),
+    Snapshot(UtxoSnapshotGenerator),
     Csv(File),
     Stdout(Stdout),
 }
 
 impl UtxoSetOutput {
     fn write(&mut self, txid: bitcoin::Txid, vout: u32, coin: Coin) -> std::io::Result<()> {
-        let Coin {
-            is_coinbase,
-            amount,
-            height,
-            script_pubkey,
-        } = coin;
-
-        let outpoint = bitcoin::OutPoint { txid, vout };
-
         match self {
-            Self::Binary(ref mut file) => {
-                let mut data = Vec::new();
-
-                let amount = txoutset::Amount::new(amount);
-
-                let code = txoutset::Code {
-                    height,
-                    is_coinbase,
-                };
-                let script = txoutset::Script::from_bytes(script_pubkey);
-
-                outpoint.consensus_encode(&mut data)?;
-                code.consensus_encode(&mut data)?;
-                amount.consensus_encode(&mut data)?;
-                script.consensus_encode(&mut data)?;
-
-                let _ = file.write(data.as_slice())?;
+            Self::Snapshot(snapshot_generator) => {
+                snapshot_generator.write_utxo_entry(txid, vout, coin)?;
             }
             Self::Csv(ref mut file) => {
+                let Coin {
+                    is_coinbase,
+                    amount,
+                    height,
+                    script_pubkey,
+                } = coin;
+
+                let outpoint = bitcoin::OutPoint { txid, vout };
+
                 let script_pubkey = hex::encode(script_pubkey.as_slice());
                 writeln!(
                     file,
@@ -552,6 +508,15 @@ impl UtxoSetOutput {
                 )?;
             }
             Self::Stdout(ref mut stdout) => {
+                let Coin {
+                    is_coinbase,
+                    amount,
+                    height,
+                    script_pubkey,
+                } = coin;
+
+                let outpoint = bitcoin::OutPoint { txid, vout };
+
                 let script_pubkey = hex::encode(script_pubkey.as_slice());
                 writeln!(
                     stdout,
