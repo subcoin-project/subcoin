@@ -52,6 +52,7 @@ subcoin-primitives = { workspace = true }
 subcoin-rpc = { workspace = true }
 subcoin-runtime = { workspace = true }
 subcoin-service = { workspace = true }
+subcoin-utxo-snapshot = { workspace = true }
 substrate-frame-rpc-system = { workspace = true }
 substrate-prometheus-endpoint = { workspace = true }
 tracing = { workspace = true }

@@ -1,0 +1,13 @@
+[package]
+name = "subcoin-utxo-snapshot"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+bitcoin = { workspace = true }
+serde = { workspace = true }
+subcoin-primitives = { workspace = true }
+txoutset = { workspace = true }
