@@ -117,6 +117,10 @@ pub fn coin_storage_prefix<T: Config>() -> [u8; 32] {
 }
 
 impl<T: Config> Pallet<T> {
+    pub fn coins_count() -> u64 {
+        CoinsCount::<T>::get()
+    }
+
     fn process_bitcoin_transaction(tx: bitcoin::Transaction) {
         let txid = tx.compute_txid();
         let is_coinbase = tx.is_coinbase();

@@ -7,9 +7,12 @@ use sc_network_sync::{StateRequest, StateResponse};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use subcoin_crypto::muhash::MuHash3072;
 use subcoin_runtime_primitives::Coin;
 use subcoin_utxo_snapshot::{Utxo, UtxoSnapshotGenerator};
+
+const DOWNLOAD_PROGRESS_LOG_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct UtxoCsvEntry {
@@ -84,6 +87,9 @@ pub(crate) struct StateSyncWrapper<B: BlockT, Client> {
     target_bitcoin_block_hash: bitcoin::BlockHash,
     utxo_store: UtxoStore,
     snapshot_generator: UtxoSnapshotGenerator,
+    downloaded_coins: usize,
+    total_coins: usize,
+    last_progress_print_time: Option<Instant>,
 }
 
 impl<B, Client> StateSyncWrapper<B, Client>
@@ -96,6 +102,7 @@ where
         target_header: B::Header,
         skip_proof: bool,
         snapshot_dir: PathBuf,
+        total_coins: usize,
     ) -> Self {
         let target_block_number = target_header.number();
         let target_bitcoin_block_hash =
@@ -117,6 +124,9 @@ where
             muhash: MuHash3072::new(),
             utxo_store: UtxoStore::Csv(utxo_file),
             snapshot_generator,
+            downloaded_coins: 0,
+            total_coins,
+            last_progress_print_time: None,
         }
     }
 
@@ -154,8 +164,21 @@ where
 
                     // TODO: write UTXO to a local file instead of storing in memory.
                     self.utxo_store.push(Utxo { txid, vout, coin });
+                    self.downloaded_coins += 1;
                 }
             }
+        }
+
+        if self.last_progress_print_time.map_or(true, |last_time| {
+            last_time.elapsed() > DOWNLOAD_PROGRESS_LOG_INTERVAL
+        }) {
+            let percent = self.downloaded_coins as f64 * 100.0 / self.total_coins as f64;
+            tracing::info!(
+                "============ UTXO snapshot download progress: {percent}%, {}/{}",
+                self.downloaded_coins,
+                self.total_coins
+            );
+            self.last_progress_print_time.replace(Instant::now());
         }
 
         if complete {

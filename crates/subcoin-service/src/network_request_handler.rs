@@ -1,5 +1,5 @@
-//! Helper for handling (i.e. answering) subcoin specific requests from a remote peer via the
-//! `crate::request_responses::RequestResponsesBehaviour`.
+//! Helper for answering the subcoin specific requests from a remote peer via the
+//! request-response protocol.
 
 use codec::{Decode, Encode};
 use futures::channel::oneshot;
@@ -8,23 +8,25 @@ use sc_client_api::{BlockBackend, HeaderBackend, ProofProvider};
 use sc_network::config::ProtocolId;
 use sc_network::request_responses::{IncomingRequest, OutgoingResponse};
 use sc_network::{NetworkBackend, PeerId, MAX_RESPONSE_SIZE};
+use sp_api::ProvideRuntimeApi;
 use sp_runtime::traits::Block as BlockT;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
+use subcoin_primitives::runtime::SubcoinApi;
 use tracing::{debug, trace};
 
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024; // Actual reponse may be bigger.
 const MAX_NUMBER_OF_SAME_REQUESTS_PER_PEER: usize = 2;
 
-const LOG_TARGET: &str = "sync";
+const LOG_TARGET: &str = "sync::subcoin";
 
 mod rep {
     use sc_network::ReputationChange as Rep;
 
     /// Reputation change when a peer sent us the same request multiple times.
-    pub const SAME_REQUEST: Rep = Rep::new(i32::MIN, "Same state request multiple times");
+    pub const SAME_REQUEST: Rep = Rep::new(i32::MIN, "Same subcoin request multiple times");
 }
 
 /// Generates a `RequestResponseProtocolConfig` for the state request protocol, refusing incoming
@@ -52,14 +54,11 @@ pub fn generate_protocol_config<
 /// Generate the state protocol name from the genesis hash and fork id.
 fn generate_protocol_name<Hash: AsRef<[u8]>>(genesis_hash: Hash, fork_id: Option<&str>) -> String {
     let genesis_hash = genesis_hash.as_ref();
+    let genesis_hash = array_bytes::bytes2hex("", genesis_hash);
     if let Some(fork_id) = fork_id {
-        format!(
-            "/{}/{}/subcoin/1",
-            array_bytes::bytes2hex("", genesis_hash),
-            fork_id
-        )
+        format!("/{genesis_hash}/{fork_id}/subcoin/1",)
     } else {
-        format!("/{}/subcoin/1", array_bytes::bytes2hex("", genesis_hash))
+        format!("/{genesis_hash}/subcoin/1")
     }
 }
 
@@ -68,18 +67,18 @@ fn generate_legacy_protocol_name(protocol_id: &ProtocolId) -> String {
     format!("/{}/subcoin/1", protocol_id.as_ref())
 }
 
-/// Subcoin network specific requests via request-response.
+/// Subcoin network specific requests.
 #[derive(Debug, codec::Encode, codec::Decode)]
 pub enum SubNetworkRequest<Block: BlockT> {
-    /// Requests the count of key-value pairs in the state at a specified block.
-    GetStateKeyValueCount { block_hash: Block::Hash },
+    /// Requests the number of total coins at a specified block.
+    GetCoinsCount { block_hash: Block::Hash },
 }
 
-/// Subcoin network specific responses via request-response.
+/// Subcoin network specific responses.
 #[derive(Debug, codec::Encode, codec::Decode)]
 pub enum SubNetworkResponse<Block: BlockT> {
-    /// Request the count of key values of the state at the specified block.
-    StateKeyValueCount { block_hash: Block::Hash, count: u64 },
+    /// Request the number of total coins at the specified block.
+    CoinsCount { block_hash: Block::Hash, count: u64 },
 }
 
 /// Handler for incoming block requests from a remote peer.
@@ -92,7 +91,14 @@ pub struct NetworkRequestHandler<Block, Client> {
 impl<B, Client> NetworkRequestHandler<B, Client>
 where
     B: BlockT,
-    Client: HeaderBackend<B> + BlockBackend<B> + ProofProvider<B> + Send + Sync + 'static,
+    Client: HeaderBackend<B>
+        + BlockBackend<B>
+        + ProofProvider<B>
+        + ProvideRuntimeApi<B>
+        + Send
+        + Sync
+        + 'static,
+    Client::Api: SubcoinApi<B>,
 {
     /// Create a new [`NetworkRequestHandler`].
     pub fn new<N: NetworkBackend<B, <B as BlockT>::Hash>>(
@@ -151,20 +157,12 @@ where
     ) -> Result<(), HandleRequestError> {
         let request = SubNetworkRequest::<B>::decode(&mut payload.as_slice())?;
 
-        tracing::info!(target: LOG_TARGET, "============== Handling request from {peer:?}: {request:?}");
+        tracing::debug!(target: LOG_TARGET, "Handling request from {peer:?}: {request:?}");
 
         let result = match request {
-            SubNetworkRequest::GetStateKeyValueCount { block_hash } => {
-                let response = SubNetworkResponse::<B>::StateKeyValueCount {
-                    block_hash,
-                    count: 888,
-                };
-
-                tracing::info!(
-                    "==================== Sending response: {:?}",
-                    response.encode()
-                );
-
+            SubNetworkRequest::GetCoinsCount { block_hash } => {
+                let count = self.client.runtime_api().coins_count(block_hash)?;
+                let response = SubNetworkResponse::<B>::CoinsCount { block_hash, count };
                 Ok(response.encode())
             }
         };
@@ -186,6 +184,9 @@ enum HandleRequestError {
 
     #[error(transparent)]
     Client(#[from] sp_blockchain::Error),
+
+    #[error(transparent)]
+    RuntimeApi(#[from] sp_api::ApiError),
 
     #[error("Failed to send response.")]
     SendResponse,

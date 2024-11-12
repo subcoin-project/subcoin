@@ -20,12 +20,14 @@ use sc_network_sync::strategy::warp::WarpSync;
 use sc_network_sync::strategy::{StrategyKey, SyncingAction, SyncingStrategy};
 use sc_network_sync::SyncStatus;
 use sc_service::SpawnTaskHandle;
+use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderMetadata;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::any::Any;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use subcoin_primitives::runtime::SubcoinApi;
 use subcoin_service::network_request_handler::{SubNetworkRequest, SubNetworkResponse};
 
 const LOG_TARGET: &'static str = "sync::snapcake";
@@ -67,10 +69,11 @@ where
         + BlockBackend<Block>
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + ProofProvider<Block>
+        + ProvideRuntimeApi<Block>
         + Send
         + Sync
         + 'static,
-
+    Client::Api: SubcoinApi<Block>,
     Net: NetworkBackend<Block, <Block as BlockT>::Hash>,
 {
     let (state_request_protocol_config, state_request_protocol_name) = {
@@ -146,6 +149,10 @@ pub struct SnapcakeSyncingStrategy<B: BlockT, Client> {
     peer_best_finalized_headers: HashMap<PeerId, B::Header>,
     /// Pending requests for the best headers.
     pending_header_requests: Vec<(PeerId, BlockRequest<B>)>,
+    /// Map of block hash to the number of total coins at this block.
+    coins_count: HashMap<B::Hash, u64>,
+    /// Pending requests for coins_count.
+    pending_coins_count_requests: Vec<(PeerId, B::Hash)>,
     /// Whether the state sync is finished.
     state_sync_complete: bool,
     /// Whether to skip proof in state sync.
@@ -202,7 +209,9 @@ where
             peer_best_blocks: Default::default(),
             peer_best_finalized_headers: HashMap::new(),
             pending_header_requests: Vec::new(),
+            coins_count: HashMap::new(),
             state_sync_complete: false,
+            pending_coins_count_requests: Vec::new(),
             skip_proof,
             snapshot_dir,
             subcoin_network_request_protocol_name,
@@ -246,15 +255,18 @@ where
 
             if let Some(block) = blocks.into_iter().nth(5) {
                 let finalized_header = block.header.expect("Header must exist as requested");
+                let block_hash = finalized_header.hash();
                 self.peer_best_finalized_headers
                     .insert(peer_id, finalized_header);
+                self.pending_coins_count_requests
+                    .push((peer_id, block_hash));
             }
         } else {
             // Recv unexpected block response, drop peer?
         }
     }
 
-    fn create_state_key_value_count_action(
+    fn create_get_coins_count_action(
         &self,
         peer_id: sc_network::PeerId,
         request: subcoin_service::network_request_handler::SubNetworkRequest<B>,
@@ -463,9 +475,15 @@ where
                     Ok(res) => res,
                     Err(err) => {
                         tracing::warn!(target: LOG_TARGET, "Failed to decode SubNetworkResponse: {err:?}");
+                        return;
                     }
                 };
                 tracing::info!(target: LOG_TARGET, "============== Recv response: {response:?}");
+                match response {
+                    SubNetworkResponse::<B>::CoinsCount { block_hash, count } => {
+                        self.coins_count.insert(block_hash, count);
+                    }
+                }
             }
             key => {
                 tracing::warn!(
@@ -542,56 +560,60 @@ where
     ) -> Result<Vec<SyncingAction<B>>, sp_blockchain::Error> {
         if self.state.is_none() && !self.state_sync_complete {
             // TODO: proper algo to select state sync target.
-            if let Some((peer_id, finalized_header)) =
-                self.peer_best_finalized_headers.iter().next()
-            {
-                let target_header = finalized_header.clone();
-                tracing::debug!(
-                    target: LOG_TARGET,
-                    "⏳ Starting state sync from {peer_id:?}, target block #{},{}",
-                    target_header.number(), target_header.hash(),
-                );
-                let state_sync = StateStrategy::new_with_provider(
-                    Box::new(StateSyncWrapper::new(
-                        self.client.clone(),
-                        target_header,
-                        self.skip_proof,
-                        self.snapshot_dir.clone(),
-                    )),
-                    self.peer_best_blocks
-                        .iter()
-                        .map(|(peer_id, (_, best_number))| (*peer_id, *best_number)),
-                    self.config.state_request_protocol_name.clone(),
-                );
-                self.state.replace(state_sync);
+            let select_state_sync_target = || self.peer_best_finalized_headers.iter().next();
+
+            if let Some((peer_id, finalized_header)) = select_state_sync_target() {
+                let block_hash = finalized_header.hash();
+                // Only start the state sync when the coins count is available.
+                if let Some(total_coins) = self.coins_count.get(&block_hash) {
+                    let target_header = finalized_header.clone();
+                    tracing::debug!(
+                        target: LOG_TARGET,
+                        "⏳ Starting state sync from {peer_id:?}, target block #{},{block_hash}, total coins: {total_coins}",
+                        target_header.number(),
+                    );
+                    let state_sync = StateStrategy::new_with_provider(
+                        Box::new(StateSyncWrapper::new(
+                            self.client.clone(),
+                            target_header,
+                            self.skip_proof,
+                            self.snapshot_dir.clone(),
+                            *total_coins as usize,
+                        )),
+                        self.peer_best_blocks
+                            .iter()
+                            .map(|(peer_id, (_, best_number))| (*peer_id, *best_number)),
+                        self.config.state_request_protocol_name.clone(),
+                    );
+                    self.state.replace(state_sync);
+                }
             }
         }
 
         // We only handle the actions of requesting best headers and the actions from state sync.
         let actions: Vec<_> = if !self.pending_header_requests.is_empty() {
-            let mut chain_sync_actions = vec![];
-
+            let mut chain_sync_actions = Vec::with_capacity(self.pending_header_requests.len());
             for (peer_id, request) in self.pending_header_requests.clone() {
-                let block_hash = match request.from {
-                    FromBlock::Hash(hash) => hash,
-                    FromBlock::Number(number) => unreachable!("number"),
-                };
-
                 chain_sync_actions.push(
                     self.chain_sync
                         .as_ref()
                         .expect("Chain sync must be available")
                         .create_block_request_action(peer_id, request),
                 );
-
-                chain_sync_actions.push(self.create_state_key_value_count_action(
+            }
+            chain_sync_actions
+        } else if !self.pending_coins_count_requests.is_empty() {
+            let mut actions = vec![];
+            let pending_coins_count_requests =
+                std::mem::take(&mut self.pending_coins_count_requests);
+            for (peer_id, block_hash) in pending_coins_count_requests {
+                actions.push(self.create_get_coins_count_action(
                     peer_id,
-                    SubNetworkRequest::<B>::GetStateKeyValueCount { block_hash },
+                    SubNetworkRequest::<B>::GetCoinsCount { block_hash },
                     network_service,
                 ));
             }
-
-            chain_sync_actions
+            actions
         } else if let Some(ref mut state) = self.state {
             state.actions(network_service).map(Into::into).collect()
         } else {
