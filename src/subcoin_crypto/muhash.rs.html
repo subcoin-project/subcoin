@@ -102,12 +102,24 @@
 <a href="#102" id="102">102</a>
 <a href="#103" id="103">103</a>
 <a href="#104" id="104">104</a>
+<a href="#105" id="105">105</a>
+<a href="#106" id="106">106</a>
+<a href="#107" id="107">107</a>
+<a href="#108" id="108">108</a>
+<a href="#109" id="109">109</a>
+<a href="#110" id="110">110</a>
+<a href="#111" id="111">111</a>
+<a href="#112" id="112">112</a>
+<a href="#113" id="113">113</a>
+<a href="#114" id="114">114</a>
+<a href="#115" id="115">115</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/test/functional/test_framework/crypto/muhash.py#L4
 
 </span><span class="kw">use </span><span class="kw">crate</span>::chacha20_block;
 <span class="kw">use </span>num_bigint::{BigUint, ToBigUint};
 <span class="kw">use </span>num_traits::One;
 <span class="kw">use </span>sha2::{Digest, Sha256};
+<span class="kw">use </span>std::fmt::Write;
 
 <span class="comment">// Function to hash a 32-byte array into a 3072-bit number using 6 ChaCha20 operations
 </span><span class="kw">fn </span>data_to_num3072(data: <span class="kw-2">&amp;</span>[u8; <span class="number">32</span>]) -&gt; BigUint {
@@ -170,6 +182,16 @@
         <span class="kw">let </span><span class="kw-2">mut </span>bytes384 = val.to_bytes_le();
         bytes384.resize(<span class="number">384</span>, <span class="number">0</span>); <span class="comment">// Ensure it is exactly 384 bytes
         </span>Sha256::digest(<span class="kw-2">&amp;</span>bytes384).to_vec()
+    }
+
+    <span class="doccomment">/// Returns the value of `muhash` in Bitcoin Core's dumptxoutset output.
+    </span><span class="kw">pub fn </span>txoutset_muhash(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; String {
+        <span class="kw">let </span>finalized = <span class="self">self</span>.digest();
+
+        finalized.iter().rev().fold(String::new(), |<span class="kw-2">mut </span>output, b| {
+            <span class="kw">let _ </span>= <span class="macro">write!</span>(output, <span class="string">"{b:02x}"</span>);
+            output
+        })
     }
 }
 

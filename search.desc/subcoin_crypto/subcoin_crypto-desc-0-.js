@@ -1,1 +1,1 @@
-searchState.loadedDescShard("subcoin_crypto", 0, "Subcoin Crypto Primitives.\n…\nA class representing MuHash sets.\nReturns the argument unchanged.\nCalls <code>U::from(self)</code>.")
+searchState.loadedDescShard("subcoin_crypto", 0, "Subcoin Crypto Primitives.\n…\nA class representing MuHash sets.\nReturns the argument unchanged.\nCalls <code>U::from(self)</code>.\nReturns the value of <code>muhash</code> in Bitcoin Core’s …")

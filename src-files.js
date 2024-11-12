@@ -11,6 +11,7 @@ var srcIndex = new Map(JSON.parse('[\
 ["subcoin_runtime",["",[],["lib.rs"]]],\
 ["subcoin_runtime_primitives",["",[],["lib.rs"]]],\
 ["subcoin_service",["",[],["chain_spec.rs","finalizer.rs","genesis_block_builder.rs","lib.rs","transaction_adapter.rs"]]],\
-["subcoin_test_service",["",[],["lib.rs"]]]\
+["subcoin_test_service",["",[],["lib.rs"]]],\
+["subcoin_utxo_snapshot",["",[],["lib.rs"]]]\
 ]'));
 createSrcSidebar();
