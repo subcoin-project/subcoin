@@ -8,6 +8,7 @@ use sp_runtime::traits::{Block as BlockT, CheckedSub, NumberFor};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use subcoin_network::NetworkApi;
 
 type BlockInfo<Block> = (NumberFor<Block>, <Block as BlockT>::Hash);
 
@@ -16,7 +17,7 @@ pub struct SubcoinFinalizer<Block: BlockT, Client, Backend> {
     client: Arc<Client>,
     spawn_handle: SpawnTaskHandle,
     confirmation_depth: u32,
-    subcoin_networking_is_major_syncing: Arc<AtomicBool>,
+    subcoin_network_api: Arc<dyn NetworkApi>,
     substrate_sync_service: Option<Arc<SyncingService<Block>>>,
     _phantom: PhantomData<Backend>,
 }
@@ -32,14 +33,14 @@ where
         client: Arc<Client>,
         spawn_handle: SpawnTaskHandle,
         confirmation_depth: u32,
-        subcoin_networking_is_major_syncing: Arc<AtomicBool>,
+        subcoin_network_api: Arc<dyn NetworkApi>,
         substrate_sync_service: Option<Arc<SyncingService<Block>>>,
     ) -> Self {
         Self {
             client,
             spawn_handle,
             confirmation_depth,
-            subcoin_networking_is_major_syncing,
+            subcoin_network_api,
             substrate_sync_service,
             _phantom: Default::default(),
         }
@@ -51,7 +52,7 @@ where
             client,
             spawn_handle,
             confirmation_depth,
-            subcoin_networking_is_major_syncing,
+            subcoin_network_api,
             substrate_sync_service,
             _phantom,
         } = self;
@@ -129,7 +130,7 @@ where
             }
 
             let client = client.clone();
-            let subcoin_networking_is_major_syncing = subcoin_networking_is_major_syncing.clone();
+            let subcoin_network_api = subcoin_network_api.clone();
             let substrate_sync_service = substrate_sync_service.clone();
             let finalizer_worker_is_busy = finalizer_worker_is_busy.clone();
             let cached_block_to_finalize = cached_block_to_finalize.clone();
@@ -144,7 +145,7 @@ where
                         &client,
                         confirmed_block_number,
                         confirmed_block_hash,
-                        &subcoin_networking_is_major_syncing,
+                        &subcoin_network_api,
                         substrate_sync_service.as_ref(),
                     );
 
@@ -159,7 +160,7 @@ where
                             &client,
                             cached_block_number,
                             cached_block_hash,
-                            &subcoin_networking_is_major_syncing,
+                            &subcoin_network_api,
                             substrate_sync_service.as_ref(),
                         );
                     }
@@ -175,7 +176,7 @@ fn do_finalize_block<Block, Client, Backend>(
     client: &Arc<Client>,
     confirmed_block_number: NumberFor<Block>,
     confirmed_block_hash: Block::Hash,
-    subcoin_networking_is_major_syncing: &Arc<AtomicBool>,
+    subcoin_network_api: &Arc<dyn NetworkApi>,
     substrate_sync_service: Option<&Arc<SyncingService<Block>>>,
 ) where
     Block: BlockT,
@@ -190,7 +191,7 @@ fn do_finalize_block<Block, Client, Backend>(
 
     match client.finalize_block(confirmed_block_hash, None, true) {
         Ok(()) => {
-            let is_major_syncing = subcoin_networking_is_major_syncing.load(Ordering::Relaxed)
+            let is_major_syncing = subcoin_network_api.is_major_syncing()
                 || substrate_sync_service
                     .map(|sync_service| sync_service.is_major_syncing())
                     .unwrap_or(false);

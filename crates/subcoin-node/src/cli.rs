@@ -114,12 +114,11 @@ pub fn run() -> sc_cli::Result<()> {
                     let client = client.clone();
                     let spawn_handle = task_manager.spawn_handle();
                     // Assume the chain is major syncing.
-                    let is_major_syncing = Arc::new(true.into());
                     subcoin_service::SubcoinFinalizer::new(
                         client,
                         spawn_handle,
                         CONFIRMATION_DEPTH,
-                        is_major_syncing,
+                        Arc::new(subcoin_network::NoNetwork::new(true)),
                         None,
                     )
                     .run()

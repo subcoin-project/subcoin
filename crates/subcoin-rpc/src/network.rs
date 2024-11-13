@@ -6,7 +6,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subcoin_network::{NetworkHandle, NetworkStatus, PeerSync, PeerSyncState};
+use subcoin_network::{NetworkApi, NetworkStatus, PeerSync, PeerSyncState};
 
 /// The state of syncing between a Peer and ourselves.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize, Hash)]
@@ -44,7 +44,7 @@ pub trait NetworkApi {
 pub struct Network<Block, Client> {
     #[allow(unused)]
     client: Arc<Client>,
-    network_handle: NetworkHandle,
+    network_api: Arc<dyn NetworkApi>,
     _phantom: PhantomData<Block>,
 }
 
@@ -54,10 +54,10 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + 'static,
 {
     /// Constructs a new instance of [`Network`].
-    pub fn new(client: Arc<Client>, network_handle: NetworkHandle) -> Self {
+    pub fn new(client: Arc<Client>, network_api: Arc<dyn NetworkApi>) -> Self {
         Self {
             client,
-            network_handle,
+            network_api,
             _phantom: Default::default(),
         }
     }
@@ -70,7 +70,7 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + 'static,
 {
     async fn network_sync_peers(&self) -> Result<SyncPeers, Error> {
-        let mut sync_peers = self.network_handle.sync_peers().await;
+        let mut sync_peers = self.network_api.sync_peers().await;
 
         let mut available = 0;
         let mut deprioritized = 0;
@@ -104,6 +104,6 @@ where
     }
 
     async fn network_status(&self) -> Result<Option<NetworkStatus>, Error> {
-        Ok(self.network_handle.status().await)
+        Ok(self.network_api.status().await)
     }
 }

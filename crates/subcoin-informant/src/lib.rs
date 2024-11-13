@@ -14,10 +14,9 @@ use sp_runtime::traits::{Block as BlockT, Header};
 use std::collections::VecDeque;
 use std::fmt::Display;
 use std::ops::Deref;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use subcoin_network::NetworkHandle;
+use subcoin_network::NetworkApi;
 use subcoin_primitives::BackendExt;
 use tracing::{debug, info, trace};
 
@@ -42,7 +41,7 @@ fn interval(duration: Duration) -> impl Stream<Item = ()> + Unpin {
 }
 
 /// Builds the informant and returns a `Future` that drives the informant.
-pub async fn build<B: BlockT, C>(client: Arc<C>, network: NetworkHandle)
+pub async fn build<B: BlockT, C>(client: Arc<C>, network_api: Arc<dyn NetworkApi>)
 where
     C: UsageProvider<B> + HeaderMetadata<B> + BlockchainEvents<B> + HeaderBackend<B> + AuxStore,
     <C as HeaderMetadata<B>>::Error: Display,
@@ -52,7 +51,7 @@ where
     let net_client = client.clone();
 
     let display_notifications = interval(Duration::from_millis(5000))
-        .filter_map(|_| async { network.status().await })
+        .filter_map(|_| async { network_api.status().await })
         .for_each({
             move |net_status| {
                 let info = net_client.usage_info();
@@ -84,15 +83,13 @@ where
             }
         });
 
-    let is_major_syncing = network.is_major_syncing();
-
     futures::select! {
         () = display_notifications.fuse() => (),
-        () = display_block_import(client, is_major_syncing).fuse() => (),
+        () = display_block_import(client, &network_api).fuse() => (),
     };
 }
 
-async fn display_block_import<B: BlockT, C>(client: Arc<C>, is_major_syncing: Arc<AtomicBool>)
+async fn display_block_import<B: BlockT, C>(client: Arc<C>, network_api: &Arc<dyn NetworkApi>)
 where
     C: UsageProvider<B> + HeaderMetadata<B> + BlockchainEvents<B>,
     <C as HeaderMetadata<B>>::Error: Display,
@@ -129,7 +126,7 @@ where
             }
         }
 
-        if is_major_syncing.load(Ordering::Relaxed) {
+        if network_api.is_major_syncing() {
             continue;
         }
 

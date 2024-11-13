@@ -230,3 +230,104 @@ impl NetworkHandle {
         receiver.await.unwrap();
     }
 }
+
+/// Subcoin network service interface.
+#[async_trait::async_trait]
+pub trait NetworkApi: Send + Sync {
+    /// Whether the network instnace is running.
+    fn enabled(&self) -> bool;
+
+    /// Provides high-level status information about network.
+    ///
+    /// Returns None if the `NetworkProcessor` is no longer running.
+    async fn status(&self) -> Option<NetworkStatus>;
+
+    /// Returns the currently syncing peers.
+    async fn sync_peers(&self) -> Vec<PeerSync>;
+
+    /// Retrieves a transaction by its Txid.
+    async fn get_transaction(&self, txid: Txid) -> Option<Transaction>;
+
+    /// Sends a transaction to the network.
+    async fn send_transaction(&self, transaction: Transaction) -> SendTransactionResult;
+
+    /// Starts the block sync in chain sync component.
+    fn start_block_sync(&self) -> bool;
+
+    /// Whether the node is actively performing a major sync.
+    fn is_major_syncing(&self) -> bool;
+}
+
+#[async_trait::async_trait]
+impl NetworkApi for NetworkHandle {
+    fn enabled(&self) -> bool {
+        true
+    }
+
+    async fn status(&self) -> Option<NetworkStatus> {
+        Self::status(&self).await
+    }
+
+    async fn sync_peers(&self) -> Vec<PeerSync> {
+        Self::sync_peers(&self).await
+    }
+
+    async fn get_transaction(&self, txid: Txid) -> Option<Transaction> {
+        Self::get_transaction(&self, txid).await
+    }
+
+    async fn send_transaction(&self, transaction: Transaction) -> SendTransactionResult {
+        Self::send_transaction(&self, transaction).await
+    }
+
+    fn start_block_sync(&self) -> bool {
+        Self::start_block_sync(&self)
+    }
+
+    fn is_major_syncing(&self) -> bool {
+        self.is_major_syncing
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+/// Subcoin network not running.
+pub struct NoNetwork {
+    is_major_syncing: bool,
+}
+
+impl NoNetwork {
+    pub fn new(is_major_syncing: bool) -> Self {
+        Self { is_major_syncing }
+    }
+}
+
+#[async_trait::async_trait]
+impl NetworkApi for NoNetwork {
+    fn enabled(&self) -> bool {
+        false
+    }
+
+    async fn status(&self) -> Option<NetworkStatus> {
+        None
+    }
+
+    async fn sync_peers(&self) -> Vec<PeerSync> {
+        Vec::new()
+    }
+
+    async fn get_transaction(&self, _txid: Txid) -> Option<Transaction> {
+        None
+    }
+
+    async fn send_transaction(&self, _transaction: Transaction) -> SendTransactionResult {
+        SendTransactionResult::Failure("Network service unavailble".to_string())
+    }
+
+    fn start_block_sync(&self) -> bool {
+        false
+    }
+
+    fn is_major_syncing(&self) -> bool {
+        self.is_major_syncing
+    }
+}

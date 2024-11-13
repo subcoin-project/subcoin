@@ -10,7 +10,7 @@ use sc_service::config::{IpNetwork, RpcBatchRequestConfig};
 use sc_service::{BasePath, Configuration, TaskManager};
 use std::num::NonZeroU32;
 use std::sync::Arc;
-use subcoin_network::{BlockSyncOption, SyncStrategy};
+use subcoin_network::{BlockSyncOption, NetworkApi, SyncStrategy};
 use subcoin_primitives::CONFIRMATION_DEPTH;
 
 /// The `run` command used to start a Subcoin node.
@@ -215,6 +215,8 @@ impl RunCmd {
         .await
         .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
 
+        let network_api: Arc<dyn NetworkApi> = Arc::new(subcoin_network_handle);
+
         // Start JSON-RPC server.
         let gen_rpc_module = || {
             let system_info = sc_rpc::system::SystemInfo {
@@ -231,7 +233,7 @@ impl RunCmd {
                 client.clone(),
                 task_manager.spawn_handle(),
                 system_rpc_tx,
-                subcoin_network_handle.clone(),
+                network_api.clone(),
             )
         };
 
@@ -250,7 +252,7 @@ impl RunCmd {
                     client.clone(),
                     spawn_handle.clone(),
                     CONFIRMATION_DEPTH,
-                    subcoin_network_handle.is_major_syncing(),
+                    network_api.clone(),
                     Some(substrate_sync_service),
                 )
                 .run()
@@ -261,7 +263,7 @@ impl RunCmd {
         spawn_handle.spawn(
             "subcoin-informant",
             None,
-            subcoin_informant::build(client.clone(), subcoin_network_handle),
+            subcoin_informant::build(client.clone(), network_api),
         );
 
         Ok(task_manager)

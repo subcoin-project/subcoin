@@ -10,24 +10,12 @@ use sc_network::request_responses::{IncomingRequest, OutgoingResponse};
 use sc_network::{NetworkBackend, PeerId, MAX_RESPONSE_SIZE};
 use sp_api::ProvideRuntimeApi;
 use sp_runtime::traits::Block as BlockT;
-use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 use subcoin_primitives::runtime::SubcoinApi;
-use tracing::{debug, trace};
-
-const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024; // Actual reponse may be bigger.
-const MAX_NUMBER_OF_SAME_REQUESTS_PER_PEER: usize = 2;
 
 const LOG_TARGET: &str = "sync::subcoin";
-
-mod rep {
-    use sc_network::ReputationChange as Rep;
-
-    /// Reputation change when a peer sent us the same request multiple times.
-    pub const SAME_REQUEST: Rep = Rep::new(i32::MIN, "Same subcoin request multiple times");
-}
 
 /// Generates a `RequestResponseProtocolConfig` for the state request protocol, refusing incoming
 /// requests.
@@ -140,10 +128,10 @@ where
 
             match self.handle_request(payload, pending_response, &peer) {
                 Ok(()) => {
-                    debug!(target: LOG_TARGET, "========== Handled subcoin request from {peer}")
+                    tracing::debug!(target: LOG_TARGET, "Handled subcoin request from {peer}")
                 }
                 Err(e) => {
-                    debug!(target: LOG_TARGET, "========== Failed to handle subcoin request from {peer}: {e:?}")
+                    tracing::debug!(target: LOG_TARGET, "Failed to handle subcoin request from {peer}: {e:?}")
                 }
             }
         }
@@ -190,7 +178,4 @@ enum HandleRequestError {
 
     #[error("Failed to send response.")]
     SendResponse,
-
-    #[error("Failed to compress response: {0}.")]
-    Compress(std::io::Error),
 }
