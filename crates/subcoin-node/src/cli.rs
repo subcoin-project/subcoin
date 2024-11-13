@@ -1,7 +1,7 @@
 pub mod subcoin_params;
 
 use crate::commands::blockchain::{Blockchain, BlockchainCmd};
-use crate::commands::import_blocks::{ImportBlocks, ImportBlocksCmd};
+use crate::commands::import_blocks::{ImportBlocks, ImportBlocksCmd, OfflineSync};
 use crate::commands::run::{Run, RunCmd};
 use crate::commands::tools::Tools;
 use crate::substrate_cli::SubstrateCli;
@@ -113,12 +113,11 @@ pub fn run() -> sc_cli::Result<()> {
                 spawn_handle.spawn("finalizer", None, {
                     let client = client.clone();
                     let spawn_handle = task_manager.spawn_handle();
-                    // Assume the chain is major syncing.
                     subcoin_service::SubcoinFinalizer::new(
                         client,
                         spawn_handle,
                         CONFIRMATION_DEPTH,
-                        Arc::new(subcoin_network::NoNetwork::new(true)),
+                        Arc::new(OfflineSync),
                         None,
                     )
                     .run()

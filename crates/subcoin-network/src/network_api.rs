@@ -290,16 +290,8 @@ impl NetworkApi for NetworkHandle {
     }
 }
 
-/// Subcoin network not running.
-pub struct NoNetwork {
-    is_major_syncing: bool,
-}
-
-impl NoNetwork {
-    pub fn new(is_major_syncing: bool) -> Self {
-        Self { is_major_syncing }
-    }
-}
+/// Subcoin network disabled.
+pub struct NoNetwork;
 
 #[async_trait::async_trait]
 impl NetworkApi for NoNetwork {
@@ -328,6 +320,6 @@ impl NetworkApi for NoNetwork {
     }
 
     fn is_major_syncing(&self) -> bool {
-        self.is_major_syncing
+        false
     }
 }

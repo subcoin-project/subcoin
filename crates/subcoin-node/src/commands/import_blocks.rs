@@ -17,6 +17,41 @@ use subcoin_primitives::BackendExt;
 use subcoin_runtime::interface::OpaqueBlock;
 use subcoin_service::FullClient;
 
+/// Disabled Subcoin network with the flag `is_major_syncing` set as true.
+pub struct OfflineSync;
+
+#[async_trait::async_trait]
+impl subcoin_network::NetworkApi for OfflineSync {
+    fn enabled(&self) -> bool {
+        false
+    }
+
+    async fn status(&self) -> Option<NetworkStatus> {
+        None
+    }
+
+    async fn sync_peers(&self) -> Vec<PeerSync> {
+        Vec::new()
+    }
+
+    async fn get_transaction(&self, _txid: Txid) -> Option<Transaction> {
+        None
+    }
+
+    async fn send_transaction(&self, _transaction: Transaction) -> SendTransactionResult {
+        SendTransactionResult::Failure("Network service unavailble".to_string())
+    }
+
+    fn start_block_sync(&self) -> bool {
+        false
+    }
+
+    fn is_major_syncing(&self) -> bool {
+        // Chain is syncing in the offline mode when using import-blocks command.
+        true
+    }
+}
+
 /// Import Bitcoin blocks from bitcoind database.
 #[derive(clap::Parser, Debug, Clone)]
 pub struct ImportBlocks {
