@@ -1,4 +1,4 @@
-use crate::params::{BitcoinChain, StateSyncNetworkParams};
+use crate::params::{BitcoinChain, SnapcakeNetworkParams};
 use clap::Parser;
 use sc_cli::{CliConfiguration, NetworkParams, SharedParams};
 use sc_service::BasePath;
@@ -93,7 +93,7 @@ pub struct App {
 
     #[allow(missing_docs)]
     #[clap(flatten)]
-    pub network_params: StateSyncNetworkParams,
+    pub network_params: SnapcakeNetworkParams,
 }
 
 pub struct Command {

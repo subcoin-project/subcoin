@@ -127,6 +127,14 @@ impl<T: Config> Pallet<T> {
 
         let height = frame_system::Pallet::<T>::current_block_number();
 
+        let is_bip30_exception = height == 91722u32.into() || height == 91842u32.into();
+
+        // The outputs of the duplicate transaction in block 91722 and 91842 are not
+        // added to the UTXO set.
+        if is_coinbase && is_bip30_exception {
+            return;
+        }
+
         let new_coins = tx.output.into_iter().enumerate().map(|(index, txout)| {
             let out_point = bitcoin::OutPoint {
                 txid,

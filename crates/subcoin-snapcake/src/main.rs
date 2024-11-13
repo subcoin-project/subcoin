@@ -63,13 +63,20 @@ fn main() -> sc_cli::Result<()> {
 
     let bitcoin_network = app.chain.bitcoin_network();
     let skip_proof = app.skip_proof;
+    let sync_target = app.network_params.block_hash;
 
     let command = Command::new(app);
 
     cli::SubstrateCli
         .create_runner(&command)?
         .run_node_until_exit(|config| async move {
-            start_snapcake_node(bitcoin_network, config, skip_proof, command.snapshot_dir())
+            start_snapcake_node(
+                bitcoin_network,
+                config,
+                skip_proof,
+                command.snapshot_dir(),
+                sync_target,
+            )
         })
         .map_err(Into::into)
 }
@@ -79,6 +86,7 @@ fn start_snapcake_node(
     mut config: Configuration,
     skip_proof: bool,
     snapshot_dir: PathBuf,
+    sync_target: Option<sp_core::H256>,
 ) -> Result<TaskManager, sc_service::error::Error> {
     let executor = sc_service::new_wasm_executor(&config.executor);
     let backend = sc_service::new_db_backend(config.db_config())?;
@@ -116,6 +124,7 @@ fn start_snapcake_node(
                 bitcoin_network,
                 skip_proof,
                 snapshot_dir,
+                sync_target,
             )?
         }
         NetworkBackendType::Litep2p => {
@@ -126,6 +135,7 @@ fn start_snapcake_node(
                 bitcoin_network,
                 skip_proof,
                 snapshot_dir,
+                sync_target,
             )?;
         }
     }
@@ -140,6 +150,7 @@ fn start_substrate_network<N>(
     bitcoin_network: bitcoin::Network,
     skip_proof: bool,
     snapshot_dir: PathBuf,
+    sync_target: Option<sp_core::H256>,
 ) -> Result<(), sc_service::error::Error>
 where
     N: sc_network::NetworkBackend<Block, <Block as BlockT>::Hash>,
@@ -203,6 +214,7 @@ where
         block_downloader,
         skip_proof,
         snapshot_dir,
+        sync_target,
     )?;
 
     let (syncing_engine, sync_service, block_announce_config) = SyncingEngine::new(

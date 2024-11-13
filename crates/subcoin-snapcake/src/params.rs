@@ -37,7 +37,7 @@ impl BitcoinChain {
 
 /// Adapated [`NetworkParams`] to hide a bunch of unnecessary flags for a cleaner UTXO sync interface.
 #[derive(Debug, Clone, Args)]
-pub struct StateSyncNetworkParams {
+pub struct SnapcakeNetworkParams {
     /// Specify a list of bootnodes.
     #[arg(long, value_name = "ADDR", num_args = 1..)]
     pub bootnodes: Vec<MultiaddrWithPeerId>,
@@ -59,14 +59,23 @@ pub struct StateSyncNetworkParams {
 		verbatim_doc_comment
 	)]
     pub network_backend: NetworkBackendType,
+
+    /// Specify the target block of state sync.
+    ///
+    /// By default the state sync target block is the last finalized block.
+    ///
+    /// This flag is primarily for the testing purpose.
+    #[arg(long)]
+    pub block_hash: Option<sp_core::H256>,
 }
 
-impl StateSyncNetworkParams {
+impl SnapcakeNetworkParams {
     pub fn into_network_params(self) -> NetworkParams {
         let Self {
             bootnodes,
             port,
             network_backend,
+            block_hash: _,
         } = self;
 
         NetworkParams {

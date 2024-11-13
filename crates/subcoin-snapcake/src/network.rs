@@ -62,6 +62,7 @@ pub fn build_snapcake_syncing_strategy<Block, Client, Net>(
     block_downloader: Arc<dyn BlockDownloader<Block>>,
     skip_proof: bool,
     snapshot_dir: PathBuf,
+    sync_target: Option<Block::Hash>,
 ) -> Result<Box<dyn SyncingStrategy<Block>>, sc_service::Error>
 where
     Block: BlockT,
@@ -123,6 +124,7 @@ where
         client,
         skip_proof,
         snapshot_dir,
+        sync_target,
         subcoin_network_request_protocol_name,
     )?))
 }
@@ -143,7 +145,7 @@ pub struct SnapcakeSyncingStrategy<B: BlockT, Client> {
     /// Connected peers and their best finalized headers.
     ///
     /// Used as the target block to initiate the state sync.
-    peer_best_finalized_headers: HashMap<PeerId, B::Header>,
+    peer_state_sync_target_headers: HashMap<PeerId, B::Header>,
     /// Pending requests for the best headers.
     pending_header_requests: Vec<(PeerId, BlockRequest<B>)>,
     /// Map of block hash to the number of total coins at this block.
@@ -156,6 +158,7 @@ pub struct SnapcakeSyncingStrategy<B: BlockT, Client> {
     skip_proof: bool,
     /// Snapshot directory.
     snapshot_dir: PathBuf,
+    sync_target: Option<B::Hash>,
     /// Subcoin network request protocol name.
     subcoin_network_request_protocol_name: ProtocolName,
 }
@@ -177,6 +180,7 @@ where
         client: Arc<Client>,
         skip_proof: bool,
         snapshot_dir: PathBuf,
+        sync_target: Option<B::Hash>,
         subcoin_network_request_protocol_name: ProtocolName,
     ) -> Result<Self, sp_blockchain::Error> {
         if config.max_blocks_per_request > MAX_BLOCKS_IN_RESPONSE as u32 {
@@ -204,13 +208,14 @@ where
             state: None,
             chain_sync: Some(chain_sync),
             peer_best_blocks: Default::default(),
-            peer_best_finalized_headers: HashMap::new(),
+            peer_state_sync_target_headers: HashMap::new(),
             pending_header_requests: Vec::new(),
             coins_count: HashMap::new(),
             state_sync_complete: false,
             pending_coins_count_requests: Vec::new(),
             skip_proof,
             snapshot_dir,
+            sync_target,
             subcoin_network_request_protocol_name,
         })
     }
@@ -245,6 +250,20 @@ where
         {
             self.pending_header_requests.remove(index);
 
+            if self.sync_target.is_some() {
+                let block = blocks
+                    .into_iter()
+                    .next()
+                    .expect("Blocks must not be empty; qed");
+                let target_header = block.header.expect("Header must exist as requested");
+                let block_hash = target_header.hash();
+                self.peer_state_sync_target_headers
+                    .insert(peer_id, target_header);
+                self.pending_coins_count_requests
+                    .push((peer_id, block_hash));
+                return;
+            }
+
             // TODO: validate_blocks
             if blocks.len() < 6 {
                 tracing::error!(target: LOG_TARGET, "No finalized block in the block response: {blocks:?}");
@@ -253,7 +272,7 @@ where
             if let Some(block) = blocks.into_iter().nth(5) {
                 let finalized_header = block.header.expect("Header must exist as requested");
                 let block_hash = finalized_header.hash();
-                self.peer_best_finalized_headers
+                self.peer_state_sync_target_headers
                     .insert(peer_id, finalized_header);
                 self.pending_coins_count_requests
                     .push((peer_id, block_hash));
@@ -315,14 +334,27 @@ where
             .as_mut()
             .map(|s| s.add_peer(peer_id, best_hash, best_number));
 
-        let request = BlockRequest::<B> {
-            id: 0u64,
-            fields: BlockAttributes::HEADER,
-            from: FromBlock::Hash(best_hash),
-            direction: Direction::Descending,
-            // Attempt to download the most recent finalized block, i.e.,
-            // `peer_best_block - confirmation_depth(6)`.
-            max: Some(6),
+        // Request the target header if specified, otherwise request the last finalized header.
+        let request = if let Some(target_block_hash) = self.sync_target {
+            BlockRequest::<B> {
+                id: 0u64,
+                fields: BlockAttributes::HEADER,
+                from: FromBlock::Hash(target_block_hash),
+                direction: Direction::Descending,
+                // Attempt to download the most recent finalized block, i.e.,
+                // `peer_best_block - confirmation_depth(6)`.
+                max: Some(1),
+            }
+        } else {
+            BlockRequest::<B> {
+                id: 0u64,
+                fields: BlockAttributes::HEADER,
+                from: FromBlock::Hash(best_hash),
+                direction: Direction::Descending,
+                // Attempt to download the most recent finalized block, i.e.,
+                // `peer_best_block - confirmation_depth(6)`.
+                max: Some(6),
+            }
         };
 
         self.pending_header_requests.push((peer_id, request));
@@ -555,7 +587,7 @@ where
     ) -> Result<Vec<SyncingAction<B>>, sp_blockchain::Error> {
         if self.state.is_none() && !self.state_sync_complete {
             // TODO: proper algo to select state sync target.
-            let select_state_sync_target = || self.peer_best_finalized_headers.iter().next();
+            let select_state_sync_target = || self.peer_state_sync_target_headers.iter().next();
 
             if let Some((peer_id, finalized_header)) = select_state_sync_target() {
                 let block_hash = finalized_header.hash();

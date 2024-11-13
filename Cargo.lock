@@ -10680,6 +10680,7 @@ dependencies = [
  "sp-api",
  "sp-blockchain",
  "sp-consensus",
+ "sp-core",
  "sp-runtime",
  "subcoin-crypto",
  "subcoin-primitives",
