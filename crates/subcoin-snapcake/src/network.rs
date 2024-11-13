@@ -118,9 +118,6 @@ where
         block_downloader,
     };
 
-    // Ensure the snapshot directory exists, creating it if necessary
-    std::fs::create_dir_all(&snapshot_dir).expect("Failed to create snapshot directory");
-
     Ok(Box::new(SnapcakeSyncingStrategy::new(
         syncing_config,
         client,

@@ -63,7 +63,8 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
 pub use crate::network_api::{
-    NetworkApi, NetworkHandle, NetworkStatus, NoNetwork, SendTransactionResult, SyncStatus,
+    NetworkApi, NetworkHandle, NetworkStatus, NoNetwork, OfflineSync, SendTransactionResult,
+    SyncStatus,
 };
 pub use crate::sync::{PeerSync, PeerSyncState};
 

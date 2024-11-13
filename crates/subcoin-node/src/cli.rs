@@ -1,7 +1,7 @@
 pub mod subcoin_params;
 
 use crate::commands::blockchain::{Blockchain, BlockchainCmd};
-use crate::commands::import_blocks::{ImportBlocks, ImportBlocksCmd, OfflineSync};
+use crate::commands::import_blocks::{ImportBlocks, ImportBlocksCmd};
 use crate::commands::run::{Run, RunCmd};
 use crate::commands::tools::Tools;
 use crate::substrate_cli::SubstrateCli;
@@ -117,7 +117,7 @@ pub fn run() -> sc_cli::Result<()> {
                         client,
                         spawn_handle,
                         CONFIRMATION_DEPTH,
-                        Arc::new(OfflineSync),
+                        Arc::new(subcoin_network::OfflineSync),
                         None,
                     )
                     .run()

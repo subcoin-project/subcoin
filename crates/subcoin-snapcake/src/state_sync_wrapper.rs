@@ -87,7 +87,7 @@ pub(crate) struct StateSyncWrapper<B: BlockT, Client> {
     target_bitcoin_block_hash: bitcoin::BlockHash,
     utxo_store: UtxoStore,
     snapshot_generator: UtxoSnapshotGenerator,
-    downloaded_coins: usize,
+    received_coins: usize,
     total_coins: usize,
     last_progress_print_time: Option<Instant>,
 }
@@ -101,7 +101,7 @@ where
         client: Arc<Client>,
         target_header: B::Header,
         skip_proof: bool,
-        snapshot_dir: PathBuf,
+        snapshot_base_dir: PathBuf,
         total_coins: usize,
     ) -> Self {
         let target_block_number = target_header.number();
@@ -109,22 +109,27 @@ where
             subcoin_primitives::extract_bitcoin_block_hash::<B>(&target_header)
                 .expect("Failed to extract bitcoin block hash");
 
-        let file_name = format!("{target_block_number}_{target_bitcoin_block_hash}_snapshot.dat");
-        let snapshot_file = snapshot_dir.join(file_name);
+        let sync_target = format!("{target_block_number}_{target_bitcoin_block_hash}");
+        let snapshot_dir = snapshot_base_dir.join(sync_target);
+
+        // Ensure the snapshot directory exists, creating it if necessary
+        std::fs::create_dir_all(&snapshot_dir).expect("Failed to create snapshot directory");
+
+        let snapshot_file = snapshot_dir.join("snapshot.dat");
         let snapshot_generator = UtxoSnapshotGenerator::new(
             std::fs::File::create(snapshot_file).expect("Failed to create output file"),
         );
 
-        let utxo_file_name = format!("{target_block_number}_{target_bitcoin_block_hash}.utxo");
-        let utxo_file = snapshot_dir.join(utxo_file_name);
+        let utxo_file = snapshot_dir.join("utxo.csv");
         let utxo_file = std::fs::File::create(utxo_file).expect("Failed to create UTXO file");
+
         Self {
             inner: StateSync::new(client, target_header, None, None, skip_proof),
             target_bitcoin_block_hash,
             muhash: MuHash3072::new(),
             utxo_store: UtxoStore::Csv(utxo_file),
             snapshot_generator,
-            downloaded_coins: 0,
+            received_coins: 0,
             total_coins,
             last_progress_print_time: None,
         }
@@ -164,7 +169,7 @@ where
 
                     // TODO: write UTXO to a local file instead of storing in memory.
                     self.utxo_store.push(Utxo { txid, vout, coin });
-                    self.downloaded_coins += 1;
+                    self.received_coins += 1;
                 }
             }
         }
@@ -172,10 +177,10 @@ where
         if self.last_progress_print_time.map_or(true, |last_time| {
             last_time.elapsed() > DOWNLOAD_PROGRESS_LOG_INTERVAL
         }) {
-            let percent = self.downloaded_coins as f64 * 100.0 / self.total_coins as f64;
+            let percent = self.received_coins as f64 * 100.0 / self.total_coins as f64;
             tracing::info!(
-                "============ UTXO snapshot download progress: {percent}%, {}/{}",
-                self.downloaded_coins,
+                "UTXO snapshot download progress: {percent:.2}%, {}/{}",
+                self.received_coins,
                 self.total_coins
             );
             self.last_progress_print_time.replace(Instant::now());
@@ -187,8 +192,10 @@ where
             let utxos_count = self.utxo_store.count().unwrap() as u64;
 
             tracing::info!(
-                muhash,
+                %muhash,
                 utxos_count,
+                received_coins = self.received_coins,
+                total_coins = self.total_coins,
                 "💾 State dowload is complete, writing the UTXO snapshot"
             );
 
