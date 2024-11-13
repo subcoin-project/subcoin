@@ -22,6 +22,9 @@ pub enum SubcoinNetworkOption {
     /// Do no run Subcoin network at all.
     None,
     /// Enables the Subcoin network with block sync disabled.
+    ///
+    /// This option allows block sync to occur exclusively over the Substrate network,
+    /// while retaining partial Bitcoin P2P functionality (e.g., broadcasting Bitcoin transactions).
     NoBlockSync,
 }
 
@@ -223,6 +226,7 @@ impl RunCmd {
 
         let network_api: Arc<dyn NetworkApi> =
             if matches!(run.subcoin_network, SubcoinNetworkOption::None) {
+                task_manager.keep_alive(import_queue);
                 Arc::new(subcoin_network::NoNetwork)
             } else {
                 let network_handle = subcoin_network::build_network(

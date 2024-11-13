@@ -179,6 +179,7 @@ where
         }) {
             let percent = self.received_coins as f64 * 100.0 / self.total_coins as f64;
             tracing::info!(
+                target: "snapcake",
                 "UTXO snapshot download progress: {percent:.2}%, {}/{}",
                 self.received_coins,
                 self.total_coins
@@ -192,6 +193,7 @@ where
             let utxos_count = self.utxo_store.count().unwrap() as u64;
 
             tracing::info!(
+                target: "snapcake",
                 %muhash,
                 utxos_count,
                 received_coins = self.received_coins,
@@ -241,7 +243,7 @@ where
                 }
             }
 
-            tracing::info!("UTXO set snapshot has been generated successfully!");
+            tracing::info!(target: "snapcake", "UTXO set snapshot has been generated successfully!");
         }
     }
 }

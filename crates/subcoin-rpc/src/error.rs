@@ -7,6 +7,8 @@ use jsonrpsee::types::ErrorObjectOwned;
 pub enum Error {
     #[error("block not found")]
     BlockNotFound,
+    #[error("Bitcoin P2P network service unavailable")]
+    NetworkUnavailable,
     #[error("substrate block hash not found")]
     SubstrateBlockHashNotFound,
     #[error("Invalid header: {0:?}")]

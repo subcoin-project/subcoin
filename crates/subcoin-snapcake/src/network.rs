@@ -462,7 +462,6 @@ where
                 }
             }
             SUBCOIN_STRATEGY_KEY => {
-                tracing::info!(target: LOG_TARGET, "============== Recv Subcoin key: {key:?}, protocol: {protocol_name}, peer_id: {peer_id:?}");
                 let Ok(response) = response.downcast::<Vec<u8>>() else {
                     tracing::warn!(target: LOG_TARGET, "Failed to downcast SubNetworkResponse");
                     debug_assert!(false);
@@ -475,7 +474,6 @@ where
                         return;
                     }
                 };
-                tracing::info!(target: LOG_TARGET, "============== Recv response: {response:?}");
                 match response {
                     SubNetworkResponse::<B>::CoinsCount { block_hash, count } => {
                         self.coins_count.insert(block_hash, count);

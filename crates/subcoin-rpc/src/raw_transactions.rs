@@ -71,6 +71,10 @@ where
     }
 
     async fn send_raw_transaction(&self, raw_tx: String) -> Result<SendTransactionResult, Error> {
+        if !self.network_api.enabled() {
+            return Err(Error::NetworkUnavailable);
+        }
+
         Ok(self
             .network_api
             .send_transaction(deserialize_hex::<Transaction>(&raw_tx)?)

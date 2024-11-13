@@ -86,8 +86,8 @@ where
     };
 
     spawner.spawn_essential_blocking(
-        "basic-block-import-worker",
-        Some("block-import"),
+        "bitcoin-block-import-worker",
+        Some("bitcoin-block-import"),
         future.boxed(),
     );
 
