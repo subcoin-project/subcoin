@@ -55,60 +55,58 @@ thiserror = "1.0"
 tokio = "1.41.1"
 tracing = "0.1"
 
-frame-benchmarking-cli = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/utils/frame/benchmarking-cli" }
-frame-support = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/frame/support", default-features = false }
-frame-system = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/frame/system", default-features = false }
-frame-system-rpc-runtime-api = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/frame/system/rpc/runtime-api", default-features = false }
-frame-try-runtime = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/frame/try-runtime", default-features = false }
-pallet-balances = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/frame/balances", default-features = false }
-pallet-transaction-payment = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/frame/transaction-payment", default-features = false }
 # Disable the default `rocksdb` feature
-sc-cli = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/cli", default-features = false }
-sc-client-api = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/api" }
-sc-consensus = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/consensus/common" }
-sc-executor = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/executor" }
-sc-informant = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/informant" }
-sc-network = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/network" }
-sc-network-common = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/network/common" }
-sc-network-sync = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/network/sync" }
-sc-rpc = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/rpc" }
-sc-rpc-api = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/rpc-api" }
+frame-benchmarking-cli = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+frame-support = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+frame-system = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+frame-system-rpc-runtime-api = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+frame-try-runtime = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+pallet-balances = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+pallet-transaction-payment = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
 # Disable the default `rocksdb` feature
-sc-service = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/service", default-features = false }
-sc-storage-monitor = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/storage-monitor" }
-sc-sysinfo = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/sysinfo" }
-sc-telemetry = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/telemetry" }
-sc-tracing = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/tracing" }
-sc-transaction-pool = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/transaction-pool" }
-sc-transaction-pool-api = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/transaction-pool/api" }
-sc-utils = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/client/utils" }
-sp-api = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/api", default-features = false }
-sp-blockchain = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/blockchain", default-features = false }
-sp-block-builder = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/block-builder", default-features = false }
-sp-consensus = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/consensus/common", default-features = false }
-sp-consensus-grandpa = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/consensus/grandpa", default-features = false }
-sp-core = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/core", default-features = false }
-sp-database = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/database", default-features = false }
-sp-genesis-builder = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/genesis-builder", default-features = false }
-sp-keyring = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/keyring" }
-sp-keystore = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/keystore" }
-sp-inherents = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/inherents", default-features = false }
-sp-io = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/io", default-features = false }
-sp-rpc = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/rpc" }
-sp-runtime = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/runtime", default-features = false }
-sp-session = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/session", default-features = false }
-sp-std = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/std", default-features = false }
-sp-state-machine = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/state-machine" }
-sp-storage = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/storage", default-features = false }
-sp-tracing = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/tracing", default-features = false }
-sp-transaction-pool = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/transaction-pool", default-features = false }
-sp-trie = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/trie", default-features = false }
-sp-version = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/primitives/version", default-features = false }
-substrate-build-script-utils = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/utils/build-script-utils" }
-substrate-frame-rpc-system = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/utils/frame/rpc/system" }
-substrate-prometheus-endpoint = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/utils/prometheus", default-features = false }
-substrate-wasm-builder = { path = "/home/xlc/Work/src/github.com/subcoin-project/polkadot-sdk/substrate/utils/wasm-builder" }
-
+sc-cli = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+sc-client-api = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+sc-consensus = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+sc-executor = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+sc-informant = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+sc-network = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+sc-network-common = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+sc-network-sync = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+sc-rpc = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+sc-rpc-api = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+# Disable the default `rocksdb` feature
+sc-service = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+sc-storage-monitor = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+sc-sysinfo = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+sc-telemetry = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+sc-tracing = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+sc-transaction-pool = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+sc-transaction-pool-api = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+sc-utils = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+sp-api = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+sp-blockchain = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+sp-block-builder = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+sp-consensus = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+sp-core = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+sp-database = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+sp-genesis-builder = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+sp-keyring = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+sp-keystore = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+sp-inherents = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+sp-io = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+sp-rpc = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+sp-runtime = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+sp-state-machine = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+sp-std = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+sp-storage = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+sp-tracing = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+sp-transaction-pool = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+sp-trie = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+sp-version = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+substrate-build-script-utils = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+substrate-frame-rpc-system = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
+substrate-prometheus-endpoint = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3", default-features = false }
+substrate-wasm-builder = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v3" }
 txoutset = { git = "https://github.com/liuchengxu/txoutset", branch = "subcoin" }
 
 pallet-bitcoin = { path = "crates/pallet-bitcoin", default-features = false }
