@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subcoin_primitives::runtime::Coin;
-use subcoin_primitives::{BackendExt, CoinStorageKey};
+use subcoin_primitives::{BackendExt, BitcoinTransactionAdapter, CoinStorageKey};
 use subcoin_service::FullClient;
 use subcoin_utxo_snapshot::UtxoSnapshotGenerator;
 
@@ -97,6 +97,27 @@ pub enum Blockchain {
         #[arg(long, value_name = "CHAIN", default_value = "bitcoin-mainnet")]
         chain: Chain,
     },
+
+    #[command(name = "parse-block-outputs")]
+    ParseBlockOutputs {
+        /// Specify the number of block to dump.
+        ///
+        /// Defaults to the best block.
+        #[clap(long)]
+        height: Option<u32>,
+
+        /// Specify the chain.
+        #[arg(long, value_name = "CHAIN", default_value = "bitcoin-mainnet")]
+        chain: Chain,
+
+        /// Specify custom base path.
+        #[arg(long, short = 'd', value_name = "PATH")]
+        base_path: Option<PathBuf>,
+
+        #[allow(missing_docs)]
+        #[clap(flatten)]
+        database_params: DatabaseParams,
+    },
 }
 
 pub enum BlockchainCmd {
@@ -118,6 +139,11 @@ pub enum BlockchainCmd {
         compute_addresses: bool,
         chain: Chain,
         shared_params: SharedParams,
+    },
+    ParseBlockOutputs {
+        height: Option<u32>,
+        shared_params: SharedParams,
+        database_params: DatabaseParams,
     },
 }
 
@@ -173,6 +199,16 @@ impl BlockchainCmd {
                 chain,
                 shared_params: create_shared_params(chain, None),
             },
+            Blockchain::ParseBlockOutputs {
+                height,
+                chain,
+                base_path,
+                database_params,
+            } => Self::ParseBlockOutputs {
+                height,
+                shared_params: create_shared_params(chain, base_path),
+                database_params,
+            },
         }
     }
 
@@ -201,6 +237,36 @@ impl BlockchainCmd {
                 chain,
                 ..
             } => parse_txout_set(path, compute_addresses, chain).await,
+            Self::ParseBlockOutputs {
+                height,
+                shared_params,
+                database_params,
+            } => {
+                let block_number = height.unwrap_or_else(|| client.info().best_number);
+                let block_hash = client.hash(block_number)?.unwrap();
+                let block_body = client.body(block_hash)?.unwrap();
+                let txdata = block_body
+                    .iter()
+                    .map(|xt| {
+                        <subcoin_service::TransactionAdapter as BitcoinTransactionAdapter<
+                            subcoin_runtime::interface::OpaqueBlock,
+                        >>::extrinsic_to_bitcoin_transaction(xt)
+                    })
+                    .collect::<Vec<_>>();
+                let mut num_op_return = 0;
+                for (i, tx) in txdata.into_iter().enumerate() {
+                    for (j, output) in tx.output.into_iter().enumerate() {
+                        let is_op_return = output.script_pubkey.is_op_return();
+                        println!("{i}:{j}: {is_op_return:?}");
+
+                        if is_op_return {
+                            num_op_return += 1;
+                        }
+                    }
+                }
+                println!("There are {num_op_return} OP_RETURN in block #{block_number}");
+                Ok(())
+            }
         }
     }
 }
@@ -211,6 +277,7 @@ impl sc_cli::CliConfiguration for BlockchainCmd {
             Self::GetTxOutSetInfo { shared_params, .. } => shared_params,
             Self::DumpTxoutSet { shared_params, .. } => shared_params,
             Self::ParseTxoutSet { shared_params, .. } => shared_params,
+            Self::ParseBlockOutputs { shared_params, .. } => shared_params,
         }
     }
 
@@ -227,6 +294,9 @@ impl sc_cli::CliConfiguration for BlockchainCmd {
                 database_params, ..
             } => Some(database_params),
             Self::ParseTxoutSet { .. } => None,
+            Self::ParseBlockOutputs {
+                database_params, ..
+            } => Some(database_params),
         }
     }
 

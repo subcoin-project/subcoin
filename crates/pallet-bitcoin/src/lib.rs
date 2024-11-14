@@ -124,47 +124,60 @@ impl<T: Config> Pallet<T> {
     fn process_bitcoin_transaction(tx: bitcoin::Transaction) {
         let txid = tx.compute_txid();
         let is_coinbase = tx.is_coinbase();
-
         let height = frame_system::Pallet::<T>::current_block_number();
 
-        let is_bip30_exception = height == 91722u32.into() || height == 91812u32.into();
-
-        // The outputs of the duplicate transaction in block 91722 and 91842 are not
-        // added to the UTXO set.
-        if is_coinbase && is_bip30_exception {
+        // Check if transaction falls under the BIP30 exception heights
+        const BIP30_EXCEPTION_HEIGHTS: &[u32] = &[91722, 91812];
+        if is_coinbase && BIP30_EXCEPTION_HEIGHTS.contains(&height.saturated_into()) {
+            // Skip adding the outputs to UTXO set if it is a BIP30 exception.
             return;
         }
 
-        let new_coins = tx.output.into_iter().enumerate().map(|(index, txout)| {
-            let out_point = bitcoin::OutPoint {
-                txid,
-                vout: index as u32,
-            };
-            let coin = Coin {
-                is_coinbase,
-                amount: txout.value.to_sat(),
-                script_pubkey: txout.script_pubkey.into_bytes(),
-                height: height.saturated_into(),
-            };
-            (out_point, coin)
-        });
+        // Collect all new coins to be added to the UTXO set, skipping OP_RETURN outputs.
+        let new_coins: Vec<_> = tx
+            .output
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, txout)| {
+                let out_point = bitcoin::OutPoint {
+                    txid,
+                    vout: index as u32,
+                };
 
-        let num_created = new_coins.len();
+                // OP_RETURN outputs are not added to the UTXO set.
+                //
+                // TODO: handle OP_RETURN data properly as they are super valuable.
+                if txout.script_pubkey.is_op_return() {
+                    None
+                } else {
+                    let coin = Coin {
+                        is_coinbase,
+                        amount: txout.value.to_sat(),
+                        script_pubkey: txout.script_pubkey.into_bytes(),
+                        height: height.saturated_into(),
+                    };
+                    Some((out_point, coin))
+                }
+            })
+            .collect();
+
+        let num_outputs_created = new_coins.len();
 
         if is_coinbase {
+            // Insert new UTXOs for coinbase transaction.
             for (out_point, coin) in new_coins {
                 let OutPoint { txid, output_index } = OutPoint::from(out_point);
                 Coins::<T>::insert(txid, output_index, coin);
             }
             CoinsCount::<T>::mutate(|v| {
-                *v += num_created as u64;
+                *v += num_outputs_created as u64;
             });
             return;
         }
 
         let num_consumed = tx.input.len();
 
-        // Process inputs.
+        // Process the inputs to remove consumed UTXOs.
         for input in tx.input {
             let previous_output = input.previous_output;
             let OutPoint { txid, output_index } = OutPoint::from(previous_output);
@@ -174,14 +187,14 @@ impl<T: Config> Pallet<T> {
             }
         }
 
-        // Process outputs.
+        // Insert new UTXOs for non-coinbase transaction.
         for (out_point, coin) in new_coins {
             let OutPoint { txid, output_index } = OutPoint::from(out_point);
             Coins::<T>::insert(txid, output_index, coin);
         }
 
         CoinsCount::<T>::mutate(|v| {
-            *v = *v + num_created as u64 - num_consumed as u64;
+            *v = *v + num_outputs_created as u64 - num_consumed as u64;
         });
     }
 }
