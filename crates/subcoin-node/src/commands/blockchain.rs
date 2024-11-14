@@ -517,7 +517,7 @@ async fn dumptxoutset(
         );
         println!("UTXO set size: {utxo_set_size}");
 
-        let mut file = std::fs::File::create(path)?;
+        let mut file = std::fs::File::create(&path)?;
 
         let mut data = Vec::new();
         bitcoin_block_hash
@@ -529,7 +529,7 @@ async fn dumptxoutset(
 
         let _ = file.write(data.as_slice())?;
 
-        UtxoSetOutput::Snapshot(UtxoSnapshotGenerator::new(file))
+        UtxoSetOutput::Snapshot(UtxoSnapshotGenerator::new(path, file))
     } else {
         println!("Dumping UTXO set at #{block_number},{bitcoin_block_hash}");
         UtxoSetOutput::Stdout(std::io::stdout())

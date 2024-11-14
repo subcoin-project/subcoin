@@ -310,7 +310,10 @@ where
                         *paused = false;
 
                         if !self.block_downloader.missing_blocks.is_empty() {
-                            tracing::debug!("Resumed downloading blocks");
+                            tracing::debug!(
+                                missing_blocks = self.block_downloader.missing_blocks.len(),
+                                "Resumed downloading blocks",
+                            );
                             return self.block_downloader.schedule_next_download_batch();
                         } else {
                             return self.header_request_action();
