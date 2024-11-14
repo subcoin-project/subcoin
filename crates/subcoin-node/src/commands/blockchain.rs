@@ -237,11 +237,7 @@ impl BlockchainCmd {
                 chain,
                 ..
             } => parse_txout_set(path, compute_addresses, chain).await,
-            Self::ParseBlockOutputs {
-                height,
-                shared_params,
-                database_params,
-            } => {
+            Self::ParseBlockOutputs { height, .. } => {
                 let block_number = height.unwrap_or_else(|| client.info().best_number);
                 let block_hash = client.hash(block_number)?.unwrap();
                 let block_body = client.body(block_hash)?.unwrap();

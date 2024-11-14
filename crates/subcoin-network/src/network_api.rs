@@ -265,23 +265,23 @@ impl NetworkApi for NetworkHandle {
     }
 
     async fn status(&self) -> Option<NetworkStatus> {
-        Self::status(&self).await
+        Self::status(self).await
     }
 
     async fn sync_peers(&self) -> Vec<PeerSync> {
-        Self::sync_peers(&self).await
+        Self::sync_peers(self).await
     }
 
     async fn get_transaction(&self, txid: Txid) -> Option<Transaction> {
-        Self::get_transaction(&self, txid).await
+        Self::get_transaction(self, txid).await
     }
 
     async fn send_transaction(&self, transaction: Transaction) -> SendTransactionResult {
-        Self::send_transaction(&self, transaction).await
+        Self::send_transaction(self, transaction).await
     }
 
     fn start_block_sync(&self) -> bool {
-        Self::start_block_sync(&self)
+        Self::start_block_sync(self)
     }
 
     fn is_major_syncing(&self) -> bool {
