@@ -52,6 +52,11 @@ fn chain_sync_mode(sync_mode: SyncMode) -> ChainSyncMode {
     }
 }
 
+pub enum TargetBlock<Block: BlockT> {
+    Hash(Block::Hash),
+    Number(NumberFor<Block>),
+}
+
 /// Build snapcake state syncing strategy.
 pub fn build_snapcake_syncing_strategy<Block, Client, Net>(
     protocol_id: ProtocolId,
@@ -62,7 +67,7 @@ pub fn build_snapcake_syncing_strategy<Block, Client, Net>(
     block_downloader: Arc<dyn BlockDownloader<Block>>,
     skip_proof: bool,
     snapshot_dir: PathBuf,
-    sync_target: Option<Block::Hash>,
+    sync_target: Option<TargetBlock<Block>>,
 ) -> Result<Box<dyn SyncingStrategy<Block>>, sc_service::Error>
 where
     Block: BlockT,
@@ -148,6 +153,8 @@ pub struct SnapcakeSyncingStrategy<B: BlockT, Client> {
     peer_state_sync_target_headers: HashMap<PeerId, B::Header>,
     /// Pending requests for the best headers.
     pending_header_requests: Vec<(PeerId, BlockRequest<B>)>,
+    ///
+    pending_header_requests_by_number: Vec<(PeerId, NumberFor<B>)>,
     /// Map of block hash to the number of total coins at this block.
     coins_count: HashMap<B::Hash, u64>,
     /// Pending requests for coins_count.
@@ -158,7 +165,7 @@ pub struct SnapcakeSyncingStrategy<B: BlockT, Client> {
     skip_proof: bool,
     /// Snapshot directory.
     snapshot_dir: PathBuf,
-    sync_target: Option<B::Hash>,
+    sync_target: Option<TargetBlock<B>>,
     /// Subcoin network request protocol name.
     subcoin_network_request_protocol_name: ProtocolName,
 }
@@ -180,7 +187,7 @@ where
         client: Arc<Client>,
         skip_proof: bool,
         snapshot_dir: PathBuf,
-        sync_target: Option<B::Hash>,
+        sync_target: Option<TargetBlock<B>>,
         subcoin_network_request_protocol_name: ProtocolName,
     ) -> Result<Self, sp_blockchain::Error> {
         if config.max_blocks_per_request > MAX_BLOCKS_IN_RESPONSE as u32 {
@@ -210,6 +217,7 @@ where
             peer_best_blocks: Default::default(),
             peer_state_sync_target_headers: HashMap::new(),
             pending_header_requests: Vec::new(),
+            pending_header_requests_by_number: Vec::new(),
             coins_count: HashMap::new(),
             state_sync_complete: false,
             pending_coins_count_requests: Vec::new(),
@@ -282,7 +290,7 @@ where
         }
     }
 
-    fn create_get_coins_count_action(
+    fn create_subcoin_request_action(
         &self,
         peer_id: sc_network::PeerId,
         request: subcoin_service::network_request_handler::SubNetworkRequest<B>,
@@ -334,8 +342,14 @@ where
             .as_mut()
             .map(|s| s.add_peer(peer_id, best_hash, best_number));
 
+        if let Some(TargetBlock::Number(block_number)) = self.sync_target {
+            self.pending_header_requests_by_number
+                .push((peer_id, block_number));
+            return;
+        }
+
         // Request the target header if specified, otherwise request the last finalized header.
-        let request = if let Some(target_block_hash) = self.sync_target {
+        let request = if let Some(TargetBlock::Hash(target_block_hash)) = self.sync_target {
             BlockRequest::<B> {
                 id: 0u64,
                 fields: BlockAttributes::HEADER,
@@ -510,6 +524,13 @@ where
                     SubNetworkResponse::<B>::CoinsCount { block_hash, count } => {
                         self.coins_count.insert(block_hash, count);
                     }
+                    SubNetworkResponse::<B>::BlockHeader { block_header } => {
+                        let block_hash = block_header.hash();
+                        self.peer_state_sync_target_headers
+                            .insert(*peer_id, block_header);
+                        self.pending_coins_count_requests
+                            .push((*peer_id, block_hash));
+                    }
                 }
             }
             key => {
@@ -594,8 +615,7 @@ where
                 // Only start the state sync when the coins count is available.
                 if let Some(total_coins) = self.coins_count.get(&block_hash) {
                     let target_header = finalized_header.clone();
-                    tracing::debug!(
-                        target: LOG_TARGET,
+                    tracing::info!(
                         "⏳ Starting state sync from {peer_id:?}, target block #{},{block_hash}, total coins: {total_coins}",
                         target_header.number(),
                     );
@@ -634,9 +654,21 @@ where
             let pending_coins_count_requests =
                 std::mem::take(&mut self.pending_coins_count_requests);
             for (peer_id, block_hash) in pending_coins_count_requests {
-                actions.push(self.create_get_coins_count_action(
+                actions.push(self.create_subcoin_request_action(
                     peer_id,
                     SubNetworkRequest::<B>::GetCoinsCount { block_hash },
+                    network_service,
+                ));
+            }
+            actions
+        } else if !self.pending_header_requests_by_number.is_empty() {
+            let mut actions = vec![];
+            let pending_header_requests_by_number =
+                std::mem::take(&mut self.pending_header_requests_by_number);
+            for (peer_id, block_number) in pending_header_requests_by_number {
+                actions.push(self.create_subcoin_request_action(
+                    peer_id,
+                    SubNetworkRequest::<B>::GetBlockHeader { block_number },
                     network_service,
                 ));
             }
@@ -653,7 +685,7 @@ where
             .any(|action| matches!(action, SyncingAction::ImportBlocks { .. }));
 
         if state_sync_is_complete {
-            tracing::debug!(target: LOG_TARGET, "✅ State sync is complete");
+            tracing::info!("✅ State sync is complete");
             self.state.take();
             self.state_sync_complete = true;
             // Exit the entire program directly once the state sync is complete.

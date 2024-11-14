@@ -60,7 +60,15 @@ pub struct SnapcakeNetworkParams {
 	)]
     pub network_backend: NetworkBackendType,
 
-    /// Specify the target block of state sync.
+    /// Specify the target block of state sync by block number.
+    ///
+    /// By default the state sync target block is the last finalized block.
+    ///
+    /// This flag is primarily for the testing purpose.
+    #[arg(long, conflicts_with = "block_hash")]
+    pub block_number: Option<u32>,
+
+    /// Specify the target block of state sync by block hash.
     ///
     /// By default the state sync target block is the last finalized block.
     ///
@@ -75,7 +83,7 @@ impl SnapcakeNetworkParams {
             bootnodes,
             port,
             network_backend,
-            block_hash: _,
+            ..
         } = self;
 
         NetworkParams {

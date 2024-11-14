@@ -127,7 +127,7 @@ impl<T: Config> Pallet<T> {
 
         let height = frame_system::Pallet::<T>::current_block_number();
 
-        let is_bip30_exception = height == 91722u32.into() || height == 91842u32.into();
+        let is_bip30_exception = height == 91722u32.into() || height == 91812u32.into();
 
         // The outputs of the duplicate transaction in block 91722 and 91842 are not
         // added to the UTXO set.

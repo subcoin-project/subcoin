@@ -40,6 +40,7 @@ mod state_sync_wrapper;
 
 use self::cli::{App, Command};
 use clap::Parser;
+use network::TargetBlock;
 use sc_cli::SubstrateCli;
 use sc_consensus::import_queue::BasicQueue;
 use sc_consensus_nakamoto::SubstrateImportQueueVerifier;
@@ -63,7 +64,13 @@ fn main() -> sc_cli::Result<()> {
 
     let bitcoin_network = app.chain.bitcoin_network();
     let skip_proof = app.skip_proof;
-    let sync_target = app.network_params.block_hash;
+    let sync_target = if let Some(number) = app.network_params.block_number {
+        Some(TargetBlock::Number(number))
+    } else if let Some(hash) = app.network_params.block_hash {
+        Some(TargetBlock::Hash(hash))
+    } else {
+        None
+    };
 
     let command = Command::new(app);
 
@@ -86,7 +93,7 @@ fn start_snapcake_node(
     mut config: Configuration,
     skip_proof: bool,
     snapshot_dir: PathBuf,
-    sync_target: Option<sp_core::H256>,
+    sync_target: Option<TargetBlock<Block>>,
 ) -> Result<TaskManager, sc_service::error::Error> {
     let executor = sc_service::new_wasm_executor(&config.executor);
     let backend = sc_service::new_db_backend(config.db_config())?;
@@ -150,7 +157,7 @@ fn start_substrate_network<N>(
     bitcoin_network: bitcoin::Network,
     skip_proof: bool,
     snapshot_dir: PathBuf,
-    sync_target: Option<sp_core::H256>,
+    sync_target: Option<TargetBlock<Block>>,
 ) -> Result<(), sc_service::error::Error>
 where
     N: sc_network::NetworkBackend<Block, <Block as BlockT>::Hash>,

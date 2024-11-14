@@ -38,16 +38,44 @@ impl From<Utxo> for UtxoCsvEntry {
     }
 }
 
+impl From<UtxoCsvEntry> for Utxo {
+    fn from(csv_entry: UtxoCsvEntry) -> Self {
+        let UtxoCsvEntry {
+            txid,
+            vout,
+            is_coinbase,
+            amount,
+            height,
+            script_pubkey,
+        } = csv_entry;
+
+        let coin = Coin {
+            is_coinbase,
+            amount,
+            height,
+            script_pubkey: hex::decode(script_pubkey).expect("Failed to decode script_pubkey"),
+        };
+
+        Self { txid, vout, coin }
+    }
+}
+
 enum UtxoStore {
     InMem(Vec<Utxo>),
-    Csv(std::fs::File),
+    Csv(PathBuf),
 }
 
 impl UtxoStore {
     fn push(&mut self, utxo: Utxo) {
         match self {
             Self::InMem(list) => list.push(utxo),
-            Self::Csv(file) => {
+            Self::Csv(path) => {
+                // Open the file in append mode each time to avoid keeping it open across calls
+                let file = std::fs::OpenOptions::new()
+                    .append(true)
+                    .open(path)
+                    .expect("Failed to open file");
+
                 let mut wtr = csv::WriterBuilder::new()
                     .has_headers(false) // Disable automatic header writing
                     .from_writer(file);
@@ -67,13 +95,18 @@ impl UtxoStore {
     fn count(&self) -> std::io::Result<usize> {
         match self {
             Self::InMem(list) => Ok(list.len()),
-            Self::Csv(file) => {
-                // Clone the file handle for counting to avoid interfering with write access.
-                let reader = std::io::BufReader::new(file.try_clone()?);
-                let mut csv_reader = csv::Reader::from_reader(reader);
+            Self::Csv(path) => {
+                // Open the file in read mode only for counting
+                let file = std::fs::File::open(path)?;
+                let reader = std::io::BufReader::new(file);
 
-                // Count all valid rows
-                let count = csv_reader.records().count();
+                // Count lines by reading through each record
+                let count = csv::ReaderBuilder::new()
+                    .has_headers(false)
+                    .from_reader(reader)
+                    .records()
+                    .count();
+
                 Ok(count)
             }
         }
@@ -120,14 +153,16 @@ where
             std::fs::File::create(snapshot_file).expect("Failed to create output file"),
         );
 
-        let utxo_file = snapshot_dir.join("utxo.csv");
-        let utxo_file = std::fs::File::create(utxo_file).expect("Failed to create UTXO file");
+        let utxo_filepath = snapshot_dir.join("utxo.csv");
+
+        // Open in write mode to clear existing content, then immediately close.
+        std::fs::File::create(&utxo_filepath).expect("Failed to clear utxo.csv");
 
         Self {
             inner: StateSync::new(client, target_header, None, None, skip_proof),
             target_bitcoin_block_hash,
             muhash: MuHash3072::new(),
-            utxo_store: UtxoStore::Csv(utxo_file),
+            utxo_store: UtxoStore::Csv(utxo_filepath),
             snapshot_generator,
             received_coins: 0,
             total_coins,
@@ -190,15 +225,19 @@ where
         if complete {
             let muhash = self.muhash.txoutset_muhash();
 
-            let utxos_count = self.utxo_store.count().unwrap() as u64;
+            let utxos_count = self
+                .utxo_store
+                .count()
+                .expect("Failed to calculate the count of stored UTXO");
+
+            assert_eq!(utxos_count, self.total_coins, "UTXO count mismatches");
 
             tracing::info!(
                 target: "snapcake",
                 %muhash,
-                utxos_count,
-                received_coins = self.received_coins,
-                total_coins = self.total_coins,
-                "💾 State dowload is complete, writing the UTXO snapshot"
+                "💾 State dowload is complete ({}/{}), writing the UTXO snapshot",
+                self.received_coins,
+                self.total_coins,
             );
 
             match &mut self.utxo_store {
@@ -206,39 +245,32 @@ where
                     let utxos = std::mem::take(list);
 
                     self.snapshot_generator
-                        .write_utxo_snapshot(self.target_bitcoin_block_hash, utxos_count, utxos)
+                        .write_utxo_snapshot(
+                            self.target_bitcoin_block_hash,
+                            utxos_count as u64,
+                            utxos,
+                        )
                         .expect("Failed to write UTXO set snapshot");
                 }
-                UtxoStore::Csv(file) => {
-                    let reader = std::io::BufReader::new(file.try_clone().unwrap()); // Clone file handle for reading
-                    let csv_reader = csv::Reader::from_reader(reader);
+                UtxoStore::Csv(path) => {
+                    let file = std::fs::File::open(path).expect("Failed to open utxo.csv");
+
+                    let reader = std::io::BufReader::new(file);
+                    let csv_reader = csv::ReaderBuilder::new()
+                        .has_headers(false)
+                        .from_reader(reader);
 
                     let utxo_iter = csv_reader
                         .into_deserialize::<UtxoCsvEntry>()
                         .filter_map(Result::ok)
-                        .map(|csv_entry| {
-                            let UtxoCsvEntry {
-                                txid,
-                                vout,
-                                is_coinbase,
-                                amount,
-                                height,
-                                script_pubkey,
-                            } = csv_entry;
-
-                            let coin = Coin {
-                                is_coinbase,
-                                amount,
-                                height,
-                                script_pubkey: hex::decode(script_pubkey)
-                                    .expect("Failed to decode script_pubkey"),
-                            };
-
-                            Utxo { txid, vout, coin }
-                        });
+                        .map(Utxo::from);
 
                     self.snapshot_generator
-                        .write_utxo_snapshot(self.target_bitcoin_block_hash, utxos_count, utxo_iter)
+                        .write_utxo_snapshot(
+                            self.target_bitcoin_block_hash,
+                            utxos_count as u64,
+                            utxo_iter,
+                        )
                         .expect("Failed to write UTXO set snapshot");
                 }
             }

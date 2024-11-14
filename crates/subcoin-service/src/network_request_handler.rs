@@ -9,7 +9,7 @@ use sc_network::config::ProtocolId;
 use sc_network::request_responses::{IncomingRequest, OutgoingResponse};
 use sc_network::{NetworkBackend, PeerId, MAX_RESPONSE_SIZE};
 use sp_api::ProvideRuntimeApi;
-use sp_runtime::traits::Block as BlockT;
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
@@ -60,13 +60,17 @@ fn generate_legacy_protocol_name(protocol_id: &ProtocolId) -> String {
 pub enum SubNetworkRequest<Block: BlockT> {
     /// Requests the number of total coins at a specified block.
     GetCoinsCount { block_hash: Block::Hash },
+    /// Request the header of specified block.
+    GetBlockHeader { block_number: NumberFor<Block> },
 }
 
 /// Subcoin network specific responses.
 #[derive(Debug, codec::Encode, codec::Decode)]
 pub enum SubNetworkResponse<Block: BlockT> {
-    /// Request the number of total coins at the specified block.
+    /// The number of total coins at the specified block.
     CoinsCount { block_hash: Block::Hash, count: u64 },
+    /// Block header.
+    BlockHeader { block_header: Block::Header },
 }
 
 /// Handler for incoming block requests from a remote peer.
@@ -152,6 +156,17 @@ where
                 let count = self.client.runtime_api().coins_count(block_hash)?;
                 let response = SubNetworkResponse::<B>::CoinsCount { block_hash, count };
                 Ok(response.encode())
+            }
+            SubNetworkRequest::GetBlockHeader { block_number } => {
+                match self.client.hash(block_number)? {
+                    Some(block_hash) => self
+                        .client
+                        .header(block_hash)?
+                        .map(|block_header| SubNetworkResponse::<B>::BlockHeader { block_header })
+                        .map(|response| response.encode())
+                        .ok_or(()),
+                    None => Err(()),
+                }
             }
         };
 
