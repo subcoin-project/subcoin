@@ -19,6 +19,7 @@ codec = { workspace = true }
 frame-benchmarking-cli = { workspace = true, optional = true }
 futures = { workspace = true }
 hex = { workspace = true }
+indicatif = "0.17.9"
 jsonrpsee = { workspace = true }
 pallet-bitcoin = { workspace = true }
 sc-cli = { workspace = true }

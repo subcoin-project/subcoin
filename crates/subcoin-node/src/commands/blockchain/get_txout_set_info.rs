@@ -1,8 +1,13 @@
 use super::MergedParams;
 use crate::commands::blockchain::{fetch_utxo_set_at, ClientParams};
 use crate::utils::Yield;
+use indicatif::{ProgressBar, ProgressStyle};
+use sc_client_api::HeaderBackend;
+use sp_api::ProvideRuntimeApi;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use subcoin_primitives::runtime::SubcoinApi;
 use subcoin_service::FullClient;
 
 #[derive(Debug, clap::Parser)]
@@ -12,6 +17,12 @@ pub struct GetTxOutSetInfo {
     /// Defaults to the best block.
     #[clap(long)]
     height: Option<u32>,
+
+    /// Disable the progress bar.
+    ///
+    /// The progress bar is enabled automatically when `--verbose` is false.
+    #[clap(short, long)]
+    no_progress: bool,
 
     /// Whether to display the state loading progress.
     #[clap(short, long)]
@@ -25,16 +36,20 @@ pub struct GetTxOutSetInfo {
 pub struct GetTxOutSetInfoCommand {
     height: Option<u32>,
     verbose: bool,
+    progress_bar: bool,
     pub params: MergedParams,
 }
 
 impl GetTxOutSetInfoCommand {
     pub async fn execute(self, client: Arc<FullClient>) -> sc_cli::Result<()> {
         let Self {
-            height, verbose, ..
+            height,
+            verbose,
+            progress_bar,
+            ..
         } = self;
 
-        let tx_out_set_info = gettxoutsetinfo(&client, height, verbose).await?;
+        let tx_out_set_info = gettxoutsetinfo(&client, height, verbose, progress_bar).await?;
 
         println!(
             "{}",
@@ -51,11 +66,13 @@ impl From<GetTxOutSetInfo> for GetTxOutSetInfoCommand {
         let GetTxOutSetInfo {
             height,
             verbose,
+            no_progress,
             client_params,
         } = get_txout_set_info;
         Self {
             height,
             verbose,
+            progress_bar: if no_progress { false } else { !verbose },
             params: client_params.into_merged_params(),
         }
     }
@@ -65,12 +82,21 @@ async fn gettxoutsetinfo(
     client: &Arc<FullClient>,
     height: Option<u32>,
     verbose: bool,
+    progress_bar: bool,
 ) -> sc_cli::Result<TxOutSetInfo> {
     let (block_number, bitcoin_block_hash, utxo_iter) = fetch_utxo_set_at(&client, height)?;
 
+    let substrate_block_hash = client
+        .hash(block_number.into())?
+        .expect("Block hash must be exist; qed");
+    let total_coins = client
+        .runtime_api()
+        .coins_count(substrate_block_hash)
+        .expect("Failed to call runtime api");
+
     const INTERVAL: Duration = Duration::from_secs(5);
 
-    let mut txouts = 0;
+    let txouts = Arc::new(AtomicUsize::new(0));
     let mut bogosize = 0;
     let mut total_amount = 0;
 
@@ -80,12 +106,19 @@ async fn gettxoutsetinfo(
 
     let mut muhash = subcoin_crypto::muhash::MuHash3072::new();
 
+    if progress_bar {
+        let loaded = txouts.clone();
+        std::thread::spawn(move || show_progress(loaded, total_coins));
+    }
+
     for (txid, vout, coin) in utxo_iter {
         let data = subcoin_utxo_snapshot::tx_out_ser(bitcoin::OutPoint { txid, vout }, &coin)
             .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
+
         muhash.insert(&data);
 
-        txouts += 1;
+        let old = txouts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
         total_amount += coin.amount;
         // https://github.com/bitcoin/bitcoin/blob/33af14e31b9fa436029a2bb8c2b11de8feb32f86/src/kernel/coinstats.cpp#L40
         bogosize += 50 + coin.script_pubkey.len();
@@ -94,8 +127,9 @@ async fn gettxoutsetinfo(
 
         if verbose && last_update.elapsed() > INTERVAL {
             println!(
-                "Progress: Unspent Transaction Outputs: {txouts}, \
+                "Progress: Unspent Transaction Outputs: {}, \
                 ScriptPubkey Size: {script_pubkey_size} bytes, Coin ScriptPubkey Length: {} bytes",
+                old + 1,
                 coin.script_pubkey.len()
             );
             last_update = Instant::now();
@@ -111,13 +145,39 @@ async fn gettxoutsetinfo(
     let tx_out_set_info = TxOutSetInfo {
         height: block_number,
         bestblock: bitcoin_block_hash,
-        txouts,
+        txouts: txouts.load(std::sync::atomic::Ordering::SeqCst),
         bogosize,
         muhash,
         total_amount,
     };
 
     Ok(tx_out_set_info)
+}
+
+fn show_progress(loaded: Arc<AtomicUsize>, total_coins: u64) {
+    let pb = ProgressBar::new(total_coins);
+
+    pb.set_message("Loading UTXO...");
+
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{msg} [{bar:40}] {percent}% ({pos}/{len}, {eta})")
+            .unwrap()
+            .progress_chars("##-"),
+    );
+
+    loop {
+        let new = loaded.load(std::sync::atomic::Ordering::Relaxed) as u64;
+
+        if new == total_coins {
+            pb.finish_with_message("Done!");
+            return;
+        }
+
+        pb.set_position(new);
+
+        std::thread::sleep(Duration::from_millis(100));
+    }
 }
 
 // Custom serializer for total_amount to display 8 decimal places
@@ -153,14 +213,14 @@ mod tests {
         let config = subcoin_test_service::test_configuration(runtime_handle);
         let client = new_test_node_and_produce_blocks(&config, 3).await;
         assert_eq!(
-            gettxoutsetinfo(&client, Some(1), false)
+            gettxoutsetinfo(&client, Some(1), false, false)
                 .await
                 .unwrap()
                 .muhash,
             "1bd372a3f225dc6f8ce0e10ead6f8b0b00e65a2ff4a4c9ccaa615a69fbeeb2f2"
         );
         assert_eq!(
-            gettxoutsetinfo(&client, Some(2), false)
+            gettxoutsetinfo(&client, Some(2), false, false)
                 .await
                 .unwrap()
                 .muhash,
