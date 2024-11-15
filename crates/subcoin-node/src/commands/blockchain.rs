@@ -1,10 +1,12 @@
 mod dumptxoutset;
 mod get_txout_set_info;
+mod parse_block_outputs;
 mod parse_txout_set;
 
 use crate::cli::subcoin_params::Chain;
 use dumptxoutset::DumpTxoutSetCommand;
 use get_txout_set_info::GetTxOutSetInfoCommand;
+use parse_block_outputs::ParseBlockOutputsCommand;
 use parse_txout_set::ParseTxoutSetCommand;
 use sc_cli::{DatabaseParams, ImportParams, NodeKeyParams, SharedParams};
 use sc_client_api::{HeaderBackend, StorageProvider};
@@ -13,7 +15,7 @@ use sp_core::Decode;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subcoin_primitives::runtime::Coin;
-use subcoin_primitives::{BackendExt, BitcoinTransactionAdapter, CoinStorageKey};
+use subcoin_primitives::{BackendExt, CoinStorageKey};
 use subcoin_service::FullClient;
 
 const FINAL_STORAGE_PREFIX_LEN: usize = 32;
@@ -63,48 +65,32 @@ impl ClientParams {
     }
 }
 
+pub struct MergedParams {
+    shared_params: SharedParams,
+    database_params: DatabaseParams,
+}
+
 /// Blockchain.
 #[derive(Debug, clap::Subcommand)]
 pub enum Blockchain {
     /// Statistics about the UTXO set.
     #[command(name = "gettxoutsetinfo")]
     GetTxOutSetInfo(get_txout_set_info::GetTxOutSetInfo),
-
     /// Dump UTXO set
     #[command(name = "dumptxoutset")]
     DumpTxoutSet(dumptxoutset::DumpTxoutSet),
-
     /// Parse the binary UTXO set dumped from Bitcoin Core.
     #[command(name = "parse-txout-set")]
     ParseTxoutSet(parse_txout_set::ParseTxoutSet),
-
     #[command(name = "parse-block-outputs")]
-    ParseBlockOutputs {
-        /// Specify the number of block to dump.
-        ///
-        /// Defaults to the best block.
-        #[clap(long)]
-        height: Option<u32>,
-
-        #[allow(missing_docs)]
-        #[clap(flatten)]
-        client_params: ClientParams,
-    },
-}
-
-pub struct MergedParams {
-    shared_params: SharedParams,
-    database_params: DatabaseParams,
+    ParseBlockOutputs(parse_block_outputs::ParseBlockOutputs),
 }
 
 pub enum BlockchainCommand {
     GetTxOutSetInfo(GetTxOutSetInfoCommand),
     DumpTxoutSet(DumpTxoutSetCommand),
     ParseTxoutSet(ParseTxoutSetCommand),
-    ParseBlockOutputs {
-        height: Option<u32>,
-        params: MergedParams,
-    },
+    ParseBlockOutputs(ParseBlockOutputsCommand),
 }
 
 impl BlockchainCommand {
@@ -112,15 +98,9 @@ impl BlockchainCommand {
     pub fn new(blockchain: Blockchain) -> Self {
         match blockchain {
             Blockchain::GetTxOutSetInfo(cmd) => Self::GetTxOutSetInfo(cmd.into()),
-            Blockchain::DumpTxoutSet(dumptxoutset) => Self::DumpTxoutSet(dumptxoutset.into()),
+            Blockchain::DumpTxoutSet(cmd) => Self::DumpTxoutSet(cmd.into()),
             Blockchain::ParseTxoutSet(cmd) => Self::ParseTxoutSet(cmd.into()),
-            Blockchain::ParseBlockOutputs {
-                height,
-                client_params,
-            } => Self::ParseBlockOutputs {
-                height,
-                params: client_params.into_merged_params(),
-            },
+            Blockchain::ParseBlockOutputs(cmd) => Self::ParseBlockOutputs(cmd.into()),
         }
     }
 
@@ -129,7 +109,7 @@ impl BlockchainCommand {
             Self::GetTxOutSetInfo(cmd) => cmd.execute(client).await,
             Self::DumpTxoutSet(cmd) => cmd.execute(client).await,
             Self::ParseTxoutSet(cmd) => cmd.execute(),
-            Self::ParseBlockOutputs { height, .. } => parse_block_outputs(&client, height),
+            Self::ParseBlockOutputs(cmd) => cmd.execute(client),
         }
     }
 }
@@ -137,7 +117,7 @@ impl BlockchainCommand {
 impl sc_cli::CliConfiguration for BlockchainCommand {
     fn shared_params(&self) -> &SharedParams {
         match self {
-            Self::ParseBlockOutputs { params, .. } => &params.shared_params,
+            Self::ParseBlockOutputs(cmd) => &cmd.params.shared_params,
             Self::GetTxOutSetInfo(cmd) => &cmd.params.shared_params,
             Self::DumpTxoutSet(cmd) => &cmd.params.shared_params,
             Self::ParseTxoutSet(cmd) => &cmd.shared_params,
@@ -150,7 +130,7 @@ impl sc_cli::CliConfiguration for BlockchainCommand {
 
     fn database_params(&self) -> Option<&DatabaseParams> {
         match self {
-            Self::ParseBlockOutputs { params, .. } => Some(&params.database_params),
+            Self::ParseBlockOutputs(cmd) => Some(&cmd.params.database_params),
             Self::GetTxOutSetInfo(cmd) => Some(&cmd.params.database_params),
             Self::DumpTxoutSet(cmd) => Some(&cmd.params.database_params),
             Self::ParseTxoutSet(_) => None,
@@ -160,33 +140,6 @@ impl sc_cli::CliConfiguration for BlockchainCommand {
     fn node_key_params(&self) -> Option<&NodeKeyParams> {
         None
     }
-}
-
-fn parse_block_outputs(client: &Arc<FullClient>, height: Option<u32>) -> sc_cli::Result<()> {
-    let block_number = height.unwrap_or_else(|| client.info().best_number);
-    let block_hash = client.hash(block_number)?.unwrap();
-    let block_body = client.body(block_hash)?.unwrap();
-    let txdata = block_body
-        .iter()
-        .map(|xt| {
-            <subcoin_service::TransactionAdapter as BitcoinTransactionAdapter<
-                subcoin_runtime::interface::OpaqueBlock,
-            >>::extrinsic_to_bitcoin_transaction(xt)
-        })
-        .collect::<Vec<_>>();
-    let mut num_op_return = 0;
-    for (i, tx) in txdata.into_iter().enumerate() {
-        for (j, output) in tx.output.into_iter().enumerate() {
-            let is_op_return = output.script_pubkey.is_op_return();
-            println!("{i}:{j}: {is_op_return:?}");
-
-            if is_op_return {
-                num_op_return += 1;
-            }
-        }
-    }
-    println!("There are {num_op_return} OP_RETURN in block #{block_number}");
-    Ok(())
 }
 
 fn fetch_utxo_set_at(

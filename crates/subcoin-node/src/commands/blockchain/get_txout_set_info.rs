@@ -28,21 +28,6 @@ pub struct GetTxOutSetInfoCommand {
     pub params: MergedParams,
 }
 
-impl From<GetTxOutSetInfo> for GetTxOutSetInfoCommand {
-    fn from(get_txout_set_info: GetTxOutSetInfo) -> Self {
-        let GetTxOutSetInfo {
-            height,
-            verbose,
-            client_params,
-        } = get_txout_set_info;
-        Self {
-            height,
-            verbose,
-            params: client_params.into_merged_params(),
-        }
-    }
-}
-
 impl GetTxOutSetInfoCommand {
     pub async fn execute(self, client: Arc<FullClient>) -> sc_cli::Result<()> {
         let Self {
@@ -107,6 +92,21 @@ impl GetTxOutSetInfoCommand {
         );
 
         Ok(())
+    }
+}
+
+impl From<GetTxOutSetInfo> for GetTxOutSetInfoCommand {
+    fn from(get_txout_set_info: GetTxOutSetInfo) -> Self {
+        let GetTxOutSetInfo {
+            height,
+            verbose,
+            client_params,
+        } = get_txout_set_info;
+        Self {
+            height,
+            verbose,
+            params: client_params.into_merged_params(),
+        }
     }
 }
 

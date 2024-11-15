@@ -95,24 +95,6 @@ pub struct DumpTxoutSetCommand {
     pub params: MergedParams,
 }
 
-impl From<DumpTxoutSet> for DumpTxoutSetCommand {
-    fn from(dumptxoutset: DumpTxoutSet) -> Self {
-        let DumpTxoutSet {
-            height,
-            csv,
-            binary,
-            client_params,
-        } = dumptxoutset;
-
-        Self {
-            height,
-            binary,
-            csv,
-            params: client_params.into_merged_params(),
-        }
-    }
-}
-
 impl DumpTxoutSetCommand {
     pub async fn execute(self, client: Arc<FullClient>) -> sc_cli::Result<()> {
         let Self {
@@ -165,5 +147,23 @@ impl DumpTxoutSetCommand {
         }
 
         Ok(())
+    }
+}
+
+impl From<DumpTxoutSet> for DumpTxoutSetCommand {
+    fn from(dumptxoutset: DumpTxoutSet) -> Self {
+        let DumpTxoutSet {
+            height,
+            csv,
+            binary,
+            client_params,
+        } = dumptxoutset;
+
+        Self {
+            height,
+            binary,
+            csv,
+            params: client_params.into_merged_params(),
+        }
     }
 }
