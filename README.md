@@ -58,6 +58,16 @@ Contributions to Subcoin are welcome! If you have ideas for improvements, bug fi
 feel free to open an issue or submit a pull request. Make sure to follow the contribution guidelines
 and code of conduct when contributing to the project.
 
+## Donations
+
+Subcoin is an open-source project dedicated to advancing decentralized technologies. We are grateful for
+the [grant](https://github.com/w3f/Grants-Program/pull/2304) of the Web3 Foundation for our initial development.
+If you believe in our mission and would like to contribute to the continued growth and improvement of Subcoin,
+we welcome your support:
+
+- BTC: `bc1p9nvx58550rlhk29a6urzxg06hmgv9sh5afwdt66md09xwpdytlmqun0j4v`
+- DOT: `12uXLCZZkprwRBhfmhTXdfQE8faQwgNpS76wwmnEbgDwWB9e`
+
 ## License
 
 Subcoin is licensed under the [MIT License](LICENSE). See the LICENSE file for information.
