@@ -1,18 +1,17 @@
 mod dumptxoutset;
+mod get_txout_set_info;
 mod parse_txout_set;
 
 use crate::cli::subcoin_params::Chain;
-use crate::utils::Yield;
 use dumptxoutset::DumpTxoutSetCommand;
+use get_txout_set_info::GetTxOutSetInfoCommand;
 use parse_txout_set::ParseTxoutSetCommand;
 use sc_cli::{DatabaseParams, ImportParams, NodeKeyParams, SharedParams};
 use sc_client_api::{HeaderBackend, StorageProvider};
-use serde::Serialize;
 use sp_core::storage::StorageKey;
 use sp_core::Decode;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 use subcoin_primitives::runtime::Coin;
 use subcoin_primitives::{BackendExt, BitcoinTransactionAdapter, CoinStorageKey};
 use subcoin_service::FullClient;
@@ -69,21 +68,7 @@ impl ClientParams {
 pub enum Blockchain {
     /// Statistics about the UTXO set.
     #[command(name = "gettxoutsetinfo")]
-    GetTxOutSetInfo {
-        /// Specify the number of block to inspect.
-        ///
-        /// Defaults to the best block.
-        #[clap(long)]
-        height: Option<u32>,
-
-        /// Whether to display the state loading progress.
-        #[clap(short, long)]
-        verbose: bool,
-
-        #[allow(missing_docs)]
-        #[clap(flatten)]
-        client_params: ClientParams,
-    },
+    GetTxOutSetInfo(get_txout_set_info::GetTxOutSetInfo),
 
     /// Dump UTXO set
     #[command(name = "dumptxoutset")]
@@ -113,11 +98,7 @@ pub struct MergedParams {
 }
 
 pub enum BlockchainCommand {
-    GetTxOutSetInfo {
-        height: Option<u32>,
-        verbose: bool,
-        params: MergedParams,
-    },
+    GetTxOutSetInfo(GetTxOutSetInfoCommand),
     DumpTxoutSet(DumpTxoutSetCommand),
     ParseTxoutSet(ParseTxoutSetCommand),
     ParseBlockOutputs {
@@ -130,15 +111,7 @@ impl BlockchainCommand {
     /// Constructs a new instance of [`BlockchainCommand`].
     pub fn new(blockchain: Blockchain) -> Self {
         match blockchain {
-            Blockchain::GetTxOutSetInfo {
-                height,
-                verbose,
-                client_params,
-            } => Self::GetTxOutSetInfo {
-                height,
-                verbose,
-                params: client_params.into_merged_params(),
-            },
+            Blockchain::GetTxOutSetInfo(cmd) => Self::GetTxOutSetInfo(cmd.into()),
             Blockchain::DumpTxoutSet(dumptxoutset) => Self::DumpTxoutSet(dumptxoutset.into()),
             Blockchain::ParseTxoutSet(cmd) => Self::ParseTxoutSet(cmd.into()),
             Blockchain::ParseBlockOutputs {
@@ -153,17 +126,7 @@ impl BlockchainCommand {
 
     pub async fn run(self, client: Arc<FullClient>) -> sc_cli::Result<()> {
         match self {
-            Self::GetTxOutSetInfo {
-                height, verbose, ..
-            } => {
-                let tx_out_set_info = gettxoutsetinfo(&client, height, verbose).await?;
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&tx_out_set_info)
-                        .map_err(|err| sc_cli::Error::Application(Box::new(err)))?
-                );
-                Ok(())
-            }
+            Self::GetTxOutSetInfo(cmd) => cmd.execute(client).await,
             Self::DumpTxoutSet(cmd) => cmd.execute(client).await,
             Self::ParseTxoutSet(cmd) => cmd.execute(),
             Self::ParseBlockOutputs { height, .. } => parse_block_outputs(&client, height),
@@ -174,9 +137,8 @@ impl BlockchainCommand {
 impl sc_cli::CliConfiguration for BlockchainCommand {
     fn shared_params(&self) -> &SharedParams {
         match self {
-            Self::GetTxOutSetInfo { params, .. } | Self::ParseBlockOutputs { params, .. } => {
-                &params.shared_params
-            }
+            Self::ParseBlockOutputs { params, .. } => &params.shared_params,
+            Self::GetTxOutSetInfo(cmd) => &cmd.params.shared_params,
             Self::DumpTxoutSet(cmd) => &cmd.params.shared_params,
             Self::ParseTxoutSet(cmd) => &cmd.shared_params,
         }
@@ -188,9 +150,8 @@ impl sc_cli::CliConfiguration for BlockchainCommand {
 
     fn database_params(&self) -> Option<&DatabaseParams> {
         match self {
-            Self::GetTxOutSetInfo { params, .. } | Self::ParseBlockOutputs { params, .. } => {
-                Some(&params.database_params)
-            }
+            Self::ParseBlockOutputs { params, .. } => Some(&params.database_params),
+            Self::GetTxOutSetInfo(cmd) => Some(&cmd.params.database_params),
             Self::DumpTxoutSet(cmd) => Some(&cmd.params.database_params),
             Self::ParseTxoutSet(_) => None,
         }
@@ -275,87 +236,6 @@ fn fetch_utxo_set_at(
                 (txid, vout, coin)
             }),
     ))
-}
-
-// Custom serializer for total_amount to display 8 decimal places
-fn serialize_as_btc<S>(amount: &u64, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    // Convert satoshis (u64) to BTC (f64)
-    let btc_value = *amount as f64 / 100_000_000.0;
-    // Format the value as a string with 8 decimal places
-    serializer.serialize_str(&format!("{:.8}", btc_value))
-}
-
-#[derive(Serialize)]
-struct TxOutSetInfo {
-    height: u32,
-    bestblock: bitcoin::BlockHash,
-    txouts: usize,
-    bogosize: usize,
-    muhash: String,
-    #[serde(serialize_with = "serialize_as_btc")]
-    total_amount: u64,
-}
-
-async fn gettxoutsetinfo(
-    client: &Arc<FullClient>,
-    height: Option<u32>,
-    verbose: bool,
-) -> sc_cli::Result<TxOutSetInfo> {
-    let (block_number, bitcoin_block_hash, utxo_iter) = fetch_utxo_set_at(client, height)?;
-
-    const INTERVAL: Duration = Duration::from_secs(5);
-
-    let mut txouts = 0;
-    let mut bogosize = 0;
-    let mut total_amount = 0;
-
-    let mut script_pubkey_size = 0;
-
-    let mut last_update = Instant::now();
-
-    let mut muhash = subcoin_crypto::muhash::MuHash3072::new();
-
-    for (txid, vout, coin) in utxo_iter {
-        let data = subcoin_utxo_snapshot::tx_out_ser(bitcoin::OutPoint { txid, vout }, &coin)
-            .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
-        muhash.insert(&data);
-
-        txouts += 1;
-        total_amount += coin.amount;
-        // https://github.com/bitcoin/bitcoin/blob/33af14e31b9fa436029a2bb8c2b11de8feb32f86/src/kernel/coinstats.cpp#L40
-        bogosize += 50 + coin.script_pubkey.len();
-
-        script_pubkey_size += coin.script_pubkey.len();
-
-        if verbose && last_update.elapsed() > INTERVAL {
-            println!(
-                "Progress: Unspent Transaction Outputs: {txouts}, \
-                ScriptPubkey Size: {script_pubkey_size} bytes, Coin ScriptPubkey Length: {} bytes",
-                coin.script_pubkey.len()
-            );
-            last_update = Instant::now();
-        }
-
-        // Yield here allows to make the process interruptible by ctrl_c.
-        Yield::new().await;
-    }
-
-    // Hash the combined hash of all UTXOs
-    let muhash = muhash.txoutset_muhash();
-
-    let tx_out_set_info = TxOutSetInfo {
-        height: block_number,
-        bestblock: bitcoin_block_hash,
-        txouts,
-        bogosize,
-        muhash,
-        total_amount,
-    };
-
-    Ok(tx_out_set_info)
 }
 
 #[cfg(test)]
