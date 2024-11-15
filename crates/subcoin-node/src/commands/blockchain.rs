@@ -1,22 +1,66 @@
+mod dumptxoutset;
+
 use crate::cli::subcoin_params::Chain;
 use crate::utils::Yield;
-use bitcoin::consensus::Encodable;
+use dumptxoutset::DumpTxoutSetCommand;
 use sc_cli::{DatabaseParams, ImportParams, NodeKeyParams, SharedParams};
 use sc_client_api::{HeaderBackend, StorageProvider};
 use serde::Serialize;
 use sp_core::storage::StorageKey;
 use sp_core::Decode;
-use std::fs::File;
-use std::io::{Stdout, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subcoin_primitives::runtime::Coin;
 use subcoin_primitives::{BackendExt, BitcoinTransactionAdapter, CoinStorageKey};
 use subcoin_service::FullClient;
-use subcoin_utxo_snapshot::UtxoSnapshotGenerator;
 
 const FINAL_STORAGE_PREFIX_LEN: usize = 32;
+
+/// Parameters for constructing a Client.
+#[derive(Debug, Clone, clap::Args)]
+pub struct ClientParams {
+    /// Specify the chain.
+    #[arg(long, value_name = "CHAIN", default_value = "bitcoin-mainnet")]
+    chain: Chain,
+
+    /// Specify custom base path.
+    #[arg(long, short = 'd', value_name = "PATH")]
+    base_path: Option<PathBuf>,
+
+    #[allow(missing_docs)]
+    #[clap(flatten)]
+    database_params: DatabaseParams,
+}
+
+fn build_shared_params(chain: Chain, base_path: Option<PathBuf>) -> SharedParams {
+    sc_cli::SharedParams {
+        chain: Some(chain.chain_spec_id().to_string()),
+        dev: false,
+        base_path,
+        log: Vec::new(),
+        detailed_log_output: false,
+        disable_log_color: false,
+        enable_log_reloading: false,
+        tracing_targets: None,
+        tracing_receiver: sc_cli::TracingReceiver::Log,
+    }
+}
+
+impl ClientParams {
+    pub fn into_merged_params(self) -> MergedParams {
+        let ClientParams {
+            chain,
+            base_path,
+            database_params,
+        } = self;
+
+        MergedParams {
+            shared_params: build_shared_params(chain, base_path),
+            database_params,
+        }
+    }
+}
 
 /// Blockchain.
 #[derive(Debug, clap::Subcommand)]
@@ -34,55 +78,14 @@ pub enum Blockchain {
         #[clap(short, long)]
         verbose: bool,
 
-        /// Specify the chain.
-        #[arg(long, value_name = "CHAIN", default_value = "bitcoin-mainnet")]
-        chain: Chain,
-
-        /// Specify custom base path.
-        #[arg(long, short = 'd', value_name = "PATH")]
-        base_path: Option<PathBuf>,
-
         #[allow(missing_docs)]
         #[clap(flatten)]
-        database_params: DatabaseParams,
+        client_params: ClientParams,
     },
 
     /// Dump UTXO set
     #[command(name = "dumptxoutset")]
-    DumpTxoutSet {
-        /// Specify the number of block to dump.
-        ///
-        /// Defaults to the best block.
-        #[clap(long)]
-        height: Option<u32>,
-
-        /// Export the dumped txout set to a CSV file.
-        #[clap(short, long, value_name = "PATH")]
-        csv: Option<PathBuf>,
-
-        /// Path to the binary dump file for the UTXO set.
-        ///
-        /// The binary dump is compatible with the format used by the Bitcoin Core client.
-        /// You can export the UTXO set from Subcoin and import it into the Bitcoin
-        /// Core client.
-        ///
-        /// If neither `--csv` nor `--binary` options are provided, the UTXO set will be
-        /// printed to stdout in CSV format.
-        #[clap(short, long, conflicts_with = "csv")]
-        binary: Option<PathBuf>,
-
-        /// Specify the chain.
-        #[arg(long, value_name = "CHAIN", default_value = "bitcoin-mainnet")]
-        chain: Chain,
-
-        /// Specify custom base path.
-        #[arg(long, short = 'd', value_name = "PATH")]
-        base_path: Option<PathBuf>,
-
-        #[allow(missing_docs)]
-        #[clap(flatten)]
-        database_params: DatabaseParams,
-    },
+    DumpTxoutSet(dumptxoutset::DumpTxoutSet),
 
     /// Parse the binary UTXO set dumped from Bitcoin Core.
     #[command(name = "parse-txout-set")]
@@ -106,34 +109,24 @@ pub enum Blockchain {
         #[clap(long)]
         height: Option<u32>,
 
-        /// Specify the chain.
-        #[arg(long, value_name = "CHAIN", default_value = "bitcoin-mainnet")]
-        chain: Chain,
-
-        /// Specify custom base path.
-        #[arg(long, short = 'd', value_name = "PATH")]
-        base_path: Option<PathBuf>,
-
         #[allow(missing_docs)]
         #[clap(flatten)]
-        database_params: DatabaseParams,
+        client_params: ClientParams,
     },
 }
 
-pub enum BlockchainCmd {
+pub struct MergedParams {
+    shared_params: SharedParams,
+    database_params: DatabaseParams,
+}
+
+pub enum BlockchainCommand {
     GetTxOutSetInfo {
         height: Option<u32>,
         verbose: bool,
-        shared_params: SharedParams,
-        database_params: DatabaseParams,
+        params: MergedParams,
     },
-    DumpTxoutSet {
-        height: Option<u32>,
-        binary: Option<PathBuf>,
-        csv: Option<PathBuf>,
-        shared_params: SharedParams,
-        database_params: DatabaseParams,
-    },
+    DumpTxoutSet(DumpTxoutSetCommand),
     ParseTxoutSet {
         path: PathBuf,
         compute_addresses: bool,
@@ -142,53 +135,24 @@ pub enum BlockchainCmd {
     },
     ParseBlockOutputs {
         height: Option<u32>,
-        shared_params: SharedParams,
-        database_params: DatabaseParams,
+        params: MergedParams,
     },
 }
 
-impl BlockchainCmd {
-    /// Constructs a new instance of [`BlockchainCmd`].
+impl BlockchainCommand {
+    /// Constructs a new instance of [`BlockchainCommand`].
     pub fn new(blockchain: Blockchain) -> Self {
-        let create_shared_params = |chain: Chain, base_path| sc_cli::SharedParams {
-            chain: Some(chain.chain_spec_id().to_string()),
-            dev: false,
-            base_path,
-            log: Vec::new(),
-            detailed_log_output: false,
-            disable_log_color: false,
-            enable_log_reloading: false,
-            tracing_targets: None,
-            tracing_receiver: sc_cli::TracingReceiver::Log,
-        };
-
         match blockchain {
             Blockchain::GetTxOutSetInfo {
                 height,
                 verbose,
-                chain,
-                base_path,
-                database_params,
+                client_params,
             } => Self::GetTxOutSetInfo {
                 height,
                 verbose,
-                shared_params: create_shared_params(chain, base_path),
-                database_params,
+                params: client_params.into_merged_params(),
             },
-            Blockchain::DumpTxoutSet {
-                height,
-                csv,
-                binary,
-                chain,
-                base_path,
-                database_params,
-            } => Self::DumpTxoutSet {
-                height,
-                binary,
-                csv,
-                shared_params: create_shared_params(chain, base_path),
-                database_params,
-            },
+            Blockchain::DumpTxoutSet(dumptxoutset) => Self::DumpTxoutSet(dumptxoutset.into()),
             Blockchain::ParseTxoutSet {
                 path,
                 compute_addresses,
@@ -197,17 +161,14 @@ impl BlockchainCmd {
                 path,
                 compute_addresses,
                 chain,
-                shared_params: create_shared_params(chain, None),
+                shared_params: build_shared_params(chain, None),
             },
             Blockchain::ParseBlockOutputs {
                 height,
-                chain,
-                base_path,
-                database_params,
+                client_params,
             } => Self::ParseBlockOutputs {
                 height,
-                shared_params: create_shared_params(chain, base_path),
-                database_params,
+                params: client_params.into_merged_params(),
             },
         }
     }
@@ -225,55 +186,26 @@ impl BlockchainCmd {
                 );
                 Ok(())
             }
-            Self::DumpTxoutSet {
-                height,
-                csv,
-                binary,
-                ..
-            } => dumptxoutset(&client, height, csv, binary).await,
+            Self::DumpTxoutSet(cmd) => cmd.execute(client).await,
             Self::ParseTxoutSet {
                 path,
                 compute_addresses,
                 chain,
                 ..
             } => parse_txout_set(path, compute_addresses, chain).await,
-            Self::ParseBlockOutputs { height, .. } => {
-                let block_number = height.unwrap_or_else(|| client.info().best_number);
-                let block_hash = client.hash(block_number)?.unwrap();
-                let block_body = client.body(block_hash)?.unwrap();
-                let txdata = block_body
-                    .iter()
-                    .map(|xt| {
-                        <subcoin_service::TransactionAdapter as BitcoinTransactionAdapter<
-                            subcoin_runtime::interface::OpaqueBlock,
-                        >>::extrinsic_to_bitcoin_transaction(xt)
-                    })
-                    .collect::<Vec<_>>();
-                let mut num_op_return = 0;
-                for (i, tx) in txdata.into_iter().enumerate() {
-                    for (j, output) in tx.output.into_iter().enumerate() {
-                        let is_op_return = output.script_pubkey.is_op_return();
-                        println!("{i}:{j}: {is_op_return:?}");
-
-                        if is_op_return {
-                            num_op_return += 1;
-                        }
-                    }
-                }
-                println!("There are {num_op_return} OP_RETURN in block #{block_number}");
-                Ok(())
-            }
+            Self::ParseBlockOutputs { height, .. } => parse_block_outputs(&client, height),
         }
     }
 }
 
-impl sc_cli::CliConfiguration for BlockchainCmd {
+impl sc_cli::CliConfiguration for BlockchainCommand {
     fn shared_params(&self) -> &SharedParams {
         match self {
-            Self::GetTxOutSetInfo { shared_params, .. } => shared_params,
-            Self::DumpTxoutSet { shared_params, .. } => shared_params,
+            Self::GetTxOutSetInfo { params, .. } | Self::ParseBlockOutputs { params, .. } => {
+                &params.shared_params
+            }
+            Self::DumpTxoutSet(cmd) => &cmd.params.shared_params,
             Self::ParseTxoutSet { shared_params, .. } => shared_params,
-            Self::ParseBlockOutputs { shared_params, .. } => shared_params,
         }
     }
 
@@ -283,22 +215,44 @@ impl sc_cli::CliConfiguration for BlockchainCmd {
 
     fn database_params(&self) -> Option<&DatabaseParams> {
         match self {
-            Self::GetTxOutSetInfo {
-                database_params, ..
-            } => Some(database_params),
-            Self::DumpTxoutSet {
-                database_params, ..
-            } => Some(database_params),
+            Self::GetTxOutSetInfo { params, .. } | Self::ParseBlockOutputs { params, .. } => {
+                Some(&params.database_params)
+            }
+            Self::DumpTxoutSet(cmd) => Some(&cmd.params.database_params),
             Self::ParseTxoutSet { .. } => None,
-            Self::ParseBlockOutputs {
-                database_params, ..
-            } => Some(database_params),
         }
     }
 
     fn node_key_params(&self) -> Option<&NodeKeyParams> {
         None
     }
+}
+
+fn parse_block_outputs(client: &Arc<FullClient>, height: Option<u32>) -> sc_cli::Result<()> {
+    let block_number = height.unwrap_or_else(|| client.info().best_number);
+    let block_hash = client.hash(block_number)?.unwrap();
+    let block_body = client.body(block_hash)?.unwrap();
+    let txdata = block_body
+        .iter()
+        .map(|xt| {
+            <subcoin_service::TransactionAdapter as BitcoinTransactionAdapter<
+                subcoin_runtime::interface::OpaqueBlock,
+            >>::extrinsic_to_bitcoin_transaction(xt)
+        })
+        .collect::<Vec<_>>();
+    let mut num_op_return = 0;
+    for (i, tx) in txdata.into_iter().enumerate() {
+        for (j, output) in tx.output.into_iter().enumerate() {
+            let is_op_return = output.script_pubkey.is_op_return();
+            println!("{i}:{j}: {is_op_return:?}");
+
+            if is_op_return {
+                num_op_return += 1;
+            }
+        }
+    }
+    println!("There are {num_op_return} OP_RETURN in block #{block_number}");
+    Ok(())
 }
 
 fn fetch_utxo_set_at(
@@ -492,107 +446,6 @@ async fn parse_txout_set(
     }
 
     Ok(())
-}
-
-async fn dumptxoutset(
-    client: &Arc<FullClient>,
-    height: Option<u32>,
-    csv: Option<PathBuf>,
-    binary: Option<PathBuf>,
-) -> sc_cli::Result<()> {
-    let (block_number, bitcoin_block_hash, utxo_iter) = fetch_utxo_set_at(client, height)?;
-
-    let mut output_file = if let Some(path) = csv {
-        println!(
-            "Dumping UTXO set at #{block_number},{bitcoin_block_hash} to {}",
-            path.display()
-        );
-        UtxoSetOutput::Csv(std::fs::File::create(path)?)
-    } else if let Some(path) = binary {
-        let utxo_set_size = fetch_utxo_set_at(client, height)?.2.count() as u64;
-
-        println!(
-            "Dumping UTXO set at #{block_number},{bitcoin_block_hash} to {}",
-            path.display()
-        );
-        println!("UTXO set size: {utxo_set_size}");
-
-        let mut file = std::fs::File::create(&path)?;
-
-        let mut data = Vec::new();
-        bitcoin_block_hash
-            .consensus_encode(&mut data)
-            .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
-        utxo_set_size
-            .consensus_encode(&mut data)
-            .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
-
-        let _ = file.write(data.as_slice())?;
-
-        UtxoSetOutput::Snapshot(UtxoSnapshotGenerator::new(path, file))
-    } else {
-        println!("Dumping UTXO set at #{block_number},{bitcoin_block_hash}");
-        UtxoSetOutput::Stdout(std::io::stdout())
-    };
-
-    for (txid, vout, coin) in utxo_iter {
-        output_file.write(txid, vout, coin)?;
-
-        // Yield here allows to make the process interruptible by ctrl_c.
-        Yield::new().await;
-    }
-
-    Ok(())
-}
-
-enum UtxoSetOutput {
-    Snapshot(UtxoSnapshotGenerator),
-    Csv(File),
-    Stdout(Stdout),
-}
-
-impl UtxoSetOutput {
-    fn write(&mut self, txid: bitcoin::Txid, vout: u32, coin: Coin) -> std::io::Result<()> {
-        match self {
-            Self::Snapshot(snapshot_generator) => {
-                snapshot_generator.write_utxo_entry(txid, vout, coin)?;
-            }
-            Self::Csv(ref mut file) => {
-                let Coin {
-                    is_coinbase,
-                    amount,
-                    height,
-                    script_pubkey,
-                } = coin;
-
-                let outpoint = bitcoin::OutPoint { txid, vout };
-
-                let script_pubkey = hex::encode(script_pubkey.as_slice());
-                writeln!(
-                    file,
-                    "{outpoint},{is_coinbase},{height},{amount},{script_pubkey}",
-                )?;
-            }
-            Self::Stdout(ref mut stdout) => {
-                let Coin {
-                    is_coinbase,
-                    amount,
-                    height,
-                    script_pubkey,
-                } = coin;
-
-                let outpoint = bitcoin::OutPoint { txid, vout };
-
-                let script_pubkey = hex::encode(script_pubkey.as_slice());
-                writeln!(
-                    stdout,
-                    "{outpoint},{is_coinbase},{height},{amount},{script_pubkey}"
-                )?;
-            }
-        }
-
-        Ok(())
-    }
 }
 
 #[cfg(test)]
