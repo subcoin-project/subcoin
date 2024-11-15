@@ -1,6 +1,5 @@
 use super::MergedParams;
-use crate::commands::blockchain::fetch_utxo_set_at;
-use crate::commands::blockchain::ClientParams;
+use crate::commands::blockchain::{fetch_utxo_set_at, ClientParams};
 use crate::utils::Yield;
 use bitcoin::consensus::Encodable;
 use std::fs::File;
