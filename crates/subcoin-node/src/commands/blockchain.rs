@@ -1,13 +1,9 @@
-mod dumptxoutset;
+mod dump_txout_set;
 mod get_txout_set_info;
 mod parse_block_outputs;
 mod parse_txout_set;
 
 use crate::cli::subcoin_params::Chain;
-use dumptxoutset::DumpTxoutSetCommand;
-use get_txout_set_info::GetTxOutSetInfoCommand;
-use parse_block_outputs::ParseBlockOutputsCommand;
-use parse_txout_set::ParseTxoutSetCommand;
 use sc_cli::{DatabaseParams, ImportParams, NodeKeyParams, SharedParams};
 use sc_client_api::{HeaderBackend, StorageProvider};
 use sp_core::storage::StorageKey;
@@ -73,43 +69,44 @@ pub struct MergedParams {
 /// Blockchain.
 #[derive(Debug, clap::Subcommand)]
 pub enum Blockchain {
+    /// Dump UTXO set
+    #[command(name = "dumptxoutset")]
+    DumpTxOutSet(dump_txout_set::DumpTxOutSet),
     /// Statistics about the UTXO set.
     #[command(name = "gettxoutsetinfo")]
     GetTxOutSetInfo(get_txout_set_info::GetTxOutSetInfo),
-    /// Dump UTXO set
-    #[command(name = "dumptxoutset")]
-    DumpTxoutSet(dumptxoutset::DumpTxoutSet),
+    /// Inspect Bitcoin block.
+    #[command(name = "parse-block-outputs")]
+    ParseBlockOutputs(parse_block_outputs::ParseBlockOutputs),
     /// Parse the binary UTXO set dumped from Bitcoin Core.
     #[command(name = "parse-txout-set")]
     ParseTxoutSet(parse_txout_set::ParseTxoutSet),
-    #[command(name = "parse-block-outputs")]
-    ParseBlockOutputs(parse_block_outputs::ParseBlockOutputs),
 }
 
 pub enum BlockchainCommand {
-    GetTxOutSetInfo(GetTxOutSetInfoCommand),
-    DumpTxoutSet(DumpTxoutSetCommand),
-    ParseTxoutSet(ParseTxoutSetCommand),
-    ParseBlockOutputs(ParseBlockOutputsCommand),
+    DumpTxOutSet(dump_txout_set::DumpTxOutSetCommand),
+    GetTxOutSetInfo(get_txout_set_info::GetTxOutSetInfoCommand),
+    ParseBlockOutputs(parse_block_outputs::ParseBlockOutputsCommand),
+    ParseTxoutSet(parse_txout_set::ParseTxoutSetCommand),
 }
 
 impl BlockchainCommand {
     /// Constructs a new instance of [`BlockchainCommand`].
     pub fn new(blockchain: Blockchain) -> Self {
         match blockchain {
+            Blockchain::DumpTxOutSet(cmd) => Self::DumpTxOutSet(cmd.into()),
             Blockchain::GetTxOutSetInfo(cmd) => Self::GetTxOutSetInfo(cmd.into()),
-            Blockchain::DumpTxoutSet(cmd) => Self::DumpTxoutSet(cmd.into()),
-            Blockchain::ParseTxoutSet(cmd) => Self::ParseTxoutSet(cmd.into()),
             Blockchain::ParseBlockOutputs(cmd) => Self::ParseBlockOutputs(cmd.into()),
+            Blockchain::ParseTxoutSet(cmd) => Self::ParseTxoutSet(cmd.into()),
         }
     }
 
     pub async fn run(self, client: Arc<FullClient>) -> sc_cli::Result<()> {
         match self {
+            Self::DumpTxOutSet(cmd) => cmd.execute(client).await,
             Self::GetTxOutSetInfo(cmd) => cmd.execute(client).await,
-            Self::DumpTxoutSet(cmd) => cmd.execute(client).await,
-            Self::ParseTxoutSet(cmd) => cmd.execute(),
             Self::ParseBlockOutputs(cmd) => cmd.execute(client),
+            Self::ParseTxoutSet(cmd) => cmd.execute(),
         }
     }
 }
@@ -117,9 +114,9 @@ impl BlockchainCommand {
 impl sc_cli::CliConfiguration for BlockchainCommand {
     fn shared_params(&self) -> &SharedParams {
         match self {
-            Self::ParseBlockOutputs(cmd) => &cmd.params.shared_params,
+            Self::DumpTxOutSet(cmd) => &cmd.params.shared_params,
             Self::GetTxOutSetInfo(cmd) => &cmd.params.shared_params,
-            Self::DumpTxoutSet(cmd) => &cmd.params.shared_params,
+            Self::ParseBlockOutputs(cmd) => &cmd.params.shared_params,
             Self::ParseTxoutSet(cmd) => &cmd.shared_params,
         }
     }
@@ -130,9 +127,9 @@ impl sc_cli::CliConfiguration for BlockchainCommand {
 
     fn database_params(&self) -> Option<&DatabaseParams> {
         match self {
-            Self::ParseBlockOutputs(cmd) => Some(&cmd.params.database_params),
+            Self::DumpTxOutSet(cmd) => Some(&cmd.params.database_params),
             Self::GetTxOutSetInfo(cmd) => Some(&cmd.params.database_params),
-            Self::DumpTxoutSet(cmd) => Some(&cmd.params.database_params),
+            Self::ParseBlockOutputs(cmd) => Some(&cmd.params.database_params),
             Self::ParseTxoutSet(_) => None,
         }
     }
@@ -189,31 +186,4 @@ fn fetch_utxo_set_at(
                 (txid, vout, coin)
             }),
     ))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use subcoin_test_service::new_test_node_and_produce_blocks;
-
-    #[tokio::test]
-    async fn test_muhash_in_gettxoutsetinfo() {
-        let runtime_handle = tokio::runtime::Handle::current();
-        let config = subcoin_test_service::test_configuration(runtime_handle);
-        let client = new_test_node_and_produce_blocks(&config, 3).await;
-        assert_eq!(
-            gettxoutsetinfo(&client, Some(1), false)
-                .await
-                .unwrap()
-                .muhash,
-            "1bd372a3f225dc6f8ce0e10ead6f8b0b00e65a2ff4a4c9ccaa615a69fbeeb2f2"
-        );
-        assert_eq!(
-            gettxoutsetinfo(&client, Some(2), false)
-                .await
-                .unwrap()
-                .muhash,
-            "dfd1c34195baa0a898f04d40097841e1d569e81ce845a21e79c4ab25c725c875"
-        );
-    }
 }

@@ -11,7 +11,7 @@ use subcoin_service::FullClient;
 use subcoin_utxo_snapshot::UtxoSnapshotGenerator;
 
 #[derive(Debug, clap::Parser)]
-pub struct DumpTxoutSet {
+pub struct DumpTxOutSet {
     /// Specify the number of block to dump.
     ///
     /// Defaults to the best block.
@@ -88,14 +88,14 @@ impl UtxoSetOutput {
     }
 }
 
-pub struct DumpTxoutSetCommand {
+pub struct DumpTxOutSetCommand {
     height: Option<u32>,
     binary: Option<PathBuf>,
     csv: Option<PathBuf>,
     pub params: MergedParams,
 }
 
-impl DumpTxoutSetCommand {
+impl DumpTxOutSetCommand {
     pub async fn execute(self, client: Arc<FullClient>) -> sc_cli::Result<()> {
         let Self {
             height,
@@ -150,9 +150,9 @@ impl DumpTxoutSetCommand {
     }
 }
 
-impl From<DumpTxoutSet> for DumpTxoutSetCommand {
-    fn from(dumptxoutset: DumpTxoutSet) -> Self {
-        let DumpTxoutSet {
+impl From<DumpTxOutSet> for DumpTxOutSetCommand {
+    fn from(dumptxoutset: DumpTxOutSet) -> Self {
+        let DumpTxOutSet {
             height,
             csv,
             binary,
