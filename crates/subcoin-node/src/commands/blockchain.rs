@@ -72,26 +72,29 @@ pub enum Blockchain {
     /// Dump UTXO set
     #[command(name = "dumptxoutset")]
     DumpTxOutSet(dump_txout_set::DumpTxOutSet),
+
     /// Statistics about the UTXO set.
     #[command(name = "gettxoutsetinfo")]
     GetTxOutSetInfo(get_txout_set_info::GetTxOutSetInfo),
+
     /// Inspect Bitcoin block.
     #[command(name = "parse-block-outputs")]
     ParseBlockOutputs(parse_block_outputs::ParseBlockOutputs),
+
     /// Parse the binary UTXO set dumped from Bitcoin Core.
     #[command(name = "parse-txout-set")]
     ParseTxoutSet(parse_txout_set::ParseTxoutSet),
 }
 
-pub enum BlockchainCommand {
-    DumpTxOutSet(dump_txout_set::DumpTxOutSetCommand),
-    GetTxOutSetInfo(get_txout_set_info::GetTxOutSetInfoCommand),
-    ParseBlockOutputs(parse_block_outputs::ParseBlockOutputsCommand),
-    ParseTxoutSet(parse_txout_set::ParseTxoutSetCommand),
+pub enum BlockchainCmd {
+    DumpTxOutSet(dump_txout_set::DumpTxOutSetCmd),
+    GetTxOutSetInfo(get_txout_set_info::GetTxOutSetInfoCmd),
+    ParseBlockOutputs(parse_block_outputs::ParseBlockOutputsCmd),
+    ParseTxoutSet(parse_txout_set::ParseTxoutSetCmd),
 }
 
-impl BlockchainCommand {
-    /// Constructs a new instance of [`BlockchainCommand`].
+impl BlockchainCmd {
+    /// Constructs a new instance of [`BlockchainCmd`].
     pub fn new(blockchain: Blockchain) -> Self {
         match blockchain {
             Blockchain::DumpTxOutSet(cmd) => Self::DumpTxOutSet(cmd.into()),
@@ -111,7 +114,7 @@ impl BlockchainCommand {
     }
 }
 
-impl sc_cli::CliConfiguration for BlockchainCommand {
+impl sc_cli::CliConfiguration for BlockchainCmd {
     fn shared_params(&self) -> &SharedParams {
         match self {
             Self::DumpTxOutSet(cmd) => &cmd.params.shared_params,
@@ -178,8 +181,7 @@ fn fetch_utxo_set_at(
 
                 let txid = txid.into_bitcoin_txid();
 
-                // output in genesis tx is excluded in gettxoutsetinfo and dumptxoutset in Bitcoin
-                // Core.
+                // output in genesis tx is excluded in the UTXO set.
                 let coin = Coin::decode(&mut value.0.as_slice())
                     .expect("Coin read from DB must be decoded successfully; qed");
 

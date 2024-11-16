@@ -17,12 +17,12 @@ pub struct ParseBlockOutputs {
     client_params: ClientParams,
 }
 
-pub struct ParseBlockOutputsCommand {
+pub struct ParseBlockOutputsCmd {
     height: Option<u32>,
-    pub params: MergedParams,
+    pub(super) params: MergedParams,
 }
 
-impl ParseBlockOutputsCommand {
+impl ParseBlockOutputsCmd {
     pub fn execute(self, client: Arc<FullClient>) -> sc_cli::Result<()> {
         let block_number = self.height.unwrap_or_else(|| client.info().best_number);
         let block_hash = client.hash(block_number)?.unwrap();
@@ -51,7 +51,7 @@ impl ParseBlockOutputsCommand {
     }
 }
 
-impl From<ParseBlockOutputs> for ParseBlockOutputsCommand {
+impl From<ParseBlockOutputs> for ParseBlockOutputsCmd {
     fn from(parse_block_outputs: ParseBlockOutputs) -> Self {
         let ParseBlockOutputs {
             height,

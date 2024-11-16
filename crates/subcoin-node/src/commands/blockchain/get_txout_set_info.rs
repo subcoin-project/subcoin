@@ -4,7 +4,7 @@ use crate::utils::Yield;
 use indicatif::{ProgressBar, ProgressStyle};
 use sc_client_api::HeaderBackend;
 use sp_api::ProvideRuntimeApi;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subcoin_primitives::runtime::SubcoinApi;
@@ -33,14 +33,14 @@ pub struct GetTxOutSetInfo {
     client_params: ClientParams,
 }
 
-pub struct GetTxOutSetInfoCommand {
+pub struct GetTxOutSetInfoCmd {
     height: Option<u32>,
     verbose: bool,
     progress_bar: bool,
-    pub params: MergedParams,
+    pub(super) params: MergedParams,
 }
 
-impl GetTxOutSetInfoCommand {
+impl GetTxOutSetInfoCmd {
     pub async fn execute(self, client: Arc<FullClient>) -> sc_cli::Result<()> {
         let Self {
             height,
@@ -61,7 +61,7 @@ impl GetTxOutSetInfoCommand {
     }
 }
 
-impl From<GetTxOutSetInfo> for GetTxOutSetInfoCommand {
+impl From<GetTxOutSetInfo> for GetTxOutSetInfoCmd {
     fn from(get_txout_set_info: GetTxOutSetInfo) -> Self {
         let GetTxOutSetInfo {
             height,
@@ -117,7 +117,7 @@ async fn gettxoutsetinfo(
 
         muhash.insert(&data);
 
-        let old = txouts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let old = txouts.fetch_add(1, Ordering::SeqCst);
 
         total_amount += coin.amount;
         // https://github.com/bitcoin/bitcoin/blob/33af14e31b9fa436029a2bb8c2b11de8feb32f86/src/kernel/coinstats.cpp#L40
@@ -145,7 +145,7 @@ async fn gettxoutsetinfo(
     let tx_out_set_info = TxOutSetInfo {
         height: block_number,
         bestblock: bitcoin_block_hash,
-        txouts: txouts.load(std::sync::atomic::Ordering::SeqCst),
+        txouts: txouts.load(Ordering::SeqCst),
         bogosize,
         muhash,
         total_amount,
@@ -161,13 +161,13 @@ fn show_progress(loaded: Arc<AtomicUsize>, total_coins: u64) {
 
     pb.set_style(
         ProgressStyle::default_bar()
-            .template("{msg} [{bar:40}] {percent}% ({pos}/{len}, {eta})")
+            .template("{msg} [{bar:40}] {percent:.2}% ({pos}/{len}, {eta})")
             .unwrap()
             .progress_chars("##-"),
     );
 
     loop {
-        let new = loaded.load(std::sync::atomic::Ordering::Relaxed) as u64;
+        let new = loaded.load(Ordering::Relaxed) as u64;
 
         if new == total_coins {
             pb.finish_with_message("Done!");

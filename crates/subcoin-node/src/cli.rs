@@ -1,6 +1,6 @@
 pub mod subcoin_params;
 
-use crate::commands::blockchain::{Blockchain, BlockchainCommand};
+use crate::commands::blockchain::{Blockchain, BlockchainCmd};
 use crate::commands::import_blocks::{ImportBlocks, ImportBlocksCmd};
 use crate::commands::run::{Run, RunCmd};
 use crate::commands::tools::Tools;
@@ -136,7 +136,7 @@ pub fn run() -> sc_cli::Result<()> {
         }
         Command::Tools(tools) => tools.run(),
         Command::Blockchain(blockchain) => {
-            let cmd = BlockchainCommand::new(blockchain);
+            let cmd = BlockchainCmd::new(blockchain);
             let runner = SubstrateCli.create_runner(&cmd)?;
             runner.async_run(|config| {
                 let subcoin_service::NodeComponents {

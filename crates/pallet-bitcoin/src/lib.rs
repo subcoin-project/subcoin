@@ -161,7 +161,7 @@ impl<T: Config> Pallet<T> {
             })
             .collect();
 
-        let num_outputs_created = new_coins.len();
+        let num_created = new_coins.len();
 
         if is_coinbase {
             // Insert new UTXOs for coinbase transaction.
@@ -170,7 +170,7 @@ impl<T: Config> Pallet<T> {
                 Coins::<T>::insert(txid, output_index, coin);
             }
             CoinsCount::<T>::mutate(|v| {
-                *v += num_outputs_created as u64;
+                *v += num_created as u64;
             });
             return;
         }
@@ -194,7 +194,7 @@ impl<T: Config> Pallet<T> {
         }
 
         CoinsCount::<T>::mutate(|v| {
-            *v = *v + num_outputs_created as u64 - num_consumed as u64;
+            *v = *v + num_created as u64 - num_consumed as u64;
         });
     }
 }

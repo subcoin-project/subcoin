@@ -38,64 +38,14 @@ pub struct DumpTxOutSet {
     client_params: ClientParams,
 }
 
-enum UtxoSetOutput {
-    Snapshot(UtxoSnapshotGenerator),
-    Csv(File),
-    Stdout(Stdout),
-}
-
-impl UtxoSetOutput {
-    fn write(&mut self, txid: bitcoin::Txid, vout: u32, coin: Coin) -> std::io::Result<()> {
-        match self {
-            Self::Snapshot(snapshot_generator) => {
-                snapshot_generator.write_utxo_entry(txid, vout, coin)?;
-            }
-            Self::Csv(ref mut file) => {
-                let Coin {
-                    is_coinbase,
-                    amount,
-                    height,
-                    script_pubkey,
-                } = coin;
-
-                let outpoint = bitcoin::OutPoint { txid, vout };
-
-                let script_pubkey = hex::encode(script_pubkey.as_slice());
-                writeln!(
-                    file,
-                    "{outpoint},{is_coinbase},{height},{amount},{script_pubkey}",
-                )?;
-            }
-            Self::Stdout(ref mut stdout) => {
-                let Coin {
-                    is_coinbase,
-                    amount,
-                    height,
-                    script_pubkey,
-                } = coin;
-
-                let outpoint = bitcoin::OutPoint { txid, vout };
-
-                let script_pubkey = hex::encode(script_pubkey.as_slice());
-                writeln!(
-                    stdout,
-                    "{outpoint},{is_coinbase},{height},{amount},{script_pubkey}"
-                )?;
-            }
-        }
-
-        Ok(())
-    }
-}
-
-pub struct DumpTxOutSetCommand {
+pub struct DumpTxOutSetCmd {
     height: Option<u32>,
     binary: Option<PathBuf>,
     csv: Option<PathBuf>,
-    pub params: MergedParams,
+    pub(super) params: MergedParams,
 }
 
-impl DumpTxOutSetCommand {
+impl DumpTxOutSetCmd {
     pub async fn execute(self, client: Arc<FullClient>) -> sc_cli::Result<()> {
         let Self {
             height,
@@ -150,7 +100,57 @@ impl DumpTxOutSetCommand {
     }
 }
 
-impl From<DumpTxOutSet> for DumpTxOutSetCommand {
+enum UtxoSetOutput {
+    Snapshot(UtxoSnapshotGenerator),
+    Csv(File),
+    Stdout(Stdout),
+}
+
+impl UtxoSetOutput {
+    fn write(&mut self, txid: bitcoin::Txid, vout: u32, coin: Coin) -> std::io::Result<()> {
+        match self {
+            Self::Snapshot(snapshot_generator) => {
+                snapshot_generator.write_utxo_entry(txid, vout, coin)?;
+            }
+            Self::Csv(ref mut file) => {
+                let Coin {
+                    is_coinbase,
+                    amount,
+                    height,
+                    script_pubkey,
+                } = coin;
+
+                let outpoint = bitcoin::OutPoint { txid, vout };
+
+                let script_pubkey = hex::encode(script_pubkey.as_slice());
+                writeln!(
+                    file,
+                    "{outpoint},{is_coinbase},{height},{amount},{script_pubkey}",
+                )?;
+            }
+            Self::Stdout(ref mut stdout) => {
+                let Coin {
+                    is_coinbase,
+                    amount,
+                    height,
+                    script_pubkey,
+                } = coin;
+
+                let outpoint = bitcoin::OutPoint { txid, vout };
+
+                let script_pubkey = hex::encode(script_pubkey.as_slice());
+                writeln!(
+                    stdout,
+                    "{outpoint},{is_coinbase},{height},{amount},{script_pubkey}"
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl From<DumpTxOutSet> for DumpTxOutSetCmd {
     fn from(dumptxoutset: DumpTxOutSet) -> Self {
         let DumpTxOutSet {
             height,

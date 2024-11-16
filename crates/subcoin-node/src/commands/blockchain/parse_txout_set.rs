@@ -18,14 +18,14 @@ pub struct ParseTxoutSet {
 }
 
 #[derive(Debug)]
-pub struct ParseTxoutSetCommand {
+pub struct ParseTxoutSetCmd {
     path: PathBuf,
     compute_addresses: bool,
     chain: Chain,
-    pub shared_params: SharedParams,
+    pub(super) shared_params: SharedParams,
 }
 
-impl ParseTxoutSetCommand {
+impl ParseTxoutSetCmd {
     pub fn execute(self) -> sc_cli::Result<()> {
         let Self {
             path,
@@ -91,7 +91,7 @@ impl ParseTxoutSetCommand {
     }
 }
 
-impl From<ParseTxoutSet> for ParseTxoutSetCommand {
+impl From<ParseTxoutSet> for ParseTxoutSetCmd {
     fn from(parse_txout_set: ParseTxoutSet) -> Self {
         let ParseTxoutSet {
             path,
