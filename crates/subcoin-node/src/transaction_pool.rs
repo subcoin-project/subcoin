@@ -61,6 +61,7 @@ impl sc_transaction_pool_api::InPoolTransaction for PoolTransaction {
 pub struct Transactions(Vec<Arc<PoolTransaction>>);
 pub struct TransactionsIterator(std::vec::IntoIter<Arc<PoolTransaction>>);
 
+/// Creates a dummy transaction pool.
 pub fn new_dummy_pool() -> Transactions {
     Transactions(Vec::new())
 }

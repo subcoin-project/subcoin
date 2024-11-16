@@ -84,15 +84,16 @@ async fn gettxoutsetinfo(
     verbose: bool,
     progress_bar: bool,
 ) -> sc_cli::Result<TxOutSetInfo> {
-    let (block_number, bitcoin_block_hash, utxo_iter) = fetch_utxo_set_at(&client, height)?;
+    let (block_number, bitcoin_block_hash, utxo_iter) = fetch_utxo_set_at(client, height)?;
 
-    let substrate_block_hash = client
-        .hash(block_number.into())?
-        .expect("Block hash must be exist; qed");
+    let substrate_block_hash = client.hash(block_number)?.ok_or_else(|| {
+        sp_blockchain::Error::Backend(format!("Hash for #{block_number} not found"))
+    })?;
+
     let total_coins = client
         .runtime_api()
         .coins_count(substrate_block_hash)
-        .expect("Failed to call runtime api");
+        .map_err(|err| sc_cli::Error::from(sp_blockchain::Error::RuntimeApiError(err)))?;
 
     const INTERVAL: Duration = Duration::from_secs(5);
 
@@ -157,7 +158,7 @@ async fn gettxoutsetinfo(
 fn show_progress(loaded: Arc<AtomicUsize>, total_coins: u64, block_number: u32) {
     let pb = ProgressBar::new(total_coins);
 
-    pb.set_message("Loading UTXO set at block #{block_number}...");
+    pb.set_message(format!("Loading UTXO set at block #{block_number}..."));
 
     pb.set_style(
         ProgressStyle::default_bar()

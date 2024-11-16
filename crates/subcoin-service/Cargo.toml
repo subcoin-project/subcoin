@@ -7,6 +7,8 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
+array-bytes = { workspace = true }
+async-channel = { workspace = true }
 async-trait = { workspace = true }
 bitcoin = { workspace = true }
 codec = { workspace = true }
@@ -52,8 +54,6 @@ substrate-frame-rpc-system = { workspace = true }
 substrate-prometheus-endpoint = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-array-bytes = "6.2.2"
-async-channel = "1.8.0"
 
 [dev-dependencies]
 sp-tracing = { workspace = true }

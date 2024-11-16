@@ -14,6 +14,7 @@ path = "src/main.rs"
 bitcoin = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 codec = { workspace = true }
+csv = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 pallet-bitcoin = { workspace = true }
@@ -42,4 +43,3 @@ subcoin-service = { workspace = true }
 subcoin-utxo-snapshot = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
-csv = "1.3.0"

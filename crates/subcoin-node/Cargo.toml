@@ -19,7 +19,7 @@ codec = { workspace = true }
 frame-benchmarking-cli = { workspace = true, optional = true }
 futures = { workspace = true }
 hex = { workspace = true }
-indicatif = "0.17.9"
+indicatif = { workspace = true }
 jsonrpsee = { workspace = true }
 pallet-bitcoin = { workspace = true }
 sc-cli = { workspace = true }
@@ -39,7 +39,6 @@ sc-transaction-pool-api = { workspace = true }
 sc-utils = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-sha2 = "0.10.8"
 sp-api = { workspace = true }
 sp-blockchain = { workspace = true }
 sp-consensus = { workspace = true }
