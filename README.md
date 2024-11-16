@@ -16,7 +16,7 @@
 
 ## Overview
 
-Subcoin is a full node implementation of Bitcoin in Rust, built using the [Substrate framework](https://github.com/paritytech/polkadot-sdk).
+Subcoin is a full node implementation of Bitcoin in Rust, built using the [polkadot-sdk (formerly Substrate)](https://github.com/paritytech/polkadot-sdk) framework.
 By leveraging Substrate's modular and flexible architecture, Subcoin aims to offer a robust
 and performant implementation of Bitcoin protocol. It is the first Bitcoin client that
 introduces the decentralized fast sync into the Bitcoin ecosystem, a syncing strategy common
@@ -57,6 +57,18 @@ has not been audited as well. Use at your own risk.
 Contributions to Subcoin are welcome! If you have ideas for improvements, bug fixes, or new features,
 feel free to open an issue or submit a pull request. Make sure to follow the contribution guidelines
 and code of conduct when contributing to the project.
+
+## Donations
+
+Subcoin is an open-source public good project dedicated to advancing decentralized technologies around Bitcoin.
+We are grateful for receiving the [grant](https://github.com/w3f/Grants-Program/pull/2304) of the Web3 Foundation
+for our initial development.
+
+If you believe in our mission and would like to contribute to the continued growth and improvement of Subcoin,
+we welcome your support:
+
+- BTC: `bc1p9nvx58550rlhk29a6urzxg06hmgv9sh5afwdt66md09xwpdytlmqun0j4v`
+- DOT: `12uXLCZZkprwRBhfmhTXdfQE8faQwgNpS76wwmnEbgDwWB9e`
 
 ## License
 
