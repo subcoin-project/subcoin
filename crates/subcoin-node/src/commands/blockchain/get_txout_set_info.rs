@@ -108,7 +108,7 @@ async fn gettxoutsetinfo(
 
     if progress_bar {
         let loaded = txouts.clone();
-        std::thread::spawn(move || show_progress(loaded, total_coins));
+        std::thread::spawn(move || show_progress(loaded, total_coins, block_number));
     }
 
     for (txid, vout, coin) in utxo_iter {
@@ -154,10 +154,10 @@ async fn gettxoutsetinfo(
     Ok(tx_out_set_info)
 }
 
-fn show_progress(loaded: Arc<AtomicUsize>, total_coins: u64) {
+fn show_progress(loaded: Arc<AtomicUsize>, total_coins: u64, block_number: u32) {
     let pb = ProgressBar::new(total_coins);
 
-    pb.set_message("Loading UTXO...");
+    pb.set_message("Loading UTXO set at block #{block_number}...");
 
     pb.set_style(
         ProgressStyle::default_bar()
@@ -170,13 +170,13 @@ fn show_progress(loaded: Arc<AtomicUsize>, total_coins: u64) {
         let new = loaded.load(Ordering::Relaxed) as u64;
 
         if new == total_coins {
-            pb.finish_with_message("Done!");
+            pb.finish_and_clear();
             return;
         }
 
         pb.set_position(new);
 
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(200));
     }
 }
 
