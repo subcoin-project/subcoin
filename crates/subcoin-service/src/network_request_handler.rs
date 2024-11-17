@@ -9,7 +9,7 @@ use sc_network::config::ProtocolId;
 use sc_network::request_responses::{IncomingRequest, OutgoingResponse};
 use sc_network::{NetworkBackend, PeerId, MAX_RESPONSE_SIZE};
 use sp_api::ProvideRuntimeApi;
-use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
@@ -55,22 +55,38 @@ fn generate_legacy_protocol_name(protocol_id: &ProtocolId) -> String {
     format!("/{}/subcoin/1", protocol_id.as_ref())
 }
 
-/// Subcoin network specific requests.
+/// Versioned network requests.
 #[derive(Debug, codec::Encode, codec::Decode)]
-pub enum SubNetworkRequest<Block: BlockT> {
-    /// Requests the number of total coins at a specified block.
-    GetCoinsCount { block_hash: Block::Hash },
-    /// Request the header of specified block.
-    GetBlockHeader { block_number: NumberFor<Block> },
+pub enum VersionedNetworkRequest<Block: BlockT> {
+    V1(v1::NetworkRequest<Block>),
 }
 
-/// Subcoin network specific responses.
+/// Versioned network responses.
 #[derive(Debug, codec::Encode, codec::Decode)]
-pub enum SubNetworkResponse<Block: BlockT> {
-    /// The number of total coins at the specified block.
-    CoinsCount { block_hash: Block::Hash, count: u64 },
-    /// Block header.
-    BlockHeader { block_header: Block::Header },
+pub enum VersionedNetworkResponse<Block: BlockT> {
+    V1(Result<v1::NetworkResponse<Block>, String>),
+}
+
+pub mod v1 {
+    use sp_runtime::traits::{Block as BlockT, NumberFor};
+
+    /// Subcoin network specific requests.
+    #[derive(Debug, codec::Encode, codec::Decode)]
+    pub enum NetworkRequest<Block: BlockT> {
+        /// Requests the number of total coins at a specified block.
+        GetCoinsCount { block_hash: Block::Hash },
+        /// Request the header of specified block.
+        GetBlockHeader { block_number: NumberFor<Block> },
+    }
+
+    /// Subcoin network specific responses.
+    #[derive(Debug, codec::Encode, codec::Decode)]
+    pub enum NetworkResponse<Block: BlockT> {
+        /// The number of total coins at the specified block.
+        CoinsCount { block_hash: Block::Hash, count: u64 },
+        /// Block header.
+        BlockHeader { block_header: Block::Header },
+    }
 }
 
 /// Handler for incoming block requests from a remote peer.
@@ -147,36 +163,54 @@ where
         pending_response: oneshot::Sender<OutgoingResponse>,
         peer: &PeerId,
     ) -> Result<(), HandleRequestError> {
-        let request = SubNetworkRequest::<B>::decode(&mut payload.as_slice())?;
+        let request = VersionedNetworkRequest::<B>::decode(&mut payload.as_slice())?;
 
         tracing::debug!(target: LOG_TARGET, "Handling request from {peer:?}: {request:?}");
 
-        let result = match request {
-            SubNetworkRequest::GetCoinsCount { block_hash } => {
-                let count = self.client.runtime_api().coins_count(block_hash)?;
-                let response = SubNetworkResponse::<B>::CoinsCount { block_hash, count };
-                Ok(response.encode())
-            }
-            SubNetworkRequest::GetBlockHeader { block_number } => {
-                match self.client.hash(block_number)? {
-                    Some(block_hash) => self
-                        .client
-                        .header(block_hash)?
-                        .map(|block_header| SubNetworkResponse::<B>::BlockHeader { block_header })
-                        .map(|response| response.encode())
-                        .ok_or(()),
-                    None => Err(()),
-                }
-            }
+        let response: VersionedNetworkResponse<B> = match request {
+            VersionedNetworkRequest::V1(request) => match self.process_request_v1(request) {
+                Ok(response_v1) => VersionedNetworkResponse::V1(Ok(response_v1)),
+                Err(err) => VersionedNetworkResponse::V1(Err(err.to_string())),
+            },
         };
 
         pending_response
             .send(OutgoingResponse {
-                result,
+                result: Ok(response.encode()),
                 reputation_changes: Vec::new(),
                 sent_feedback: None,
             })
             .map_err(|_| HandleRequestError::SendResponse)
+    }
+
+    fn process_request_v1(
+        &self,
+        request: v1::NetworkRequest<B>,
+    ) -> Result<v1::NetworkResponse<B>, HandleRequestError> {
+        match request {
+            v1::NetworkRequest::GetCoinsCount { block_hash } => {
+                let count = self.client.runtime_api().coins_count(block_hash)?;
+                let response = v1::NetworkResponse::<B>::CoinsCount { block_hash, count };
+                Ok(response)
+            }
+            v1::NetworkRequest::GetBlockHeader { block_number } => {
+                let block_hash = self.client.hash(block_number)?.ok_or_else(|| {
+                    sp_blockchain::Error::Backend(format!(
+                        "Hash for block #{block_number} not found"
+                    ))
+                })?;
+
+                Ok(self
+                    .client
+                    .header(block_hash)?
+                    .map(|block_header| v1::NetworkResponse::<B>::BlockHeader { block_header })
+                    .ok_or_else(|| {
+                        sp_blockchain::Error::Backend(format!(
+                            "Header for #{block_number},{block_hash} not found"
+                        ))
+                    })?)
+            }
+        }
     }
 }
 

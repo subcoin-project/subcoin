@@ -28,7 +28,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subcoin_primitives::runtime::SubcoinApi;
-use subcoin_service::network_request_handler::{SubNetworkRequest, SubNetworkResponse};
+use subcoin_service::network_request_handler::{
+    v1, VersionedNetworkRequest, VersionedNetworkResponse,
+};
 
 const LOG_TARGET: &'static str = "sync::snapcake";
 
@@ -295,10 +297,37 @@ where
         }
     }
 
+    fn on_subcoin_response_result_v1(
+        &mut self,
+        peer_id: PeerId,
+        response_result: Result<v1::NetworkResponse<B>, String>,
+    ) {
+        let response = match response_result {
+            Ok(res) => res,
+            Err(err) => {
+                tracing::warn!(target: LOG_TARGET, "Peer {peer_id:?} failed to process our request: {err}");
+                return;
+            }
+        };
+
+        match response {
+            v1::NetworkResponse::<B>::CoinsCount { block_hash, count } => {
+                self.coins_count.insert(block_hash, count);
+            }
+            v1::NetworkResponse::<B>::BlockHeader { block_header } => {
+                let block_hash = block_header.hash();
+                self.peer_state_sync_target_headers
+                    .insert(peer_id, block_header);
+                self.pending_coins_count_requests
+                    .push((peer_id, block_hash));
+            }
+        }
+    }
+
     fn create_subcoin_request_action(
         &self,
         peer_id: sc_network::PeerId,
-        request: subcoin_service::network_request_handler::SubNetworkRequest<B>,
+        request: subcoin_service::network_request_handler::VersionedNetworkRequest<B>,
         network_service: &NetworkServiceHandle,
     ) -> SyncingAction<B> {
         let (tx, rx) = futures::channel::oneshot::channel();
@@ -514,27 +543,22 @@ where
             }
             SUBCOIN_STRATEGY_KEY => {
                 let Ok(response) = response.downcast::<Vec<u8>>() else {
-                    tracing::warn!(target: LOG_TARGET, "Failed to downcast SubNetworkResponse");
+                    tracing::warn!(target: LOG_TARGET, "Failed to downcast VersionedNetworkResponse");
                     debug_assert!(false);
                     return;
                 };
-                let response = match SubNetworkResponse::<B>::decode(&mut response.as_slice()) {
+                let response = match VersionedNetworkResponse::<B>::decode(&mut response.as_slice())
+                {
                     Ok(res) => res,
                     Err(err) => {
-                        tracing::warn!(target: LOG_TARGET, "Failed to decode SubNetworkResponse: {err:?}");
+                        tracing::warn!(target: LOG_TARGET, "Failed to decode VersionedNetworkResponse: {err:?}");
                         return;
                     }
                 };
+
                 match response {
-                    SubNetworkResponse::<B>::CoinsCount { block_hash, count } => {
-                        self.coins_count.insert(block_hash, count);
-                    }
-                    SubNetworkResponse::<B>::BlockHeader { block_header } => {
-                        let block_hash = block_header.hash();
-                        self.peer_state_sync_target_headers
-                            .insert(*peer_id, block_header);
-                        self.pending_coins_count_requests
-                            .push((*peer_id, block_hash));
+                    VersionedNetworkResponse::V1(v1_response_result) => {
+                        self.on_subcoin_response_result_v1(*peer_id, v1_response_result)
                     }
                 }
             }
@@ -665,7 +689,9 @@ where
                 .map(|(peer_id, block_hash)| {
                     self.create_subcoin_request_action(
                         peer_id,
-                        SubNetworkRequest::<B>::GetCoinsCount { block_hash },
+                        VersionedNetworkRequest::V1(v1::NetworkRequest::<B>::GetCoinsCount {
+                            block_hash,
+                        }),
                         network_service,
                     )
                 })
@@ -676,7 +702,9 @@ where
                 .map(|(peer_id, block_number)| {
                     self.create_subcoin_request_action(
                         peer_id,
-                        SubNetworkRequest::<B>::GetBlockHeader { block_number },
+                        VersionedNetworkRequest::V1(v1::NetworkRequest::<B>::GetBlockHeader {
+                            block_number,
+                        }),
                         network_service,
                     )
                 })
