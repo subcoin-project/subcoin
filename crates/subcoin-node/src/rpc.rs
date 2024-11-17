@@ -21,7 +21,7 @@ pub fn gen_rpc_module(
 
     let mut module = RpcModule::new(());
 
-    let dummy_pool = Arc::new(crate::transaction_pool::new_dummy_pool());
+    let dummy_pool = Arc::new(subcoin_service::transaction_pool::new_dummy_pool());
 
     let task_executor = Arc::new(spawn_handle);
 

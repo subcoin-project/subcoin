@@ -34,13 +34,12 @@
 //! decentralization of Bitcoin’s fast sync process.
 
 mod cli;
-mod network;
 mod params;
 mod state_sync_wrapper;
+mod syncing_strategy;
 
 use self::cli::{App, Command};
 use clap::Parser;
-use network::TargetBlock;
 use sc_cli::SubstrateCli;
 use sc_consensus::import_queue::BasicQueue;
 use sc_consensus_nakamoto::SubstrateImportQueueVerifier;
@@ -56,6 +55,7 @@ use std::sync::Arc;
 use subcoin_runtime::interface::OpaqueBlock as Block;
 use subcoin_runtime::RuntimeApi;
 use subcoin_service::{GenesisBlockBuilder, TransactionAdapter};
+use syncing_strategy::TargetBlock;
 
 type FullClient = sc_service::TFullClient<Block, RuntimeApi, WasmExecutor>;
 
@@ -168,16 +168,7 @@ where
         N,
     >::new(&config.network, None);
 
-    let transaction_pool = Arc::from(
-        sc_transaction_pool::Builder::new(
-            task_manager.spawn_essential_handle(),
-            client.clone(),
-            config.role.is_authority().into(),
-        )
-        .with_options(config.transaction_pool.clone())
-        .with_prometheus(config.prometheus_registry())
-        .build(),
-    );
+    let transaction_pool = Arc::from(subcoin_service::transaction_pool::new_dummy_pool());
 
     let import_queue = BasicQueue::new(
         SubstrateImportQueueVerifier::new(client.clone(), bitcoin_network),
@@ -212,7 +203,7 @@ where
         &spawn_handle,
     );
 
-    let syncing_strategy = crate::network::build_snapcake_syncing_strategy(
+    let syncing_strategy = crate::syncing_strategy::build_snapcake_syncing_strategy(
         protocol_id.clone(),
         fork_id,
         &mut net_config,

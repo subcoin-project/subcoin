@@ -13,7 +13,7 @@ use subcoin_crypto::muhash::MuHash3072;
 use subcoin_runtime_primitives::Coin;
 use subcoin_utxo_snapshot::{Utxo, UtxoSnapshotGenerator};
 
-const DOWNLOAD_PROGRESS_LOG_INTERVAL: Duration = Duration::from_secs(1);
+const DOWNLOAD_PROGRESS_LOG_INTERVAL: Duration = Duration::from_secs(5);
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct UtxoCsvEntry {

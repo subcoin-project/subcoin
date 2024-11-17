@@ -7,6 +7,7 @@ mod finalizer;
 mod genesis_block_builder;
 pub mod network_request_handler;
 mod transaction_adapter;
+pub mod transaction_pool;
 
 use bitcoin::hashes::Hash;
 use futures::FutureExt;

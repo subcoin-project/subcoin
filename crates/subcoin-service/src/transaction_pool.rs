@@ -129,7 +129,7 @@ impl sc_transaction_pool_api::TransactionPool for Transactions {
     }
 
     fn ready(&self) -> Box<dyn ReadyTransactions<Item = Arc<Self::InPoolTransaction>> + Send> {
-        unimplemented!()
+        Box::new(std::iter::empty::<Arc<Self::InPoolTransaction>>())
     }
 
     fn remove_invalid(&self, _hashes: &[TxHash<Self>]) -> Vec<Arc<Self::InPoolTransaction>> {

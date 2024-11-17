@@ -244,6 +244,11 @@ where
         }
     }
 
+    // TODO: proper algo to select state sync target.
+    fn select_state_sync_target(&self) -> Option<(&PeerId, &B::Header)> {
+        self.peer_state_sync_target_headers.iter().next()
+    }
+
     fn on_block_response(
         &mut self,
         peer_id: PeerId,
@@ -607,16 +612,15 @@ where
         network_service: &NetworkServiceHandle,
     ) -> Result<Vec<SyncingAction<B>>, sp_blockchain::Error> {
         if self.state.is_none() && !self.state_sync_complete {
-            // TODO: proper algo to select state sync target.
-            let select_state_sync_target = || self.peer_state_sync_target_headers.iter().next();
+            if let Some((peer_id, target_header)) = self.select_state_sync_target() {
+                let block_hash = target_header.hash();
 
-            if let Some((peer_id, finalized_header)) = select_state_sync_target() {
-                let block_hash = finalized_header.hash();
                 // Only start the state sync when the coins count is available.
                 if let Some(total_coins) = self.coins_count.get(&block_hash) {
-                    let target_header = finalized_header.clone();
+                    let target_header = target_header.clone();
                     tracing::info!(
-                        "⏳ Starting state sync from {peer_id:?}, target block #{},{block_hash}, total coins: {total_coins}",
+                        "⏳ Starting state sync from {peer_id:?}, \
+                        target block #{},{block_hash}, total coins: {total_coins}",
                         target_header.number(),
                     );
                     let state_sync = StateStrategy::new_with_provider(
@@ -633,6 +637,12 @@ where
                         self.config.state_request_protocol_name.clone(),
                     );
                     self.state.replace(state_sync);
+                } else {
+                    tracing::debug!(
+                        target: LOG_TARGET,
+                        "State sync target #{},{block_hash} exists, but coins count unvailable",
+                        target_header.number(),
+                    );
                 }
             }
         }
@@ -650,36 +660,33 @@ where
             }
             chain_sync_actions
         } else if !self.pending_coins_count_requests.is_empty() {
-            let mut actions = vec![];
-            let pending_coins_count_requests =
-                std::mem::take(&mut self.pending_coins_count_requests);
-            for (peer_id, block_hash) in pending_coins_count_requests {
-                actions.push(self.create_subcoin_request_action(
-                    peer_id,
-                    SubNetworkRequest::<B>::GetCoinsCount { block_hash },
-                    network_service,
-                ));
-            }
-            actions
+            std::mem::take(&mut self.pending_coins_count_requests)
+                .into_iter()
+                .map(|(peer_id, block_hash)| {
+                    self.create_subcoin_request_action(
+                        peer_id,
+                        SubNetworkRequest::<B>::GetCoinsCount { block_hash },
+                        network_service,
+                    )
+                })
+                .collect()
         } else if !self.pending_header_requests_by_number.is_empty() {
-            let mut actions = vec![];
-            let pending_header_requests_by_number =
-                std::mem::take(&mut self.pending_header_requests_by_number);
-            for (peer_id, block_number) in pending_header_requests_by_number {
-                actions.push(self.create_subcoin_request_action(
-                    peer_id,
-                    SubNetworkRequest::<B>::GetBlockHeader { block_number },
-                    network_service,
-                ));
-            }
-            actions
+            std::mem::take(&mut self.pending_header_requests_by_number)
+                .into_iter()
+                .map(|(peer_id, block_number)| {
+                    self.create_subcoin_request_action(
+                        peer_id,
+                        SubNetworkRequest::<B>::GetBlockHeader { block_number },
+                        network_service,
+                    )
+                })
+                .collect()
         } else if let Some(ref mut state) = self.state {
             state.actions(network_service).map(Into::into).collect()
         } else {
             return Ok(Vec::new());
         };
 
-        // TODO: Better check for the completion of state sync.
         let state_sync_is_complete = actions
             .iter()
             .any(|action| matches!(action, SyncingAction::ImportBlocks { .. }));
