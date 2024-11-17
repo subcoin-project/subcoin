@@ -62,6 +62,8 @@ impl From<UtxoCsvEntry> for Utxo {
 }
 
 enum UtxoStore {
+    // Initially created for local testing.
+    #[allow(unused)]
     InMem(Vec<Utxo>),
     Csv(PathBuf),
 }
