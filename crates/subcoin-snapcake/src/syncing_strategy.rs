@@ -265,41 +265,52 @@ where
             .iter()
             .position(|x| x.0 == peer_id && x.1 == request)
         {
+            tracing::debug!(target: LOG_TARGET, "============ [on_block_response] blocks: {blocks:?}");
             self.pending_header_requests.remove(index);
 
+            match self.sync_target {
+                TargetBlock::Hash(_) | TargetBlock::Number(_) => {
+                    // Only expect one header in the response.
+                    let block = blocks
+                        .into_iter()
+                        .next()
+                        .expect("Blocks must not be empty; qed");
+                    let target_header = block.header.expect("Header must exist as requested");
+                    let block_hash = target_header.hash();
+                    self.peer_state_sync_target_headers
+                        .insert(peer_id, target_header);
+                    self.pending_coins_count_requests
+                        .push((peer_id, block_hash));
+                }
+                TargetBlock::LastFinalized => {
+                    // TODO: validate_blocks
+                    if blocks.len() < 6 {
+                        tracing::error!(target: LOG_TARGET, "No finalized block in the block response: {blocks:?}");
+                    }
+
+                    if let Some(block) = blocks.into_iter().nth(5) {
+                        let finalized_header =
+                            block.header.expect("Header must exist as requested");
+                        let block_hash = finalized_header.hash();
+                        self.peer_state_sync_target_headers
+                            .insert(peer_id, finalized_header);
+                        self.pending_coins_count_requests
+                            .push((peer_id, block_hash));
+                    }
+                }
+            }
+        } else if matches!(self.sync_target, TargetBlock::Number(_)) {
             // Only expect one header in the response.
-            if matches!(
-                self.sync_target,
-                TargetBlock::Hash(_) | TargetBlock::Number(_)
-            ) {
-                let block = blocks
-                    .into_iter()
-                    .next()
-                    .expect("Blocks must not be empty; qed");
-                let target_header = block.header.expect("Header must exist as requested");
-                let block_hash = target_header.hash();
-                self.peer_state_sync_target_headers
-                    .insert(peer_id, target_header);
-                self.pending_coins_count_requests
-                    .push((peer_id, block_hash));
-                return;
-            }
-
-            // TODO: validate_blocks
-            if blocks.len() < 6 {
-                tracing::error!(target: LOG_TARGET, "No finalized block in the block response: {blocks:?}");
-            }
-
-            if let Some(block) = blocks.into_iter().nth(5) {
-                let finalized_header = block.header.expect("Header must exist as requested");
-                let block_hash = finalized_header.hash();
-                self.peer_state_sync_target_headers
-                    .insert(peer_id, finalized_header);
-                self.pending_coins_count_requests
-                    .push((peer_id, block_hash));
-            }
-        } else {
-            // Recv unexpected block response, drop peer?
+            let block = blocks
+                .into_iter()
+                .next()
+                .expect("Blocks must not be empty; qed");
+            let target_header = block.header.expect("Header must exist as requested");
+            let block_hash = target_header.hash();
+            self.peer_state_sync_target_headers
+                .insert(peer_id, target_header);
+            self.pending_coins_count_requests
+                .push((peer_id, block_hash));
         }
     }
 
@@ -384,25 +395,25 @@ where
             .as_mut()
             .map(|s| s.add_peer(peer_id, best_hash, best_number));
 
-        // Request the target header if specified, otherwise request the last finalized header.
-        let request = match self.sync_target {
+        // Request the header of target block.
+        match self.sync_target {
             TargetBlock::Number(block_number) => {
                 self.pending_header_requests_by_number
                     .push((peer_id, block_number));
-                return;
             }
             TargetBlock::Hash(target_block_hash) => {
-                BlockRequest::<B> {
+                let request = BlockRequest::<B> {
                     id: 0u64,
                     fields: BlockAttributes::HEADER,
                     from: FromBlock::Hash(target_block_hash),
                     direction: Direction::Descending,
                     // Only download the specified header.
                     max: Some(1),
-                }
+                };
+                self.pending_header_requests.push((peer_id, request));
             }
             TargetBlock::LastFinalized => {
-                BlockRequest::<B> {
+                let request = BlockRequest::<B> {
                     id: 0u64,
                     fields: BlockAttributes::HEADER,
                     from: FromBlock::Hash(best_hash),
@@ -410,11 +421,10 @@ where
                     // Attempt to download the most recent finalized block, i.e.,
                     // `peer_best_block - confirmation_depth(6)`.
                     max: Some(6),
-                }
+                };
+                self.pending_header_requests.push((peer_id, request));
             }
-        };
-
-        self.pending_header_requests.push((peer_id, request));
+        }
     }
 
     fn remove_peer(&mut self, peer_id: &PeerId) {
@@ -423,6 +433,10 @@ where
 
         self.peer_best_blocks.remove(peer_id);
         self.pending_header_requests.retain(|(id, _)| id != peer_id);
+        self.pending_header_requests_by_number
+            .retain(|(id, _)| id != peer_id);
+        self.pending_coins_count_requests
+            .retain(|(id, _)| id != peer_id);
     }
 
     fn on_validated_block_announce(
@@ -696,26 +710,22 @@ where
             std::mem::take(&mut self.pending_coins_count_requests)
                 .into_iter()
                 .map(|(peer_id, block_hash)| {
-                    self.create_subcoin_request_action(
-                        peer_id,
+                    let subcoin_request =
                         VersionedNetworkRequest::V1(v1::NetworkRequest::<B>::GetCoinsCount {
                             block_hash,
-                        }),
-                        network_service,
-                    )
+                        });
+                    self.create_subcoin_request_action(peer_id, subcoin_request, network_service)
                 })
                 .collect()
         } else if !self.pending_header_requests_by_number.is_empty() {
             std::mem::take(&mut self.pending_header_requests_by_number)
                 .into_iter()
                 .map(|(peer_id, block_number)| {
-                    self.create_subcoin_request_action(
-                        peer_id,
+                    let subcoin_request =
                         VersionedNetworkRequest::V1(v1::NetworkRequest::<B>::GetBlockHeader {
                             block_number,
-                        }),
-                        network_service,
-                    )
+                        });
+                    self.create_subcoin_request_action(peer_id, subcoin_request, network_service)
                 })
                 .collect()
         } else if let Some(ref mut state) = self.state {

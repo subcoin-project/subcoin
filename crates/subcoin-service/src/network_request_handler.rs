@@ -168,10 +168,10 @@ where
         tracing::debug!(target: LOG_TARGET, "Handling request from {peer:?}: {request:?}");
 
         let response: VersionedNetworkResponse<B> = match request {
-            VersionedNetworkRequest::V1(request) => match self.process_request_v1(request) {
-                Ok(response_v1) => VersionedNetworkResponse::V1(Ok(response_v1)),
-                Err(err) => VersionedNetworkResponse::V1(Err(err.to_string())),
-            },
+            VersionedNetworkRequest::V1(request) => VersionedNetworkResponse::V1(
+                self.process_request_v1(request)
+                    .map_err(|err| err.to_string()),
+            ),
         };
 
         pending_response
