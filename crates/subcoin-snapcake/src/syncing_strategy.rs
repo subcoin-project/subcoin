@@ -441,7 +441,7 @@ where
         + Sync
         + 'static,
 {
-    fn add_peer(&mut self, peer_id: PeerId, best_hash: B::Hash, best_number: NumberFor<B>) {
+    fn add_peer(&mut self, peer_id: PeerId, _best_hash: B::Hash, _best_number: NumberFor<B>) {
         // NOTE: the best block info can be incorrect if the peer is still in the initial sync
         // stage, therefore we start the request best block again.
         self.pending_best_block_requests.push(peer_id);

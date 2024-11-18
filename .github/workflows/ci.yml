@@ -85,3 +85,26 @@ jobs:
 
     - name: Run tests
       run: cargo test --verbose --workspace
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Protoc
+      uses: arduino/setup-protoc@v3
+
+    # Buy some more disk space as we encountered the error `No space left on device`.
+    - name: Free Disk Space (Ubuntu)
+      uses: jlumbroso/free-disk-space@main
+      with:
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: false
+        docker-images: true
+        swap-storage: false
+
+    - name: Build snapcake
+      run: cargo build --package subcoin-snapcake --release
