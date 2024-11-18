@@ -48,6 +48,7 @@ fn test_coins_count() {
 
         assert_eq!(CoinsCount::<Test>::get(), 0);
         Bitcoin::transact(RuntimeOrigin::none(), tx).unwrap();
-        assert_eq!(CoinsCount::<Test>::get(), 4);
+        // 4 outputs in total, with 3 of them are op_return.
+        assert_eq!(CoinsCount::<Test>::get(), 1);
     });
 }
