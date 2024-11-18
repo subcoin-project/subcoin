@@ -1,6 +1,6 @@
 mod dump_txout_set;
 mod get_txout_set_info;
-mod parse_block_outputs;
+mod parse_block;
 mod parse_txout_set;
 
 use crate::cli::subcoin_params::Chain;
@@ -78,8 +78,8 @@ pub enum Blockchain {
     GetTxOutSetInfo(get_txout_set_info::GetTxOutSetInfo),
 
     /// Inspect Bitcoin block.
-    #[command(name = "parse-block-outputs")]
-    ParseBlockOutputs(parse_block_outputs::ParseBlockOutputs),
+    #[command(name = "parse-block")]
+    ParseBlock(parse_block::ParseBlock),
 
     /// Parse the binary UTXO set dumped from Bitcoin Core.
     #[command(name = "parse-txout-set")]
@@ -89,7 +89,7 @@ pub enum Blockchain {
 pub enum BlockchainCmd {
     DumpTxOutSet(dump_txout_set::DumpTxOutSetCmd),
     GetTxOutSetInfo(get_txout_set_info::GetTxOutSetInfoCmd),
-    ParseBlockOutputs(parse_block_outputs::ParseBlockOutputsCmd),
+    ParseBlock(parse_block::ParseBlockCmd),
     ParseTxoutSet(parse_txout_set::ParseTxoutSetCmd),
 }
 
@@ -99,7 +99,7 @@ impl BlockchainCmd {
         match blockchain {
             Blockchain::DumpTxOutSet(cmd) => Self::DumpTxOutSet(cmd.into()),
             Blockchain::GetTxOutSetInfo(cmd) => Self::GetTxOutSetInfo(cmd.into()),
-            Blockchain::ParseBlockOutputs(cmd) => Self::ParseBlockOutputs(cmd.into()),
+            Blockchain::ParseBlock(cmd) => Self::ParseBlock(cmd.into()),
             Blockchain::ParseTxoutSet(cmd) => Self::ParseTxoutSet(cmd.into()),
         }
     }
@@ -108,7 +108,7 @@ impl BlockchainCmd {
         match self {
             Self::DumpTxOutSet(cmd) => cmd.execute(client).await,
             Self::GetTxOutSetInfo(cmd) => cmd.execute(client).await,
-            Self::ParseBlockOutputs(cmd) => cmd.execute(client),
+            Self::ParseBlock(cmd) => cmd.execute(client),
             Self::ParseTxoutSet(cmd) => cmd.execute(),
         }
     }
@@ -119,7 +119,7 @@ impl sc_cli::CliConfiguration for BlockchainCmd {
         match self {
             Self::DumpTxOutSet(cmd) => &cmd.params.shared_params,
             Self::GetTxOutSetInfo(cmd) => &cmd.params.shared_params,
-            Self::ParseBlockOutputs(cmd) => &cmd.params.shared_params,
+            Self::ParseBlock(cmd) => &cmd.params.shared_params,
             Self::ParseTxoutSet(cmd) => &cmd.shared_params,
         }
     }
@@ -132,7 +132,7 @@ impl sc_cli::CliConfiguration for BlockchainCmd {
         match self {
             Self::DumpTxOutSet(cmd) => Some(&cmd.params.database_params),
             Self::GetTxOutSetInfo(cmd) => Some(&cmd.params.database_params),
-            Self::ParseBlockOutputs(cmd) => Some(&cmd.params.database_params),
+            Self::ParseBlock(cmd) => Some(&cmd.params.database_params),
             Self::ParseTxoutSet(_) => None,
         }
     }
