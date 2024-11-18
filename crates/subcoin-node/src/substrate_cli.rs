@@ -68,7 +68,7 @@ mod tests {
 
         assert_eq!(
             format!("{:?}", client.info().genesis_hash),
-            "0x1e8ddda1fe2e1dd1c183d628ee6f04be752aca5eb8d21eeb9898d8678b4b0212"
+            "0xdd71b2519b69d63212d9102fd2171ff9e647a23d7431f9552649bf4902ed7796"
         );
     }
 }
