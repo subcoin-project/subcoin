@@ -73,6 +73,8 @@ pub mod v1 {
     /// Subcoin network specific requests.
     #[derive(Debug, codec::Encode, codec::Decode)]
     pub enum NetworkRequest<Block: BlockT> {
+        /// Requests the best block.
+        GetBestBlock,
         /// Requests the number of total coins at a specified block.
         GetCoinsCount { block_hash: Block::Hash },
         /// Request the header of specified block.
@@ -82,6 +84,10 @@ pub mod v1 {
     /// Subcoin network specific responses.
     #[derive(Debug, codec::Encode, codec::Decode)]
     pub enum NetworkResponse<Block: BlockT> {
+        BestBlock {
+            best_hash: Block::Hash,
+            best_number: NumberFor<Block>,
+        },
         /// The number of total coins at the specified block.
         CoinsCount { block_hash: Block::Hash, count: u64 },
         /// Block header.
@@ -188,6 +194,14 @@ where
         request: v1::NetworkRequest<B>,
     ) -> Result<v1::NetworkResponse<B>, HandleRequestError> {
         match request {
+            v1::NetworkRequest::GetBestBlock => {
+                let info = self.client.info();
+                let response = v1::NetworkResponse::<B>::BestBlock {
+                    best_hash: info.best_hash,
+                    best_number: info.best_number,
+                };
+                Ok(response)
+            }
             v1::NetworkRequest::GetCoinsCount { block_hash } => {
                 let count = self.client.runtime_api().coins_count(block_hash)?;
                 let response = v1::NetworkResponse::<B>::CoinsCount { block_hash, count };

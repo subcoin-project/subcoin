@@ -154,6 +154,8 @@ pub struct SnapcakeSyncingStrategy<B: BlockT, Client> {
     ///
     /// Used as the target block to initiate the state sync.
     peer_state_sync_target_headers: HashMap<PeerId, B::Header>,
+    /// Pending requests for best blocks.
+    pending_best_block_requests: Vec<PeerId>,
     /// Pending requests for headers.
     pending_header_requests: Vec<(PeerId, BlockRequest<B>)>,
     /// Pending requests for headers by block number.
@@ -220,6 +222,7 @@ where
             chain_sync: Some(chain_sync),
             peer_best_blocks: Default::default(),
             peer_state_sync_target_headers: HashMap::new(),
+            pending_best_block_requests: Vec::new(),
             pending_header_requests: Vec::new(),
             pending_header_requests_by_number: Vec::new(),
             pending_coins_count_requests: Vec::new(),
@@ -253,64 +256,66 @@ where
         self.peer_state_sync_target_headers.iter().next()
     }
 
+    // Consume the block response and take the target block specified by the index.
+    fn process_block_response(
+        &mut self,
+        peer_id: PeerId,
+        blocks: Vec<BlockData<B>>,
+        expected_target_block_index: usize,
+    ) {
+        // Only expect one header in the response.
+        let block = blocks
+            .into_iter()
+            .nth(expected_target_block_index)
+            .expect("Blocks must not be empty; qed");
+        let target_header = block.header.expect("Header must exist as requested");
+        let block_hash = target_header.hash();
+        self.peer_state_sync_target_headers
+            .insert(peer_id, target_header);
+        self.pending_coins_count_requests
+            .push((peer_id, block_hash));
+    }
+
     fn on_block_response(
         &mut self,
         peer_id: PeerId,
         request: BlockRequest<B>,
         blocks: Vec<BlockData<B>>,
     ) {
-        // Process the header requests only and ignore any other block response.
-        if let Some(index) = self
-            .pending_header_requests
-            .iter()
-            .position(|x| x.0 == peer_id && x.1 == request)
-        {
-            tracing::debug!(target: LOG_TARGET, "============ [on_block_response] blocks: {blocks:?}");
-            self.pending_header_requests.remove(index);
+        match self.sync_target {
+            TargetBlock::Number(_) => {
+                // Only expect one header in the response.
+                self.process_block_response(peer_id, blocks, 0);
+            }
+            TargetBlock::Hash(_) | TargetBlock::LastFinalized => {
+                // Process the header requests only and ignore any other block response.
+                if let Some(index) = self
+                    .pending_header_requests
+                    .iter()
+                    .position(|x| x.0 == peer_id && x.1 == request)
+                {
+                    tracing::debug!(target: LOG_TARGET, "============ [on_block_response] blocks: {blocks:?}");
+                    self.pending_header_requests.remove(index);
 
-            match self.sync_target {
-                TargetBlock::Hash(_) | TargetBlock::Number(_) => {
-                    // Only expect one header in the response.
-                    let block = blocks
-                        .into_iter()
-                        .next()
-                        .expect("Blocks must not be empty; qed");
-                    let target_header = block.header.expect("Header must exist as requested");
-                    let block_hash = target_header.hash();
-                    self.peer_state_sync_target_headers
-                        .insert(peer_id, target_header);
-                    self.pending_coins_count_requests
-                        .push((peer_id, block_hash));
-                }
-                TargetBlock::LastFinalized => {
-                    // TODO: validate_blocks
-                    if blocks.len() < 6 {
-                        tracing::error!(target: LOG_TARGET, "No finalized block in the block response: {blocks:?}");
-                    }
+                    let target_block_index = if matches!(
+                        self.sync_target,
+                        TargetBlock::LastFinalized
+                    ) {
+                        // TODO: validate_blocks
+                        if blocks.len() < 6 {
+                            tracing::error!(target: LOG_TARGET, "No finalized block in the block response: {blocks:?}");
+                            return;
+                        }
+                        5
+                    } else {
+                        0
+                    };
 
-                    if let Some(block) = blocks.into_iter().nth(5) {
-                        let finalized_header =
-                            block.header.expect("Header must exist as requested");
-                        let block_hash = finalized_header.hash();
-                        self.peer_state_sync_target_headers
-                            .insert(peer_id, finalized_header);
-                        self.pending_coins_count_requests
-                            .push((peer_id, block_hash));
-                    }
+                    self.process_block_response(peer_id, blocks, target_block_index);
+                } else {
+                    // Unexpected block response.
                 }
             }
-        } else if matches!(self.sync_target, TargetBlock::Number(_)) {
-            // Only expect one header in the response.
-            let block = blocks
-                .into_iter()
-                .next()
-                .expect("Blocks must not be empty; qed");
-            let target_header = block.header.expect("Header must exist as requested");
-            let block_hash = target_header.hash();
-            self.peer_state_sync_target_headers
-                .insert(peer_id, target_header);
-            self.pending_coins_count_requests
-                .push((peer_id, block_hash));
         }
     }
 
@@ -328,6 +333,12 @@ where
         };
 
         match response {
+            v1::NetworkResponse::<B>::BestBlock {
+                best_hash,
+                best_number,
+            } => {
+                self.on_peer_best_block(peer_id, best_hash, best_number);
+            }
             v1::NetworkResponse::<B>::CoinsCount { block_hash, count } => {
                 self.coins_count.insert(block_hash, count);
             }
@@ -369,22 +380,13 @@ where
             remove_obsolete: false,
         }
     }
-}
 
-impl<B: BlockT, Client> SyncingStrategy<B> for SnapcakeSyncingStrategy<B, Client>
-where
-    B: BlockT,
-    Client: HeaderBackend<B>
-        + BlockBackend<B>
-        + HeaderMetadata<B, Error = sp_blockchain::Error>
-        + ProofProvider<B>
-        + Send
-        + Sync
-        + 'static,
-{
-    fn add_peer(&mut self, peer_id: PeerId, best_hash: B::Hash, best_number: NumberFor<B>) {
-        // NOTE: the best block info can be incorrect if the peer is still in the initial sync
-        // stage.
+    fn on_peer_best_block(
+        &mut self,
+        peer_id: PeerId,
+        best_hash: B::Hash,
+        best_number: NumberFor<B>,
+    ) {
         self.peer_best_blocks
             .insert(peer_id, (best_hash, best_number));
 
@@ -425,6 +427,24 @@ where
                 self.pending_header_requests.push((peer_id, request));
             }
         }
+    }
+}
+
+impl<B: BlockT, Client> SyncingStrategy<B> for SnapcakeSyncingStrategy<B, Client>
+where
+    B: BlockT,
+    Client: HeaderBackend<B>
+        + BlockBackend<B>
+        + HeaderMetadata<B, Error = sp_blockchain::Error>
+        + ProofProvider<B>
+        + Send
+        + Sync
+        + 'static,
+{
+    fn add_peer(&mut self, peer_id: PeerId, best_hash: B::Hash, best_number: NumberFor<B>) {
+        // NOTE: the best block info can be incorrect if the peer is still in the initial sync
+        // stage, therefore we start the request best block again.
+        self.pending_best_block_requests.push(peer_id);
     }
 
     fn remove_peer(&mut self, peer_id: &PeerId) {
@@ -695,7 +715,16 @@ where
         }
 
         // We only handle the actions of requesting best headers and the actions from state sync.
-        let actions: Vec<_> = if !self.pending_header_requests.is_empty() {
+        let actions: Vec<_> = if !self.pending_best_block_requests.is_empty() {
+            std::mem::take(&mut self.pending_best_block_requests)
+                .into_iter()
+                .map(|peer_id| {
+                    let subcoin_request =
+                        VersionedNetworkRequest::V1(v1::NetworkRequest::<B>::GetBestBlock);
+                    self.create_subcoin_request_action(peer_id, subcoin_request, network_service)
+                })
+                .collect()
+        } else if !self.pending_header_requests.is_empty() {
             let mut chain_sync_actions = Vec::with_capacity(self.pending_header_requests.len());
             for (peer_id, request) in self.pending_header_requests.clone() {
                 chain_sync_actions.push(
