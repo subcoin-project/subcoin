@@ -173,6 +173,31 @@
 <a href="#173" id="173">173</a>
 <a href="#174" id="174">174</a>
 <a href="#175" id="175">175</a>
+<a href="#176" id="176">176</a>
+<a href="#177" id="177">177</a>
+<a href="#178" id="178">178</a>
+<a href="#179" id="179">179</a>
+<a href="#180" id="180">180</a>
+<a href="#181" id="181">181</a>
+<a href="#182" id="182">182</a>
+<a href="#183" id="183">183</a>
+<a href="#184" id="184">184</a>
+<a href="#185" id="185">185</a>
+<a href="#186" id="186">186</a>
+<a href="#187" id="187">187</a>
+<a href="#188" id="188">188</a>
+<a href="#189" id="189">189</a>
+<a href="#190" id="190">190</a>
+<a href="#191" id="191">191</a>
+<a href="#192" id="192">192</a>
+<a href="#193" id="193">193</a>
+<a href="#194" id="194">194</a>
+<a href="#195" id="195">195</a>
+<a href="#196" id="196">196</a>
+<a href="#197" id="197">197</a>
+<a href="#198" id="198">198</a>
+<a href="#199" id="199">199</a>
+<a href="#200" id="200">200</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # Bitcoin Pallet
 //!
 //! This pallet is designed to be minimalist, containing only one storage item for maintaining
@@ -292,30 +317,55 @@
 }
 
 <span class="kw">impl</span>&lt;T: Config&gt; Pallet&lt;T&gt; {
+    <span class="kw">pub fn </span>coins_count() -&gt; u64 {
+        CoinsCount::&lt;T&gt;::get()
+    }
+
     <span class="kw">fn </span>process_bitcoin_transaction(tx: bitcoin::Transaction) {
         <span class="kw">let </span>txid = tx.compute_txid();
         <span class="kw">let </span>is_coinbase = tx.is_coinbase();
-
         <span class="kw">let </span>height = frame_system::Pallet::&lt;T&gt;::current_block_number();
 
-        <span class="kw">let </span>new_coins = tx.output.into_iter().enumerate().map(|(index, txout)| {
-            <span class="kw">let </span>out_point = bitcoin::OutPoint {
-                txid,
-                vout: index <span class="kw">as </span>u32,
-            };
-            <span class="kw">let </span>coin = Coin {
-                is_coinbase,
-                amount: txout.value.to_sat(),
-                script_pubkey: txout.script_pubkey.into_bytes(),
-                height: height.saturated_into(),
-            };
-            (out_point, coin)
-        });
+        <span class="comment">// Check if transaction falls under the BIP30 exception heights
+        </span><span class="kw">const </span>BIP30_EXCEPTION_HEIGHTS: <span class="kw-2">&amp;</span>[u32] = <span class="kw-2">&amp;</span>[<span class="number">91722</span>, <span class="number">91812</span>];
+        <span class="kw">if </span>is_coinbase &amp;&amp; BIP30_EXCEPTION_HEIGHTS.contains(<span class="kw-2">&amp;</span>height.saturated_into()) {
+            <span class="comment">// Skip adding the outputs to UTXO set if it is a BIP30 exception.
+            </span><span class="kw">return</span>;
+        }
+
+        <span class="comment">// Collect all new coins to be added to the UTXO set, skipping OP_RETURN outputs.
+        </span><span class="kw">let </span>new_coins: Vec&lt;<span class="kw">_</span>&gt; = tx
+            .output
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, txout)| {
+                <span class="kw">let </span>out_point = bitcoin::OutPoint {
+                    txid,
+                    vout: index <span class="kw">as </span>u32,
+                };
+
+                <span class="comment">// OP_RETURN outputs are not added to the UTXO set.
+                //
+                // TODO: handle OP_RETURN data properly as they are super valuable.
+                </span><span class="kw">if </span>txout.script_pubkey.is_op_return() {
+                    <span class="prelude-val">None
+                </span>} <span class="kw">else </span>{
+                    <span class="kw">let </span>coin = Coin {
+                        is_coinbase,
+                        amount: txout.value.to_sat(),
+                        script_pubkey: txout.script_pubkey.into_bytes(),
+                        height: height.saturated_into(),
+                    };
+                    <span class="prelude-val">Some</span>((out_point, coin))
+                }
+            })
+            .collect();
 
         <span class="kw">let </span>num_created = new_coins.len();
 
         <span class="kw">if </span>is_coinbase {
-            <span class="kw">for </span>(out_point, coin) <span class="kw">in </span>new_coins {
+            <span class="comment">// Insert new UTXOs for coinbase transaction.
+            </span><span class="kw">for </span>(out_point, coin) <span class="kw">in </span>new_coins {
                 <span class="kw">let </span>OutPoint { txid, output_index } = OutPoint::from(out_point);
                 Coins::&lt;T&gt;::insert(txid, output_index, coin);
             }
@@ -327,7 +377,7 @@
 
         <span class="kw">let </span>num_consumed = tx.input.len();
 
-        <span class="comment">// Process inputs.
+        <span class="comment">// Process the inputs to remove consumed UTXOs.
         </span><span class="kw">for </span>input <span class="kw">in </span>tx.input {
             <span class="kw">let </span>previous_output = input.previous_output;
             <span class="kw">let </span>OutPoint { txid, output_index } = OutPoint::from(previous_output);
@@ -337,7 +387,7 @@
             }
         }
 
-        <span class="comment">// Process outputs.
+        <span class="comment">// Insert new UTXOs for non-coinbase transaction.
         </span><span class="kw">for </span>(out_point, coin) <span class="kw">in </span>new_coins {
             <span class="kw">let </span>OutPoint { txid, output_index } = OutPoint::from(out_point);
             Coins::&lt;T&gt;::insert(txid, output_index, coin);

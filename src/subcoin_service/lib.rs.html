@@ -465,6 +465,31 @@
 <a href="#465" id="465">465</a>
 <a href="#466" id="466">466</a>
 <a href="#467" id="467">467</a>
+<a href="#468" id="468">468</a>
+<a href="#469" id="469">469</a>
+<a href="#470" id="470">470</a>
+<a href="#471" id="471">471</a>
+<a href="#472" id="472">472</a>
+<a href="#473" id="473">473</a>
+<a href="#474" id="474">474</a>
+<a href="#475" id="475">475</a>
+<a href="#476" id="476">476</a>
+<a href="#477" id="477">477</a>
+<a href="#478" id="478">478</a>
+<a href="#479" id="479">479</a>
+<a href="#480" id="480">480</a>
+<a href="#481" id="481">481</a>
+<a href="#482" id="482">482</a>
+<a href="#483" id="483">483</a>
+<a href="#484" id="484">484</a>
+<a href="#485" id="485">485</a>
+<a href="#486" id="486">486</a>
+<a href="#487" id="487">487</a>
+<a href="#488" id="488">488</a>
+<a href="#489" id="489">489</a>
+<a href="#490" id="490">490</a>
+<a href="#491" id="491">491</a>
+<a href="#492" id="492">492</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! Subcoin service implementation. Specialized wrapper over substrate service.
 
 </span><span class="attr">#![allow(deprecated)]
@@ -472,11 +497,12 @@
 </span><span class="kw">pub mod </span>chain_spec;
 <span class="kw">mod </span>finalizer;
 <span class="kw">mod </span>genesis_block_builder;
+<span class="kw">pub mod </span>network_request_handler;
 <span class="kw">mod </span>transaction_adapter;
+<span class="kw">pub mod </span>transaction_pool;
 
 <span class="kw">use </span>bitcoin::hashes::Hash;
 <span class="kw">use </span>futures::FutureExt;
-<span class="kw">use </span>genesis_block_builder::GenesisBlockBuilder;
 <span class="kw">use </span>sc_client_api::{AuxStore, HeaderBackend};
 <span class="kw">use </span>sc_consensus::import_queue::BasicQueue;
 <span class="kw">use </span>sc_consensus_nakamoto::SubstrateImportQueueVerifier;
@@ -498,6 +524,7 @@
 <span class="kw">use </span>subcoin_runtime::RuntimeApi;
 
 <span class="kw">pub use </span>finalizer::SubcoinFinalizer;
+<span class="kw">pub use </span>genesis_block_builder::GenesisBlockBuilder;
 <span class="kw">pub use </span>transaction_adapter::TransactionAdapter;
 
 <span class="doccomment">/// This is a specialization of the general Substrate ChainSpec type.
@@ -579,7 +606,11 @@
     }
 }
 
-<span class="kw">fn </span>initialize_genesis_block_hash_mapping&lt;Block: BlockT, Client: HeaderBackend&lt;Block&gt; + AuxStore&gt;(
+<span class="doccomment">/// Insert the genesis block hash mapping into aux-db.
+</span><span class="kw">pub fn </span>initialize_genesis_block_hash_mapping&lt;
+    Block: BlockT,
+    Client: HeaderBackend&lt;Block&gt; + AuxStore,
+&gt;(
     client: <span class="kw-2">&amp;</span>Client,
     bitcoin_network: bitcoin::Network,
 ) {
@@ -657,10 +688,10 @@
     <span class="comment">// TODO: frame_benchmarking_cli pulls in rocksdb due to its dep
     // cumulus-client-parachain-inherent.
     // let maybe_hwbench = (!no_hardware_benchmarks)
-    // .then_some(database_path.as_ref().map(|db_path| {
+    // .then(|| {database_path.as_ref().map(|db_path| {
     // let _ = std::fs::create_dir_all(db_path);
     // sc_sysinfo::gather_hwbench(Some(db_path), &amp;frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE)
-    // }))
+    // })})
     // .flatten();
 
     // if let Some(hwbench) = maybe_hwbench {
@@ -720,11 +751,30 @@
 <span class="kw">where
     </span>N: sc_network::NetworkBackend&lt;Block, &lt;Block <span class="kw">as </span>BlockT&gt;::Hash&gt;,
 {
-    <span class="kw">let </span>net_config = sc_network::config::FullNetworkConfiguration::&lt;
+    <span class="kw">let </span><span class="kw-2">mut </span>net_config = sc_network::config::FullNetworkConfiguration::&lt;
         Block,
         &lt;Block <span class="kw">as </span>BlockT&gt;::Hash,
         N,
     &gt;::new(<span class="kw-2">&amp;</span>config.network, config.prometheus_registry().cloned());
+
+    <span class="kw">let </span>network_request_protocol_config = {
+        <span class="comment">// Allow both outgoing and incoming requests.
+        </span><span class="kw">let </span>(handler, protocol_config) = network_request_handler::NetworkRequestHandler::new::&lt;N&gt;(
+            <span class="kw-2">&amp;</span>config.protocol_id(),
+            config.chain_spec.fork_id(),
+            client.clone(),
+            <span class="number">100</span>,
+        );
+        task_manager.spawn_handle().spawn(
+            <span class="string">"subcoin-network-request-handler"</span>,
+            <span class="prelude-val">Some</span>(<span class="string">"networking"</span>),
+            handler.run(),
+        );
+        protocol_config
+    };
+
+    net_config.add_request_response_protocol(network_request_protocol_config);
+
     <span class="kw">let </span>metrics = N::register_notification_metrics(config.prometheus_registry());
 
     <span class="kw">let </span>transaction_pool = Arc::from(

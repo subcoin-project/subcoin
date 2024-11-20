@@ -154,9 +154,6 @@
 <a href="#154" id="154">154</a>
 <a href="#155" id="155">155</a>
 <a href="#156" id="156">156</a>
-<a href="#157" id="157">157</a>
-<a href="#158" id="158">158</a>
-<a href="#159" id="159">159</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # Subcoin Informant
 //!
 //! This crate is a fork of `sc-informant` for displaying the Subcoin network sync progress.
@@ -173,10 +170,9 @@
 <span class="kw">use </span>std::collections::VecDeque;
 <span class="kw">use </span>std::fmt::Display;
 <span class="kw">use </span>std::ops::Deref;
-<span class="kw">use </span>std::sync::atomic::{AtomicBool, Ordering};
 <span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>std::time::Duration;
-<span class="kw">use </span>subcoin_network::NetworkHandle;
+<span class="kw">use </span>subcoin_network::NetworkApi;
 <span class="kw">use </span>subcoin_primitives::BackendExt;
 <span class="kw">use </span>tracing::{debug, info, trace};
 
@@ -201,7 +197,7 @@
 }
 
 <span class="doccomment">/// Builds the informant and returns a `Future` that drives the informant.
-</span><span class="kw">pub async fn </span>build&lt;B: BlockT, C&gt;(client: Arc&lt;C&gt;, network: NetworkHandle)
+</span><span class="kw">pub async fn </span>build&lt;B: BlockT, C&gt;(client: Arc&lt;C&gt;, network_api: Arc&lt;<span class="kw">dyn </span>NetworkApi&gt;)
 <span class="kw">where
     </span>C: UsageProvider&lt;B&gt; + HeaderMetadata&lt;B&gt; + BlockchainEvents&lt;B&gt; + HeaderBackend&lt;B&gt; + AuxStore,
     &lt;C <span class="kw">as </span>HeaderMetadata&lt;B&gt;&gt;::Error: Display,
@@ -211,7 +207,7 @@
     <span class="kw">let </span>net_client = client.clone();
 
     <span class="kw">let </span>display_notifications = interval(Duration::from_millis(<span class="number">5000</span>))
-        .filter_map(|<span class="kw">_</span>| <span class="kw">async </span>{ network.status().<span class="kw">await </span>})
+        .filter_map(|<span class="kw">_</span>| <span class="kw">async </span>{ network_api.status().<span class="kw">await </span>})
         .for_each({
             <span class="kw">move </span>|net_status| {
                 <span class="kw">let </span>info = net_client.usage_info();
@@ -243,15 +239,13 @@
             }
         });
 
-    <span class="kw">let </span>is_major_syncing = network.is_major_syncing();
-
     <span class="macro">futures::select!</span> {
         () = display_notifications.fuse() =&gt; (),
-        () = display_block_import(client, is_major_syncing).fuse() =&gt; (),
+        () = display_block_import(client, <span class="kw-2">&amp;</span>network_api).fuse() =&gt; (),
     };
 }
 
-<span class="kw">async fn </span>display_block_import&lt;B: BlockT, C&gt;(client: Arc&lt;C&gt;, is_major_syncing: Arc&lt;AtomicBool&gt;)
+<span class="kw">async fn </span>display_block_import&lt;B: BlockT, C&gt;(client: Arc&lt;C&gt;, network_api: <span class="kw-2">&amp;</span>Arc&lt;<span class="kw">dyn </span>NetworkApi&gt;)
 <span class="kw">where
     </span>C: UsageProvider&lt;B&gt; + HeaderMetadata&lt;B&gt; + BlockchainEvents&lt;B&gt;,
     &lt;C <span class="kw">as </span>HeaderMetadata&lt;B&gt;&gt;::Error: Display,
@@ -288,7 +282,7 @@
             }
         }
 
-        <span class="kw">if </span>is_major_syncing.load(Ordering::Relaxed) {
+        <span class="kw">if </span>network_api.is_major_syncing() {
             <span class="kw">continue</span>;
         }
 

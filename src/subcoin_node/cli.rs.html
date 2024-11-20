@@ -271,8 +271,6 @@
 <a href="#271" id="271">271</a>
 <a href="#272" id="272">272</a>
 <a href="#273" id="273">273</a>
-<a href="#274" id="274">274</a>
-<a href="#275" id="275">275</a>
 </pre></div><pre class="rust"><code><span class="kw">pub mod </span>subcoin_params;
 
 <span class="kw">use </span><span class="kw">crate</span>::commands::blockchain::{Blockchain, BlockchainCmd};
@@ -388,13 +386,11 @@
                 spawn_handle.spawn(<span class="string">"finalizer"</span>, <span class="prelude-val">None</span>, {
                     <span class="kw">let </span>client = client.clone();
                     <span class="kw">let </span>spawn_handle = task_manager.spawn_handle();
-                    <span class="comment">// Assume the chain is major syncing.
-                    </span><span class="kw">let </span>is_major_syncing = Arc::new(<span class="bool-val">true</span>.into());
                     subcoin_service::SubcoinFinalizer::new(
                         client,
                         spawn_handle,
                         CONFIRMATION_DEPTH,
-                        is_major_syncing,
+                        Arc::new(subcoin_network::OfflineSync),
                         <span class="prelude-val">None</span>,
                     )
                     .run()

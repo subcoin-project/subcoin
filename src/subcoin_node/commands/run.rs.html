@@ -355,6 +355,34 @@
 <a href="#355" id="355">355</a>
 <a href="#356" id="356">356</a>
 <a href="#357" id="357">357</a>
+<a href="#358" id="358">358</a>
+<a href="#359" id="359">359</a>
+<a href="#360" id="360">360</a>
+<a href="#361" id="361">361</a>
+<a href="#362" id="362">362</a>
+<a href="#363" id="363">363</a>
+<a href="#364" id="364">364</a>
+<a href="#365" id="365">365</a>
+<a href="#366" id="366">366</a>
+<a href="#367" id="367">367</a>
+<a href="#368" id="368">368</a>
+<a href="#369" id="369">369</a>
+<a href="#370" id="370">370</a>
+<a href="#371" id="371">371</a>
+<a href="#372" id="372">372</a>
+<a href="#373" id="373">373</a>
+<a href="#374" id="374">374</a>
+<a href="#375" id="375">375</a>
+<a href="#376" id="376">376</a>
+<a href="#377" id="377">377</a>
+<a href="#378" id="378">378</a>
+<a href="#379" id="379">379</a>
+<a href="#380" id="380">380</a>
+<a href="#381" id="381">381</a>
+<a href="#382" id="382">382</a>
+<a href="#383" id="383">383</a>
+<a href="#384" id="384">384</a>
+<a href="#385" id="385">385</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::subcoin_params::{CommonParams, NetworkParams};
 <span class="kw">use </span>clap::Parser;
 <span class="kw">use </span>sc_cli::{
@@ -367,8 +395,29 @@
 <span class="kw">use </span>sc_service::{BasePath, Configuration, TaskManager};
 <span class="kw">use </span>std::num::NonZeroU32;
 <span class="kw">use </span>std::sync::Arc;
-<span class="kw">use </span>subcoin_network::{BlockSyncOption, SyncStrategy};
+<span class="kw">use </span>subcoin_network::{BlockSyncOption, NetworkApi, SyncStrategy};
 <span class="kw">use </span>subcoin_primitives::CONFIRMATION_DEPTH;
+
+<span class="doccomment">/// Options for configuring the Subcoin network behavior.
+</span><span class="attr">#[derive(Copy, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, clap::ValueEnum)]
+</span><span class="kw">pub enum </span>SubcoinNetworkOption {
+    <span class="doccomment">/// Fully enables the Subcoin network, including block sync.
+    </span><span class="attr">#[default]
+    </span>Full,
+    <span class="doccomment">/// Do no run Subcoin network at all.
+    </span><span class="prelude-val">None</span>,
+    <span class="doccomment">/// Enables the Subcoin network with block sync disabled.
+    ///
+    /// This option allows block sync to occur exclusively over the Substrate network,
+    /// while retaining partial Bitcoin P2P functionality (e.g., broadcasting Bitcoin transactions).
+    </span>NoBlockSync,
+}
+
+<span class="kw">impl </span>SubcoinNetworkOption {
+    <span class="kw">fn </span>no_block_sync(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+        <span class="macro">matches!</span>(<span class="self">self</span>, <span class="self">Self</span>::None | <span class="self">Self</span>::NoBlockSync)
+    }
+}
 
 <span class="doccomment">/// The `run` command used to start a Subcoin node.
 </span><span class="attr">#[derive(Debug, Clone, Parser)]
@@ -381,9 +430,9 @@
     </span><span class="attr">#[clap(long)]
     </span><span class="kw">pub </span>no_finalizer: bool,
 
-    <span class="doccomment">/// Disable the block sync from Bitcoin P2P network.
-    </span><span class="attr">#[clap(long)]
-    </span><span class="kw">pub </span>disable_bitcoin_block_sync: bool,
+    <span class="doccomment">/// Specify the Subcoin network behavior.
+    </span><span class="attr">#[clap(long, default_value = <span class="string">"full"</span>)]
+    </span><span class="kw">pub </span>subcoin_network: SubcoinNetworkOption,
 
     <span class="doccomment">/// Disable automatic hardware benchmarks.
     ///
@@ -456,10 +505,9 @@
 
         <span class="comment">// The block sync from bitcoin P2P network will be temporarily disabled
         // if the fast sync is enabled.
-        </span><span class="kw">match </span>(<span class="self">self</span>.disable_bitcoin_block_sync, fast_sync_enabled) {
-            (<span class="bool-val">true</span>, <span class="bool-val">true</span>) =&gt; BlockSyncOption::Off,
+        </span><span class="kw">match </span>(<span class="self">self</span>.subcoin_network.no_block_sync(), fast_sync_enabled) {
+            (<span class="bool-val">true</span>, <span class="kw">_</span>) =&gt; BlockSyncOption::Off,
             (<span class="bool-val">false</span>, <span class="bool-val">true</span>) =&gt; BlockSyncOption::PausedUntilFastSync,
-            (<span class="bool-val">true</span>, <span class="bool-val">false</span>) =&gt; BlockSyncOption::Off,
             (<span class="bool-val">false</span>, <span class="bool-val">false</span>) =&gt; BlockSyncOption::AlwaysOn,
         }
     }
@@ -561,16 +609,24 @@
 
         <span class="kw">let </span>subcoin_network_config = run.subcoin_network_config(bitcoin_network);
 
-        <span class="kw">let </span>subcoin_network_handle = subcoin_network::build_network(
-            client.clone(),
-            subcoin_network_config,
-            import_queue,
-            <span class="kw-2">&amp;</span>task_manager,
-            config.prometheus_registry().cloned(),
-            <span class="prelude-val">Some</span>(substrate_sync_service.clone()),
-        )
-        .<span class="kw">await
-        </span>.map_err(|err| sc_cli::Error::Application(Box::new(err)))<span class="question-mark">?</span>;
+        <span class="kw">let </span>network_api: Arc&lt;<span class="kw">dyn </span>NetworkApi&gt; =
+            <span class="kw">if </span><span class="macro">matches!</span>(run.subcoin_network, SubcoinNetworkOption::None) {
+                task_manager.keep_alive(import_queue);
+                Arc::new(subcoin_network::NoNetwork)
+            } <span class="kw">else </span>{
+                <span class="kw">let </span>network_handle = subcoin_network::build_network(
+                    client.clone(),
+                    subcoin_network_config,
+                    import_queue,
+                    <span class="kw-2">&amp;</span>task_manager,
+                    config.prometheus_registry().cloned(),
+                    <span class="prelude-val">Some</span>(substrate_sync_service.clone()),
+                )
+                .<span class="kw">await
+                </span>.map_err(|err| sc_cli::Error::Application(Box::new(err)))<span class="question-mark">?</span>;
+
+                Arc::new(network_handle)
+            };
 
         <span class="comment">// Start JSON-RPC server.
         </span><span class="kw">let </span>gen_rpc_module = || {
@@ -588,7 +644,7 @@
                 client.clone(),
                 task_manager.spawn_handle(),
                 system_rpc_tx,
-                subcoin_network_handle.clone(),
+                network_api.clone(),
             )
         };
 
@@ -607,7 +663,7 @@
                     client.clone(),
                     spawn_handle.clone(),
                     CONFIRMATION_DEPTH,
-                    subcoin_network_handle.is_major_syncing(),
+                    network_api.clone(),
                     <span class="prelude-val">Some</span>(substrate_sync_service),
                 )
                 .run()
@@ -618,7 +674,7 @@
         </span>spawn_handle.spawn(
             <span class="string">"subcoin-informant"</span>,
             <span class="prelude-val">None</span>,
-            subcoin_informant::build(client.clone(), subcoin_network_handle),
+            subcoin_informant::build(client.clone(), network_api),
         );
 
         <span class="prelude-val">Ok</span>(task_manager)

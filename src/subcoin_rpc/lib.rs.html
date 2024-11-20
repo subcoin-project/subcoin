@@ -66,7 +66,7 @@
 <span class="kw">use </span>sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 <span class="kw">use </span>sp_runtime::traits::Block <span class="kw">as </span>BlockT;
 <span class="kw">use </span>std::sync::Arc;
-<span class="kw">use </span>subcoin_network::NetworkHandle;
+<span class="kw">use </span>subcoin_network::NetworkApi;
 <span class="kw">use </span>subcoin_primitives::BitcoinTransactionAdapter;
 
 <span class="doccomment">/// Subcoin RPC.
@@ -86,11 +86,11 @@
     TransactionAdapter: BitcoinTransactionAdapter&lt;Block&gt; + Send + Sync + <span class="lifetime">'static</span>,
 {
     <span class="doccomment">/// Creates a new instance of [`SubcoinRpc`].
-    </span><span class="kw">pub fn </span>new(client: Arc&lt;Client&gt;, network_handle: NetworkHandle) -&gt; <span class="self">Self </span>{
+    </span><span class="kw">pub fn </span>new(client: Arc&lt;Client&gt;, network_api: Arc&lt;<span class="kw">dyn </span>NetworkApi&gt;) -&gt; <span class="self">Self </span>{
         <span class="self">Self </span>{
             blockchain: Blockchain::&lt;<span class="kw">_</span>, <span class="kw">_</span>, TransactionAdapter&gt;::new(client.clone()),
-            raw_transactions: RawTransactions::new(client.clone(), network_handle.clone()),
-            network: Network::new(client, network_handle),
+            raw_transactions: RawTransactions::new(client.clone(), network_api.clone()),
+            network: Network::new(client, network_api),
         }
     }
 

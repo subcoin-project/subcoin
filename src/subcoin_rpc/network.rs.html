@@ -115,7 +115,7 @@
 <span class="kw">use </span>std::collections::BTreeMap;
 <span class="kw">use </span>std::marker::PhantomData;
 <span class="kw">use </span>std::sync::Arc;
-<span class="kw">use </span>subcoin_network::{NetworkHandle, NetworkStatus, PeerSync, PeerSyncState};
+<span class="kw">use </span>subcoin_network::{NetworkApi, NetworkStatus, PeerSync, PeerSyncState};
 
 <span class="doccomment">/// The state of syncing between a Peer and ourselves.
 </span><span class="attr">#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize, Hash)]
@@ -153,7 +153,7 @@
 </span><span class="kw">pub struct </span>Network&lt;Block, Client&gt; {
     <span class="attr">#[allow(unused)]
     </span>client: Arc&lt;Client&gt;,
-    network_handle: NetworkHandle,
+    network_api: Arc&lt;<span class="kw">dyn </span>NetworkApi&gt;,
     _phantom: PhantomData&lt;Block&gt;,
 }
 
@@ -163,10 +163,10 @@
     Client: HeaderBackend&lt;Block&gt; + BlockBackend&lt;Block&gt; + AuxStore + <span class="lifetime">'static</span>,
 {
     <span class="doccomment">/// Constructs a new instance of [`Network`].
-    </span><span class="kw">pub fn </span>new(client: Arc&lt;Client&gt;, network_handle: NetworkHandle) -&gt; <span class="self">Self </span>{
+    </span><span class="kw">pub fn </span>new(client: Arc&lt;Client&gt;, network_api: Arc&lt;<span class="kw">dyn </span>NetworkApi&gt;) -&gt; <span class="self">Self </span>{
         <span class="self">Self </span>{
             client,
-            network_handle,
+            network_api,
             _phantom: Default::default(),
         }
     }
@@ -179,7 +179,7 @@
     Client: HeaderBackend&lt;Block&gt; + BlockBackend&lt;Block&gt; + AuxStore + <span class="lifetime">'static</span>,
 {
     <span class="kw">async fn </span>network_sync_peers(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;SyncPeers, Error&gt; {
-        <span class="kw">let </span><span class="kw-2">mut </span>sync_peers = <span class="self">self</span>.network_handle.sync_peers().<span class="kw">await</span>;
+        <span class="kw">let </span><span class="kw-2">mut </span>sync_peers = <span class="self">self</span>.network_api.sync_peers().<span class="kw">await</span>;
 
         <span class="kw">let </span><span class="kw-2">mut </span>available = <span class="number">0</span>;
         <span class="kw">let </span><span class="kw-2">mut </span>deprioritized = <span class="number">0</span>;
@@ -213,7 +213,7 @@
     }
 
     <span class="kw">async fn </span>network_status(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;NetworkStatus&gt;, Error&gt; {
-        <span class="prelude-val">Ok</span>(<span class="self">self</span>.network_handle.status().<span class="kw">await</span>)
+        <span class="prelude-val">Ok</span>(<span class="self">self</span>.network_api.status().<span class="kw">await</span>)
     }
 }
 </code></pre></div></section></main></body></html>

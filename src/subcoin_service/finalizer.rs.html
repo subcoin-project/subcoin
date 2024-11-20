@@ -209,6 +209,7 @@
 <a href="#209" id="209">209</a>
 <a href="#210" id="210">210</a>
 <a href="#211" id="211">211</a>
+<a href="#212" id="212">212</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>futures::StreamExt;
 <span class="kw">use </span>parking_lot::Mutex;
 <span class="kw">use </span>sc_client_api::{BlockchainEvents, Finalizer, HeaderBackend};
@@ -219,6 +220,7 @@
 <span class="kw">use </span>std::marker::PhantomData;
 <span class="kw">use </span>std::sync::atomic::{AtomicBool, Ordering};
 <span class="kw">use </span>std::sync::Arc;
+<span class="kw">use </span>subcoin_network::NetworkApi;
 
 <span class="kw">type </span>BlockInfo&lt;Block&gt; = (NumberFor&lt;Block&gt;, &lt;Block <span class="kw">as </span>BlockT&gt;::Hash);
 
@@ -227,7 +229,7 @@
     client: Arc&lt;Client&gt;,
     spawn_handle: SpawnTaskHandle,
     confirmation_depth: u32,
-    subcoin_networking_is_major_syncing: Arc&lt;AtomicBool&gt;,
+    subcoin_network_api: Arc&lt;<span class="kw">dyn </span>NetworkApi&gt;,
     substrate_sync_service: <span class="prelude-ty">Option</span>&lt;Arc&lt;SyncingService&lt;Block&gt;&gt;&gt;,
     _phantom: PhantomData&lt;Backend&gt;,
 }
@@ -243,14 +245,14 @@
         client: Arc&lt;Client&gt;,
         spawn_handle: SpawnTaskHandle,
         confirmation_depth: u32,
-        subcoin_networking_is_major_syncing: Arc&lt;AtomicBool&gt;,
+        subcoin_network_api: Arc&lt;<span class="kw">dyn </span>NetworkApi&gt;,
         substrate_sync_service: <span class="prelude-ty">Option</span>&lt;Arc&lt;SyncingService&lt;Block&gt;&gt;&gt;,
     ) -&gt; <span class="self">Self </span>{
         <span class="self">Self </span>{
             client,
             spawn_handle,
             confirmation_depth,
-            subcoin_networking_is_major_syncing,
+            subcoin_network_api,
             substrate_sync_service,
             _phantom: Default::default(),
         }
@@ -262,7 +264,7 @@
             client,
             spawn_handle,
             confirmation_depth,
-            subcoin_networking_is_major_syncing,
+            subcoin_network_api,
             substrate_sync_service,
             _phantom,
         } = <span class="self">self</span>;
@@ -340,7 +342,7 @@
             }
 
             <span class="kw">let </span>client = client.clone();
-            <span class="kw">let </span>subcoin_networking_is_major_syncing = subcoin_networking_is_major_syncing.clone();
+            <span class="kw">let </span>subcoin_network_api = subcoin_network_api.clone();
             <span class="kw">let </span>substrate_sync_service = substrate_sync_service.clone();
             <span class="kw">let </span>finalizer_worker_is_busy = finalizer_worker_is_busy.clone();
             <span class="kw">let </span>cached_block_to_finalize = cached_block_to_finalize.clone();
@@ -355,7 +357,7 @@
                         <span class="kw-2">&amp;</span>client,
                         confirmed_block_number,
                         confirmed_block_hash,
-                        <span class="kw-2">&amp;</span>subcoin_networking_is_major_syncing,
+                        <span class="kw-2">&amp;</span>subcoin_network_api,
                         substrate_sync_service.as_ref(),
                     );
 
@@ -370,7 +372,7 @@
                             <span class="kw-2">&amp;</span>client,
                             cached_block_number,
                             cached_block_hash,
-                            <span class="kw-2">&amp;</span>subcoin_networking_is_major_syncing,
+                            <span class="kw-2">&amp;</span>subcoin_network_api,
                             substrate_sync_service.as_ref(),
                         );
                     }
@@ -386,7 +388,7 @@
     client: <span class="kw-2">&amp;</span>Arc&lt;Client&gt;,
     confirmed_block_number: NumberFor&lt;Block&gt;,
     confirmed_block_hash: Block::Hash,
-    subcoin_networking_is_major_syncing: <span class="kw-2">&amp;</span>Arc&lt;AtomicBool&gt;,
+    subcoin_network_api: <span class="kw-2">&amp;</span>Arc&lt;<span class="kw">dyn </span>NetworkApi&gt;,
     substrate_sync_service: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>Arc&lt;SyncingService&lt;Block&gt;&gt;&gt;,
 ) <span class="kw">where
     </span>Block: BlockT,
@@ -401,7 +403,7 @@
 
     <span class="kw">match </span>client.finalize_block(confirmed_block_hash, <span class="prelude-val">None</span>, <span class="bool-val">true</span>) {
         <span class="prelude-val">Ok</span>(()) =&gt; {
-            <span class="kw">let </span>is_major_syncing = subcoin_networking_is_major_syncing.load(Ordering::Relaxed)
+            <span class="kw">let </span>is_major_syncing = subcoin_network_api.is_major_syncing()
                 || substrate_sync_service
                     .map(|sync_service| sync_service.is_major_syncing())
                     .unwrap_or(<span class="bool-val">false</span>);

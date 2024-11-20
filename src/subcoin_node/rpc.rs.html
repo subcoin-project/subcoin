@@ -57,7 +57,7 @@
 <span class="kw">use </span>sc_service::SpawnTaskHandle;
 <span class="kw">use </span>sc_utils::mpsc::TracingUnboundedSender;
 <span class="kw">use </span>std::sync::Arc;
-<span class="kw">use </span>subcoin_network::NetworkHandle;
+<span class="kw">use </span>subcoin_network::NetworkApi;
 <span class="kw">use </span>subcoin_runtime::interface::OpaqueBlock;
 <span class="kw">use </span>subcoin_service::FullClient;
 <span class="kw">use </span>substrate_frame_rpc_system::{System <span class="kw">as </span>FrameSystem, SystemApiServer <span class="kw">as _</span>};
@@ -68,7 +68,7 @@
     client: Arc&lt;FullClient&gt;,
     spawn_handle: SpawnTaskHandle,
     system_rpc_tx: TracingUnboundedSender&lt;sc_rpc::system::Request&lt;OpaqueBlock&gt;&gt;,
-    network_handle: NetworkHandle,
+    network_api: Arc&lt;<span class="kw">dyn </span>NetworkApi&gt;,
 ) -&gt; <span class="prelude-ty">Result</span>&lt;RpcModule&lt;()&gt;, sc_service::Error&gt; {
     <span class="kw">use </span>sc_rpc::chain::ChainApiServer;
     <span class="kw">use </span>sc_rpc::state::{ChildStateApiServer, StateApiServer};
@@ -76,7 +76,7 @@
 
     <span class="kw">let </span><span class="kw-2">mut </span>module = RpcModule::new(());
 
-    <span class="kw">let </span>dummy_pool = Arc::new(<span class="kw">crate</span>::transaction_pool::new_dummy_pool());
+    <span class="kw">let </span>dummy_pool = Arc::new(subcoin_service::transaction_pool::new_dummy_pool());
 
     <span class="kw">let </span>task_executor = Arc::new(spawn_handle);
 
@@ -101,7 +101,7 @@
     // Subcoin RPCs.
     </span>subcoin_rpc::SubcoinRpc::&lt;<span class="kw">_</span>, <span class="kw">_</span>, subcoin_service::TransactionAdapter&gt;::new(
         client.clone(),
-        network_handle,
+        network_api,
     )
     .merge_into(<span class="kw-2">&amp;mut </span>module)
     .map_err(into_service_error)<span class="question-mark">?</span>;

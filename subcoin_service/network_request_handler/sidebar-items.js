@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["VersionedNetworkRequest","VersionedNetworkResponse"],"fn":["generate_protocol_config"],"mod":["v1"],"struct":["NetworkRequestHandler"]};

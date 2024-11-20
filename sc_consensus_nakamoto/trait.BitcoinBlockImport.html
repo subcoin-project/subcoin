@@ -22,6 +22,6 @@
     Block: BlockT,
     BE: Backend&lt;Block&gt; + <a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a> + <a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Sync.html" title="trait core::marker::Sync">Sync</a> + 'static,
     Client: HeaderBackend&lt;Block&gt; + BlockBackend&lt;Block&gt; + StorageProvider&lt;Block, BE&gt; + AuxStore + ProvideRuntimeApi&lt;Block&gt; + CallApiAt&lt;Block&gt; + <a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a> + 'static,
-    Client::Api: Core&lt;Block&gt; + Subcoin&lt;Block&gt;,
+    Client::Api: Core&lt;Block&gt; + SubcoinApi&lt;Block&gt;,
     BI: BlockImport&lt;Block&gt; + <a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a> + <a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Sync.html" title="trait core::marker::Sync">Sync</a> + 'static,
     TransactionAdapter: BitcoinTransactionAdapter&lt;Block&gt; + <a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a> + <a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Sync.html" title="trait core::marker::Sync">Sync</a> + 'static,</div></h3></section></div><script src="../trait.impl/sc_consensus_nakamoto/block_import/trait.BitcoinBlockImport.js" async></script></section></div></main></body></html>

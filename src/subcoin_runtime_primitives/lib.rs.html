@@ -78,6 +78,9 @@
 <a href="#78" id="78">78</a>
 <a href="#79" id="79">79</a>
 <a href="#80" id="80">80</a>
+<a href="#81" id="81">81</a>
+<a href="#82" id="82">82</a>
+<a href="#83" id="83">83</a>
 </pre></div><pre class="rust"><code><span class="attr">#![cfg_attr(not(feature = <span class="string">"std"</span>), no_std)]
 </span><span class="comment">// TODO: This originates from `sp_api::decl_runtime_apis`.
 </span><span class="attr">#![allow(clippy::multiple_bound_locations)]
@@ -149,13 +152,16 @@
 
 <span class="macro">sp_api::decl_runtime_apis!</span> {
     <span class="doccomment">/// Subcoin API.
-    </span><span class="kw">pub trait </span>Subcoin {
+    </span><span class="kw">pub trait </span>SubcoinApi {
         <span class="doccomment">/// Same as the original `execute_block()` with the removal
         /// of `state_root` check in the `final_checks()`.
         </span><span class="kw">fn </span>execute_block_without_state_root_check(block: Block);
 
         <span class="doccomment">/// Finalize block without checking the extrinsics_root and state_root.
         </span><span class="kw">fn </span>finalize_block_without_checks(header: Block::Header);
+
+        <span class="doccomment">/// Returns the number of total coins (i.e., the size of UTXO set).
+        </span><span class="kw">fn </span>coins_count() -&gt; u64;
     }
 }
 </code></pre></div></section></main></body></html>

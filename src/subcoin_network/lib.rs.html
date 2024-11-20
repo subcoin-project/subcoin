@@ -525,6 +525,9 @@
 <a href="#525" id="525">525</a>
 <a href="#526" id="526">526</a>
 <a href="#527" id="527">527</a>
+<a href="#528" id="528">528</a>
+<a href="#529" id="529">529</a>
+<a href="#530" id="530">530</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # Bitcoin Network
 //!
 //! This crate facilitates communication with other nodes in the Bitcoin P2P network. It handles
@@ -589,7 +592,10 @@
 <span class="kw">use </span>tokio::net::TcpListener;
 <span class="kw">use </span>tokio::sync::oneshot;
 
-<span class="kw">pub use </span><span class="kw">crate</span>::network_api::{NetworkHandle, NetworkStatus, SendTransactionResult, SyncStatus};
+<span class="kw">pub use </span><span class="kw">crate</span>::network_api::{
+    NetworkApi, NetworkHandle, NetworkStatus, NoNetwork, OfflineSync, SendTransactionResult,
+    SyncStatus,
+};
 <span class="kw">pub use </span><span class="kw">crate</span>::sync::{PeerSync, PeerSyncState};
 
 <span class="doccomment">/// Identifies a peer.

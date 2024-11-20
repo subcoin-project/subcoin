@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["BlockSyncOption","Error","PeerSyncState","SendTransactionResult","SyncStatus","SyncStrategy"],"fn":["build_network"],"struct":["Config","NetworkHandle","NetworkStatus","PeerSync"],"type":["Latency","PeerId"]};
+window.SIDEBAR_ITEMS = {"enum":["BlockSyncOption","Error","PeerSyncState","SendTransactionResult","SyncStatus","SyncStrategy"],"fn":["build_network"],"struct":["Config","NetworkHandle","NetworkStatus","NoNetwork","OfflineSync","PeerSync"],"trait":["NetworkApi"],"type":["Latency","PeerId"]};

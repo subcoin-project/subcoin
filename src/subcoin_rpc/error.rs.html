@@ -41,6 +41,8 @@
 <a href="#41" id="41">41</a>
 <a href="#42" id="42">42</a>
 <a href="#43" id="43">43</a>
+<a href="#44" id="44">44</a>
+<a href="#45" id="45">45</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>bitcoin::consensus::encode::FromHexError;
 <span class="kw">use </span>jsonrpsee::types::error::ErrorObject;
 <span class="kw">use </span>jsonrpsee::types::ErrorObjectOwned;
@@ -50,6 +52,8 @@
 </span><span class="kw">pub enum </span>Error {
     <span class="attr">#[error(<span class="string">"block not found"</span>)]
     </span>BlockNotFound,
+    <span class="attr">#[error(<span class="string">"Bitcoin P2P network service unavailable"</span>)]
+    </span>NetworkUnavailable,
     <span class="attr">#[error(<span class="string">"substrate block hash not found"</span>)]
     </span>SubstrateBlockHashNotFound,
     <span class="attr">#[error(<span class="string">"Invalid header: {0:?}"</span>)]

@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"constant":["NAKAMOTO_HASH_ENGINE_ID","NAKAMOTO_HEADER_ENGINE_ID"],"fn":["bitcoin_block_subsidy"],"struct":["Coin"],"trait":["Subcoin"]};
+window.SIDEBAR_ITEMS = {"constant":["NAKAMOTO_HASH_ENGINE_ID","NAKAMOTO_HEADER_ENGINE_ID"],"fn":["bitcoin_block_subsidy"],"struct":["Coin"],"trait":["SubcoinApi"]};

@@ -620,6 +620,9 @@
 <a href="#620" id="620">620</a>
 <a href="#621" id="621">621</a>
 <a href="#622" id="622">622</a>
+<a href="#623" id="623">623</a>
+<a href="#624" id="624">624</a>
+<a href="#625" id="625">625</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::peer_store::PeerStore;
 <span class="kw">use </span><span class="kw">crate</span>::sync::block_downloader::BlockDownloader;
 <span class="kw">use </span><span class="kw">crate</span>::sync::{LocatorRequest, SyncAction};
@@ -932,7 +935,10 @@
                         <span class="kw-2">*</span>paused = <span class="bool-val">false</span>;
 
                         <span class="kw">if </span>!<span class="self">self</span>.block_downloader.missing_blocks.is_empty() {
-                            <span class="macro">tracing::debug!</span>(<span class="string">"Resumed downloading blocks"</span>);
+                            <span class="macro">tracing::debug!</span>(
+                                missing_blocks = <span class="self">self</span>.block_downloader.missing_blocks.len(),
+                                <span class="string">"Resumed downloading blocks"</span>,
+                            );
                             <span class="kw">return </span><span class="self">self</span>.block_downloader.schedule_next_download_batch();
                         } <span class="kw">else </span>{
                             <span class="kw">return </span><span class="self">self</span>.header_request_action();

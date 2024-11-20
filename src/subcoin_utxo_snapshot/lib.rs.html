@@ -123,10 +123,21 @@
 <a href="#123" id="123">123</a>
 <a href="#124" id="124">124</a>
 <a href="#125" id="125">125</a>
+<a href="#126" id="126">126</a>
+<a href="#127" id="127">127</a>
+<a href="#128" id="128">128</a>
+<a href="#129" id="129">129</a>
+<a href="#130" id="130">130</a>
+<a href="#131" id="131">131</a>
+<a href="#132" id="132">132</a>
+<a href="#133" id="133">133</a>
+<a href="#134" id="134">134</a>
+<a href="#135" id="135">135</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>bitcoin::consensus::encode::Encodable;
 <span class="kw">use </span>bitcoin::BlockHash;
 <span class="kw">use </span>std::fs::File;
 <span class="kw">use </span>std::io::Write;
+<span class="kw">use </span>std::path::{Path, PathBuf};
 <span class="kw">use </span>subcoin_primitives::runtime::Coin;
 
 <span class="comment">// Equivalent function in Rust for serializing an OutPoint and Coin
@@ -166,13 +177,22 @@
 
 <span class="doccomment">/// Responsible for dumping the UTXO set snapshot compatible with Bitcoin Core.
 </span><span class="kw">pub struct </span>UtxoSnapshotGenerator {
+    output_filepath: PathBuf,
     output_file: File,
 }
 
 <span class="kw">impl </span>UtxoSnapshotGenerator {
     <span class="doccomment">/// Constructs a new instance of [`UtxoSnapshotGenerator`].
-    </span><span class="kw">pub fn </span>new(output_file: File) -&gt; <span class="self">Self </span>{
-        <span class="self">Self </span>{ output_file }
+    </span><span class="kw">pub fn </span>new(output_filepath: PathBuf, output_file: File) -&gt; <span class="self">Self </span>{
+        <span class="self">Self </span>{
+            output_filepath,
+            output_file,
+        }
+    }
+
+    <span class="doccomment">/// Returns the path of output file.
+    </span><span class="kw">pub fn </span>path(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>Path {
+        <span class="kw-2">&amp;</span><span class="self">self</span>.output_filepath
     }
 
     <span class="doccomment">/// Writes a single entry of UTXO.
