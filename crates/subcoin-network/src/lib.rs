@@ -62,7 +62,10 @@ use substrate_prometheus_endpoint::Registry;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
-pub use crate::network_api::{NetworkHandle, NetworkStatus, SendTransactionResult, SyncStatus};
+pub use crate::network_api::{
+    NetworkApi, NetworkHandle, NetworkStatus, NoNetwork, OfflineSync, SendTransactionResult,
+    SyncStatus,
+};
 pub use crate::sync::{PeerSync, PeerSyncState};
 
 /// Identifies a peer.

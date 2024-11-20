@@ -69,12 +69,15 @@ fn block_subsidy(height: u32, subsidy_halving_interval: u32) -> u64 {
 
 sp_api::decl_runtime_apis! {
     /// Subcoin API.
-    pub trait Subcoin {
+    pub trait SubcoinApi {
         /// Same as the original `execute_block()` with the removal
         /// of `state_root` check in the `final_checks()`.
         fn execute_block_without_state_root_check(block: Block);
 
         /// Finalize block without checking the extrinsics_root and state_root.
         fn finalize_block_without_checks(header: Block::Header);
+
+        /// Returns the number of total coins (i.e., the size of UTXO set).
+        fn coins_count() -> u64;
     }
 }

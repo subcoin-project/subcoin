@@ -6,7 +6,7 @@ use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subcoin_network::{NetworkHandle, SendTransactionResult};
+use subcoin_network::{NetworkApi, SendTransactionResult};
 
 #[rpc(client, server)]
 pub trait RawTransactionsApi {
@@ -35,7 +35,7 @@ pub trait RawTransactionsApi {
 pub struct RawTransactions<Block, Client> {
     #[allow(unused)]
     client: Arc<Client>,
-    network_handle: NetworkHandle,
+    network_api: Arc<dyn NetworkApi>,
     _phantom: PhantomData<Block>,
 }
 
@@ -45,10 +45,10 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + 'static,
 {
     /// Constructs a new instance of [`RawTransactions`].
-    pub fn new(client: Arc<Client>, network_handle: NetworkHandle) -> Self {
+    pub fn new(client: Arc<Client>, network_api: Arc<dyn NetworkApi>) -> Self {
         Self {
             client,
-            network_handle,
+            network_api,
             _phantom: Default::default(),
         }
     }
@@ -66,13 +66,17 @@ where
     }
 
     async fn get_raw_transaction(&self, txid: Txid) -> Result<Option<String>, Error> {
-        let maybe_transaction = self.network_handle.get_transaction(txid).await;
+        let maybe_transaction = self.network_api.get_transaction(txid).await;
         Ok(maybe_transaction.as_ref().map(serialize_hex))
     }
 
     async fn send_raw_transaction(&self, raw_tx: String) -> Result<SendTransactionResult, Error> {
+        if !self.network_api.enabled() {
+            return Err(Error::NetworkUnavailable);
+        }
+
         Ok(self
-            .network_handle
+            .network_api
             .send_transaction(deserialize_hex::<Transaction>(&raw_tx)?)
             .await)
     }

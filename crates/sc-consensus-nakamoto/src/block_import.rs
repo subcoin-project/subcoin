@@ -39,7 +39,7 @@ use sp_runtime::{SaturatedConversion, Saturating};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Instant;
-use subcoin_primitives::runtime::Subcoin;
+use subcoin_primitives::runtime::SubcoinApi;
 use subcoin_primitives::{
     substrate_header_digest, BackendExt, BitcoinTransactionAdapter, CoinStorageKey,
 };
@@ -122,7 +122,7 @@ where
         + CallApiAt<Block>
         + Send
         + 'static,
-    Client::Api: Core<Block> + Subcoin<Block>,
+    Client::Api: Core<Block> + SubcoinApi<Block>,
     BI: BlockImport<Block> + Send + Sync + 'static,
     TransactionAdapter: BitcoinTransactionAdapter<Block>,
 {
@@ -453,7 +453,7 @@ where
         + CallApiAt<Block>
         + Send
         + 'static,
-    Client::Api: Core<Block> + Subcoin<Block>,
+    Client::Api: Core<Block> + SubcoinApi<Block>,
     BI: BlockImport<Block> + Send + Sync + 'static,
     TransactionAdapter: BitcoinTransactionAdapter<Block> + Send + Sync + 'static,
 {

@@ -7,8 +7,12 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
+array-bytes = { workspace = true }
+async-channel = { workspace = true }
 async-trait = { workspace = true }
 bitcoin = { workspace = true }
+codec = { workspace = true }
+thiserror = { workspace = true }
 # frame-benchmarking-cli = { workspace = true }
 frame-system = { workspace = true }
 futures = { workspace = true }

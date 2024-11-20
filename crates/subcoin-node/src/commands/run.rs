@@ -10,8 +10,29 @@ use sc_service::config::{IpNetwork, RpcBatchRequestConfig};
 use sc_service::{BasePath, Configuration, TaskManager};
 use std::num::NonZeroU32;
 use std::sync::Arc;
-use subcoin_network::{BlockSyncOption, SyncStrategy};
+use subcoin_network::{BlockSyncOption, NetworkApi, SyncStrategy};
 use subcoin_primitives::CONFIRMATION_DEPTH;
+
+/// Options for configuring the Subcoin network behavior.
+#[derive(Copy, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, clap::ValueEnum)]
+pub enum SubcoinNetworkOption {
+    /// Fully enables the Subcoin network, including block sync.
+    #[default]
+    Full,
+    /// Do no run Subcoin network at all.
+    None,
+    /// Enables the Subcoin network with block sync disabled.
+    ///
+    /// This option allows block sync to occur exclusively over the Substrate network,
+    /// while retaining partial Bitcoin P2P functionality (e.g., broadcasting Bitcoin transactions).
+    NoBlockSync,
+}
+
+impl SubcoinNetworkOption {
+    fn no_block_sync(&self) -> bool {
+        matches!(self, Self::None | Self::NoBlockSync)
+    }
+}
 
 /// The `run` command used to start a Subcoin node.
 #[derive(Debug, Clone, Parser)]
@@ -24,9 +45,9 @@ pub struct Run {
     #[clap(long)]
     pub no_finalizer: bool,
 
-    /// Disable the block sync from Bitcoin P2P network.
-    #[clap(long)]
-    pub disable_bitcoin_block_sync: bool,
+    /// Specify the Subcoin network behavior.
+    #[clap(long, default_value = "full")]
+    pub subcoin_network: SubcoinNetworkOption,
 
     /// Disable automatic hardware benchmarks.
     ///
@@ -99,10 +120,9 @@ impl Run {
 
         // The block sync from bitcoin P2P network will be temporarily disabled
         // if the fast sync is enabled.
-        match (self.disable_bitcoin_block_sync, fast_sync_enabled) {
-            (true, true) => BlockSyncOption::Off,
+        match (self.subcoin_network.no_block_sync(), fast_sync_enabled) {
+            (true, _) => BlockSyncOption::Off,
             (false, true) => BlockSyncOption::PausedUntilFastSync,
-            (true, false) => BlockSyncOption::Off,
             (false, false) => BlockSyncOption::AlwaysOn,
         }
     }
@@ -204,16 +224,24 @@ impl RunCmd {
 
         let subcoin_network_config = run.subcoin_network_config(bitcoin_network);
 
-        let subcoin_network_handle = subcoin_network::build_network(
-            client.clone(),
-            subcoin_network_config,
-            import_queue,
-            &task_manager,
-            config.prometheus_registry().cloned(),
-            Some(substrate_sync_service.clone()),
-        )
-        .await
-        .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
+        let network_api: Arc<dyn NetworkApi> =
+            if matches!(run.subcoin_network, SubcoinNetworkOption::None) {
+                task_manager.keep_alive(import_queue);
+                Arc::new(subcoin_network::NoNetwork)
+            } else {
+                let network_handle = subcoin_network::build_network(
+                    client.clone(),
+                    subcoin_network_config,
+                    import_queue,
+                    &task_manager,
+                    config.prometheus_registry().cloned(),
+                    Some(substrate_sync_service.clone()),
+                )
+                .await
+                .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
+
+                Arc::new(network_handle)
+            };
 
         // Start JSON-RPC server.
         let gen_rpc_module = || {
@@ -231,7 +259,7 @@ impl RunCmd {
                 client.clone(),
                 task_manager.spawn_handle(),
                 system_rpc_tx,
-                subcoin_network_handle.clone(),
+                network_api.clone(),
             )
         };
 
@@ -250,7 +278,7 @@ impl RunCmd {
                     client.clone(),
                     spawn_handle.clone(),
                     CONFIRMATION_DEPTH,
-                    subcoin_network_handle.is_major_syncing(),
+                    network_api.clone(),
                     Some(substrate_sync_service),
                 )
                 .run()
@@ -261,7 +289,7 @@ impl RunCmd {
         spawn_handle.spawn(
             "subcoin-informant",
             None,
-            subcoin_informant::build(client.clone(), subcoin_network_handle),
+            subcoin_informant::build(client.clone(), network_api),
         );
 
         Ok(task_manager)

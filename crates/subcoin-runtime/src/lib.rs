@@ -229,13 +229,17 @@ impl_runtime_apis! {
         }
     }
 
-    impl subcoin_runtime_primitives::Subcoin<Block> for Runtime {
+    impl subcoin_runtime_primitives::SubcoinApi<Block> for Runtime {
         fn execute_block_without_state_root_check(block: Block) {
             RuntimeExecutive::execute_block_without_state_root_check(block)
         }
 
         fn finalize_block_without_checks(header: HeaderFor<Runtime>) {
             RuntimeExecutive::finalize_block_without_checks(header);
+        }
+
+        fn coins_count() -> u64 {
+            Bitcoin::coins_count()
         }
     }
 }

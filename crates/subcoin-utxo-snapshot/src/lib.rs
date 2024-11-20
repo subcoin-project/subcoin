@@ -2,6 +2,7 @@ use bitcoin::consensus::encode::Encodable;
 use bitcoin::BlockHash;
 use std::fs::File;
 use std::io::Write;
+use std::path::{Path, PathBuf};
 use subcoin_primitives::runtime::Coin;
 
 // Equivalent function in Rust for serializing an OutPoint and Coin
@@ -41,13 +42,22 @@ pub struct Utxo {
 
 /// Responsible for dumping the UTXO set snapshot compatible with Bitcoin Core.
 pub struct UtxoSnapshotGenerator {
+    output_filepath: PathBuf,
     output_file: File,
 }
 
 impl UtxoSnapshotGenerator {
     /// Constructs a new instance of [`UtxoSnapshotGenerator`].
-    pub fn new(output_file: File) -> Self {
-        Self { output_file }
+    pub fn new(output_filepath: PathBuf, output_file: File) -> Self {
+        Self {
+            output_filepath,
+            output_file,
+        }
+    }
+
+    /// Returns the path of output file.
+    pub fn path(&self) -> &Path {
+        &self.output_filepath
     }
 
     /// Writes a single entry of UTXO.

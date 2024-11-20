@@ -5,11 +5,12 @@
 pub mod chain_spec;
 mod finalizer;
 mod genesis_block_builder;
+pub mod network_request_handler;
 mod transaction_adapter;
+pub mod transaction_pool;
 
 use bitcoin::hashes::Hash;
 use futures::FutureExt;
-use genesis_block_builder::GenesisBlockBuilder;
 use sc_client_api::{AuxStore, HeaderBackend};
 use sc_consensus::import_queue::BasicQueue;
 use sc_consensus_nakamoto::SubstrateImportQueueVerifier;
@@ -31,6 +32,7 @@ use subcoin_runtime::interface::OpaqueBlock as Block;
 use subcoin_runtime::RuntimeApi;
 
 pub use finalizer::SubcoinFinalizer;
+pub use genesis_block_builder::GenesisBlockBuilder;
 pub use transaction_adapter::TransactionAdapter;
 
 /// This is a specialization of the general Substrate ChainSpec type.
@@ -112,7 +114,11 @@ impl<'a> Deref for SubcoinConfiguration<'a> {
     }
 }
 
-fn initialize_genesis_block_hash_mapping<Block: BlockT, Client: HeaderBackend<Block> + AuxStore>(
+/// Insert the genesis block hash mapping into aux-db.
+pub fn initialize_genesis_block_hash_mapping<
+    Block: BlockT,
+    Client: HeaderBackend<Block> + AuxStore,
+>(
     client: &Client,
     bitcoin_network: bitcoin::Network,
 ) {
@@ -190,10 +196,10 @@ pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceE
     // TODO: frame_benchmarking_cli pulls in rocksdb due to its dep
     // cumulus-client-parachain-inherent.
     // let maybe_hwbench = (!no_hardware_benchmarks)
-    // .then_some(database_path.as_ref().map(|db_path| {
+    // .then(|| {database_path.as_ref().map(|db_path| {
     // let _ = std::fs::create_dir_all(db_path);
     // sc_sysinfo::gather_hwbench(Some(db_path), &frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE)
-    // }))
+    // })})
     // .flatten();
 
     // if let Some(hwbench) = maybe_hwbench {
@@ -253,11 +259,30 @@ pub fn start_substrate_network<N>(
 where
     N: sc_network::NetworkBackend<Block, <Block as BlockT>::Hash>,
 {
-    let net_config = sc_network::config::FullNetworkConfiguration::<
+    let mut net_config = sc_network::config::FullNetworkConfiguration::<
         Block,
         <Block as BlockT>::Hash,
         N,
     >::new(&config.network, config.prometheus_registry().cloned());
+
+    let network_request_protocol_config = {
+        // Allow both outgoing and incoming requests.
+        let (handler, protocol_config) = network_request_handler::NetworkRequestHandler::new::<N>(
+            &config.protocol_id(),
+            config.chain_spec.fork_id(),
+            client.clone(),
+            100,
+        );
+        task_manager.spawn_handle().spawn(
+            "subcoin-network-request-handler",
+            Some("networking"),
+            handler.run(),
+        );
+        protocol_config
+    };
+
+    net_config.add_request_response_protocol(network_request_protocol_config);
+
     let metrics = N::register_notification_metrics(config.prometheus_registry());
 
     let transaction_pool = Arc::from(

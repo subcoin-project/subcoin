@@ -61,6 +61,7 @@ impl sc_transaction_pool_api::InPoolTransaction for PoolTransaction {
 pub struct Transactions(Vec<Arc<PoolTransaction>>);
 pub struct TransactionsIterator(std::vec::IntoIter<Arc<PoolTransaction>>);
 
+/// Creates a dummy transaction pool.
 pub fn new_dummy_pool() -> Transactions {
     Transactions(Vec::new())
 }
@@ -128,7 +129,7 @@ impl sc_transaction_pool_api::TransactionPool for Transactions {
     }
 
     fn ready(&self) -> Box<dyn ReadyTransactions<Item = Arc<Self::InPoolTransaction>> + Send> {
-        unimplemented!()
+        Box::new(std::iter::empty::<Arc<Self::InPoolTransaction>>())
     }
 
     fn remove_invalid(&self, _hashes: &[TxHash<Self>]) -> Vec<Arc<Self::InPoolTransaction>> {
