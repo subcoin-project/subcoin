@@ -304,7 +304,7 @@ where
         None,
     );
 
-    let (network, system_rpc_tx, _tx_handler_controller, network_starter, sync_service) =
+    let (network, system_rpc_tx, _tx_handler_controller, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config,
             net_config,
@@ -380,8 +380,6 @@ where
         None,
         sc_informant::build(client.clone(), Arc::new(network), sync_service.clone()),
     );
-
-    network_starter.start_network();
 
     Ok((system_rpc_tx, sync_service))
 }
