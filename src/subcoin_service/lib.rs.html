@@ -488,8 +488,6 @@
 <a href="#488" id="488">488</a>
 <a href="#489" id="489">489</a>
 <a href="#490" id="490">490</a>
-<a href="#491" id="491">491</a>
-<a href="#492" id="492">492</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! Subcoin service implementation. Specialized wrapper over substrate service.
 
 </span><span class="attr">#![allow(deprecated)]
@@ -796,7 +794,7 @@
         <span class="prelude-val">None</span>,
     );
 
-    <span class="kw">let </span>(network, system_rpc_tx, _tx_handler_controller, network_starter, sync_service) =
+    <span class="kw">let </span>(network, system_rpc_tx, _tx_handler_controller, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config,
             net_config,
@@ -872,8 +870,6 @@
         <span class="prelude-val">None</span>,
         sc_informant::build(client.clone(), Arc::new(network), sync_service.clone()),
     );
-
-    network_starter.start_network();
 
     <span class="prelude-val">Ok</span>((system_rpc_tx, sync_service))
 }
