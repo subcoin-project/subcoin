@@ -1,7 +1,6 @@
-use futures::Future;
 use sc_transaction_pool_api::{
-    ImportNotificationStream, PoolFuture, PoolStatus, ReadyTransactions, TransactionFor,
-    TransactionSource, TransactionStatusStreamFor, TxHash,
+    ImportNotificationStream, PoolStatus, ReadyTransactions, TransactionFor, TransactionSource,
+    TransactionStatusStreamFor, TxHash,
 };
 use sp_runtime::OpaqueExtrinsic;
 use std::collections::HashMap;
@@ -78,6 +77,7 @@ impl ReadyTransactions for TransactionsIterator {
     fn report_invalid(&mut self, _tx: &Self::Item) {}
 }
 
+#[async_trait::async_trait]
 impl sc_transaction_pool_api::TransactionPool for Transactions {
     type Block = OpaqueBlock;
     type Hash = sp_core::H256;
@@ -85,47 +85,39 @@ impl sc_transaction_pool_api::TransactionPool for Transactions {
     type Error = sc_transaction_pool_api::error::Error;
 
     /// Returns a future that imports a bunch of unverified transactions to the pool.
-    fn submit_at(
+    async fn submit_at(
         &self,
         _at: Self::Hash,
         _source: TransactionSource,
         _xts: Vec<TransactionFor<Self>>,
-    ) -> PoolFuture<Vec<Result<sp_core::H256, Self::Error>>, Self::Error> {
+    ) -> Result<Vec<Result<sp_core::H256, Self::Error>>, Self::Error> {
         unimplemented!()
     }
 
     /// Returns a future that imports one unverified transaction to the pool.
-    fn submit_one(
+    async fn submit_one(
         &self,
         _at: Self::Hash,
         _source: TransactionSource,
         _xt: TransactionFor<Self>,
-    ) -> PoolFuture<TxHash<Self>, Self::Error> {
+    ) -> Result<TxHash<Self>, Self::Error> {
         unimplemented!()
     }
 
-    fn submit_and_watch(
+    async fn submit_and_watch(
         &self,
         _at: Self::Hash,
         _source: TransactionSource,
         _xt: TransactionFor<Self>,
-    ) -> PoolFuture<Pin<Box<TransactionStatusStreamFor<Self>>>, Self::Error> {
+    ) -> Result<Pin<Box<TransactionStatusStreamFor<Self>>>, Self::Error> {
         unimplemented!()
     }
 
-    fn ready_at(
+    async fn ready_at(
         &self,
         _at: Self::Hash,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Box<dyn ReadyTransactions<Item = Arc<Self::InPoolTransaction>> + Send>,
-                > + Send,
-        >,
-    > {
-        let iter: Box<dyn ReadyTransactions<Item = Arc<PoolTransaction>> + Send> =
-            Box::new(TransactionsIterator(self.0.clone().into_iter()));
-        Box::pin(futures::future::ready(iter))
+    ) -> Box<dyn ReadyTransactions<Item = Arc<Self::InPoolTransaction>> + Send> {
+        Box::new(TransactionsIterator(self.0.clone().into_iter()))
     }
 
     fn ready(&self) -> Box<dyn ReadyTransactions<Item = Arc<Self::InPoolTransaction>> + Send> {
@@ -160,18 +152,11 @@ impl sc_transaction_pool_api::TransactionPool for Transactions {
         unimplemented!()
     }
 
-    fn ready_at_with_timeout(
+    async fn ready_at_with_timeout(
         &self,
         _at: Self::Hash,
         _timeout: std::time::Duration,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Box<dyn ReadyTransactions<Item = Arc<Self::InPoolTransaction>> + Send>,
-                > + Send
-                + '_,
-        >,
-    > {
+    ) -> Box<dyn ReadyTransactions<Item = Arc<Self::InPoolTransaction>> + Send> {
         unimplemented!()
     }
 }

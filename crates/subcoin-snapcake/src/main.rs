@@ -232,7 +232,7 @@ where
 
     spawn_handle.spawn_blocking("syncing", None, syncing_engine.run());
 
-    let (network, _system_rpc_tx, _tx_handler_controller, network_starter, sync_service) =
+    let (network, _system_rpc_tx, _tx_handler_controller, sync_service) =
         sc_service::build_network_advanced(sc_service::BuildNetworkAdvancedParams {
             role: config.role,
             protocol_id,
@@ -256,8 +256,6 @@ where
         None,
         sc_informant::build(client.clone(), Arc::new(network), sync_service.clone()),
     );
-
-    network_starter.start_network();
 
     Ok(())
 }
