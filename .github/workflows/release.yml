@@ -19,31 +19,26 @@ jobs:
           - os: ubuntu-latest
             os_prefix: ubuntu
             target: aarch64-unknown-linux-gnu
-            artifact_name: subcoin
             command: cross
 
           - os: ubuntu-latest
             os_prefix: ubuntu
             target: x86_64-unknown-linux-gnu
-            artifact_name: subcoin
             command: cargo
 
           - os: macos-latest
             os_prefix: macos
             target: x86_64-apple-darwin
-            artifact_name: subcoin
             command: cargo
 
           - os: macos-14
             os_prefix: macos
             target: aarch64-apple-darwin
-            artifact_name: subcoin
             command: cargo
 
           - os: windows-latest
             os_prefix: windows
             target: x86_64-pc-windows-msvc
-            artifact_name: subcoin.exe
             command: cargo
 
     steps:
@@ -88,9 +83,13 @@ jobs:
           target/
         key: ${{ runner.os }}-${{ matrix.build.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-    - name: Build binary
+    - name: Build subcoin binary
       run: |
         ${{ matrix.build.command }} build --profile production --bin subcoin --locked --target ${{ matrix.build.target }}
+
+    - name: Build snapcake binary
+      run: |
+        ${{ matrix.build.command }} build --profile production --package subcoin-snapcake --locked --target ${{ matrix.build.target }}
 
     - name: Get version without v prefix (Ubuntu/macOS)
       run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
@@ -102,11 +101,20 @@ jobs:
         echo "VERSION=$version" >> $env:GITHUB_ENV
       if: ${{ matrix.build.os == 'windows-latest' }}
 
-    - name: Upload binaries to release
+    - name: Upload subcoin binary to release
       uses: svenstaro/upload-release-action@v2
       with:
         repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: target/${{ matrix.build.target }}/production/${{ matrix.build.artifact_name }}
+        file: target/${{ matrix.build.target }}/production/subcoin${{ matrix.build.os == 'windows-latest' && '.exe' || '' }}
         tag: ${{ github.ref }}
-        asset_name: ${{ matrix.build.artifact_name }}-${{ env.VERSION }}-${{ matrix.build.target }}
+        asset_name: subcoin-${{ env.VERSION }}-${{ matrix.build.target }}${{ matrix.build.os == 'windows-latest' && '.exe' || '' }}
+        prerelease: true
+
+    - name: Upload snapcake binary to release
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: target/${{ matrix.build.target }}/production/snapcake${{ matrix.build.os == 'windows-latest' && '.exe' || '' }}
+        tag: ${{ github.ref }}
+        asset_name: snapcake-${{ env.VERSION }}-${{ matrix.build.target }}${{ matrix.build.os == 'windows-latest' && '.exe' || '' }}
         prerelease: true
