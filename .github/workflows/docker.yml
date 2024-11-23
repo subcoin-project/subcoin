@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - main
+      - build-snapcake
       - 'release/**'
     tags:
       - '**'
@@ -18,15 +19,17 @@ jobs:
       packages: write
     strategy:
       matrix:
-        platform:
+        build:
           - arch: linux/amd64
-            profile: production
+            image: subcoin # Subcoin Node
             suffix: ubuntu-x86_64-${{ github.ref_name }}
             image-suffix: ''
-            dockerfile-suffix: ''
+          - arch: linux/amd64
+            image: snapcake
+            suffix: ubuntu-x86_64-${{ github.ref_name }}
+            image-suffix: ''
           # TODO: https://github.com/subcoin-project/subcoin/issues/13
           # - arch: linux/arm64
-            # profile: production
             # suffix: ubuntu-aarch64-${{ github.ref_name }}
             # image-suffix: '-aarch64'
             # dockerfile-suffix: '.aarch64'
@@ -58,21 +61,21 @@ jobs:
         uses: docker/metadata-action@v3
         with:
           images: |
-            ghcr.io/subcoin-project/subcoin
+            ghcr.io/subcoin-project/${{ matrix.build.image }}
           tags: |
             type=ref,event=branch
-            type=ref,event=tag
-            type=sha
+            # type=ref,event=tag
+            # type=sha
           flavor: |
             latest=false
-            suffix=${{ matrix.platform.image-suffix }}
+            suffix=${{ matrix.build.image-suffix }}
 
       - name: Build and push image
         id: build
         uses: docker/build-push-action@v6
         with:
-          file: Dockerfile${{ matrix.platform.dockerfile-suffix }}
-          platforms: ${{ matrix.platform.arch }}
+          file: docker/${{ matrix.build.image }}.Dockerfile
+          platforms: ${{ matrix.build.arch }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache
           push: ${{ github.event_name != 'pull_request' }}
@@ -83,7 +86,6 @@ jobs:
           provenance: false
           build-args: |
             SUBSTRATE_CLI_GIT_COMMIT_HASH=${{ github.sha }}
-            PROFILE=${{ matrix.platform.profile }}
 
       - name: Image digest
         run: echo ${{ steps.build.outputs.digest }}
