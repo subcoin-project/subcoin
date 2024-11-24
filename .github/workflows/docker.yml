@@ -63,7 +63,7 @@ jobs:
             ghcr.io/subcoin-project/${{ matrix.build.image }}
           tags: |
             type=ref,event=branch
-            # type=ref,event=tag
+            type=ref,event=tag
             # type=sha
           flavor: |
             latest=false
