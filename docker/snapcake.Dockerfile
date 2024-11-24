@@ -19,13 +19,17 @@ RUN apt-get update && \
         llvm \
         protobuf-compiler \
         make && \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+    rm -rf /var/lib/apt/lists/*  # Clean up apt cache to reduce image size
+
+# Set the PATH to include Cargo binary directory
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Copy the source code
 COPY . .
 
 # Compile the binary and move it to /snapcake.
-RUN /root/.cargo/bin/cargo build \
+RUN cargo build \
     --locked \
     --package subcoin-snapcake \
     --profile=$PROFILE \
@@ -39,7 +43,7 @@ FROM ubuntu:22.04
 LABEL org.opencontainers.image.source="https://github.com/subcoin-project/subcoin"
 LABEL org.opencontainers.image.description="Multistage Docker image for Subcoin Snapcake"
 
-# Copy the node binary.
+# Copy the snapcake binary.
 COPY --from=builder /snapcake /snapcake
 
 RUN mkdir /node-data && chown nobody:nogroup /node-data
@@ -48,6 +52,6 @@ VOLUME ["/node-data"]
 
 USER nobody:nogroup
 
-EXPOSE 8333 30333 9933 9944 9615
+EXPOSE 30333 9933 9944 9615
 
 ENTRYPOINT ["/snapcake"]
