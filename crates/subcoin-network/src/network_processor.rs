@@ -671,7 +671,7 @@ where
             },
             SyncAction::SwitchToBlocksFirstSync => {
                 if let Some(SyncAction::Request(SyncRequest::Inventory(request))) =
-                    self.chain_sync.attempt_blocks_first_sync()
+                    self.chain_sync.start_blocks_first_sync()
                 {
                     self.send_get_blocks_message(request);
                 }

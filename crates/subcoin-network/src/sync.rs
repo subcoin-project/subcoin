@@ -620,8 +620,8 @@ where
         sync_action
     }
 
-    pub(super) fn attempt_blocks_first_sync(&mut self) -> Option<SyncAction> {
-        if self.syncing.is_major_syncing() {
+    pub(super) fn start_blocks_first_sync(&mut self) -> Option<SyncAction> {
+        if matches!(self.syncing, Syncing::BlocksFirst(_)) {
             return None;
         }
 
