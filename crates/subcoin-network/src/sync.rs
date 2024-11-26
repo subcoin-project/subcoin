@@ -188,6 +188,8 @@ pub(crate) struct ChainSync<Block, Client> {
     rng: fastrand::Rng,
     /// Handle of peer store.
     peer_store: Arc<dyn PeerStore>,
+    /// Target block of the syncing process.
+    sync_target: Option<u32>,
     _phantom: PhantomData<Block>,
 }
 
@@ -197,6 +199,7 @@ where
     Client: HeaderBackend<Block> + AuxStore,
 {
     /// Constructs a new instance of [`ChainSync`].
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         client: Arc<Client>,
         header_verifier: HeaderVerifier<Block, Client>,
@@ -205,6 +208,7 @@ where
         is_major_syncing: Arc<AtomicBool>,
         enable_block_sync: bool,
         peer_store: Arc<dyn PeerStore>,
+        sync_target: Option<u32>,
     ) -> Self {
         Self {
             client,
@@ -217,6 +221,7 @@ where
             enable_block_sync,
             rng: fastrand::Rng::new(),
             peer_store,
+            sync_target,
             _phantom: Default::default(),
         }
     }
@@ -363,12 +368,14 @@ where
             tracing::debug!(?reason, prior_peer = ?prior_peer_id, ?new_peer, "🔄 Sync restarted");
             new_peer.state = PeerSyncState::DownloadingNew { start: our_best };
 
+            let target_block_number = target_block_number(self.sync_target, new_peer.best_number);
+
             match &mut self.syncing {
                 Syncing::BlocksFirst(strategy) => {
-                    strategy.restart(new_peer.peer_id, new_peer.best_number);
+                    strategy.restart(new_peer.peer_id, target_block_number);
                 }
                 Syncing::HeadersFirst(strategy) => {
-                    strategy.restart(new_peer.peer_id, new_peer.best_number);
+                    strategy.restart(new_peer.peer_id, target_block_number);
                 }
                 Syncing::Idle => {}
             }
@@ -460,7 +467,8 @@ where
         // Update sync peer if the latency improvement is significant.
         if current_latency / best_latency > LATENCY_IMPROVEMENT_THRESHOLD {
             let peer_id = best_sync_peer.peer_id;
-            let target_block_number = best_sync_peer.best_number;
+            let target_block_number =
+                target_block_number(self.sync_target, best_sync_peer.best_number);
 
             let sync_peer_updated = match &mut self.syncing {
                 Syncing::BlocksFirst(strategy) => {
@@ -531,6 +539,12 @@ where
 
         let our_best = self.client.best_number();
 
+        if let Some(sync_target) = self.sync_target {
+            if our_best >= sync_target {
+                return SyncAction::None;
+            }
+        }
+
         let find_best_available_peer = || {
             self.peers
                 .iter()
@@ -583,6 +597,8 @@ where
         let peer_best = next_peer.best_number;
         let require_major_sync = peer_best - our_best > MAJOR_SYNC_GAP;
 
+        let target_block_number = target_block_number(self.sync_target, peer_best);
+
         // Start major syncing if the gap is significant.
         let (new_syncing, sync_action) = if require_major_sync {
             let blocks_first = our_best >= crate::checkpoint::last_checkpoint_height()
@@ -596,21 +612,21 @@ where
 
             if blocks_first {
                 let (sync_strategy, sync_action) =
-                    BlocksFirstStrategy::new(client, next_peer_id, peer_best, peer_store);
+                    BlocksFirstStrategy::new(client, next_peer_id, target_block_number, peer_store);
                 (Syncing::BlocksFirst(Box::new(sync_strategy)), sync_action)
             } else {
                 let (sync_strategy, sync_action) = HeadersFirstStrategy::new(
                     client,
                     self.header_verifier.clone(),
                     next_peer_id,
-                    peer_best,
+                    target_block_number,
                     peer_store,
                 );
                 (Syncing::HeadersFirst(Box::new(sync_strategy)), sync_action)
             }
         } else {
             let (sync_strategy, sync_action) =
-                BlocksFirstStrategy::new(client, next_peer_id, peer_best, peer_store);
+                BlocksFirstStrategy::new(client, next_peer_id, target_block_number, peer_store);
             (Syncing::BlocksFirst(Box::new(sync_strategy)), sync_action)
         };
 
@@ -724,7 +740,7 @@ where
             return;
         }
 
-        let (hashes, blocks) = block_downloader.prepare_blocks_for_import();
+        let (hashes, blocks) = block_downloader.prepare_blocks_for_import(self.sync_target);
 
         tracing::trace!(
             blocks = ?hashes,
@@ -741,5 +757,19 @@ where
             },
             blocks,
         });
+    }
+}
+
+/// Determines the target block number for syncing based on the provided sync target
+/// and the peer's best block number.
+///
+/// Bitcoin Core only supports snapshots at specific block heights (e.g., 840000 as of writing).
+/// To avoid syncing past a block that may have been pruned or is unavailable in pruning mode
+/// when running a snapshot node, this function ensures that we do not sync beyond a certain
+/// block height, as determined by the `sync_target` or the peer's best block height.
+fn target_block_number(sync_target: Option<u32>, peer_best: u32) -> u32 {
+    match sync_target {
+        Some(target) => peer_best.min(target),
+        None => peer_best,
     }
 }

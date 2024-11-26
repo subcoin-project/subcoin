@@ -323,20 +323,27 @@ impl BlockDownloader {
     }
 
     /// Takes downloaded blocks and prepares them for import.
-    pub(crate) fn prepare_blocks_for_import(&mut self) -> (Vec<BlockHash>, Vec<BitcoinBlock>) {
+    pub(crate) fn prepare_blocks_for_import(
+        &mut self,
+        max_block_number: Option<u32>,
+    ) -> (Vec<BlockHash>, Vec<BitcoinBlock>) {
         let mut blocks = self
             .downloaded_blocks
             .drain(..)
-            .map(|block| {
+            .filter_map(|block| {
                 let block_hash = block.block_hash();
 
                 let block_number = self.queued_blocks.block_number(block_hash).expect(
                     "Corrupted state, number for {block_hash} not found in `queued_blocks`",
                 );
 
-                self.blocks_in_queue.insert(block_hash, block_number);
+                if max_block_number.map_or(false, |target_block| block_number > target_block) {
+                    None
+                } else {
+                    self.blocks_in_queue.insert(block_hash, block_number);
 
-                (block_number, block)
+                    Some((block_number, block))
+                }
             })
             .collect::<Vec<_>>();
 
