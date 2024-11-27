@@ -616,7 +616,7 @@
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>new(
         client: Arc&lt;Client&gt;,
         peer_id: PeerId,
-        peer_best: u32,
+        target_block_number: u32,
         peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;,
     ) -&gt; (<span class="self">Self</span>, SyncAction) {
         <span class="kw">let </span>best_number = client.best_number();
@@ -624,7 +624,7 @@
         <span class="kw">let </span>inv_requester = InventoryRequester {
             client: client.clone(),
             peer_id,
-            target_block_number: peer_best,
+            target_block_number,
             last_locator_request_start: <span class="number">0u32</span>,
             _phantom: Default::default(),
         };
@@ -632,7 +632,7 @@
         <span class="kw">let </span><span class="kw-2">mut </span>blocks_first_sync = <span class="self">Self </span>{
             peer_id,
             client,
-            target_block_number: peer_best,
+            target_block_number,
             state: State::Idle,
             inv_requester,
             block_downloader: BlockDownloader::new(peer_id, best_number, peer_store),
@@ -689,6 +689,11 @@
             <span class="kw">return </span><span class="self">self</span>.inventory_request_action();
         }
 
+        <span class="kw">if </span><span class="self">self</span>.client.best_number() == <span class="self">self</span>.target_block_number {
+            <span class="self">self</span>.state = State::Completed;
+            <span class="kw">return </span>SyncAction::SetIdle;
+        }
+
         <span class="kw">if </span><span class="self">self</span>.block_downloader.queue_status.is_overloaded() {
             <span class="comment">// If the queue was overloaded, evalute the current queue status again.
             </span><span class="kw">let </span>is_ready = <span class="self">self
@@ -732,18 +737,13 @@
             }
         }
 
-        <span class="kw">if </span><span class="self">self</span>.client.best_number() == <span class="self">self</span>.target_block_number {
-            <span class="self">self</span>.state = State::Completed;
-            <span class="kw">return </span>SyncAction::SetIdle;
-        }
-
         SyncAction::None
     }
 
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>restart(<span class="kw-2">&amp;mut </span><span class="self">self</span>, new_peer: PeerId, peer_best: u32) {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>restart(<span class="kw-2">&amp;mut </span><span class="self">self</span>, new_peer: PeerId, target_block_number: u32) {
         <span class="self">self</span>.state = State::Restarting;
         <span class="self">self</span>.peer_id = new_peer;
-        <span class="self">self</span>.target_block_number = peer_best;
+        <span class="self">self</span>.target_block_number = target_block_number;
         <span class="self">self</span>.block_downloader.restart(new_peer);
         <span class="self">self</span>.inv_requester.peer_id = new_peer;
         <span class="self">self</span>.inv_requester.last_locator_request_start = <span class="number">0u32</span>;

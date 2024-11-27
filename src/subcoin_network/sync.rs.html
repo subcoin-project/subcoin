@@ -743,6 +743,36 @@
 <a href="#743" id="743">743</a>
 <a href="#744" id="744">744</a>
 <a href="#745" id="745">745</a>
+<a href="#746" id="746">746</a>
+<a href="#747" id="747">747</a>
+<a href="#748" id="748">748</a>
+<a href="#749" id="749">749</a>
+<a href="#750" id="750">750</a>
+<a href="#751" id="751">751</a>
+<a href="#752" id="752">752</a>
+<a href="#753" id="753">753</a>
+<a href="#754" id="754">754</a>
+<a href="#755" id="755">755</a>
+<a href="#756" id="756">756</a>
+<a href="#757" id="757">757</a>
+<a href="#758" id="758">758</a>
+<a href="#759" id="759">759</a>
+<a href="#760" id="760">760</a>
+<a href="#761" id="761">761</a>
+<a href="#762" id="762">762</a>
+<a href="#763" id="763">763</a>
+<a href="#764" id="764">764</a>
+<a href="#765" id="765">765</a>
+<a href="#766" id="766">766</a>
+<a href="#767" id="767">767</a>
+<a href="#768" id="768">768</a>
+<a href="#769" id="769">769</a>
+<a href="#770" id="770">770</a>
+<a href="#771" id="771">771</a>
+<a href="#772" id="772">772</a>
+<a href="#773" id="773">773</a>
+<a href="#774" id="774">774</a>
+<a href="#775" id="775">775</a>
 </pre></div><pre class="rust"><code><span class="kw">mod </span>block_downloader;
 <span class="kw">mod </span>orphan_blocks_pool;
 <span class="kw">mod </span>strategy;
@@ -933,6 +963,8 @@
     </span>rng: fastrand::Rng,
     <span class="doccomment">/// Handle of peer store.
     </span>peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;,
+    <span class="doccomment">/// Target block of the syncing process.
+    </span>sync_target: <span class="prelude-ty">Option</span>&lt;u32&gt;,
     _phantom: PhantomData&lt;Block&gt;,
 }
 
@@ -942,6 +974,7 @@
     Client: HeaderBackend&lt;Block&gt; + AuxStore,
 {
     <span class="doccomment">/// Constructs a new instance of [`ChainSync`].
+    </span><span class="attr">#[allow(clippy::too_many_arguments)]
     </span><span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>new(
         client: Arc&lt;Client&gt;,
         header_verifier: HeaderVerifier&lt;Block, Client&gt;,
@@ -950,6 +983,7 @@
         is_major_syncing: Arc&lt;AtomicBool&gt;,
         enable_block_sync: bool,
         peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;,
+        sync_target: <span class="prelude-ty">Option</span>&lt;u32&gt;,
     ) -&gt; <span class="self">Self </span>{
         <span class="self">Self </span>{
             client,
@@ -962,6 +996,7 @@
             enable_block_sync,
             rng: fastrand::Rng::new(),
             peer_store,
+            sync_target,
             _phantom: Default::default(),
         }
     }
@@ -1108,12 +1143,14 @@
             <span class="macro">tracing::debug!</span>(<span class="question-mark">?</span>reason, prior_peer = <span class="question-mark">?</span>prior_peer_id, <span class="question-mark">?</span>new_peer, <span class="string">"🔄 Sync restarted"</span>);
             new_peer.state = PeerSyncState::DownloadingNew { start: our_best };
 
+            <span class="kw">let </span>target_block_number = target_block_number(<span class="self">self</span>.sync_target, new_peer.best_number);
+
             <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.syncing {
                 Syncing::BlocksFirst(strategy) =&gt; {
-                    strategy.restart(new_peer.peer_id, new_peer.best_number);
+                    strategy.restart(new_peer.peer_id, target_block_number);
                 }
                 Syncing::HeadersFirst(strategy) =&gt; {
-                    strategy.restart(new_peer.peer_id, new_peer.best_number);
+                    strategy.restart(new_peer.peer_id, target_block_number);
                 }
                 Syncing::Idle =&gt; {}
             }
@@ -1205,7 +1242,8 @@
         <span class="comment">// Update sync peer if the latency improvement is significant.
         </span><span class="kw">if </span>current_latency / best_latency &gt; LATENCY_IMPROVEMENT_THRESHOLD {
             <span class="kw">let </span>peer_id = best_sync_peer.peer_id;
-            <span class="kw">let </span>target_block_number = best_sync_peer.best_number;
+            <span class="kw">let </span>target_block_number =
+                target_block_number(<span class="self">self</span>.sync_target, best_sync_peer.best_number);
 
             <span class="kw">let </span>sync_peer_updated = <span class="kw">match </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.syncing {
                 Syncing::BlocksFirst(strategy) =&gt; {
@@ -1276,6 +1314,12 @@
 
         <span class="kw">let </span>our_best = <span class="self">self</span>.client.best_number();
 
+        <span class="kw">if let </span><span class="prelude-val">Some</span>(sync_target) = <span class="self">self</span>.sync_target {
+            <span class="kw">if </span>our_best &gt;= sync_target {
+                <span class="kw">return </span>SyncAction::None;
+            }
+        }
+
         <span class="kw">let </span>find_best_available_peer = || {
             <span class="self">self</span>.peers
                 .iter()
@@ -1328,6 +1372,8 @@
         <span class="kw">let </span>peer_best = next_peer.best_number;
         <span class="kw">let </span>require_major_sync = peer_best - our_best &gt; MAJOR_SYNC_GAP;
 
+        <span class="kw">let </span>target_block_number = target_block_number(<span class="self">self</span>.sync_target, peer_best);
+
         <span class="comment">// Start major syncing if the gap is significant.
         </span><span class="kw">let </span>(new_syncing, sync_action) = <span class="kw">if </span>require_major_sync {
             <span class="kw">let </span>blocks_first = our_best &gt;= <span class="kw">crate</span>::checkpoint::last_checkpoint_height()
@@ -1341,21 +1387,21 @@
 
             <span class="kw">if </span>blocks_first {
                 <span class="kw">let </span>(sync_strategy, sync_action) =
-                    BlocksFirstStrategy::new(client, next_peer_id, peer_best, peer_store);
+                    BlocksFirstStrategy::new(client, next_peer_id, target_block_number, peer_store);
                 (Syncing::BlocksFirst(Box::new(sync_strategy)), sync_action)
             } <span class="kw">else </span>{
                 <span class="kw">let </span>(sync_strategy, sync_action) = HeadersFirstStrategy::new(
                     client,
                     <span class="self">self</span>.header_verifier.clone(),
                     next_peer_id,
-                    peer_best,
+                    target_block_number,
                     peer_store,
                 );
                 (Syncing::HeadersFirst(Box::new(sync_strategy)), sync_action)
             }
         } <span class="kw">else </span>{
             <span class="kw">let </span>(sync_strategy, sync_action) =
-                BlocksFirstStrategy::new(client, next_peer_id, peer_best, peer_store);
+                BlocksFirstStrategy::new(client, next_peer_id, target_block_number, peer_store);
             (Syncing::BlocksFirst(Box::new(sync_strategy)), sync_action)
         };
 
@@ -1365,8 +1411,8 @@
         sync_action
     }
 
-    <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>attempt_blocks_first_sync(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;SyncAction&gt; {
-        <span class="kw">if </span><span class="self">self</span>.syncing.is_major_syncing() {
+    <span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>start_blocks_first_sync(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;SyncAction&gt; {
+        <span class="kw">if </span><span class="macro">matches!</span>(<span class="self">self</span>.syncing, Syncing::BlocksFirst(<span class="kw">_</span>)) {
             <span class="kw">return </span><span class="prelude-val">None</span>;
         }
 
@@ -1469,7 +1515,7 @@
             <span class="kw">return</span>;
         }
 
-        <span class="kw">let </span>(hashes, blocks) = block_downloader.prepare_blocks_for_import();
+        <span class="kw">let </span>(hashes, blocks) = block_downloader.prepare_blocks_for_import(<span class="self">self</span>.sync_target);
 
         <span class="macro">tracing::trace!</span>(
             blocks = <span class="question-mark">?</span>hashes,
@@ -1486,6 +1532,20 @@
             },
             blocks,
         });
+    }
+}
+
+<span class="doccomment">/// Determines the target block number for syncing based on the provided sync target
+/// and the peer's best block number.
+///
+/// Bitcoin Core only supports snapshots at specific block heights (e.g., 840000 as of writing).
+/// To avoid syncing past a block that may have been pruned or is unavailable in pruning mode
+/// when running a snapshot node, this function ensures that we do not sync beyond a certain
+/// block height, as determined by the `sync_target` or the peer's best block height.
+</span><span class="kw">fn </span>target_block_number(sync_target: <span class="prelude-ty">Option</span>&lt;u32&gt;, peer_best: u32) -&gt; u32 {
+    <span class="kw">match </span>sync_target {
+        <span class="prelude-val">Some</span>(target) =&gt; peer_best.min(target),
+        <span class="prelude-val">None </span>=&gt; peer_best,
     }
 }
 </code></pre></div></section></main></body></html>

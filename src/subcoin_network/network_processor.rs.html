@@ -719,6 +719,9 @@
 <a href="#719" id="719">719</a>
 <a href="#720" id="720">720</a>
 <a href="#721" id="721">721</a>
+<a href="#722" id="722">722</a>
+<a href="#723" id="723">723</a>
+<a href="#724" id="724">724</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
 <span class="kw">use </span><span class="kw">crate</span>::network_api::{
     IncomingTransaction, NetworkProcessorMessage, NetworkStatus, SendTransactionResult,
@@ -788,6 +791,7 @@
     <span class="doccomment">/// Whether to enable block sync on start.
     </span><span class="kw">pub </span>enable_block_sync: bool,
     <span class="kw">pub </span>peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;,
+    <span class="kw">pub </span>sync_target: <span class="prelude-ty">Option</span>&lt;u32&gt;,
 }
 
 <span class="doccomment">/// [`NetworkProcessor`] is responsible for processing the network events.
@@ -823,6 +827,7 @@
             max_outbound_peers,
             enable_block_sync,
             peer_store,
+            sync_target,
         } = params;
 
         <span class="kw">let </span>config = Config::new();
@@ -850,6 +855,7 @@
             is_major_syncing,
             enable_block_sync,
             peer_store.clone(),
+            sync_target,
         );
 
         <span class="self">Self </span>{
@@ -1392,7 +1398,7 @@
             },
             SyncAction::SwitchToBlocksFirstSync =&gt; {
                 <span class="kw">if let </span><span class="prelude-val">Some</span>(SyncAction::Request(SyncRequest::Inventory(request))) =
-                    <span class="self">self</span>.chain_sync.attempt_blocks_first_sync()
+                    <span class="self">self</span>.chain_sync.start_blocks_first_sync()
                 {
                     <span class="self">self</span>.send_get_blocks_message(request);
                 }

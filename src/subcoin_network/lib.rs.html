@@ -528,6 +528,10 @@
 <a href="#528" id="528">528</a>
 <a href="#529" id="529">529</a>
 <a href="#530" id="530">530</a>
+<a href="#531" id="531">531</a>
+<a href="#532" id="532">532</a>
+<a href="#533" id="533">533</a>
+<a href="#534" id="534">534</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # Bitcoin Network
 //!
 //! This crate facilitates communication with other nodes in the Bitcoin P2P network. It handles
@@ -763,6 +767,8 @@
     </span><span class="kw">pub </span>seednode_only: bool,
     <span class="doccomment">/// Whether to accept the peer in ipv4 only.
     </span><span class="kw">pub </span>ipv4_only: bool,
+    <span class="doccomment">/// Target block of the chain sync.
+    </span><span class="kw">pub </span>sync_target: <span class="prelude-ty">Option</span>&lt;u32&gt;,
     <span class="doccomment">/// Maximum number of outbound peer connections.
     </span><span class="kw">pub </span>max_outbound_peers: usize,
     <span class="doccomment">/// Maximum number of inbound peer connections.
@@ -980,6 +986,7 @@
         max_outbound_peers,
         sync_strategy,
         block_sync,
+        sync_target,
         ..
     } = config;
 
@@ -1026,6 +1033,7 @@
                     max_outbound_peers,
                     enable_block_sync,
                     peer_store: Arc::new(persistent_peer_store_handle),
+                    sync_target,
                 },
                 registry.as_ref(),
             )
