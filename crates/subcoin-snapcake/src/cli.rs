@@ -161,7 +161,7 @@ pub struct ConfigurationValues;
 
 impl sc_cli::DefaultConfigurationValues for ConfigurationValues {
     fn p2p_listen_port() -> u16 {
-        20222
+        30333
     }
 
     fn rpc_listen_port() -> u16 {

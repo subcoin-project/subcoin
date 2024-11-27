@@ -67,6 +67,7 @@ pub struct Params<Block, Client> {
     /// Whether to enable block sync on start.
     pub enable_block_sync: bool,
     pub peer_store: Arc<dyn PeerStore>,
+    pub sync_target: Option<u32>,
 }
 
 /// [`NetworkProcessor`] is responsible for processing the network events.
@@ -102,6 +103,7 @@ where
             max_outbound_peers,
             enable_block_sync,
             peer_store,
+            sync_target,
         } = params;
 
         let config = Config::new();
@@ -129,6 +131,7 @@ where
             is_major_syncing,
             enable_block_sync,
             peer_store.clone(),
+            sync_target,
         );
 
         Self {
@@ -671,7 +674,7 @@ where
             },
             SyncAction::SwitchToBlocksFirstSync => {
                 if let Some(SyncAction::Request(SyncRequest::Inventory(request))) =
-                    self.chain_sync.attempt_blocks_first_sync()
+                    self.chain_sync.start_blocks_first_sync()
                 {
                     self.send_get_blocks_message(request);
                 }

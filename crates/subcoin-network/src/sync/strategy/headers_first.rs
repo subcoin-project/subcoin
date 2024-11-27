@@ -297,6 +297,11 @@ where
             return self.start_block_download_on_header_download_completion(start, end);
         }
 
+        if self.client.best_number() == self.target_block_number {
+            self.state = State::Completed;
+            return SyncAction::SetIdle;
+        }
+
         if self.block_downloader.queue_status.is_overloaded() {
             let is_ready = self
                 .block_downloader
@@ -333,7 +338,7 @@ where
         SyncAction::None
     }
 
-    pub(crate) fn restart(&mut self, new_peer: PeerId, peer_best: u32) {
+    pub(crate) fn restart(&mut self, new_peer: PeerId, target_block_number: u32) {
         if let Some((start, end)) = self.header_requester.completed_range {
             self.state = State::RestartingBlocks { start, end };
         } else {
@@ -341,7 +346,7 @@ where
             self.state = State::RestartingHeaders;
         }
         self.peer_id = new_peer;
-        self.target_block_number = peer_best;
+        self.target_block_number = target_block_number;
         self.block_downloader.restart(new_peer);
         self.header_requester.peer_id = new_peer;
         self.header_requester.last_locator_request_start = 0u32;

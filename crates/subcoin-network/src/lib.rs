@@ -233,6 +233,8 @@ pub struct Config {
     pub seednode_only: bool,
     /// Whether to accept the peer in ipv4 only.
     pub ipv4_only: bool,
+    /// Target block of the chain sync.
+    pub sync_target: Option<u32>,
     /// Maximum number of outbound peer connections.
     pub max_outbound_peers: usize,
     /// Maximum number of inbound peer connections.
@@ -450,6 +452,7 @@ where
         max_outbound_peers,
         sync_strategy,
         block_sync,
+        sync_target,
         ..
     } = config;
 
@@ -496,6 +499,7 @@ where
                     max_outbound_peers,
                     enable_block_sync,
                     peer_store: Arc::new(persistent_peer_store_handle),
+                    sync_target,
                 },
                 registry.as_ref(),
             )

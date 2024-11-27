@@ -131,7 +131,7 @@ where
     pub(crate) fn new(
         client: Arc<Client>,
         peer_id: PeerId,
-        peer_best: u32,
+        target_block_number: u32,
         peer_store: Arc<dyn PeerStore>,
     ) -> (Self, SyncAction) {
         let best_number = client.best_number();
@@ -139,7 +139,7 @@ where
         let inv_requester = InventoryRequester {
             client: client.clone(),
             peer_id,
-            target_block_number: peer_best,
+            target_block_number,
             last_locator_request_start: 0u32,
             _phantom: Default::default(),
         };
@@ -147,7 +147,7 @@ where
         let mut blocks_first_sync = Self {
             peer_id,
             client,
-            target_block_number: peer_best,
+            target_block_number,
             state: State::Idle,
             inv_requester,
             block_downloader: BlockDownloader::new(peer_id, best_number, peer_store),
@@ -204,6 +204,11 @@ where
             return self.inventory_request_action();
         }
 
+        if self.client.best_number() == self.target_block_number {
+            self.state = State::Completed;
+            return SyncAction::SetIdle;
+        }
+
         if self.block_downloader.queue_status.is_overloaded() {
             // If the queue was overloaded, evalute the current queue status again.
             let is_ready = self
@@ -247,18 +252,13 @@ where
             }
         }
 
-        if self.client.best_number() == self.target_block_number {
-            self.state = State::Completed;
-            return SyncAction::SetIdle;
-        }
-
         SyncAction::None
     }
 
-    pub(crate) fn restart(&mut self, new_peer: PeerId, peer_best: u32) {
+    pub(crate) fn restart(&mut self, new_peer: PeerId, target_block_number: u32) {
         self.state = State::Restarting;
         self.peer_id = new_peer;
-        self.target_block_number = peer_best;
+        self.target_block_number = target_block_number;
         self.block_downloader.restart(new_peer);
         self.inv_requester.peer_id = new_peer;
         self.inv_requester.last_locator_request_start = 0u32;

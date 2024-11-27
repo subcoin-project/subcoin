@@ -287,6 +287,7 @@ impl TestNode {
                 seednodes,
                 seednode_only: true,
                 ipv4_only: true,
+                sync_target: None,
                 max_outbound_peers: 10,
                 max_inbound_peers: 10,
                 persistent_peer_latency_threshold: 200,
