@@ -75,10 +75,11 @@
 <a href="#75" id="75">75</a>
 <a href="#76" id="76">76</a>
 <a href="#77" id="77">77</a>
+<a href="#78" id="78">78</a>
+<a href="#79" id="79">79</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::commands::blockchain::{ClientParams, MergedParams};
-<span class="kw">use </span>sc_client_api::HeaderBackend;
+<span class="kw">use </span>sc_client_api::{BlockBackend, HeaderBackend};
 <span class="kw">use </span>std::sync::Arc;
-<span class="kw">use </span>subcoin_primitives::BitcoinTransactionAdapter;
 <span class="kw">use </span>subcoin_service::FullClient;
 
 <span class="attr">#[derive(Debug, clap::Parser)]
@@ -107,23 +108,26 @@
             sp_blockchain::Error::Backend(<span class="macro">format!</span>(<span class="string">"Hash for {block_number} not found"</span>))
         })<span class="question-mark">?</span>;
 
-        <span class="kw">let </span>block_body = client.body(block_hash)<span class="question-mark">?</span>.ok_or_else(|| {
+        <span class="kw">let </span>substrate_block = client.block(block_hash)<span class="question-mark">?</span>.ok_or_else(|| {
             sp_blockchain::Error::Backend(<span class="macro">format!</span>(
-                <span class="string">"Body for #{block_number},{block_hash} not found"
+                <span class="string">"Block for #{block_number},{block_hash} not found"
             </span>))
         })<span class="question-mark">?</span>;
 
-        <span class="kw">let </span>txdata = block_body
-            .iter()
-            .map(|xt| {
-                &lt;subcoin_service::TransactionAdapter <span class="kw">as </span>BitcoinTransactionAdapter&lt;
-                    subcoin_runtime::interface::OpaqueBlock,
-                &gt;&gt;::extrinsic_to_bitcoin_transaction(xt)
-            })
-            .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
+        <span class="kw">let </span>btc_block = subcoin_primitives::convert_to_bitcoin_block::&lt;
+            subcoin_runtime::interface::OpaqueBlock,
+            subcoin_service::TransactionAdapter,
+        &gt;(substrate_block.block)
+        .expect(<span class="string">"Failed to convert to Bitcoin Block"</span>);
+
+        <span class="macro">println!</span>(
+            <span class="string">"block_size: {}"</span>,
+            bitcoin::consensus::serialize(<span class="kw-2">&amp;</span>btc_block).len()
+        );
 
         <span class="kw">let </span><span class="kw-2">mut </span>num_op_return = <span class="number">0</span>;
-        <span class="kw">for </span>(i, tx) <span class="kw">in </span>txdata.into_iter().enumerate() {
+
+        <span class="kw">for </span>(i, tx) <span class="kw">in </span>btc_block.txdata.into_iter().enumerate() {
             <span class="kw">for </span>(j, output) <span class="kw">in </span>tx.output.into_iter().enumerate() {
                 <span class="kw">let </span>is_op_return = output.script_pubkey.is_op_return();
                 <span class="macro">println!</span>(<span class="string">"{i}:{j}: {is_op_return:?}"</span>);
