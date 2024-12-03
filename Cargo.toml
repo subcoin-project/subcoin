@@ -34,7 +34,7 @@ async-channel = "1.8.0"
 async-trait = "0.1"
 bitcoin = { git = "https://github.com/liuchengxu/rust-bitcoin", branch = "0.32.x-subcoin", default-features = false }
 bitcoinconsensus = "0.105.0+25.1"
-bitcoin-explorer = { git = "https://github.com/liuchengxu/Rusty-Bitcoin-Explorer", branch = "rust-bitcoin-upgrade", default-features = false }
+bitcoin-explorer = { git = "https://github.com/liuchengxu/Rusty-Bitcoin-Explorer", branch = "main", default-features = false }
 chrono = "0.4.37"
 clap = { version = "4", features = ["derive"] }
 codec = { package = "parity-scale-codec", version = "3.0.0", default-features = false }

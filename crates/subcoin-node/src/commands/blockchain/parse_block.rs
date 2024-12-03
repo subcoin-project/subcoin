@@ -1,7 +1,6 @@
 use crate::commands::blockchain::{ClientParams, MergedParams};
-use sc_client_api::HeaderBackend;
+use sc_client_api::{BlockBackend, HeaderBackend};
 use std::sync::Arc;
-use subcoin_primitives::BitcoinTransactionAdapter;
 use subcoin_service::FullClient;
 
 #[derive(Debug, clap::Parser)]
@@ -30,23 +29,26 @@ impl ParseBlockCmd {
             sp_blockchain::Error::Backend(format!("Hash for {block_number} not found"))
         })?;
 
-        let block_body = client.body(block_hash)?.ok_or_else(|| {
+        let substrate_block = client.block(block_hash)?.ok_or_else(|| {
             sp_blockchain::Error::Backend(format!(
-                "Body for #{block_number},{block_hash} not found"
+                "Block for #{block_number},{block_hash} not found"
             ))
         })?;
 
-        let txdata = block_body
-            .iter()
-            .map(|xt| {
-                <subcoin_service::TransactionAdapter as BitcoinTransactionAdapter<
-                    subcoin_runtime::interface::OpaqueBlock,
-                >>::extrinsic_to_bitcoin_transaction(xt)
-            })
-            .collect::<Vec<_>>();
+        let btc_block = subcoin_primitives::convert_to_bitcoin_block::<
+            subcoin_runtime::interface::OpaqueBlock,
+            subcoin_service::TransactionAdapter,
+        >(substrate_block.block)
+        .expect("Failed to convert to Bitcoin Block");
+
+        println!(
+            "block_size: {}",
+            bitcoin::consensus::serialize(&btc_block).len()
+        );
 
         let mut num_op_return = 0;
-        for (i, tx) in txdata.into_iter().enumerate() {
+
+        for (i, tx) in btc_block.txdata.into_iter().enumerate() {
             for (j, output) in tx.output.into_iter().enumerate() {
                 let is_op_return = output.script_pubkey.is_op_return();
                 println!("{i}:{j}: {is_op_return:?}");
