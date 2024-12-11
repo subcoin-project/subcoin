@@ -1,5 +1,6 @@
 use crate::error::Error;
 use jsonrpsee::proc_macros::rpc;
+use jsonrpsee::Extensions;
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 use serde::{Deserialize, Serialize};
 use sp_runtime::traits::Block as BlockT;
@@ -38,6 +39,10 @@ pub trait NetworkApi {
     /// Get overall network status.
     #[method(name = "network_status")]
     async fn network_status(&self) -> Result<Option<NetworkStatus>, Error>;
+
+    /// Trigger the block sync manually.
+    #[method(name = "network_startBlockSync", with_extensions)]
+    fn network_start_block_sync(&self) -> Result<(), Error>;
 }
 
 /// This struct provides the Network API.
@@ -105,5 +110,13 @@ where
 
     async fn network_status(&self) -> Result<Option<NetworkStatus>, Error> {
         Ok(self.network_api.status().await)
+    }
+
+    fn network_start_block_sync(&self, ext: &Extensions) -> Result<(), Error> {
+        sc_rpc_api::check_if_safe(ext)?;
+
+        self.network_api.start_block_sync();
+
+        Ok(())
     }
 }
