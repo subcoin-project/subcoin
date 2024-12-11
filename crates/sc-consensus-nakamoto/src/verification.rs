@@ -68,6 +68,17 @@ pub enum BlockVerification {
     HeaderOnly,
 }
 
+/// Represents the context of a transaction within a block.
+#[derive(Debug)]
+pub struct TransactionContext {
+    /// Block number containing the transaction.
+    pub block_number: u32,
+    /// Index of the transaction in the block.
+    pub tx_index: usize,
+    /// ID of the transaction.
+    pub txid: Txid,
+}
+
 /// Block verification error.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -94,12 +105,14 @@ pub enum Error {
     #[error("Block height mismatches in coinbase (got: {got}, expected: {expected})")]
     BadCoinbaseBlockHeight { got: u32, expected: u32 },
     /// Referenced output does not exist or was spent before.
-    #[error("UTXO not found (#{block_number}:{txid}: {utxo:?})")]
-    UtxoNotFound {
-        block_number: u32,
-        tx_index: usize,
-        txid: Txid,
-        utxo: OutPoint,
+    #[error(
+        "Missing UTXO in state for transaction ({context:?}). Missing UTXO: {missing_outpoint:?}"
+    )]
+    MissingUtxoInState {
+        /// Context of the transaction being processed.
+        context: TransactionContext,
+        /// UTXO missing from the UTXO set.
+        missing_outpoint: OutPoint,
     },
     /// Referenced output has already been spent in this block.
     #[error("UTXO already spent in current block (#{block_number}:{txid}: {utxo:?})")]
@@ -392,11 +405,13 @@ where
 
                 // Access coin.
                 let (spent_output, is_coinbase, coin_height) =
-                    access_coin(coin).ok_or_else(|| Error::UtxoNotFound {
-                        block_number,
-                        tx_index,
-                        txid: get_txid(tx_index),
-                        utxo: coin,
+                    access_coin(coin).ok_or_else(|| Error::MissingUtxoInState {
+                        context: TransactionContext {
+                            block_number,
+                            tx_index,
+                            txid: get_txid(tx_index),
+                        },
+                        missing_outpoint: coin,
                     })?;
 
                 // If coin is coinbase, check that it's matured.
