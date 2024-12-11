@@ -33,9 +33,6 @@ const LOW_LATENCY_CUTOFF: Latency = 20;
 /// Maximum number of syncing retries for a deprioritized peer.
 const MAX_STALLS: usize = 5;
 
-// Minimum peer threshold required to start sync
-const MIN_PEER_THRESHOLD: usize = 3;
-
 /// The state of syncing between a Peer and ourselves.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "camelCase")]
@@ -190,6 +187,7 @@ pub(crate) struct ChainSync<Block, Client> {
     peer_store: Arc<dyn PeerStore>,
     /// Target block of the syncing process.
     sync_target: Option<u32>,
+    min_peer_threshold: usize,
     _phantom: PhantomData<Block>,
 }
 
@@ -209,6 +207,7 @@ where
         enable_block_sync: bool,
         peer_store: Arc<dyn PeerStore>,
         sync_target: Option<u32>,
+        min_peer_threshold: usize,
     ) -> Self {
         Self {
             client,
@@ -222,6 +221,7 @@ where
             rng: fastrand::Rng::new(),
             peer_store,
             sync_target,
+            min_peer_threshold,
             _phantom: Default::default(),
         }
     }
@@ -532,8 +532,12 @@ where
             return SyncAction::None;
         }
 
-        if self.peers.len() < MIN_PEER_THRESHOLD {
-            tracing::debug!("Waiting for more peers");
+        if self.peers.len() < self.min_peer_threshold {
+            tracing::debug!(
+                "Waiting for more sync peers, discovered {} peers, require {} peers",
+                self.peers.len(),
+                self.min_peer_threshold
+            );
             return SyncAction::None;
         }
 

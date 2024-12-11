@@ -239,6 +239,8 @@ pub struct Config {
     pub max_outbound_peers: usize,
     /// Maximum number of inbound peer connections.
     pub max_inbound_peers: usize,
+    /// Minimum peer threshold to start the block sync.
+    pub min_peer_threshold: usize,
     /// Persistent peer latency threshold in milliseconds (ms).
     pub persistent_peer_latency_threshold: u128,
     /// Major sync strategy.
@@ -450,6 +452,7 @@ where
         network,
         max_inbound_peers,
         max_outbound_peers,
+        min_peer_threshold,
         sync_strategy,
         block_sync,
         sync_target,
@@ -497,6 +500,7 @@ where
                     is_major_syncing,
                     connection_initiator,
                     max_outbound_peers,
+                    min_peer_threshold,
                     enable_block_sync,
                     peer_store: Arc::new(persistent_peer_store_handle),
                     sync_target,

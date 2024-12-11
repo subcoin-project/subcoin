@@ -64,6 +64,7 @@ pub struct Params<Block, Client> {
     pub is_major_syncing: Arc<AtomicBool>,
     pub connection_initiator: ConnectionInitiator,
     pub max_outbound_peers: usize,
+    pub min_peer_threshold: usize,
     /// Whether to enable block sync on start.
     pub enable_block_sync: bool,
     pub peer_store: Arc<dyn PeerStore>,
@@ -101,6 +102,7 @@ where
             is_major_syncing,
             connection_initiator,
             max_outbound_peers,
+            min_peer_threshold,
             enable_block_sync,
             peer_store,
             sync_target,
@@ -132,6 +134,7 @@ where
             enable_block_sync,
             peer_store.clone(),
             sync_target,
+            min_peer_threshold,
         );
 
         Self {
