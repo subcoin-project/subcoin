@@ -290,6 +290,7 @@ impl TestNode {
                 sync_target: None,
                 max_outbound_peers: 10,
                 max_inbound_peers: 10,
+                min_peer_threshold: 0,
                 persistent_peer_latency_threshold: 200,
                 sync_strategy,
                 block_sync: crate::BlockSyncOption::Off,
