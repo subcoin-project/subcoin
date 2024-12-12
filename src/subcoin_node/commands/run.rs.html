@@ -392,6 +392,7 @@
 <a href="#392" id="392">392</a>
 <a href="#393" id="393">393</a>
 <a href="#394" id="394">394</a>
+<a href="#395" id="395">395</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::subcoin_params::{CommonParams, NetworkParams};
 <span class="kw">use </span>clap::Parser;
 <span class="kw">use </span>sc_cli::{
@@ -501,6 +502,7 @@
             sync_target: <span class="self">self</span>.sync_target,
             max_outbound_peers: <span class="self">self</span>.network_params.max_outbound_peers,
             max_inbound_peers: <span class="self">self</span>.network_params.max_inbound_peers,
+            min_sync_peer_threshold: <span class="self">self</span>.network_params.min_sync_peer_threshold,
             persistent_peer_latency_threshold: <span class="self">self
                 </span>.network_params
                 .persistent_peer_latency_threshold,

@@ -142,6 +142,13 @@
 <a href="#142" id="142">142</a>
 <a href="#143" id="143">143</a>
 <a href="#144" id="144">144</a>
+<a href="#145" id="145">145</a>
+<a href="#146" id="146">146</a>
+<a href="#147" id="147">147</a>
+<a href="#148" id="148">148</a>
+<a href="#149" id="149">149</a>
+<a href="#150" id="150">150</a>
+<a href="#151" id="151">151</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>clap::Parser;
 <span class="kw">use </span>sc_consensus_nakamoto::{BlockVerification, ImportConfig};
 <span class="kw">use </span>std::path::PathBuf;
@@ -211,6 +218,13 @@
     /// Default value is 500 ms
     </span><span class="attr">#[clap(long, default_value_t = <span class="number">500</span>)]
     </span><span class="kw">pub </span>persistent_peer_latency_threshold: u128,
+
+    <span class="doccomment">/// Minimum peer threshold required to start block sync.
+    ///
+    /// The chain sync won't be started until the number of sync peers reaches this threshold.
+    /// Set to `0` to disable the peer threshold limit. Default: 3
+    </span><span class="attr">#[arg(long, default_value = <span class="string">"3"</span>)]
+    </span><span class="kw">pub </span>min_sync_peer_threshold: usize,
 }
 
 <span class="attr">#[derive(Debug, Clone, Parser)]

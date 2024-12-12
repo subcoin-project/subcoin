@@ -722,6 +722,10 @@
 <a href="#722" id="722">722</a>
 <a href="#723" id="723">723</a>
 <a href="#724" id="724">724</a>
+<a href="#725" id="725">725</a>
+<a href="#726" id="726">726</a>
+<a href="#727" id="727">727</a>
+<a href="#728" id="728">728</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
 <span class="kw">use </span><span class="kw">crate</span>::network_api::{
     IncomingTransaction, NetworkProcessorMessage, NetworkStatus, SendTransactionResult,
@@ -788,6 +792,7 @@
     <span class="kw">pub </span>is_major_syncing: Arc&lt;AtomicBool&gt;,
     <span class="kw">pub </span>connection_initiator: ConnectionInitiator,
     <span class="kw">pub </span>max_outbound_peers: usize,
+    <span class="kw">pub </span>min_sync_peer_threshold: usize,
     <span class="doccomment">/// Whether to enable block sync on start.
     </span><span class="kw">pub </span>enable_block_sync: bool,
     <span class="kw">pub </span>peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;,
@@ -825,6 +830,7 @@
             is_major_syncing,
             connection_initiator,
             max_outbound_peers,
+            min_sync_peer_threshold,
             enable_block_sync,
             peer_store,
             sync_target,
@@ -856,6 +862,7 @@
             enable_block_sync,
             peer_store.clone(),
             sync_target,
+            min_sync_peer_threshold,
         );
 
         <span class="self">Self </span>{
@@ -1030,6 +1037,7 @@
                 <span class="kw">let _ </span>= result_sender.send(send_transaction_result);
             }
             NetworkProcessorMessage::StartBlockSync =&gt; {
+                <span class="macro">tracing::debug!</span>(<span class="string">"StartBlockSync signal received"</span>);
                 <span class="kw">let </span>sync_action = <span class="self">self</span>.chain_sync.start_block_sync();
                 <span class="self">self</span>.do_sync_action(sync_action);
             }

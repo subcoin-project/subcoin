@@ -773,6 +773,10 @@
 <a href="#773" id="773">773</a>
 <a href="#774" id="774">774</a>
 <a href="#775" id="775">775</a>
+<a href="#776" id="776">776</a>
+<a href="#777" id="777">777</a>
+<a href="#778" id="778">778</a>
+<a href="#779" id="779">779</a>
 </pre></div><pre class="rust"><code><span class="kw">mod </span>block_downloader;
 <span class="kw">mod </span>orphan_blocks_pool;
 <span class="kw">mod </span>strategy;
@@ -807,9 +811,6 @@
 
 <span class="doccomment">/// Maximum number of syncing retries for a deprioritized peer.
 </span><span class="kw">const </span>MAX_STALLS: usize = <span class="number">5</span>;
-
-<span class="comment">// Minimum peer threshold required to start sync
-</span><span class="kw">const </span>MIN_PEER_THRESHOLD: usize = <span class="number">3</span>;
 
 <span class="doccomment">/// The state of syncing between a Peer and ourselves.
 </span><span class="attr">#[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize, Hash)]
@@ -965,6 +966,7 @@
     </span>peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;,
     <span class="doccomment">/// Target block of the syncing process.
     </span>sync_target: <span class="prelude-ty">Option</span>&lt;u32&gt;,
+    min_sync_peer_threshold: usize,
     _phantom: PhantomData&lt;Block&gt;,
 }
 
@@ -984,6 +986,7 @@
         enable_block_sync: bool,
         peer_store: Arc&lt;<span class="kw">dyn </span>PeerStore&gt;,
         sync_target: <span class="prelude-ty">Option</span>&lt;u32&gt;,
+        min_sync_peer_threshold: usize,
     ) -&gt; <span class="self">Self </span>{
         <span class="self">Self </span>{
             client,
@@ -997,6 +1000,7 @@
             rng: fastrand::Rng::new(),
             peer_store,
             sync_target,
+            min_sync_peer_threshold,
             _phantom: Default::default(),
         }
     }
@@ -1307,8 +1311,12 @@
             <span class="kw">return </span>SyncAction::None;
         }
 
-        <span class="kw">if </span><span class="self">self</span>.peers.len() &lt; MIN_PEER_THRESHOLD {
-            <span class="macro">tracing::debug!</span>(<span class="string">"Waiting for more peers"</span>);
+        <span class="kw">if </span><span class="self">self</span>.peers.len() &lt; <span class="self">self</span>.min_sync_peer_threshold {
+            <span class="macro">tracing::debug!</span>(
+                <span class="string">"Waiting for more sync peers, discovered {} peers, require {} peers"</span>,
+                <span class="self">self</span>.peers.len(),
+                <span class="self">self</span>.min_sync_peer_threshold
+            );
             <span class="kw">return </span>SyncAction::None;
         }
 

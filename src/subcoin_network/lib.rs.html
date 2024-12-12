@@ -532,6 +532,10 @@
 <a href="#532" id="532">532</a>
 <a href="#533" id="533">533</a>
 <a href="#534" id="534">534</a>
+<a href="#535" id="535">535</a>
+<a href="#536" id="536">536</a>
+<a href="#537" id="537">537</a>
+<a href="#538" id="538">538</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # Bitcoin Network
 //!
 //! This crate facilitates communication with other nodes in the Bitcoin P2P network. It handles
@@ -773,6 +777,8 @@
     </span><span class="kw">pub </span>max_outbound_peers: usize,
     <span class="doccomment">/// Maximum number of inbound peer connections.
     </span><span class="kw">pub </span>max_inbound_peers: usize,
+    <span class="doccomment">/// Minimum peer threshold to start the block sync.
+    </span><span class="kw">pub </span>min_sync_peer_threshold: usize,
     <span class="doccomment">/// Persistent peer latency threshold in milliseconds (ms).
     </span><span class="kw">pub </span>persistent_peer_latency_threshold: u128,
     <span class="doccomment">/// Major sync strategy.
@@ -984,6 +990,7 @@
         network,
         max_inbound_peers,
         max_outbound_peers,
+        min_sync_peer_threshold,
         sync_strategy,
         block_sync,
         sync_target,
@@ -1031,6 +1038,7 @@
                     is_major_syncing,
                     connection_initiator,
                     max_outbound_peers,
+                    min_sync_peer_threshold,
                     enable_block_sync,
                     peer_store: Arc::new(persistent_peer_store_handle),
                     sync_target,

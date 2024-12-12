@@ -107,8 +107,24 @@
 <a href="#107" id="107">107</a>
 <a href="#108" id="108">108</a>
 <a href="#109" id="109">109</a>
+<a href="#110" id="110">110</a>
+<a href="#111" id="111">111</a>
+<a href="#112" id="112">112</a>
+<a href="#113" id="113">113</a>
+<a href="#114" id="114">114</a>
+<a href="#115" id="115">115</a>
+<a href="#116" id="116">116</a>
+<a href="#117" id="117">117</a>
+<a href="#118" id="118">118</a>
+<a href="#119" id="119">119</a>
+<a href="#120" id="120">120</a>
+<a href="#121" id="121">121</a>
+<a href="#122" id="122">122</a>
+<a href="#123" id="123">123</a>
+<a href="#124" id="124">124</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::error::Error;
 <span class="kw">use </span>jsonrpsee::proc_macros::rpc;
+<span class="kw">use </span>jsonrpsee::Extensions;
 <span class="kw">use </span>sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 <span class="kw">use </span>serde::{Deserialize, Serialize};
 <span class="kw">use </span>sp_runtime::traits::Block <span class="kw">as </span>BlockT;
@@ -147,6 +163,12 @@
     <span class="doccomment">/// Get overall network status.
     </span><span class="attr">#[method(name = <span class="string">"network_status"</span>)]
     </span><span class="kw">async fn </span>network_status(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;NetworkStatus&gt;, Error&gt;;
+
+    <span class="doccomment">/// Trigger the block sync manually.
+    ///
+    /// This API is unsafe and primarily for the local development.
+    </span><span class="attr">#[method(name = <span class="string">"network_startBlockSync"</span>, with_extensions)]
+    </span><span class="kw">fn </span>network_start_block_sync(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt;;
 }
 
 <span class="doccomment">/// This struct provides the Network API.
@@ -214,6 +236,14 @@
 
     <span class="kw">async fn </span>network_status(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;NetworkStatus&gt;, Error&gt; {
         <span class="prelude-val">Ok</span>(<span class="self">self</span>.network_api.status().<span class="kw">await</span>)
+    }
+
+    <span class="kw">fn </span>network_start_block_sync(<span class="kw-2">&amp;</span><span class="self">self</span>, ext: <span class="kw-2">&amp;</span>Extensions) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
+        sc_rpc_api::check_if_safe(ext)<span class="question-mark">?</span>;
+
+        <span class="self">self</span>.network_api.start_block_sync();
+
+        <span class="prelude-val">Ok</span>(())
     }
 }
 </code></pre></div></section></main></body></html>
