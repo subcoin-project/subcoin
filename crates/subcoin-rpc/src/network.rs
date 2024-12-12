@@ -41,6 +41,8 @@ pub trait NetworkApi {
     async fn network_status(&self) -> Result<Option<NetworkStatus>, Error>;
 
     /// Trigger the block sync manually.
+    ///
+    /// This API is unsafe and primarily for the local development.
     #[method(name = "network_startBlockSync", with_extensions)]
     fn network_start_block_sync(&self) -> Result<(), Error>;
 }
