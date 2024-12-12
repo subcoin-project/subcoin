@@ -187,7 +187,7 @@ pub(crate) struct ChainSync<Block, Client> {
     peer_store: Arc<dyn PeerStore>,
     /// Target block of the syncing process.
     sync_target: Option<u32>,
-    min_peer_threshold: usize,
+    min_sync_peer_threshold: usize,
     _phantom: PhantomData<Block>,
 }
 
@@ -207,7 +207,7 @@ where
         enable_block_sync: bool,
         peer_store: Arc<dyn PeerStore>,
         sync_target: Option<u32>,
-        min_peer_threshold: usize,
+        min_sync_peer_threshold: usize,
     ) -> Self {
         Self {
             client,
@@ -221,7 +221,7 @@ where
             rng: fastrand::Rng::new(),
             peer_store,
             sync_target,
-            min_peer_threshold,
+            min_sync_peer_threshold,
             _phantom: Default::default(),
         }
     }
@@ -532,11 +532,11 @@ where
             return SyncAction::None;
         }
 
-        if self.peers.len() < self.min_peer_threshold {
+        if self.peers.len() < self.min_sync_peer_threshold {
             tracing::debug!(
                 "Waiting for more sync peers, discovered {} peers, require {} peers",
                 self.peers.len(),
-                self.min_peer_threshold
+                self.min_sync_peer_threshold
             );
             return SyncAction::None;
         }

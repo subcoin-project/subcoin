@@ -73,7 +73,7 @@ pub struct NetworkParams {
     /// The chain sync won't be started until the number of sync peers reaches this threshold.
     /// Set to `0` to disable the peer threshold limit. Default: 3
     #[arg(long, default_value = "3")]
-    pub min_peer_threshold: usize,
+    pub min_sync_peer_threshold: usize,
 }
 
 #[derive(Debug, Clone, Parser)]
