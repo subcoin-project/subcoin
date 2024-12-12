@@ -107,6 +107,7 @@ impl Run {
             sync_target: self.sync_target,
             max_outbound_peers: self.network_params.max_outbound_peers,
             max_inbound_peers: self.network_params.max_inbound_peers,
+            min_sync_peer_threshold: self.network_params.min_sync_peer_threshold,
             persistent_peer_latency_threshold: self
                 .network_params
                 .persistent_peer_latency_threshold,

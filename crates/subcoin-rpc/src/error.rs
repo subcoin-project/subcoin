@@ -1,6 +1,7 @@
 use bitcoin::consensus::encode::FromHexError;
 use jsonrpsee::types::error::ErrorObject;
 use jsonrpsee::types::ErrorObjectOwned;
+use sc_rpc_api::UnsafeRpcError;
 
 /// Chain RPC errors.
 #[derive(Debug, thiserror::Error)]
@@ -19,6 +20,9 @@ pub enum Error {
     DecodeHex(#[from] FromHexError),
     #[error(transparent)]
     SerdeJson(#[from] serde_json::Error),
+    /// Call to an unsafe RPC was denied.
+    #[error(transparent)]
+    UnsafeRpcCalled(#[from] UnsafeRpcError),
     /// Client error.
     #[error("Client error: {0}")]
     Client(#[from] Box<dyn std::error::Error + Send + Sync>),

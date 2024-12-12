@@ -67,6 +67,13 @@ pub struct NetworkParams {
     /// Default value is 500 ms
     #[clap(long, default_value_t = 500)]
     pub persistent_peer_latency_threshold: u128,
+
+    /// Minimum peer threshold required to start block sync.
+    ///
+    /// The chain sync won't be started until the number of sync peers reaches this threshold.
+    /// Set to `0` to disable the peer threshold limit. Default: 3
+    #[arg(long, default_value = "3")]
+    pub min_sync_peer_threshold: usize,
 }
 
 #[derive(Debug, Clone, Parser)]

@@ -10407,6 +10407,7 @@ dependencies = [
  "bitcoin 0.32.2",
  "jsonrpsee",
  "sc-client-api",
+ "sc-rpc-api",
  "serde",
  "serde_json",
  "sp-blockchain",
