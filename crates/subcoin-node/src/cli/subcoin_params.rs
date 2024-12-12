@@ -70,7 +70,8 @@ pub struct NetworkParams {
 
     /// Minimum peer threshold required to start block sync.
     ///
-    /// Set to `0` to disable the check. Default: 3
+    /// The chain sync won't be started until the number of sync peers reaches this threshold.
+    /// Set to `0` to disable the peer threshold limit. Default: 3
     #[arg(long, default_value = "3")]
     pub min_peer_threshold: usize,
 }
