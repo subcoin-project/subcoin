@@ -1,4 +1,4 @@
-use crate::utxo_store::UtxoStore;
+use crate::snapshot_processor::SnapshotProcessor;
 use codec::Decode;
 use sc_client_api::ProofProvider;
 use sc_network_sync::strategy::state_sync::{
@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subcoin_crypto::muhash::MuHash3072;
 use subcoin_runtime_primitives::Coin;
-use subcoin_utxo_snapshot::{Utxo, UtxoSnapshotGenerator};
+use subcoin_utxo_snapshot::Utxo;
 
 const DOWNLOAD_PROGRESS_LOG_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -22,8 +22,7 @@ pub(crate) struct StateSyncWrapper<B: BlockT, Client> {
     muhash: MuHash3072,
     target_block_number: u32,
     target_bitcoin_block_hash: bitcoin::BlockHash,
-    utxo_store: UtxoStore,
-    snapshot_generator: UtxoSnapshotGenerator,
+    snapshot_processor: SnapshotProcessor,
     received_coins: usize,
     total_coins: usize,
     last_progress_print_time: Option<Instant>,
@@ -46,30 +45,18 @@ where
             subcoin_primitives::extract_bitcoin_block_hash::<B>(&target_header)
                 .expect("Failed to extract bitcoin block hash");
 
-        let sync_target = format!("{target_block_number}_{target_bitcoin_block_hash}");
-        let snapshot_dir = snapshot_base_dir.join(sync_target);
-
-        // Ensure the snapshot directory exists, creating it if necessary
-        std::fs::create_dir_all(&snapshot_dir).expect("Failed to create snapshot directory");
-
-        let snapshot_filepath = snapshot_dir.join("snapshot.dat");
-        let snapshot_file =
-            std::fs::File::create(&snapshot_filepath).expect("Failed to create output file");
-        let snapshot_generator =
-            UtxoSnapshotGenerator::new(snapshot_filepath, snapshot_file, bitcoin::Network::Bitcoin);
-
-        let utxo_filepath = snapshot_dir.join("utxo.csv");
-
-        // Open in write mode to clear existing content, then immediately close.
-        std::fs::File::create(&utxo_filepath).expect("Failed to clear utxo.csv");
+        let snapshot_processor = SnapshotProcessor::new(
+            target_block_number.saturated_into(),
+            target_bitcoin_block_hash,
+            snapshot_base_dir,
+        );
 
         Self {
             inner: StateSync::new(client, target_header, None, None, skip_proof),
             target_block_number: target_block_number.saturated_into(),
             target_bitcoin_block_hash,
             muhash: MuHash3072::new(),
-            utxo_store: UtxoStore::Csv(utxo_filepath),
-            snapshot_generator,
+            snapshot_processor,
             received_coins: 0,
             total_coins,
             last_progress_print_time: None,
@@ -108,7 +95,9 @@ where
 
                     self.muhash.insert(&data);
 
-                    self.utxo_store.push(Utxo { txid, vout, coin });
+                    self.snapshot_processor
+                        .store_utxo(Utxo { txid, vout, coin });
+
                     self.received_coins += 1;
                 }
             }
@@ -125,13 +114,6 @@ where
         if complete {
             let muhash = self.muhash.txoutset_muhash();
 
-            let utxos_count = self
-                .utxo_store
-                .count()
-                .expect("Failed to calculate the count of stored UTXO");
-
-            assert_eq!(utxos_count, self.total_coins, "UTXO count mismatches");
-
             tracing::info!(
                 target: "snapcake",
                 %muhash,
@@ -140,19 +122,7 @@ where
                 self.total_coins,
             );
 
-            tracing::info!(
-                target: "snapcake",
-                "Writing the snapshot to {}",
-                self.snapshot_generator.path().display()
-            );
-
-            self.utxo_store
-                .write_snapshot(
-                    &mut self.snapshot_generator,
-                    self.target_bitcoin_block_hash,
-                    utxos_count,
-                )
-                .expect("Failed to write UTXO set snapshot");
+            self.snapshot_processor.write_snapshot(self.total_coins);
 
             tracing::info!(
                 target: "snapcake",

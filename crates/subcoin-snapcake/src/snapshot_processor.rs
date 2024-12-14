@@ -49,7 +49,7 @@ impl From<UtxoCsvEntry> for Utxo {
     }
 }
 
-pub enum UtxoStore {
+enum UtxoStore {
     // Initially created for local testing.
     #[allow(unused)]
     InMem(Vec<Utxo>),
@@ -63,7 +63,7 @@ pub enum UtxoStore {
 }
 
 impl UtxoStore {
-    pub fn push(&mut self, utxo: Utxo) {
+    fn push(&mut self, utxo: Utxo) {
         match self {
             Self::InMem(list) => list.push(utxo),
             Self::Csv(path) => {
@@ -89,7 +89,7 @@ impl UtxoStore {
         }
     }
 
-    pub fn count(&self) -> std::io::Result<usize> {
+    fn count(&self) -> std::io::Result<usize> {
         match self {
             Self::InMem(list) => Ok(list.len()),
             Self::Csv(path) => {
@@ -109,7 +109,7 @@ impl UtxoStore {
         }
     }
 
-    pub fn write_snapshot(
+    fn write_snapshot(
         &mut self,
         snapshot_generator: &mut UtxoSnapshotGenerator,
         target_bitcoin_block_hash: BlockHash,
@@ -147,5 +147,69 @@ impl UtxoStore {
         }
 
         Ok(())
+    }
+}
+
+pub struct SnapshotProcessor {
+    store: UtxoStore,
+    snapshot_generator: UtxoSnapshotGenerator,
+    target_bitcoin_block_hash: BlockHash,
+}
+
+impl SnapshotProcessor {
+    pub fn new(
+        target_block_number: u32,
+        target_bitcoin_block_hash: BlockHash,
+        snapshot_base_dir: PathBuf,
+    ) -> Self {
+        let sync_target = format!("{target_block_number}_{target_bitcoin_block_hash}");
+        let snapshot_dir = snapshot_base_dir.join(sync_target);
+
+        // Ensure the snapshot directory exists, creating it if necessary
+        std::fs::create_dir_all(&snapshot_dir).expect("Failed to create snapshot directory");
+
+        let snapshot_filepath = snapshot_dir.join("snapshot.dat");
+        let snapshot_file =
+            std::fs::File::create(&snapshot_filepath).expect("Failed to create output file");
+        let snapshot_generator =
+            UtxoSnapshotGenerator::new(snapshot_filepath, snapshot_file, bitcoin::Network::Bitcoin);
+
+        let utxo_filepath = snapshot_dir.join("utxo.csv");
+
+        // Open in write mode to clear existing content, then immediately close.
+        std::fs::File::create(&utxo_filepath).expect("Failed to clear utxo.csv");
+
+        Self {
+            store: UtxoStore::Csv(utxo_filepath),
+            snapshot_generator,
+            target_bitcoin_block_hash,
+        }
+    }
+
+    pub fn store_utxo(&mut self, utxo: Utxo) {
+        self.store.push(utxo);
+    }
+
+    pub fn write_snapshot(&mut self, expected_utxos_count: usize) {
+        let utxos_count = self
+            .store
+            .count()
+            .expect("Failed to calculate the count of stored UTXO");
+
+        assert_eq!(utxos_count, expected_utxos_count, "UTXO count mismatches");
+
+        tracing::info!(
+            target: "snapcake",
+            "Writing the snapshot to {}",
+            self.snapshot_generator.path().display()
+        );
+
+        self.store
+            .write_snapshot(
+                &mut self.snapshot_generator,
+                self.target_bitcoin_block_hash,
+                utxos_count,
+            )
+            .expect("Failed to write UTXO set snapshot");
     }
 }
