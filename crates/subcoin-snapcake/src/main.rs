@@ -36,6 +36,7 @@
 mod cli;
 mod params;
 mod state_sync_wrapper;
+mod utxo_store;
 mod syncing_strategy;
 
 use self::cli::{App, Command};
