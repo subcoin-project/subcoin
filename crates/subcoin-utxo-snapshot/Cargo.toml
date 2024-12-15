@@ -7,7 +7,11 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-bitcoin = { workspace = true }
+bitcoin = { workspace = true, features = ["serde"] }
 serde = { workspace = true }
 subcoin-primitives = { workspace = true }
 txoutset = { workspace = true }
+
+[dev-dependencies]
+fastrand = { workspace = true }
+hex = { workspace = true }
