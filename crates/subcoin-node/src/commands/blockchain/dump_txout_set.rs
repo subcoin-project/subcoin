@@ -71,19 +71,22 @@ impl DumpTxOutSetCmd {
             );
             println!("UTXO set size: {utxo_set_size}");
 
-            let mut file = std::fs::File::create(&path)?;
+            let file = std::fs::File::create(&path)?;
 
-            let mut data = Vec::new();
-            bitcoin_block_hash
-                .consensus_encode(&mut data)
-                .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
-            utxo_set_size
-                .consensus_encode(&mut data)
-                .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
+            let mut snapshot_generator =
+                UtxoSnapshotGenerator::new(path, file, bitcoin::Network::Bitcoin);
 
-            let _ = file.write(data.as_slice())?;
+            snapshot_generator.write_utxo_snapshot_in_memory(
+                bitcoin_block_hash,
+                utxo_set_size,
+                utxo_iter.map(|(txid, vout, coin)| subcoin_utxo_snapshot::Utxo {
+                    txid,
+                    vout,
+                    coin,
+                }),
+            )?;
 
-            UtxoSetOutput::Snapshot(UtxoSnapshotGenerator::new(path, file))
+            return Ok(());
         } else {
             println!("Dumping UTXO set at #{block_number},{bitcoin_block_hash}");
             UtxoSetOutput::Stdout(std::io::stdout())

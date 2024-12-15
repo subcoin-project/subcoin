@@ -218,7 +218,7 @@ impl UtxoSnapshotGenerator {
     /// Write the UTXO snapshot at the specified block to a file.
     ///
     /// NOTE: Do not use it in production.
-    pub fn write_utxo_snapshot(
+    pub fn write_utxo_snapshot_in_memory(
         &mut self,
         bitcoin_block_hash: BlockHash,
         utxos_count: u64,
@@ -284,7 +284,7 @@ fn write_snapshot_metadata<W: std::io::Write>(
 /// Write the UTXO snapshot at the specified block to a file.
 ///
 /// NOTE: Do not use it in production.
-fn write_utxo_snapshot<W: std::io::Write>(
+fn write_utxo_snapshot_in_memory<W: std::io::Write>(
     writer: &mut W,
     network: bitcoin::Network,
     bitcoin_block_hash: BlockHash,
@@ -408,7 +408,7 @@ mod tests {
         };
 
         let mut data = Vec::new();
-        write_utxo_snapshot(
+        write_utxo_snapshot_in_memory(
             &mut data,
             bitcoin::Network::Bitcoin,
             block_hash1,
