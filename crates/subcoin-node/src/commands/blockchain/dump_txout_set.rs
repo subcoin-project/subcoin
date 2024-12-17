@@ -176,4 +176,3 @@ impl From<DumpTxOutSet> for DumpTxOutSetCmd {
         }
     }
 }
-

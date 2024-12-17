@@ -17,6 +17,27 @@ use std::path::{Path, PathBuf};
 use subcoin_primitives::runtime::Coin;
 use txoutset::var_int::VarInt;
 
+const SNAPSHOT_MAGIC_BYTES: [u8; 5] = [b'u', b't', b'x', b'o', 0xff];
+
+/// Groups UTXOs by `txid` into a lexicographically ordered `BTreeMap` (same as the order stored by
+/// Bitcoin Core in leveldb).
+///
+/// NOTE: this requires substantial RAM.
+pub fn group_utxos_by_txid(
+    utxos: impl IntoIterator<Item = Utxo>,
+) -> BTreeMap<bitcoin::Txid, Vec<OutputEntry>> {
+    let mut map: BTreeMap<bitcoin::Txid, Vec<OutputEntry>> = BTreeMap::new();
+
+    for utxo in utxos {
+        map.entry(utxo.txid).or_default().push(OutputEntry {
+            vout: utxo.vout,
+            coin: utxo.coin,
+        });
+    }
+
+    map
+}
+
 // Equivalent function in Rust for serializing an OutPoint and Coin
 //
 // https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/kernel/coinstats.cpp#L51
@@ -68,8 +89,6 @@ impl From<(bitcoin::Txid, u32, Coin)> for Utxo {
         Self { txid, vout, coin }
     }
 }
-
-const SNAPSHOT_MAGIC_BYTES: [u8; 5] = [b'u', b't', b'x', b'o', 0xff];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SnapshotMetadata {
@@ -235,16 +254,16 @@ impl UtxoSnapshotGenerator {
         utxos_count: u64,
         utxos: impl IntoIterator<Item = Utxo>,
     ) -> std::io::Result<()> {
-        self.write_snapshot_metadata(bitcoin_block_hash, utxos_count)?;
-
-        let sorted_coins = group_utxos_by_txid(utxos).into_iter().collect::<Vec<_>>();
-        for (txid, coins) in sorted_coins {
-            self.write_coins(txid, coins)?;
-        }
-
-        Ok(())
+        generate_snapshot_in_mem_inner(
+            &mut self.output_file,
+            self.network,
+            bitcoin_block_hash,
+            utxos_count,
+            utxos,
+        )
     }
 
+    /// Writes UTXO entries for a given transaction.
     pub fn write_coins(
         &mut self,
         txid: bitcoin::Txid,
@@ -252,27 +271,6 @@ impl UtxoSnapshotGenerator {
     ) -> std::io::Result<()> {
         write_coins(&mut self.output_file, txid, coins)
     }
-}
-
-/// Groups UTXOs by `txid` and converts them into `(Txid, Vec<OutputEntry>)` format.
-///
-/// NOTE: this requires substantial RAM.
-pub fn group_utxos_by_txid(
-    utxos: impl IntoIterator<Item = Utxo>,
-) -> BTreeMap<bitcoin::Txid, Vec<OutputEntry>> {
-    // Use BTreeMap to obtain the same lexicographic order of UTXOs as Bitcoin Core.
-    let mut map: BTreeMap<bitcoin::Txid, Vec<OutputEntry>> = BTreeMap::new();
-
-    for utxo in utxos {
-        map.entry(utxo.txid)
-            .or_insert_with(Vec::new)
-            .push(OutputEntry {
-                vout: utxo.vout,
-                coin: utxo.coin,
-            });
-    }
-
-    map
 }
 
 fn write_snapshot_metadata<W: std::io::Write>(
@@ -295,7 +293,7 @@ fn write_snapshot_metadata<W: std::io::Write>(
 /// Write the UTXO snapshot at the specified block to a file.
 ///
 /// NOTE: Do not use it in production.
-fn generate_snapshot_in_mem<W: std::io::Write>(
+fn generate_snapshot_in_mem_inner<W: std::io::Write>(
     writer: &mut W,
     network: bitcoin::Network,
     bitcoin_block_hash: BlockHash,
@@ -312,7 +310,7 @@ fn generate_snapshot_in_mem<W: std::io::Write>(
     Ok(())
 }
 
-pub fn write_coins<W: std::io::Write>(
+pub(crate) fn write_coins<W: std::io::Write>(
     writer: &mut W,
     txid: bitcoin::Txid,
     mut coins: Vec<OutputEntry>,
@@ -322,7 +320,7 @@ pub fn write_coins<W: std::io::Write>(
     let mut data = Vec::new();
     txid.consensus_encode(&mut data)?;
 
-    writer.write(&data)?;
+    writer.write_all(&data)?;
 
     write_compact_size(writer, coins.len() as u64)?;
 
@@ -344,14 +342,11 @@ fn serialize_coin<W: std::io::Write>(writer: &mut W, coin: Coin) -> std::io::Res
 
     let code = (height << 1) | is_coinbase as u32;
 
-    let mut data1 = Vec::new();
-    VarInt::new(code as u64).consensus_encode(&mut data1)?;
+    let mut data = Vec::new();
+    VarInt::new(code as u64).consensus_encode(&mut data)?;
+    VarInt::new(compress_amount(amount)).consensus_encode(&mut data)?;
+    writer.write_all(&data)?;
 
-    let mut data2 = Vec::new();
-    VarInt::new(compress_amount(amount)).consensus_encode(&mut data2)?;
-
-    writer.write_all(&data1)?;
-    writer.write_all(&data2)?;
     ScriptCompression(script_pubkey).serialize(writer)?;
 
     Ok(())

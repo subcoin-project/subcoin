@@ -114,7 +114,8 @@ fn test_snapshot_generation() {
     }];
 
     let mut data = Vec::new();
-    generate_snapshot_in_mem(&mut data, bitcoin::Network::Bitcoin, block_hash1, 1, utxos).unwrap();
+    generate_snapshot_in_mem_inner(&mut data, bitcoin::Network::Bitcoin, block_hash1, 1, utxos)
+        .unwrap();
 
     #[rustfmt::skip]
     assert_eq!(
@@ -150,7 +151,7 @@ fn test_snapshot_at_block_6() {
         .parse()
         .unwrap();
     let utxos_count = 6;
-    generate_snapshot_in_mem(
+    generate_snapshot_in_mem_inner(
         &mut data,
         bitcoin::Network::Bitcoin,
         block_hash6,

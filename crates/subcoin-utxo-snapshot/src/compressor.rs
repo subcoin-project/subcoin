@@ -28,8 +28,8 @@ pub fn compress_amount(n: u64) -> u64 {
         e += 1;
     }
     if e < 9 {
-        let d = (n % 10) as u64;
-        assert!(d >= 1 && d <= 9);
+        let d = n % 10;
+        assert!((1..=9).contains(&d));
         n /= 10;
         1 + (n * 9 + d - 1) * 10 + e as u64
     } else {
@@ -48,7 +48,7 @@ pub fn decompress_amount(x: u64) -> u64 {
     let mut n = if e < 9 {
         let d = (x % 9) + 1;
         x /= 9;
-        x * 10 + d as u64
+        x * 10 + d
     } else {
         x + 1
     };
@@ -279,3 +279,4 @@ mod tests {
         assert_eq!(n, decompress_amount(compress_amount(n)));
     }
 }
+

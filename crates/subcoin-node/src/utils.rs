@@ -64,4 +64,3 @@ fn show_progress(processed: Arc<AtomicUsize>, total: u64, msg: String) {
         std::thread::sleep(Duration::from_millis(200));
     }
 }
-
