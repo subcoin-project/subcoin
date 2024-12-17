@@ -11,6 +11,8 @@ bitcoin = { workspace = true, features = ["serde"] }
 serde = { workspace = true }
 subcoin-primitives = { workspace = true }
 txoutset = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 fastrand = { workspace = true }

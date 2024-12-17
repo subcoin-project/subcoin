@@ -29,7 +29,8 @@ sc-network-sync = { workspace = true }
 sc-rpc = { workspace = true }
 sc-rpc-api = { workspace = true }
 # `test-helpers` for the exposed Client type.
-sc-service = { workspace = true, features = ["test-helpers"], default-features = false }
+# sc-service = { workspace = true, features = ["test-helpers"], default-features = false }
+sc-service = { workspace = true, default-features = false }
 sc-storage-monitor = { workspace = true }
 sc-sysinfo = { workspace = true }
 sc-telemetry = { workspace = true }

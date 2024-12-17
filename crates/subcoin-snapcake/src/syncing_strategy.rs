@@ -729,7 +729,7 @@ where
             for (peer_id, request) in self.pending_header_requests.clone() {
                 chain_sync_actions.push(
                     self.chain_sync
-                        .as_ref()
+                        .as_mut()
                         .expect("Chain sync must be available")
                         .create_block_request_action(peer_id, request),
                 );

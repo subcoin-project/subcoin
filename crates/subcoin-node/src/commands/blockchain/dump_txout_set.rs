@@ -5,6 +5,7 @@ use bitcoin::consensus::Encodable;
 use std::fs::File;
 use std::io::{Stdout, Write};
 use std::path::PathBuf;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use subcoin_primitives::runtime::Coin;
 use subcoin_service::FullClient;
@@ -92,9 +93,32 @@ impl DumpTxOutSetCmd {
             UtxoSetOutput::Stdout(std::io::stdout())
         };
 
-        for (txid, vout, coin) in utxo_iter {
-            output_file.write(txid, vout, coin)?;
+        let processed = Arc::new(AtomicUsize::new(0));
 
+        let ordered_utxos = subcoin_utxo_snapshot::group_utxos_by_txid(
+            utxo_iter
+                .into_iter()
+                .map(|(txid, vout, coin)| subcoin_utxo_snapshot::Utxo { txid, vout, coin }),
+        );
+
+        let total_txids = ordered_utxos.len();
+
+        std::thread::spawn({
+            let processed = processed.clone();
+            move || {
+                super::get_txout_set_info::show_progress(
+                    processed,
+                    total_txids as u64,
+                    format!("Dumping UTXO set at block #{block_number}..."),
+                )
+            }
+        });
+
+        for (txid, coins) in ordered_utxos {
+            for subcoin_utxo_snapshot::OutputEntry { vout, coin } in coins {
+                output_file.write(txid, vout, coin)?;
+            }
+            processed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             // Yield here allows to make the process interruptible by ctrl_c.
             Yield::new().await;
         }

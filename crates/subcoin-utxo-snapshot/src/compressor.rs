@@ -1,5 +1,7 @@
-use crate::serialize::VarInt;
+use bitcoin::consensus::Encodable;
+use std::io::Read;
 use std::vec::Vec;
+use txoutset::var_int::VarInt;
 
 const MAX_MONEY: u64 = 21000000 * 100000000;
 
@@ -63,9 +65,7 @@ fn to_key_id(script: &[u8]) -> Option<[u8; 20]> {
         && script[23] == OP_EQUALVERIFY
         && script[24] == OP_CHECKSIG
     {
-        let mut hash = [0u8; 20];
-        hash.copy_from_slice(&script[3..23]);
-        Some(hash)
+        Some(script[3..23].try_into().expect("Size must be 20; qed"))
     } else {
         None
     }
@@ -73,9 +73,7 @@ fn to_key_id(script: &[u8]) -> Option<[u8; 20]> {
 
 fn to_script_id(script: &[u8]) -> Option<[u8; 20]> {
     if script.len() == 23 && script[0] == OP_HASH160 && script[1] == 20 && script[22] == OP_EQUAL {
-        let mut hash = [0u8; 20];
-        hash.copy_from_slice(&script[2..22]);
-        Some(hash)
+        Some(script[2..22].try_into().expect("Size must be 20; qed"))
     } else {
         None
     }
@@ -92,9 +90,9 @@ fn to_pub_key(script: &[u8]) -> Option<PublicKey> {
         && script[34] == OP_CHECKSIG
         && (script[1] == 0x02 || script[1] == 0x03)
     {
-        let mut pubkey = [0u8; 33];
-        pubkey.copy_from_slice(&script[1..34]);
-        Some(PublicKey::Compressed(pubkey))
+        Some(PublicKey::Compressed(
+            script[1..34].try_into().expect("Size must be 33; qed"),
+        ))
     } else if script.len() == 67
         && script[0] == 65
         && script[66] == OP_CHECKSIG
@@ -105,9 +103,9 @@ fn to_pub_key(script: &[u8]) -> Option<PublicKey> {
             .p2pk_public_key()
             .is_some();
         if is_fully_valid {
-            let mut pubkey = [0u8; 65];
-            pubkey.copy_from_slice(&script[1..66]);
-            Some(PublicKey::Uncompressed(pubkey))
+            Some(PublicKey::Uncompressed(
+                script[1..66].try_into().expect("Size be 65; qed"),
+            ))
         } else {
             None
         }
@@ -117,26 +115,29 @@ fn to_pub_key(script: &[u8]) -> Option<PublicKey> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct CompressedScript(Vec<u8>);
+pub struct CompressedScript(pub Vec<u8>);
 
-fn compress_script(script: &[u8]) -> Option<CompressedScript> {
+pub fn compress_script(script: &[u8]) -> Option<CompressedScript> {
     if let Some(hash) = to_key_id(script) {
         let mut out = Vec::with_capacity(21);
         out.push(0x00);
         out.extend(hash);
-        Some(CompressedScript(out))
-    } else if let Some(hash) = to_script_id(script) {
+        return Some(CompressedScript(out));
+    }
+
+    if let Some(hash) = to_script_id(script) {
         let mut out = Vec::with_capacity(21);
         out.push(0x01);
         out.extend(hash);
-        Some(CompressedScript(out))
-    } else if let Some(public_key) = to_pub_key(script) {
+        return Some(CompressedScript(out));
+    }
+
+    if let Some(public_key) = to_pub_key(script) {
         let mut out = Vec::with_capacity(33);
 
         match public_key {
             PublicKey::Compressed(compressed) => {
-                out.push(compressed[0]);
-                out.extend_from_slice(&compressed[1..33]);
+                out.extend(compressed);
             }
             PublicKey::Uncompressed(uncompressed) => {
                 out.push(0x04 | (uncompressed[64] & 0x01));
@@ -144,9 +145,73 @@ fn compress_script(script: &[u8]) -> Option<CompressedScript> {
             }
         }
 
-        Some(CompressedScript(out))
-    } else {
-        None
+        return Some(CompressedScript(out));
+    }
+
+    None
+}
+
+fn decompress_script<R: Read>(stream: &mut R) -> std::io::Result<Option<bitcoin::ScriptBuf>> {
+    let mut n_size_buf = [0u8; 1];
+    stream.read_exact(&mut n_size_buf)?;
+    let n_size = n_size_buf[0];
+
+    match n_size {
+        0x00 => {
+            // P2PKH
+            let mut data = [0u8; 20];
+            stream.read_exact(&mut data)?;
+
+            let bytes = vec![OP_DUP, OP_HASH160, 20]
+                .into_iter()
+                .chain(data.iter().cloned())
+                .chain(vec![OP_EQUALVERIFY, OP_CHECKSIG])
+                .collect();
+            Ok(Some(bitcoin::ScriptBuf::from_bytes(bytes)))
+        }
+        0x01 => {
+            // P2SH
+            let mut data = [0u8; 20];
+            stream.read_exact(&mut data)?;
+
+            let bytes = vec![OP_HASH160, 20]
+                .into_iter()
+                .chain(data.iter().cloned())
+                .chain(vec![OP_EQUAL])
+                .collect();
+            Ok(Some(bitcoin::ScriptBuf::from_bytes(bytes)))
+        }
+        0x02 | 0x03 => {
+            // Compressed PubKey
+            let mut data = [0u8; 32];
+            stream.read_exact(&mut data)?;
+
+            let mut bytes = Vec::new();
+            bytes.push(33); // Key length
+            bytes.push(n_size); // Prefix
+            bytes.extend_from_slice(&data);
+            bytes.push(OP_CHECKSIG); // OP_CHECKSIG
+            Ok(Some(bitcoin::ScriptBuf::from_bytes(bytes)))
+        }
+        0x04 | 0x05 => {
+            let mut compressed_pubkey = [0u8; 33];
+            compressed_pubkey[0] = n_size - 2;
+            stream.read_exact(&mut compressed_pubkey[1..])?;
+
+            let Ok(pubkey) = bitcoin::PublicKey::from_slice(&compressed_pubkey) else {
+                return Ok(None);
+            };
+
+            // Uncompressed PubKey
+            let uncompressed = pubkey.inner.serialize_uncompressed();
+
+            let mut bytes = Vec::new();
+            bytes.push(65); // PubKey length
+            bytes.extend(uncompressed);
+            bytes.push(0xac); // OP_CHECKSIG
+            Ok(Some(bitcoin::ScriptBuf::from_bytes(bytes)))
+        }
+        _ => Ok(None),
     }
 }
 
@@ -158,13 +223,48 @@ impl ScriptCompression {
     pub fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         if let Some(compressed_script) = compress_script(&self.0) {
             writer.write_all(&compressed_script.0)?;
-        } else {
-            let size = self.0.len() + Self::SPECIAL_SCRIPTS;
-            VarInt(size as u64).serialize(writer)?;
-            writer.write_all(&self.0)?;
+            return Ok(());
         }
+        let size = self.0.len() + Self::SPECIAL_SCRIPTS;
+        let mut data = Vec::new();
+        VarInt::new(size as u64).consensus_encode(&mut data)?;
+        writer.write_all(&data)?;
+        writer.write_all(&self.0)?;
         Ok(())
     }
+
+    /*
+    /// Deserialize a compressed script.
+    pub fn deserialize<R: Read>(&self, reader: &mut R) -> Result<Script, encode::Error> {
+        let n_size = VarInt::consensus_decode(reader)?.0 as usize;
+
+        if n_size < N_SPECIAL_SCRIPTS {
+            let special_script_size = get_special_script_size(n_size);
+            let mut compressed = vec![0u8; special_script_size];
+            reader.read_exact(&mut compressed)?;
+            let mut script = Script::new();
+            if decompress_script(&mut script, n_size, &compressed) {
+                return Ok(script);
+            }
+        } else {
+            let script_size = n_size - N_SPECIAL_SCRIPTS;
+            if script_size > MAX_SCRIPT_SIZE {
+                let mut buffer = vec![0u8; script_size];
+                reader.read_exact(&mut buffer)?;
+                // Replace with an invalid script
+                return Ok(Script::new_op_return(&[]));
+            } else {
+                let mut buffer = vec![0u8; script_size];
+                reader.read_exact(&mut buffer)?;
+                return Ok(Script::from(buffer));
+            }
+        }
+
+        Err(encode::Error::ParseFailed(
+            "Failed to decompress script".into(),
+        ))
+    }
+    */
 }
 
 #[cfg(test)]
