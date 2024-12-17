@@ -1,5 +1,6 @@
 use bitcoin::{hashes::Hash, BlockHash, Txid};
 use rocksdb::DB;
+use std::path::Path;
 use std::{
     path::PathBuf,
     time::{Duration, Instant},
@@ -7,6 +8,151 @@ use std::{
 use subcoin_runtime_primitives::Coin;
 use subcoin_utxo_snapshot::{OutputEntry, Utxo, UtxoSnapshotGenerator};
 
+const COUNT_KEY: &[u8; 12] = b"__coin_count";
+const INTERVAL: Duration = Duration::from_secs(5);
+
+/// Storage backend for UTXO snapshots.
+///
+/// Note that [`SnapshotStore::InMem`] and [`SnapshotStore::Csv`] can not be used in production as
+/// they may consume huge RAM up to 30+ GB.
+enum SnapshotStore {
+    // Initially created for local testing.
+    #[allow(unused)]
+    InMem(Vec<Utxo>),
+    /// Human readable format.
+    ///
+    /// This format worked before Bitcoin Core 28. The snapshot format has been changed since
+    /// Bitcoin Core 28, but we still keep this format for the human readable property.
+    #[allow(unused)]
+    Csv(PathBuf),
+    // Store the coins in lexicographical order.
+    Rocksdb(DB),
+}
+
+impl SnapshotStore {
+    /// Append a UTXO to the store.
+    fn push(&mut self, utxo: Utxo) -> std::io::Result<()> {
+        match self {
+            Self::InMem(list) => {
+                list.push(utxo);
+                Ok(())
+            }
+            Self::Csv(path) => Self::append_to_csv(path, utxo),
+            Self::Rocksdb(db) => Self::insert_to_rocksdb(db, utxo).map_err(|err| {
+                std::io::Error::new(std::io::ErrorKind::Other, format!("rocksdb: {err:?}"))
+            }),
+        }
+    }
+
+    fn append_to_csv(path: &Path, utxo: Utxo) -> std::io::Result<()> {
+        // Open the file in append mode each time to avoid keeping it open across calls
+        let file = std::fs::OpenOptions::new().append(true).open(path)?;
+
+        let mut wtr = csv::WriterBuilder::new()
+            .has_headers(false) // Disable automatic header writing
+            .from_writer(file);
+
+        let utxo_csv_entry = UtxoCsvEntry::from(utxo);
+        if let Err(e) = wtr.serialize(&utxo_csv_entry) {
+            panic!("Failed to write UTXO entry to CSV: {e}");
+        }
+
+        wtr.flush()?;
+
+        Ok(())
+    }
+
+    fn insert_to_rocksdb(db: &DB, utxo: Utxo) -> Result<(), rocksdb::Error> {
+        let mut coin_count =
+            Self::read_rocksdb_count(db).expect("Failed to read count from Rocksdb") as u64;
+
+        let Utxo { txid, vout, coin } = utxo;
+
+        let mut key = Vec::with_capacity(32 + 4);
+        key.extend(txid.to_byte_array()); // Raw bytes of Txid
+        key.extend(vout.to_be_bytes()); // Ensure vout is big-endian for consistent ordering
+
+        let value = bincode::serialize(&coin).expect("Failed to serialize Coin"); // Serialize coin data
+
+        coin_count += 1;
+
+        db.put(&key, value)?;
+        db.put(COUNT_KEY, coin_count.to_le_bytes())?;
+
+        Ok(())
+    }
+
+    /// Count total UTXO entries in the store.
+    fn count(&self) -> std::io::Result<usize> {
+        match self {
+            Self::InMem(list) => Ok(list.len()),
+            Self::Csv(path) => {
+                // Open the file in read mode only for counting
+                let file = std::fs::File::open(path)?;
+                let reader = std::io::BufReader::new(file);
+
+                // Count lines by reading through each record
+                let count = csv::ReaderBuilder::new()
+                    .has_headers(false)
+                    .from_reader(reader)
+                    .records()
+                    .count();
+
+                Ok(count)
+            }
+            Self::Rocksdb(db) => Self::read_rocksdb_count(db),
+        }
+    }
+
+    /// Read the RocksDB UTXO count.
+    fn read_rocksdb_count(db: &DB) -> std::io::Result<usize> {
+        Ok(db
+            .get(COUNT_KEY)
+            .ok()
+            .flatten()
+            .map(|v| u64::from_le_bytes(v.try_into().expect("Invalid DB value")))
+            .unwrap_or(0) as usize)
+    }
+
+    fn generate_snapshot(
+        &mut self,
+        snapshot_generator: &mut UtxoSnapshotGenerator,
+        target_bitcoin_block_hash: BlockHash,
+        utxos_count: u64,
+    ) -> std::io::Result<()> {
+        match self {
+            Self::InMem(list) => {
+                let utxos = std::mem::take(list);
+
+                snapshot_generator.generate_snapshot_in_mem(
+                    target_bitcoin_block_hash,
+                    utxos_count as u64,
+                    utxos,
+                )?;
+            }
+            Self::Csv(path) => {
+                generate_from_csv(
+                    path,
+                    snapshot_generator,
+                    target_bitcoin_block_hash,
+                    utxos_count,
+                )?;
+            }
+            Self::Rocksdb(db) => {
+                generate_from_rocksdb(
+                    db,
+                    snapshot_generator,
+                    target_bitcoin_block_hash,
+                    utxos_count,
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// CSV representation of a UTXO entry.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct UtxoCsvEntry {
     txid: bitcoin::Txid,
@@ -53,163 +199,41 @@ impl From<UtxoCsvEntry> for Utxo {
     }
 }
 
-enum UtxoStore {
-    // Initially created for local testing.
-    #[allow(unused)]
-    InMem(Vec<Utxo>),
-    /// Human readable format.
-    ///
-    /// This format worked before Bitcoin Core 28. The snapshot format has been changed since
-    /// Bitcoin Core 28, but we still keep this format for the human readable property.
-    #[allow(unused)]
-    Csv(PathBuf),
-    // Store the coins in lexicographical order.
-    Rocksdb(DB),
+fn generate_from_csv(
+    path: impl AsRef<Path>,
+    snapshot_generator: &mut UtxoSnapshotGenerator,
+    block_hash: BlockHash,
+    utxos_count: u64,
+) -> std::io::Result<()> {
+    let file = std::fs::File::open(path)?;
+
+    let reader = std::io::BufReader::new(file);
+    let csv_reader = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .from_reader(reader);
+
+    let utxo_iter = csv_reader
+        .into_deserialize::<UtxoCsvEntry>()
+        .filter_map(Result::ok)
+        .map(Utxo::from);
+
+    snapshot_generator.generate_snapshot_in_mem(block_hash, utxos_count, utxo_iter)
 }
 
-const COUNT_KEY: &[u8; 12] = b"__coin_count";
-
-impl UtxoStore {
-    fn push(&mut self, utxo: Utxo) {
-        match self {
-            Self::InMem(list) => list.push(utxo),
-            Self::Csv(path) => {
-                // Open the file in append mode each time to avoid keeping it open across calls
-                let file = std::fs::OpenOptions::new()
-                    .append(true)
-                    .open(path)
-                    .expect("Failed to open file");
-
-                let mut wtr = csv::WriterBuilder::new()
-                    .has_headers(false) // Disable automatic header writing
-                    .from_writer(file);
-
-                let utxo_csv_entry = UtxoCsvEntry::from(utxo);
-                if let Err(e) = wtr.serialize(&utxo_csv_entry) {
-                    panic!("Failed to write UTXO entry to CSV: {}", e);
-                }
-
-                if let Err(e) = wtr.flush() {
-                    panic!("Failed to flush CSV writer: {}", e);
-                }
-            }
-            Self::Rocksdb(db) => {
-                let Utxo { txid, vout, coin } = utxo;
-                let mut coin_count: u64 = db
-                    .get(COUNT_KEY)
-                    .expect("Failed to read CoinCount from Rocksdb")
-                    .map(|v| u64::from_le_bytes(v.try_into().expect("Invalid value")))
-                    .unwrap_or(0);
-
-                let mut key = Vec::with_capacity(32 + 4);
-                key.extend_from_slice(txid.as_byte_array()); // Raw bytes of Txid
-                key.extend_from_slice(&vout.to_be_bytes()); // Ensure vout is big-endian for consistent ordering
-
-                let value = bincode::serialize(&coin).expect("Failed to serialize Coin"); // Serialize coin data
-
-                coin_count += 1;
-
-                db.put(&key, value)
-                    .expect("Failed to put Coin into Rocksdb");
-                db.put(COUNT_KEY, coin_count.to_le_bytes())
-                    .expect("Failed to push CoinCount into Rocksdb");
-            }
-        }
-    }
-
-    fn count(&self) -> std::io::Result<usize> {
-        match self {
-            Self::InMem(list) => Ok(list.len()),
-            Self::Csv(path) => {
-                // Open the file in read mode only for counting
-                let file = std::fs::File::open(path)?;
-                let reader = std::io::BufReader::new(file);
-
-                // Count lines by reading through each record
-                let count = csv::ReaderBuilder::new()
-                    .has_headers(false)
-                    .from_reader(reader)
-                    .records()
-                    .count();
-
-                Ok(count)
-            }
-            Self::Rocksdb(db) => Ok(db
-                .get(COUNT_KEY)
-                .expect("Failed to read CoinCount from Rocksdb")
-                .map(|v| u64::from_le_bytes(v.try_into().expect("Invalid value")))
-                .unwrap_or(0) as usize),
-        }
-    }
-
-    fn write_snapshot(
-        &mut self,
-        snapshot_generator: &mut UtxoSnapshotGenerator,
-        target_bitcoin_block_hash: BlockHash,
-        utxos_count: usize,
-    ) -> std::io::Result<()> {
-        match self {
-            Self::InMem(list) => {
-                let utxos = std::mem::take(list);
-
-                snapshot_generator.write_utxo_snapshot_in_memory(
-                    target_bitcoin_block_hash,
-                    utxos_count as u64,
-                    utxos,
-                )?;
-            }
-            Self::Csv(path) => {
-                let file = std::fs::File::open(path).expect("Failed to open utxo.csv");
-
-                let reader = std::io::BufReader::new(file);
-                let csv_reader = csv::ReaderBuilder::new()
-                    .has_headers(false)
-                    .from_reader(reader);
-
-                let utxo_iter = csv_reader
-                    .into_deserialize::<UtxoCsvEntry>()
-                    .filter_map(Result::ok)
-                    .map(Utxo::from);
-
-                snapshot_generator.write_utxo_snapshot_in_memory(
-                    target_bitcoin_block_hash,
-                    utxos_count as u64,
-                    utxo_iter,
-                )?;
-            }
-            Self::Rocksdb(db) => {
-                generate_snapshot_from_rocksdb(
-                    db,
-                    snapshot_generator,
-                    target_bitcoin_block_hash,
-                    utxos_count,
-                )?;
-            }
-        }
-
-        Ok(())
-    }
-}
-
-fn generate_snapshot_from_rocksdb(
+fn generate_from_rocksdb(
     db: &DB,
     snapshot_generator: &mut UtxoSnapshotGenerator,
     bitcoin_block_hash: BlockHash,
-    utxos_count: usize,
+    utxos_count: u64,
 ) -> std::io::Result<()> {
-    snapshot_generator.write_snapshot_metadata(bitcoin_block_hash, utxos_count as u64)?;
-
-    let iter = db.iterator(rocksdb::IteratorMode::Start);
-
     let mut last_txid = None;
     let mut coins = Vec::new();
-
     let mut written = 0;
-
-    const INTERVAL: Duration = Duration::from_secs(5);
     let mut last_progress_update_time = Instant::now();
 
-    for entry in iter {
+    snapshot_generator.write_snapshot_metadata(bitcoin_block_hash, utxos_count)?;
+
+    for entry in db.iterator(rocksdb::IteratorMode::Start) {
         let (key, value) = entry.unwrap();
 
         if key.as_ref() == COUNT_KEY {
@@ -225,16 +249,13 @@ fn generate_snapshot_from_rocksdb(
                 if x == txid {
                     coins.push(OutputEntry { vout, coin });
                 } else {
-                    let batch = std::mem::take(&mut coins);
-                    written += batch.len();
-                    snapshot_generator.write_coins(x, batch)?;
+                    let coins_per_txid = std::mem::take(&mut coins);
+                    written += coins_per_txid.len();
+                    snapshot_generator.write_coins(x, coins_per_txid)?;
 
                     if last_progress_update_time.elapsed() > INTERVAL {
                         tracing::info!(
                             target: "snapcake",
-                            "Writing snapshot progress: {written}/{utxos_count}",
-                        );
-                        println!(
                             "Writing snapshot progress: {written}/{utxos_count}",
                         );
                         last_progress_update_time = Instant::now();
@@ -251,21 +272,22 @@ fn generate_snapshot_from_rocksdb(
         }
     }
 
-    if !coins.is_empty() {
-        let txid = last_txid.unwrap();
-        written += coins.len();
-        snapshot_generator.write_coins(txid, coins)?;
-        tracing::info!(
-            target: "snapcake",
-            "Writing snapshot progress: {written}/{utxos_count}",
-        );
+    if let Some(txid) = last_txid {
+        if !coins.is_empty() {
+            written += coins.len();
+            snapshot_generator.write_coins(txid, coins)?;
+            tracing::info!(
+                target: "snapcake",
+                "Writing snapshot progress: {written}/{utxos_count}",
+            );
+        }
     }
 
     Ok(())
 }
 
 pub struct SnapshotProcessor {
-    store: UtxoStore,
+    store: SnapshotStore,
     snapshot_generator: UtxoSnapshotGenerator,
     target_bitcoin_block_hash: BlockHash,
 }
@@ -292,13 +314,13 @@ impl SnapshotProcessor {
 
         let store = if rocksdb {
             let db = DB::open_default(snapshot_dir.join("db")).expect("Failed to open Rocksdb");
-            UtxoStore::Rocksdb(db)
+            SnapshotStore::Rocksdb(db)
         } else {
             let utxo_filepath = snapshot_dir.join("utxo.csv");
 
             // Open in write mode to clear existing content, then immediately close.
             std::fs::File::create(&utxo_filepath).expect("Failed to clear utxo.csv");
-            UtxoStore::Csv(utxo_filepath)
+            SnapshotStore::Csv(utxo_filepath)
         };
 
         Self {
@@ -309,10 +331,12 @@ impl SnapshotProcessor {
     }
 
     pub fn store_utxo(&mut self, utxo: Utxo) {
-        self.store.push(utxo);
+        self.store
+            .push(utxo)
+            .expect("Failed to add UTXO to the store");
     }
 
-    pub fn write_snapshot(&mut self, expected_utxos_count: usize) {
+    pub fn create_snapshot(&mut self, expected_utxos_count: usize) {
         let utxos_count = self
             .store
             .count()
@@ -327,10 +351,10 @@ impl SnapshotProcessor {
         );
 
         self.store
-            .write_snapshot(
+            .generate_snapshot(
                 &mut self.snapshot_generator,
                 self.target_bitcoin_block_hash,
-                utxos_count,
+                utxos_count as u64,
             )
             .expect("Failed to write UTXO set snapshot");
     }
@@ -383,8 +407,7 @@ mod tests {
             "0000000000000000000320283a032748cef8227873ff4872689bf23f1cda83a5"
                 .parse()
                 .unwrap();
-        generate_snapshot_from_rocksdb(&db, &mut snapshot_generator, block_hash, utxos_count)
-            .unwrap();
+        generate_from_rocksdb(&db, &mut snapshot_generator, block_hash, utxos_count).unwrap();
     }
 }
 

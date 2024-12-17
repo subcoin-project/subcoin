@@ -77,7 +77,7 @@ impl DumpTxOutSetCmd {
             let mut snapshot_generator =
                 UtxoSnapshotGenerator::new(path, file, bitcoin::Network::Bitcoin);
 
-            snapshot_generator.write_utxo_snapshot_in_memory(
+            snapshot_generator.generate_snapshot_in_mem(
                 bitcoin_block_hash,
                 utxo_set_size,
                 utxo_iter.map(|(txid, vout, coin)| subcoin_utxo_snapshot::Utxo {

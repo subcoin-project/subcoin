@@ -122,7 +122,7 @@ where
                 self.total_coins,
             );
 
-            self.snapshot_processor.write_snapshot(self.total_coins);
+            self.snapshot_processor.create_snapshot(self.total_coins);
 
             tracing::info!(
                 target: "snapcake",
