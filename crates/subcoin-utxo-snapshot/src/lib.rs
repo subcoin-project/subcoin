@@ -232,7 +232,7 @@ impl UtxoSnapshotGenerator {
     }
 
     /// Writes the metadata of snapshot.
-    pub fn write_snapshot_metadata(
+    pub fn write_metadata(
         &mut self,
         bitcoin_block_hash: BlockHash,
         coins_count: u64,
@@ -310,6 +310,7 @@ fn generate_snapshot_in_mem_inner<W: std::io::Write>(
     Ok(())
 }
 
+///
 pub fn write_coins<W: std::io::Write>(
     writer: &mut W,
     txid: bitcoin::Txid,
@@ -351,3 +352,4 @@ fn serialize_coin<W: std::io::Write>(writer: &mut W, coin: Coin) -> std::io::Res
 
     Ok(())
 }
+

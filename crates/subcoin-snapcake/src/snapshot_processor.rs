@@ -119,34 +119,24 @@ impl SnapshotStore {
         utxos_count: u64,
     ) -> std::io::Result<()> {
         match self {
-            Self::InMem(list) => {
-                let utxos = std::mem::take(list);
-
-                snapshot_generator.generate_snapshot_in_mem(
-                    target_bitcoin_block_hash,
-                    utxos_count as u64,
-                    utxos,
-                )?;
-            }
-            Self::Csv(path) => {
-                generate_from_csv(
-                    path,
-                    snapshot_generator,
-                    target_bitcoin_block_hash,
-                    utxos_count,
-                )?;
-            }
-            Self::Rocksdb(db) => {
-                generate_from_rocksdb(
-                    db,
-                    snapshot_generator,
-                    target_bitcoin_block_hash,
-                    utxos_count,
-                )?;
-            }
+            Self::InMem(list) => snapshot_generator.generate_snapshot_in_mem(
+                target_bitcoin_block_hash,
+                utxos_count as u64,
+                std::mem::take(list),
+            ),
+            Self::Csv(path) => generate_from_csv(
+                path,
+                snapshot_generator,
+                target_bitcoin_block_hash,
+                utxos_count,
+            ),
+            Self::Rocksdb(db) => generate_from_rocksdb(
+                db,
+                snapshot_generator,
+                target_bitcoin_block_hash,
+                utxos_count,
+            ),
         }
-
-        Ok(())
     }
 }
 
@@ -229,7 +219,7 @@ fn generate_from_rocksdb(
     let mut written = 0;
     let mut last_progress_update_time = Instant::now();
 
-    snapshot_generator.write_snapshot_metadata(bitcoin_block_hash, utxos_count)?;
+    snapshot_generator.write_metadata(bitcoin_block_hash, utxos_count)?;
 
     for entry in db.iterator(rocksdb::IteratorMode::Start) {
         let (key, value) = entry.unwrap();
@@ -358,3 +348,4 @@ impl SnapshotProcessor {
             .expect("Failed to write UTXO set snapshot");
     }
 }
+

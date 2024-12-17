@@ -58,7 +58,7 @@ impl DumpTxOutSetCmd {
             let utxo_set_size = fetch_utxo_set_at(&client, height)?.2.count() as u64;
 
             println!(
-                "Exporting UTXO set (utxo_set_size) at #{block_number},{bitcoin_block_hash} to binary file: {}",
+                "Exporting UTXO set ({utxo_set_size}) at #{block_number},{bitcoin_block_hash} to binary file: {}",
                 path.display()
             );
 

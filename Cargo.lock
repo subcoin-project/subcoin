@@ -10576,8 +10576,6 @@ dependencies = [
  "hex",
  "serde",
  "subcoin-primitives",
- "thiserror 1.0.68",
- "tracing",
  "txoutset",
 ]
 
