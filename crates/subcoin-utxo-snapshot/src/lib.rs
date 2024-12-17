@@ -310,7 +310,6 @@ fn generate_snapshot_in_mem_inner<W: std::io::Write>(
     Ok(())
 }
 
-///
 pub fn write_coins<W: std::io::Write>(
     writer: &mut W,
     txid: bitcoin::Txid,
