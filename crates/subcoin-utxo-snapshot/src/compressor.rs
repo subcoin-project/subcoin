@@ -234,39 +234,6 @@ impl ScriptCompression {
         writer.write_all(&self.0)?;
         Ok(())
     }
-
-    /*
-    /// Deserialize a compressed script.
-    pub fn deserialize<R: Read>(&self, reader: &mut R) -> Result<Script, encode::Error> {
-        let n_size = VarInt::consensus_decode(reader)?.0 as usize;
-
-        if n_size < N_SPECIAL_SCRIPTS {
-            let special_script_size = get_special_script_size(n_size);
-            let mut compressed = vec![0u8; special_script_size];
-            reader.read_exact(&mut compressed)?;
-            let mut script = Script::new();
-            if decompress_script(&mut script, n_size, &compressed) {
-                return Ok(script);
-            }
-        } else {
-            let script_size = n_size - N_SPECIAL_SCRIPTS;
-            if script_size > MAX_SCRIPT_SIZE {
-                let mut buffer = vec![0u8; script_size];
-                reader.read_exact(&mut buffer)?;
-                // Replace with an invalid script
-                return Ok(Script::new_op_return(&[]));
-            } else {
-                let mut buffer = vec![0u8; script_size];
-                reader.read_exact(&mut buffer)?;
-                return Ok(Script::from(buffer));
-            }
-        }
-
-        Err(encode::Error::ParseFailed(
-            "Failed to decompress script".into(),
-        ))
-    }
-    */
 }
 
 #[cfg(test)]
@@ -279,4 +246,3 @@ mod tests {
         assert_eq!(n, decompress_amount(compress_amount(n)));
     }
 }
-

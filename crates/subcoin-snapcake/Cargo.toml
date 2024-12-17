@@ -31,7 +31,6 @@ sc-network-sync = { workspace = true }
 sc-service = { workspace = true }
 sc-transaction-pool = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
 sp-api = { workspace = true }
 sp-blockchain = { workspace = true }
 sp-consensus = { workspace = true }

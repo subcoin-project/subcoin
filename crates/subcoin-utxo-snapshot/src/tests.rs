@@ -163,28 +163,8 @@ fn test_snapshot_at_block_6() {
 }
 
 #[test]
-fn test_code() {
-    let height = 733953;
-    let code = height * 2u32 + u32::from(false);
-
-    let mut data = Vec::new();
-    VarInt::new(code as u64)
-        .consensus_encode(&mut data)
-        .unwrap();
-    println!("{:x?}", data);
-
+fn test_varint() {
     let mut data = Vec::new();
     VarInt::new(143).consensus_encode(&mut data).unwrap();
-    println!("143 encoded bytes: {:02x?}", data);
-
-    let mut data = Vec::new();
-    VarInt::new(2049).consensus_encode(&mut data).unwrap();
-    println!("2049 encoded bytes: {:02x?}", data);
-
-    use bitcoin::consensus::Decodable;
-    let mut data = vec![0x80, 0x0f];
-    println!(
-        "{:?}",
-        VarInt::consensus_decode(&mut data.as_slice()).unwrap()
-    );
+    assert_eq!(data, vec![0x80, 0x0f]);
 }

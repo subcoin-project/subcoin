@@ -10536,7 +10536,6 @@ dependencies = [
  "sc-service",
  "sc-transaction-pool",
  "serde",
- "serde_json",
  "sp-api",
  "sp-blockchain",
  "sp-consensus",

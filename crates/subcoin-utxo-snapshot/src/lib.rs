@@ -290,7 +290,7 @@ fn write_snapshot_metadata<W: std::io::Write>(
     Ok(())
 }
 
-/// Write the UTXO snapshot at the specified block to a file.
+/// Write the UTXO snapshot at the specified block using the given writer.
 ///
 /// NOTE: Do not use it in production.
 fn generate_snapshot_in_mem_inner<W: std::io::Write>(
@@ -319,7 +319,6 @@ pub(crate) fn write_coins<W: std::io::Write>(
 
     let mut data = Vec::new();
     txid.consensus_encode(&mut data)?;
-
     writer.write_all(&data)?;
 
     write_compact_size(writer, coins.len() as u64)?;
@@ -340,6 +339,7 @@ fn serialize_coin<W: std::io::Write>(writer: &mut W, coin: Coin) -> std::io::Res
         script_pubkey,
     } = coin;
 
+    // https://github.com/bitcoin/bitcoin/blob/0903ce8dbc25d3823b03d52f6e6bff74d19e801e/src/coins.h#L62
     let code = (height << 1) | is_coinbase as u32;
 
     let mut data = Vec::new();
@@ -351,4 +351,3 @@ fn serialize_coin<W: std::io::Write>(writer: &mut W, coin: Coin) -> std::io::Res
 
     Ok(())
 }
-
