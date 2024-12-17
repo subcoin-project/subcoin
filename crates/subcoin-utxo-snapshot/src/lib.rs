@@ -352,4 +352,3 @@ fn serialize_coin<W: std::io::Write>(writer: &mut W, coin: Coin) -> std::io::Res
 
     Ok(())
 }
-

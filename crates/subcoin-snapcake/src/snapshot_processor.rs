@@ -348,4 +348,3 @@ impl SnapshotProcessor {
             .expect("Failed to write UTXO set snapshot");
     }
 }
-
