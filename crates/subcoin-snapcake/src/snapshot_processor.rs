@@ -1,10 +1,8 @@
-use bitcoin::{hashes::Hash, BlockHash, Txid};
+use bitcoin::hashes::Hash;
+use bitcoin::{BlockHash, Txid};
 use rocksdb::DB;
-use std::path::Path;
-use std::{
-    path::PathBuf,
-    time::{Duration, Instant},
-};
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 use subcoin_runtime_primitives::Coin;
 use subcoin_utxo_snapshot::{OutputEntry, Utxo, UtxoSnapshotGenerator};
 
@@ -297,6 +295,7 @@ impl SnapshotProcessor {
         target_block_number: u32,
         target_bitcoin_block_hash: BlockHash,
         snapshot_base_dir: PathBuf,
+        use_rocksdb: bool,
     ) -> Self {
         let sync_target = format!("{target_block_number}_{target_bitcoin_block_hash}");
         let snapshot_dir = snapshot_base_dir.join(sync_target);
@@ -310,9 +309,7 @@ impl SnapshotProcessor {
         let snapshot_generator =
             UtxoSnapshotGenerator::new(snapshot_filepath, snapshot_file, bitcoin::Network::Bitcoin);
 
-        let rocksdb = true;
-
-        let store = if rocksdb {
+        let store = if use_rocksdb {
             let db = DB::open_default(snapshot_dir.join("db")).expect("Failed to open Rocksdb");
             SnapshotStore::Rocksdb(db)
         } else {
@@ -330,12 +327,14 @@ impl SnapshotProcessor {
         }
     }
 
+    /// Adds a UTXO to the store.
     pub fn store_utxo(&mut self, utxo: Utxo) {
         self.store
             .push(utxo)
             .expect("Failed to add UTXO to the store");
     }
 
+    /// Generates a snapshot and ensures the total UTXO count matches the expected count.
     pub fn create_snapshot(&mut self, expected_utxos_count: usize) {
         let utxos_count = self
             .store
@@ -410,4 +409,3 @@ mod tests {
         generate_from_rocksdb(&db, &mut snapshot_generator, block_hash, utxos_count).unwrap();
     }
 }
-

@@ -1,7 +1,6 @@
 use super::MergedParams;
 use crate::commands::blockchain::{fetch_utxo_set_at, ClientParams};
 use crate::utils::Yield;
-use bitcoin::consensus::Encodable;
 use std::fs::File;
 use std::io::{Stdout, Write};
 use std::path::PathBuf;
@@ -194,3 +193,4 @@ impl From<DumpTxOutSet> for DumpTxOutSetCmd {
         }
     }
 }
+

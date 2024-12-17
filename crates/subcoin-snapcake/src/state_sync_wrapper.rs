@@ -49,6 +49,7 @@ where
             target_block_number.saturated_into(),
             target_bitcoin_block_hash,
             snapshot_base_dir,
+            true,
         );
 
         Self {

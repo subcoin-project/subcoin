@@ -13,13 +13,6 @@ const MAX_SCRIPT_SIZE: usize = 10_000;
 #[derive(Debug)]
 pub struct ScriptCompression(ScriptBuf);
 
-impl ScriptCompression {
-    /// Reveal the inner script buffer
-    pub fn into_inner(self) -> ScriptBuf {
-        self.0
-    }
-}
-
 impl Encodable for ScriptCompression {
     fn consensus_encode<W: bitcoin::io::Write + ?Sized>(
         &self,
@@ -31,13 +24,9 @@ impl Encodable for ScriptCompression {
             return Ok(len);
         }
 
-        println!("================= Not scompressed script");
         let size = self.0.len() + NUM_SPECIAL_SCRIPTS;
-        println!("================= size: {size}");
-        println!("================= 0.as_bytes.len() size: {}", self.0.as_bytes().len());
         let mut data = Vec::new();
         let mut len = VarInt::new(size as u64).consensus_encode(&mut data)?;
-        println!("================= encoded size: {data:?}");
         writer.write_all(&data)?;
 
         len += self.0.len();
@@ -121,35 +110,22 @@ impl Decodable for ScriptCompression {
 
 #[cfg(test)]
 mod tests {
-    use std::io::BufRead;
-
     use super::*;
 
     #[test]
     fn test_script_compression() {
-        // let file =
-            // std::fs::File::open("/home/xlc/Work/src/github.com/subcoin-project/subcoin/840000.csv")
-                // .unwrap();
-
         let line = "7e27944eacef755d2fa83b6559f480941aa4f0e5f3f0623fc3d0de9cd28c0100:1,false,413198,7800,5121030b3810fd20fd3771517b2b8847d225791035ea06768e17c733a5756b6005bf55210222b6e887bb4d4bca08f97348e6b8561e6d11e0ed96dec0584b34d709078cd4a54104289699814d1c9ef35ae45cfb41116501c15b0141430a481226aa19bcb8806c7223802d24f2638d8ce14378137dd52114d1d965e2969b5b3ac011c25e2803eb5753ae";
 
+        let utxo = crate::tests::parse_csv_entry(&line);
+        let script = utxo.coin.script_pubkey;
 
+        let script_compression = ScriptCompression(ScriptBuf::from_bytes(script.clone()));
 
-        // for line in std::io::BufReader::new(file).lines() {
-            // let line = line.unwrap();
-            let utxo = crate::tests::parse_csv_entry(&line);
-            let script = utxo.coin.script_pubkey;
+        let mut encoded = Vec::new();
+        script_compression.consensus_encode(&mut encoded).unwrap();
 
-            let script_compression = ScriptCompression(ScriptBuf::from_bytes(script.clone()));
+        let decoded = ScriptCompression::consensus_decode(&mut encoded.as_slice()).unwrap();
 
-            let mut encoded = Vec::new();
-            script_compression.consensus_encode(&mut encoded).unwrap();
-            println!("encoded bytes: {encoded:?}");
-
-            let decoded = ScriptCompression::consensus_decode(&mut encoded.as_slice()).unwrap();
-            println!("decoded: {decoded:?}");
-
-            assert_eq!(decoded.0, script_compression.0);
-        // }
+        assert_eq!(decoded.0, script_compression.0);
     }
 }

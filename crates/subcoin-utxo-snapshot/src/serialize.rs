@@ -16,23 +16,3 @@ pub fn write_compact_size<W: Write>(writer: &mut W, size: u64) -> io::Result<()>
     }
     Ok(())
 }
-
-pub struct VarInt(pub u64);
-
-impl From<u64> for VarInt {
-    fn from(value: u64) -> Self {
-        Self(value)
-    }
-}
-
-impl VarInt {
-    pub fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
-        let mut value = self.0;
-        while value >= 0x80 {
-            writer.write_all(&[((value & 0x7F) | 0x80) as u8])?;
-            value >>= 7;
-        }
-        writer.write_all(&[value as u8])?;
-        Ok(())
-    }
-}

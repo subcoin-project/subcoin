@@ -37,6 +37,7 @@ pub fn compress_amount(n: u64) -> u64 {
     }
 }
 
+#[allow(unused)]
 pub fn decompress_amount(x: u64) -> u64 {
     if x == 0 {
         return 0;
@@ -151,6 +152,7 @@ pub fn compress_script(script: &[u8]) -> Option<CompressedScript> {
     None
 }
 
+#[allow(unused)]
 fn decompress_script<R: Read>(stream: &mut R) -> std::io::Result<Option<bitcoin::ScriptBuf>> {
     let mut n_size_buf = [0u8; 1];
     stream.read_exact(&mut n_size_buf)?;
