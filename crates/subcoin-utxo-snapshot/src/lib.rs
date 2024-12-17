@@ -63,6 +63,12 @@ pub struct Utxo {
     pub coin: Coin,
 }
 
+impl From<(bitcoin::Txid, u32, Coin)> for Utxo {
+    fn from((txid, vout, coin): (bitcoin::Txid, u32, Coin)) -> Self {
+        Self { txid, vout, coin }
+    }
+}
+
 const SNAPSHOT_MAGIC_BYTES: [u8; 5] = [b'u', b't', b'x', b'o', 0xff];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
