@@ -174,6 +174,8 @@ impl SnapshotMetadata {
 }
 
 /// Responsible for dumping the UTXO set snapshot compatible with Bitcoin Core.
+///
+/// The format of generated snapshot is compatible with Bitcoin Core 28.0.
 pub struct UtxoSnapshotGenerator {
     output_filepath: PathBuf,
     output_file: File,
