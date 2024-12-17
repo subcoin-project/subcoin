@@ -1,6 +1,9 @@
 use bitcoin::hashes::Hash;
 use bitcoin::{BlockHash, Txid};
 use rocksdb::DB;
+use sha2::{Digest, Sha256};
+use std::fs::File;
+use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use subcoin_runtime_primitives::Coin;
@@ -8,6 +11,9 @@ use subcoin_utxo_snapshot::{OutputEntry, Utxo, UtxoSnapshotGenerator};
 
 const COUNT_KEY: &[u8; 12] = b"__coin_count";
 const INTERVAL: Duration = Duration::from_secs(5);
+
+const MAINNET_840000_SNAPSHOT_SHA256SUM: &str =
+    "dc4bb43d58d6a25e91eae93eb052d72e3318bd98ec62a5d0c11817cefbba177b";
 
 /// Storage backend for UTXO snapshots.
 ///
@@ -124,19 +130,106 @@ impl SnapshotStore {
                 utxos_count as u64,
                 std::mem::take(list),
             ),
-            Self::Csv(path) => generate_from_csv(
+            Self::Csv(path) => Self::generate_from_csv(
                 path,
                 snapshot_generator,
                 target_bitcoin_block_hash,
                 utxos_count,
             ),
-            Self::Rocksdb(db) => generate_from_rocksdb(
+            Self::Rocksdb(db) => Self::generate_from_rocksdb(
                 db,
                 snapshot_generator,
                 target_bitcoin_block_hash,
                 utxos_count,
             ),
         }
+    }
+
+    fn generate_from_csv(
+        path: impl AsRef<Path>,
+        snapshot_generator: &mut UtxoSnapshotGenerator,
+        block_hash: BlockHash,
+        utxos_count: u64,
+    ) -> std::io::Result<()> {
+        let file = std::fs::File::open(path)?;
+
+        let reader = std::io::BufReader::new(file);
+        let csv_reader = csv::ReaderBuilder::new()
+            .has_headers(false)
+            .from_reader(reader);
+
+        let utxo_iter = csv_reader
+            .into_deserialize::<UtxoCsvEntry>()
+            .filter_map(Result::ok)
+            .map(Utxo::from);
+
+        snapshot_generator.generate_snapshot_in_mem(block_hash, utxos_count, utxo_iter)
+    }
+
+    fn generate_from_rocksdb(
+        db: &DB,
+        snapshot_generator: &mut UtxoSnapshotGenerator,
+        bitcoin_block_hash: BlockHash,
+        utxos_count: u64,
+    ) -> std::io::Result<()> {
+        let mut last_txid = None;
+        let mut coins = Vec::new();
+        let mut written = 0;
+        let mut last_progress_update_time = Instant::now();
+
+        snapshot_generator.write_metadata(bitcoin_block_hash, utxos_count)?;
+
+        for entry in db.iterator(rocksdb::IteratorMode::Start) {
+            let (key, value) = entry.unwrap();
+
+            if key.as_ref() == COUNT_KEY {
+                continue; // Skip the count key
+            }
+
+            let txid = Txid::from_slice(&key[0..32]).unwrap(); // First 32 bytes
+            let vout = u32::from_be_bytes(key[32..36].try_into().unwrap()); // Next 4 bytes
+            let coin: Coin = bincode::deserialize(&value).unwrap();
+
+            match last_txid {
+                Some(x) => {
+                    if x == txid {
+                        coins.push(OutputEntry { vout, coin });
+                    } else {
+                        let coins_per_txid = std::mem::take(&mut coins);
+                        written += coins_per_txid.len();
+                        snapshot_generator.write_coins(x, coins_per_txid)?;
+
+                        if last_progress_update_time.elapsed() > INTERVAL {
+                            tracing::info!(
+                                target: "snapcake",
+                                "Writing snapshot progress: {written}/{utxos_count}",
+                            );
+                            last_progress_update_time = Instant::now();
+                        }
+
+                        last_txid.replace(txid);
+                        coins.push(OutputEntry { vout, coin });
+                    }
+                }
+                None => {
+                    last_txid.replace(txid);
+                    coins.push(OutputEntry { vout, coin });
+                }
+            }
+        }
+
+        if let Some(txid) = last_txid {
+            if !coins.is_empty() {
+                written += coins.len();
+                snapshot_generator.write_coins(txid, coins)?;
+                tracing::info!(
+                    target: "snapcake",
+                    "Writing snapshot progress: {written}/{utxos_count}",
+                );
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -185,93 +278,6 @@ impl From<UtxoCsvEntry> for Utxo {
 
         Self { txid, vout, coin }
     }
-}
-
-fn generate_from_csv(
-    path: impl AsRef<Path>,
-    snapshot_generator: &mut UtxoSnapshotGenerator,
-    block_hash: BlockHash,
-    utxos_count: u64,
-) -> std::io::Result<()> {
-    let file = std::fs::File::open(path)?;
-
-    let reader = std::io::BufReader::new(file);
-    let csv_reader = csv::ReaderBuilder::new()
-        .has_headers(false)
-        .from_reader(reader);
-
-    let utxo_iter = csv_reader
-        .into_deserialize::<UtxoCsvEntry>()
-        .filter_map(Result::ok)
-        .map(Utxo::from);
-
-    snapshot_generator.generate_snapshot_in_mem(block_hash, utxos_count, utxo_iter)
-}
-
-fn generate_from_rocksdb(
-    db: &DB,
-    snapshot_generator: &mut UtxoSnapshotGenerator,
-    bitcoin_block_hash: BlockHash,
-    utxos_count: u64,
-) -> std::io::Result<()> {
-    let mut last_txid = None;
-    let mut coins = Vec::new();
-    let mut written = 0;
-    let mut last_progress_update_time = Instant::now();
-
-    snapshot_generator.write_metadata(bitcoin_block_hash, utxos_count)?;
-
-    for entry in db.iterator(rocksdb::IteratorMode::Start) {
-        let (key, value) = entry.unwrap();
-
-        if key.as_ref() == COUNT_KEY {
-            continue; // Skip the count key
-        }
-
-        let txid = Txid::from_slice(&key[0..32]).unwrap(); // First 32 bytes
-        let vout = u32::from_be_bytes(key[32..36].try_into().unwrap()); // Next 4 bytes
-        let coin: Coin = bincode::deserialize(&value).unwrap();
-
-        match last_txid {
-            Some(x) => {
-                if x == txid {
-                    coins.push(OutputEntry { vout, coin });
-                } else {
-                    let coins_per_txid = std::mem::take(&mut coins);
-                    written += coins_per_txid.len();
-                    snapshot_generator.write_coins(x, coins_per_txid)?;
-
-                    if last_progress_update_time.elapsed() > INTERVAL {
-                        tracing::info!(
-                            target: "snapcake",
-                            "Writing snapshot progress: {written}/{utxos_count}",
-                        );
-                        last_progress_update_time = Instant::now();
-                    }
-
-                    last_txid.replace(txid);
-                    coins.push(OutputEntry { vout, coin });
-                }
-            }
-            None => {
-                last_txid.replace(txid);
-                coins.push(OutputEntry { vout, coin });
-            }
-        }
-    }
-
-    if let Some(txid) = last_txid {
-        if !coins.is_empty() {
-            written += coins.len();
-            snapshot_generator.write_coins(txid, coins)?;
-            tracing::info!(
-                target: "snapcake",
-                "Writing snapshot progress: {written}/{utxos_count}",
-            );
-        }
-    }
-
-    Ok(())
 }
 
 pub struct SnapshotProcessor {
@@ -346,5 +352,41 @@ impl SnapshotProcessor {
                 utxos_count as u64,
             )
             .expect("Failed to write UTXO set snapshot");
+
+        if self.target_bitcoin_block_hash
+            == "0000000000000000000320283a032748cef8227873ff4872689bf23f1cda83a5"
+                .parse()
+                .expect("BlockHash for mainnet block#8400000 is correct; qed")
+        {
+            let sha256sum = calculate_sha256sum(self.snapshot_generator.path())
+                .expect("Failed to calculate sha256sum of snapshot");
+
+            if sha256sum != MAINNET_840000_SNAPSHOT_SHA256SUM {
+                panic!("Invalid snapshot sha256sum for block 8400000, expected: {MAINNET_840000_SNAPSHOT_SHA256SUM}, got: {sha256sum}");
+            }
+        }
     }
+}
+
+/// Calculates the SHA256 checksum of a file.
+fn calculate_sha256sum(file_path: impl AsRef<Path>) -> std::io::Result<String> {
+    // Open the file
+    let file = File::open(file_path)?;
+    let mut reader = BufReader::new(file);
+
+    // Create a SHA256 hasher
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 4096]; // Read the file in chunks
+
+    // Read file and update the hasher
+    while let Ok(bytes_read) = reader.read(&mut buffer) {
+        if bytes_read == 0 {
+            break; // End of file
+        }
+        hasher.update(&buffer[..bytes_read]);
+    }
+
+    // Finalize the hash and return it as a hexadecimal string
+    let hash_result = hasher.finalize();
+    Ok(format!("{:x}", hash_result))
 }

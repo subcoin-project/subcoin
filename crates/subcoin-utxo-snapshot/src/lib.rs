@@ -192,7 +192,7 @@ impl UtxoSnapshotGenerator {
         }
     }
 
-    /// Returns the path of output file.
+    /// Returns the path of generated snapshot file.
     pub fn path(&self) -> &Path {
         &self.output_filepath
     }
@@ -304,8 +304,7 @@ fn generate_snapshot_in_mem_inner<W: std::io::Write>(
 ) -> std::io::Result<()> {
     write_snapshot_metadata(writer, network, bitcoin_block_hash, utxos_count)?;
 
-    let sorted_coins = group_utxos_by_txid(utxos).into_iter().collect::<Vec<_>>();
-    for (txid, coins) in sorted_coins {
+    for (txid, coins) in group_utxos_by_txid(utxos) {
         write_coins(writer, txid, coins)?;
     }
 
