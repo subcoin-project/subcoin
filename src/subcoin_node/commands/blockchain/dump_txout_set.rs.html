@@ -167,13 +167,22 @@
 <a href="#167" id="167">167</a>
 <a href="#168" id="168">168</a>
 <a href="#169" id="169">169</a>
+<a href="#170" id="170">170</a>
+<a href="#171" id="171">171</a>
+<a href="#172" id="172">172</a>
+<a href="#173" id="173">173</a>
+<a href="#174" id="174">174</a>
+<a href="#175" id="175">175</a>
+<a href="#176" id="176">176</a>
+<a href="#177" id="177">177</a>
+<a href="#178" id="178">178</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">super</span>::MergedParams;
 <span class="kw">use </span><span class="kw">crate</span>::commands::blockchain::{fetch_utxo_set_at, ClientParams};
 <span class="kw">use </span><span class="kw">crate</span>::utils::Yield;
-<span class="kw">use </span>bitcoin::consensus::Encodable;
 <span class="kw">use </span>std::fs::File;
 <span class="kw">use </span>std::io::{Stdout, Write};
 <span class="kw">use </span>std::path::PathBuf;
+<span class="kw">use </span>std::sync::atomic::AtomicUsize;
 <span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>subcoin_primitives::runtime::Coin;
 <span class="kw">use </span>subcoin_service::FullClient;
@@ -187,15 +196,13 @@
     </span><span class="attr">#[clap(long)]
     </span>height: <span class="prelude-ty">Option</span>&lt;u32&gt;,
 
-    <span class="doccomment">/// Export the dumped txout set to a CSV file.
+    <span class="doccomment">/// Path to export the UTXO set in CSV format.
     </span><span class="attr">#[clap(short, long, value_name = <span class="string">"PATH"</span>)]
     </span>csv: <span class="prelude-ty">Option</span>&lt;PathBuf&gt;,
 
-    <span class="doccomment">/// Path to the binary dump file for the UTXO set.
+    <span class="doccomment">/// Path to export the UTXO set as a binary file.
     ///
     /// The binary dump is compatible with the format used by the Bitcoin Core client.
-    /// You can export the UTXO set from Subcoin and import it into the Bitcoin
-    /// Core client.
     ///
     /// If neither `--csv` nor `--binary` options are provided, the UTXO set will be
     /// printed to stdout in CSV format.
@@ -225,42 +232,57 @@
 
         <span class="kw">let </span>(block_number, bitcoin_block_hash, utxo_iter) = fetch_utxo_set_at(<span class="kw-2">&amp;</span>client, height)<span class="question-mark">?</span>;
 
-        <span class="kw">let </span><span class="kw-2">mut </span>output_file = <span class="kw">if let </span><span class="prelude-val">Some</span>(path) = csv {
-            <span class="macro">println!</span>(
-                <span class="string">"Dumping UTXO set at #{block_number},{bitcoin_block_hash} to {}"</span>,
-                path.display()
-            );
-            UtxoSetOutput::Csv(std::fs::File::create(path)<span class="question-mark">?</span>)
-        } <span class="kw">else if let </span><span class="prelude-val">Some</span>(path) = binary {
+        <span class="kw">if let </span><span class="prelude-val">Some</span>(path) = binary {
             <span class="kw">let </span>utxo_set_size = fetch_utxo_set_at(<span class="kw-2">&amp;</span>client, height)<span class="question-mark">?</span>.<span class="number">2</span>.count() <span class="kw">as </span>u64;
 
             <span class="macro">println!</span>(
-                <span class="string">"Dumping UTXO set at #{block_number},{bitcoin_block_hash} to {}"</span>,
+                <span class="string">"Exporting UTXO set ({utxo_set_size}) at #{block_number},{bitcoin_block_hash} to binary file: {}"</span>,
                 path.display()
             );
-            <span class="macro">println!</span>(<span class="string">"UTXO set size: {utxo_set_size}"</span>);
 
-            <span class="kw">let </span><span class="kw-2">mut </span>file = std::fs::File::create(<span class="kw-2">&amp;</span>path)<span class="question-mark">?</span>;
+            <span class="kw">let </span>file = std::fs::File::create(<span class="kw-2">&amp;</span>path)<span class="question-mark">?</span>;
 
-            <span class="kw">let </span><span class="kw-2">mut </span>data = Vec::new();
-            bitcoin_block_hash
-                .consensus_encode(<span class="kw-2">&amp;mut </span>data)
-                .map_err(|err| sc_cli::Error::Application(Box::new(err)))<span class="question-mark">?</span>;
-            utxo_set_size
-                .consensus_encode(<span class="kw-2">&amp;mut </span>data)
-                .map_err(|err| sc_cli::Error::Application(Box::new(err)))<span class="question-mark">?</span>;
+            <span class="kw">let </span><span class="kw-2">mut </span>snapshot_generator =
+                UtxoSnapshotGenerator::new(path, file, bitcoin::Network::Bitcoin);
 
-            <span class="kw">let _ </span>= file.write(data.as_slice())<span class="question-mark">?</span>;
+            snapshot_generator.generate_snapshot_in_mem(
+                bitcoin_block_hash,
+                utxo_set_size,
+                utxo_iter.map(Into::into),
+            )<span class="question-mark">?</span>;
 
-            UtxoSetOutput::Snapshot(UtxoSnapshotGenerator::new(path, file))
+            <span class="kw">return </span><span class="prelude-val">Ok</span>(());
+        }
+
+        <span class="kw">let </span><span class="kw-2">mut </span>output_file = <span class="kw">if let </span><span class="prelude-val">Some</span>(path) = csv {
+            <span class="macro">println!</span>(
+                <span class="string">"Exporting UTXO set at #{block_number},{bitcoin_block_hash} to CSV file: {}"</span>,
+                path.display()
+            );
+            UtxoSetOutput::Csv(std::fs::File::create(path)<span class="question-mark">?</span>)
         } <span class="kw">else </span>{
-            <span class="macro">println!</span>(<span class="string">"Dumping UTXO set at #{block_number},{bitcoin_block_hash}"</span>);
+            <span class="macro">println!</span>(<span class="string">"Exporting UTXO set at #{block_number},{bitcoin_block_hash} to stdout:"</span>);
             UtxoSetOutput::Stdout(std::io::stdout())
         };
 
-        <span class="kw">for </span>(txid, vout, coin) <span class="kw">in </span>utxo_iter {
-            output_file.write(txid, vout, coin)<span class="question-mark">?</span>;
+        <span class="kw">let </span>processed = Arc::new(AtomicUsize::new(<span class="number">0</span>));
 
+        <span class="kw">let </span>grouped_utxos =
+            subcoin_utxo_snapshot::group_utxos_by_txid(utxo_iter.into_iter().map(Into::into));
+
+        <span class="kw">let </span>total_txids = grouped_utxos.len();
+
+        <span class="kw">crate</span>::utils::show_progress_in_background(
+            processed.clone(),
+            total_txids <span class="kw">as </span>u64,
+            <span class="macro">format!</span>(<span class="string">"Dumping UTXO set at block #{block_number}..."</span>),
+        );
+
+        <span class="kw">for </span>(txid, coins) <span class="kw">in </span>grouped_utxos {
+            <span class="kw">for </span>subcoin_utxo_snapshot::OutputEntry { vout, coin } <span class="kw">in </span>coins {
+                output_file.write(txid, vout, coin)<span class="question-mark">?</span>;
+            }
+            processed.fetch_add(<span class="number">1</span>, std::sync::atomic::Ordering::Relaxed);
             <span class="comment">// Yield here allows to make the process interruptible by ctrl_c.
             </span>Yield::new().<span class="kw">await</span>;
         }
@@ -270,7 +292,6 @@
 }
 
 <span class="kw">enum </span>UtxoSetOutput {
-    Snapshot(UtxoSnapshotGenerator),
     Csv(File),
     Stdout(Stdout),
 }
@@ -278,9 +299,6 @@
 <span class="kw">impl </span>UtxoSetOutput {
     <span class="kw">fn </span>write(<span class="kw-2">&amp;mut </span><span class="self">self</span>, txid: bitcoin::Txid, vout: u32, coin: Coin) -&gt; std::io::Result&lt;()&gt; {
         <span class="kw">match </span><span class="self">self </span>{
-            <span class="self">Self</span>::Snapshot(snapshot_generator) =&gt; {
-                snapshot_generator.write_utxo_entry(txid, vout, coin)<span class="question-mark">?</span>;
-            }
             <span class="self">Self</span>::Csv(<span class="kw-2">ref mut </span>file) =&gt; {
                 <span class="kw">let </span>Coin {
                     is_coinbase,

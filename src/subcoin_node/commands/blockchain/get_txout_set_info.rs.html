@@ -205,34 +205,9 @@
 <a href="#205" id="205">205</a>
 <a href="#206" id="206">206</a>
 <a href="#207" id="207">207</a>
-<a href="#208" id="208">208</a>
-<a href="#209" id="209">209</a>
-<a href="#210" id="210">210</a>
-<a href="#211" id="211">211</a>
-<a href="#212" id="212">212</a>
-<a href="#213" id="213">213</a>
-<a href="#214" id="214">214</a>
-<a href="#215" id="215">215</a>
-<a href="#216" id="216">216</a>
-<a href="#217" id="217">217</a>
-<a href="#218" id="218">218</a>
-<a href="#219" id="219">219</a>
-<a href="#220" id="220">220</a>
-<a href="#221" id="221">221</a>
-<a href="#222" id="222">222</a>
-<a href="#223" id="223">223</a>
-<a href="#224" id="224">224</a>
-<a href="#225" id="225">225</a>
-<a href="#226" id="226">226</a>
-<a href="#227" id="227">227</a>
-<a href="#228" id="228">228</a>
-<a href="#229" id="229">229</a>
-<a href="#230" id="230">230</a>
-<a href="#231" id="231">231</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">super</span>::MergedParams;
 <span class="kw">use </span><span class="kw">crate</span>::commands::blockchain::{fetch_utxo_set_at, ClientParams};
 <span class="kw">use </span><span class="kw">crate</span>::utils::Yield;
-<span class="kw">use </span>indicatif::{ProgressBar, ProgressStyle};
 <span class="kw">use </span>sc_client_api::HeaderBackend;
 <span class="kw">use </span>sp_api::ProvideRuntimeApi;
 <span class="kw">use </span>std::sync::atomic::{AtomicUsize, Ordering};
@@ -339,8 +314,11 @@
     <span class="kw">let </span><span class="kw-2">mut </span>muhash = subcoin_crypto::muhash::MuHash3072::new();
 
     <span class="kw">if </span>progress_bar {
-        <span class="kw">let </span>loaded = txouts.clone();
-        std::thread::spawn(<span class="kw">move </span>|| show_progress(loaded, total_coins, block_number));
+        <span class="kw">crate</span>::utils::show_progress_in_background(
+            txouts.clone(),
+            total_coins,
+            <span class="macro">format!</span>(<span class="string">"Loading UTXO set at block #{block_number}..."</span>),
+        );
     }
 
     <span class="kw">for </span>(txid, vout, coin) <span class="kw">in </span>utxo_iter {
@@ -384,32 +362,6 @@
     };
 
     <span class="prelude-val">Ok</span>(tx_out_set_info)
-}
-
-<span class="kw">fn </span>show_progress(loaded: Arc&lt;AtomicUsize&gt;, total_coins: u64, block_number: u32) {
-    <span class="kw">let </span>pb = ProgressBar::new(total_coins);
-
-    pb.set_message(<span class="macro">format!</span>(<span class="string">"Loading UTXO set at block #{block_number}..."</span>));
-
-    pb.set_style(
-        ProgressStyle::default_bar()
-            .template(<span class="string">"{msg} [{bar:40}] {percent:.2}% ({pos}/{len}, {eta})"</span>)
-            .unwrap()
-            .progress_chars(<span class="string">"##-"</span>),
-    );
-
-    <span class="kw">loop </span>{
-        <span class="kw">let </span>new = loaded.load(Ordering::Relaxed) <span class="kw">as </span>u64;
-
-        <span class="kw">if </span>new == total_coins {
-            pb.finish_and_clear();
-            <span class="kw">return</span>;
-        }
-
-        pb.set_position(new);
-
-        std::thread::sleep(Duration::from_millis(<span class="number">200</span>));
-    }
 }
 
 <span class="comment">// Custom serializer for total_amount to display 8 decimal places

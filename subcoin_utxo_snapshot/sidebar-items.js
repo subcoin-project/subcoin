@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["tx_out_ser"],"struct":["Utxo","UtxoSnapshotGenerator"]};
+window.SIDEBAR_ITEMS = {"fn":["group_utxos_by_txid","tx_out_ser","write_coins"],"struct":["OutputEntry","Utxo","UtxoSnapshotGenerator"]};
