@@ -2,9 +2,11 @@ use bitcoin::hashes::Hash;
 use bitcoin::{BlockHash, Txid};
 use rocksdb::DB;
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 use subcoin_runtime_primitives::Coin;
 use subcoin_utxo_snapshot::{OutputEntry, Utxo, UtxoSnapshotGenerator};
@@ -12,8 +14,14 @@ use subcoin_utxo_snapshot::{OutputEntry, Utxo, UtxoSnapshotGenerator};
 const COUNT_KEY: &[u8; 12] = b"__coin_count";
 const INTERVAL: Duration = Duration::from_secs(5);
 
-const MAINNET_840000_SNAPSHOT_SHA256SUM: &str =
-    "dc4bb43d58d6a25e91eae93eb052d72e3318bd98ec62a5d0c11817cefbba177b";
+static MAINNET_SNAPSHOT_SHA256SUMS: LazyLock<HashMap<BlockHash, &str>> = LazyLock::new(|| {
+    HashMap::from([(
+        "0000000000000000000320283a032748cef8227873ff4872689bf23f1cda83a5"
+            .parse()
+            .expect("BlockHash for mainnet block#8400000 is correct; qed"),
+        "dc4bb43d58d6a25e91eae93eb052d72e3318bd98ec62a5d0c11817cefbba177b",
+    )])
+});
 
 /// Storage backend for UTXO snapshots.
 ///
@@ -331,7 +339,7 @@ impl SnapshotManager {
     }
 
     /// Generates a snapshot and ensures the total UTXO count matches the expected count.
-    pub fn create_snapshot(&mut self, expected_utxos_count: usize) {
+    pub fn create_snapshot(&mut self, expected_utxos_count: usize) -> std::io::Result<()> {
         let utxos_count = self
             .store
             .count()
@@ -345,34 +353,32 @@ impl SnapshotManager {
             self.snapshot_generator.path().display()
         );
 
-        self.store
-            .generate_snapshot(
-                &mut self.snapshot_generator,
-                self.target_bitcoin_block_hash,
-                utxos_count as u64,
-            )
-            .expect("Failed to write UTXO set snapshot");
+        self.store.generate_snapshot(
+            &mut self.snapshot_generator,
+            self.target_bitcoin_block_hash,
+            utxos_count as u64,
+        )?;
 
-        if self.target_bitcoin_block_hash
-            == "0000000000000000000320283a032748cef8227873ff4872689bf23f1cda83a5"
-                .parse()
-                .expect("BlockHash for mainnet block#8400000 is correct; qed")
+        if let Some(expected_sha256sum) =
+            MAINNET_SNAPSHOT_SHA256SUMS.get(&self.target_bitcoin_block_hash)
         {
-            let sha256sum = calculate_sha256sum(self.snapshot_generator.path())
-                .expect("Failed to calculate sha256sum of snapshot");
+            let sha256sum = calculate_sha256sum(self.snapshot_generator.path())?;
 
-            if sha256sum != MAINNET_840000_SNAPSHOT_SHA256SUM {
-                panic!("Invalid snapshot sha256sum for block 8400000, expected: {MAINNET_840000_SNAPSHOT_SHA256SUM}, got: {sha256sum}");
+            if sha256sum != *expected_sha256sum {
+                panic!(
+                    "Invalid snapshot sha256sum for block#{} (expected: {expected_sha256sum}, got: {sha256sum})",
+                    self.target_bitcoin_block_hash,
+                );
             }
         }
+
+        Ok(())
     }
 }
 
 /// Calculates the SHA256 checksum of a file.
 fn calculate_sha256sum(file_path: impl AsRef<Path>) -> std::io::Result<String> {
-    // Open the file
-    let file = File::open(file_path)?;
-    let mut reader = BufReader::new(file);
+    let mut reader = BufReader::new(File::open(file_path)?);
 
     // Create a SHA256 hasher
     let mut hasher = Sha256::new();
@@ -388,5 +394,6 @@ fn calculate_sha256sum(file_path: impl AsRef<Path>) -> std::io::Result<String> {
 
     // Finalize the hash and return it as a hexadecimal string
     let hash_result = hasher.finalize();
+
     Ok(format!("{:x}", hash_result))
 }
