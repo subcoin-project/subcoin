@@ -280,13 +280,13 @@ impl From<UtxoCsvEntry> for Utxo {
     }
 }
 
-pub struct SnapshotProcessor {
+pub struct SnapshotManager {
     store: SnapshotStore,
     snapshot_generator: UtxoSnapshotGenerator,
     target_bitcoin_block_hash: BlockHash,
 }
 
-impl SnapshotProcessor {
+impl SnapshotManager {
     pub fn new(
         target_block_number: u32,
         target_bitcoin_block_hash: BlockHash,

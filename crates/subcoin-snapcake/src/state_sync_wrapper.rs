@@ -1,4 +1,4 @@
-use crate::snapshot_processor::SnapshotProcessor;
+use crate::snapshot_manager::SnapshotManager;
 use codec::Decode;
 use sc_client_api::ProofProvider;
 use sc_network_sync::strategy::state_sync::{
@@ -22,7 +22,7 @@ pub(crate) struct StateSyncWrapper<B: BlockT, Client> {
     muhash: MuHash3072,
     target_block_number: u32,
     target_bitcoin_block_hash: bitcoin::BlockHash,
-    snapshot_processor: SnapshotProcessor,
+    snapshot_manager: SnapshotManager,
     received_coins: usize,
     total_coins: usize,
     last_progress_print_time: Option<Instant>,
@@ -45,7 +45,7 @@ where
             subcoin_primitives::extract_bitcoin_block_hash::<B>(&target_header)
                 .expect("Failed to extract bitcoin block hash");
 
-        let snapshot_processor = SnapshotProcessor::new(
+        let snapshot_manager = SnapshotManager::new(
             target_block_number.saturated_into(),
             target_bitcoin_block_hash,
             snapshot_base_dir,
@@ -57,7 +57,7 @@ where
             target_block_number: target_block_number.saturated_into(),
             target_bitcoin_block_hash,
             muhash: MuHash3072::new(),
-            snapshot_processor,
+            snapshot_manager,
             received_coins: 0,
             total_coins,
             last_progress_print_time: None,
@@ -96,7 +96,7 @@ where
 
                     self.muhash.insert(&data);
 
-                    self.snapshot_processor
+                    self.snapshot_manager
                         .store_utxo(Utxo { txid, vout, coin });
 
                     self.received_coins += 1;
@@ -123,7 +123,7 @@ where
                 self.total_coins,
             );
 
-            self.snapshot_processor.create_snapshot(self.total_coins);
+            self.snapshot_manager.create_snapshot(self.total_coins);
 
             tracing::info!(
                 target: "snapcake",
