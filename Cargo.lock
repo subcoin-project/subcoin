@@ -4936,7 +4936,9 @@ dependencies = [
  "glob",
  "libc",
  "libz-sys",
+ "lz4-sys",
  "tikv-jemalloc-sys",
+ "zstd-sys",
 ]
 
 [[package]]
@@ -10513,6 +10515,7 @@ dependencies = [
 name = "subcoin-snapcake"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "bitcoin 0.32.2",
  "clap",
  "csv",
@@ -10520,6 +10523,7 @@ dependencies = [
  "hex",
  "pallet-bitcoin",
  "parity-scale-codec",
+ "rocksdb",
  "sc-cli",
  "sc-client-api",
  "sc-consensus",
@@ -10532,6 +10536,7 @@ dependencies = [
  "sc-service",
  "sc-transaction-pool",
  "serde",
+ "sha2 0.9.9",
  "sp-api",
  "sp-blockchain",
  "sp-consensus",
@@ -10568,6 +10573,8 @@ name = "subcoin-utxo-snapshot"
 version = "0.1.0"
 dependencies = [
  "bitcoin 0.32.2",
+ "fastrand",
+ "hex",
  "serde",
  "subcoin-primitives",
  "txoutset",

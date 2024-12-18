@@ -1,3 +1,8 @@
+use indicatif::{ProgressBar, ProgressStyle};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+
 /// A future that will always `yield` on the first call of `poll` but schedules the
 /// current task for re-execution.
 ///
@@ -27,5 +32,35 @@ impl futures::Future for Yield {
         } else {
             Poll::Ready(())
         }
+    }
+}
+
+pub(crate) fn show_progress_in_background(processed: Arc<AtomicUsize>, total: u64, msg: String) {
+    std::thread::spawn(move || show_progress(processed, total, msg));
+}
+
+fn show_progress(processed: Arc<AtomicUsize>, total: u64, msg: String) {
+    let pb = ProgressBar::new(total);
+
+    pb.set_message(msg);
+
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{msg} [{bar:40}] {percent:.2}% ({pos}/{len}, {eta})")
+            .unwrap()
+            .progress_chars("##-"),
+    );
+
+    loop {
+        let new = processed.load(Ordering::Relaxed) as u64;
+
+        if new == total {
+            pb.finish_and_clear();
+            return;
+        }
+
+        pb.set_position(new);
+
+        std::thread::sleep(Duration::from_millis(200));
     }
 }

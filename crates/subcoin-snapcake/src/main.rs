@@ -35,6 +35,7 @@
 
 mod cli;
 mod params;
+mod snapshot_manager;
 mod state_sync_wrapper;
 mod syncing_strategy;
 

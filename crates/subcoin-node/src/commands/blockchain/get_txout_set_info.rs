@@ -1,7 +1,6 @@
 use super::MergedParams;
 use crate::commands::blockchain::{fetch_utxo_set_at, ClientParams};
 use crate::utils::Yield;
-use indicatif::{ProgressBar, ProgressStyle};
 use sc_client_api::HeaderBackend;
 use sp_api::ProvideRuntimeApi;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -108,8 +107,11 @@ async fn gettxoutsetinfo(
     let mut muhash = subcoin_crypto::muhash::MuHash3072::new();
 
     if progress_bar {
-        let loaded = txouts.clone();
-        std::thread::spawn(move || show_progress(loaded, total_coins, block_number));
+        crate::utils::show_progress_in_background(
+            txouts.clone(),
+            total_coins,
+            format!("Loading UTXO set at block #{block_number}..."),
+        );
     }
 
     for (txid, vout, coin) in utxo_iter {
@@ -153,32 +155,6 @@ async fn gettxoutsetinfo(
     };
 
     Ok(tx_out_set_info)
-}
-
-fn show_progress(loaded: Arc<AtomicUsize>, total_coins: u64, block_number: u32) {
-    let pb = ProgressBar::new(total_coins);
-
-    pb.set_message(format!("Loading UTXO set at block #{block_number}..."));
-
-    pb.set_style(
-        ProgressStyle::default_bar()
-            .template("{msg} [{bar:40}] {percent:.2}% ({pos}/{len}, {eta})")
-            .unwrap()
-            .progress_chars("##-"),
-    );
-
-    loop {
-        let new = loaded.load(Ordering::Relaxed) as u64;
-
-        if new == total_coins {
-            pb.finish_and_clear();
-            return;
-        }
-
-        pb.set_position(new);
-
-        std::thread::sleep(Duration::from_millis(200));
-    }
 }
 
 // Custom serializer for total_amount to display 8 decimal places
