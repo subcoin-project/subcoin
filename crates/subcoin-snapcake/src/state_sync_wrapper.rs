@@ -96,8 +96,7 @@ where
 
                     self.muhash.insert(&data);
 
-                    self.snapshot_manager
-                        .store_utxo(Utxo { txid, vout, coin });
+                    self.snapshot_manager.store_utxo(Utxo { txid, vout, coin });
 
                     self.received_coins += 1;
                 }
