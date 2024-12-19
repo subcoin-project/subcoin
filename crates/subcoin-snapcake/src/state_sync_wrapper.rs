@@ -122,7 +122,9 @@ where
                 self.total_coins,
             );
 
-            self.snapshot_manager.create_snapshot(self.total_coins);
+            self.snapshot_manager
+                .create_snapshot(self.total_coins)
+                .expect("Failed to create snapshot");
 
             tracing::info!(
                 target: "snapcake",
