@@ -87,8 +87,8 @@ impl ImportBlocksCmd {
     ) -> sc_cli::Result<()> {
         let from = (client.info().best_number + 1) as usize;
 
-        let bitcoind_backend = BitcoinBackend::new(&data_dir)?;
-        let max = bitcoind_backend.block_count();
+        let block_provider = BlockProvider::from_local(&data_dir)?;
+        let max = block_provider.block_count();
         let to = self.to.unwrap_or(max).min(max);
 
         tracing::info!(
@@ -128,7 +128,7 @@ impl ImportBlocksCmd {
         }
 
         for index in from..=to {
-            let block = bitcoind_backend.block_at(index)?;
+            let block = block_provider.block_at(index)?;
             bitcoin_block_import
                 .import_block(block, BlockOrigin::Own)
                 .await
@@ -243,32 +243,37 @@ impl sc_cli::CliConfiguration for ImportBlocksCmd {
     }
 }
 
-struct BitcoinBackend {
-    db: BitcoinDB,
+enum BlockProvider {
+    /// Local bitcoind database.
+    Local(BitcoinDB),
 }
 
-impl BitcoinBackend {
-    fn new(path: impl AsRef<Path>) -> sc_cli::Result<Self> {
+impl BlockProvider {
+    fn from_local(path: impl AsRef<Path>) -> sc_cli::Result<Self> {
         let db = BitcoinDB::new(path.as_ref(), true)
             .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
-        Ok(Self { db })
+        Ok(Self::Local(db))
     }
 
     fn block_at(&self, height: usize) -> sc_cli::Result<bitcoin::Block> {
         use bitcoin::consensus::Decodable;
 
-        let raw_block = self.db.get_raw_block(height).map_err(|err| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to get bitcoin block at #{height}: {err}"),
-            )
-        })?;
+        let raw_block = match self {
+            Self::Local(db) => db.get_raw_block(height).map_err(|err| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to get bitcoin block at #{height}: {err}"),
+                )
+            })?,
+        };
 
         Ok(bitcoin::Block::consensus_decode(&mut raw_block.as_slice())
             .expect("Bad block in the database"))
     }
 
     fn block_count(&self) -> usize {
-        self.db.get_block_count()
+        match self {
+            Self::Local(db) => db.get_block_count(),
+        }
     }
 }
