@@ -1,5 +1,6 @@
 use crate::error::Error;
 use bitcoin::blockdata::block::Header as BitcoinHeader;
+use bitcoin::consensus::Encodable;
 use bitcoin::{Block as BitcoinBlock, BlockHash};
 use jsonrpsee::proc_macros::rpc;
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
@@ -13,13 +14,25 @@ use subcoin_primitives::{
 /// Bitcoin blockchain API.
 #[rpc(client, server)]
 pub trait BlockchainApi {
-    /// Get header.
+    /// Get a block header by its hash.
     #[method(name = "blockchain_getHeader", blocking)]
     fn header(&self, hash: Option<BlockHash>) -> Result<Option<BitcoinHeader>, Error>;
 
-    /// Get header and body of a block.
+    /// Get a full block (including the header and transactions) by its hash.
     #[method(name = "blockchain_getBlock", blocking)]
     fn block(&self, hash: Option<BlockHash>) -> Result<Option<BitcoinBlock>, Error>;
+
+    /// Get a full block by its number.
+    #[method(name = "blockchain_getBlockByNumber", blocking)]
+    fn block_by_number(&self, number: Option<u32>) -> Result<Option<BitcoinBlock>, Error>;
+
+    /// Get a raw block in hex format by its hash.
+    #[method(name = "blockchain_getRawBlock", blocking)]
+    fn raw_block(&self, hash: Option<BlockHash>) -> Result<Option<String>, Error>;
+
+    /// Get a raw block in hex format by its number.
+    #[method(name = "blockchain_getRawBlockByNumber", blocking)]
+    fn raw_block_by_number(&self, number: Option<u32>) -> Result<Option<String>, Error>;
 }
 
 /// This struct provides the Bitcoin Blockchain API.
@@ -63,15 +76,13 @@ where
     fn header(&self, hash: Option<BlockHash>) -> Result<Option<BitcoinHeader>, Error> {
         let substrate_block_hash = self.substrate_block_hash(hash)?;
 
-        let signed_block = self
+        let header = self
             .client
-            .block(substrate_block_hash)?
-            .ok_or(Error::BlockNotFound)?;
-
-        let block = signed_block.block;
+            .header(substrate_block_hash)?
+            .ok_or(Error::HeaderNotFound)?;
 
         let bitcoin_header =
-            extract_bitcoin_block_header::<Block>(block.header()).map_err(Error::Header)?;
+            extract_bitcoin_block_header::<Block>(&header).map_err(Error::Header)?;
 
         Ok(Some(bitcoin_header))
     }
@@ -89,6 +100,35 @@ where
             .map_err(Error::Header)?;
 
         Ok(Some(bitcoin_block))
+    }
+
+    fn block_by_number(&self, number: Option<u32>) -> Result<Option<BitcoinBlock>, Error> {
+        let block_hash = match number {
+            Some(number) => Some(self.client.block_hash(number).ok_or(Error::BlockNotFound)?),
+            None => None,
+        };
+
+        self.block(block_hash)
+    }
+
+    fn raw_block(&self, hash: Option<BlockHash>) -> Result<Option<String>, Error> {
+        match self.block(hash)? {
+            Some(block) => {
+                let mut data = Vec::new();
+                block.consensus_encode(&mut data)?;
+                Ok(Some(hex::encode(&data)))
+            }
+            None => Ok(None),
+        }
+    }
+
+    fn raw_block_by_number(&self, number: Option<u32>) -> Result<Option<String>, Error> {
+        let block_hash = match number {
+            Some(number) => Some(self.client.block_hash(number).ok_or(Error::BlockNotFound)?),
+            None => None,
+        };
+
+        self.raw_block(block_hash)
     }
 }
 

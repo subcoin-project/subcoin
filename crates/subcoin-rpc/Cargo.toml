@@ -10,6 +10,7 @@ license.workspace = true
 async-trait = { workspace = true }
 bitcoin = { workspace = true, features = ["serde", "std"] }
 jsonrpsee = { workspace = true, features = ["client-core", "macros", "server-core"] }
+hex = { workspace = true }
 sc-client-api = { workspace = true }
 sc-rpc-api = { workspace = true }
 serde = { workspace = true }
