@@ -5,6 +5,7 @@
 mod cli;
 mod commands;
 mod rpc;
+#[cfg(feature = "remote-import")]
 mod rpc_client;
 mod substrate_cli;
 mod utils;

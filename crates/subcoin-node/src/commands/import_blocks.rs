@@ -1,4 +1,5 @@
 use crate::cli::subcoin_params::CommonParams;
+#[cfg(feature = "remote-import")]
 use crate::rpc_client::BlockstreamClient;
 use crate::utils::Yield;
 use bitcoin_explorer::BitcoinDB;
@@ -11,7 +12,7 @@ use sc_service::SpawnTaskHandle;
 use sp_consensus::BlockOrigin;
 use sp_runtime::traits::{Block as BlockT, CheckedDiv, NumberFor, Zero};
 use sp_runtime::Saturating;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subcoin_primitives::BackendExt;
@@ -253,6 +254,7 @@ enum BitcoinBlockProvider {
     /// Local bitcoind database.
     Local(BitcoinDB),
     /// Remote source.
+    #[cfg(feature = "remote-import")]
     Remote(BlockstreamClient),
 }
 
@@ -265,10 +267,15 @@ impl BitcoinBlockProvider {
                     .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
                 Ok(Self::Local(db))
             }
+            #[cfg(feature = "remote-import")]
             None => {
                 tracing::info!("Using remote block provider.");
                 Ok(Self::Remote(BlockstreamClient::new()))
             }
+            #[cfg(not(feature = "remote-import"))]
+            None => Err(
+                "Remote block import source can be enabled with `--features remote-import`".into(),
+            ),
         }
     }
 
@@ -287,6 +294,7 @@ impl BitcoinBlockProvider {
                 Ok(bitcoin::Block::consensus_decode(&mut raw_block.as_slice())
                     .expect("Bad block in the database"))
             }
+            #[cfg(feature = "remote-import")]
             Self::Remote(rpc_client) => rpc_client
                 .get_block_by_height(height as u32)
                 .await
@@ -297,6 +305,7 @@ impl BitcoinBlockProvider {
     async fn block_count(&self) -> usize {
         match self {
             Self::Local(db) => db.get_block_count(),
+            #[cfg(feature = "remote-import")]
             Self::Remote(rpc_client) => rpc_client
                 .get_tip_height()
                 .await
