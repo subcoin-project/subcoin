@@ -89,7 +89,7 @@ jobs:
 
     - name: Build snapcake binary
       run: |
-        ${{ matrix.build.command }} build --profile production --package subcoin-snapcake --locked --target ${{ matrix.build.target }}
+        ${{ matrix.build.command }} build --profile production --bin snapcake --locked --target ${{ matrix.build.target }}
 
     - name: Get version without v prefix (Ubuntu/macOS)
       run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV

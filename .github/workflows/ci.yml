@@ -107,4 +107,4 @@ jobs:
         swap-storage: false
 
     - name: Build snapcake
-      run: cargo build --locked --package subcoin-snapcake --release
+      run: cargo build --locked --bin snapcake --release

@@ -1,4 +1,6 @@
 use crate::cli::subcoin_params::CommonParams;
+#[cfg(feature = "remote-import")]
+use crate::rpc_client::BlockstreamClient;
 use crate::utils::Yield;
 use bitcoin_explorer::BitcoinDB;
 use futures::FutureExt;
@@ -10,21 +12,24 @@ use sc_service::SpawnTaskHandle;
 use sp_consensus::BlockOrigin;
 use sp_runtime::traits::{Block as BlockT, CheckedDiv, NumberFor, Zero};
 use sp_runtime::Saturating;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subcoin_primitives::BackendExt;
 use subcoin_runtime::interface::OpaqueBlock;
 use subcoin_service::FullClient;
 
-/// Import Bitcoin blocks from bitcoind database.
+/// Import Bitcoin blocks into the node.
 #[derive(clap::Parser, Debug, Clone)]
 pub struct ImportBlocks {
     /// Path to the bitcoind database.
     ///
     /// This corresponds to the value of the `-data-dir` argument in the bitcoind program.
-    #[clap(index = 1, value_parser)]
-    pub data_dir: PathBuf,
+    ///
+    /// The blocks will be fetched from remote using the blockstream API if this argument
+    /// is not specified. Note that using the remote source is only for testing purpose.
+    #[clap(long, value_parser)]
+    pub data_dir: Option<PathBuf>,
 
     /// Number of blocks to import.
     ///
@@ -80,21 +85,19 @@ impl ImportBlocksCmd {
     pub async fn run<'a>(
         &self,
         client: Arc<FullClient>,
-        data_dir: PathBuf,
+        maybe_data_dir: Option<PathBuf>,
         import_config: ImportConfig,
         spawn_handle: SpawnTaskHandle,
         maybe_prometheus_config: Option<PrometheusConfig>,
     ) -> sc_cli::Result<()> {
-        let from = (client.info().best_number + 1) as usize;
+        let block_provider = BitcoinBlockProvider::new(maybe_data_dir)?;
 
-        let bitcoind_backend = BitcoinBackend::new(&data_dir)?;
-        let max = bitcoind_backend.block_count();
+        let max = block_provider.block_count().await;
         let to = self.to.unwrap_or(max).min(max);
 
-        tracing::info!(
-            "Start to import blocks from #{from} to #{to} from bitcoind database: {}",
-            data_dir.display()
-        );
+        let from = (client.info().best_number + 1) as usize;
+
+        tracing::info!("Start to import blocks from #{from} to #{to}",);
 
         const INTERVAL: Duration = Duration::from_secs(1);
 
@@ -128,7 +131,7 @@ impl ImportBlocksCmd {
         }
 
         for index in from..=to {
-            let block = bitcoind_backend.block_at(index)?;
+            let block = block_provider.block_at(index).await?;
             bitcoin_block_import
                 .import_block(block, BlockOrigin::Own)
                 .await
@@ -152,7 +155,11 @@ impl ImportBlocksCmd {
                                 )
                             });
 
-                    let speed = speed::<OpaqueBlock>(best_number, last_number, last_update);
+                    let speed = calculate_import_speed::<OpaqueBlock>(
+                        best_number,
+                        last_number,
+                        last_update,
+                    );
 
                     tracing::info!(
                         "Imported {total_imported} blocks,{speed}, best#{best_number},{bitcoin_block_hash} ({substrate_block_hash})",
@@ -186,7 +193,7 @@ impl ImportBlocksCmd {
 
 /// Calculates `(best_number - last_number) / (now - last_update)` and returns a `String`
 /// representing the speed of import.
-fn speed<B: BlockT>(
+fn calculate_import_speed<B: BlockT>(
     best_number: NumberFor<B>,
     last_number: Option<NumberFor<B>>,
     last_update: Instant,
@@ -243,32 +250,67 @@ impl sc_cli::CliConfiguration for ImportBlocksCmd {
     }
 }
 
-struct BitcoinBackend {
-    db: BitcoinDB,
+enum BitcoinBlockProvider {
+    /// Local bitcoind database.
+    Local(BitcoinDB),
+    /// Remote source.
+    #[cfg(feature = "remote-import")]
+    Remote(BlockstreamClient),
 }
 
-impl BitcoinBackend {
-    fn new(path: impl AsRef<Path>) -> sc_cli::Result<Self> {
-        let db = BitcoinDB::new(path.as_ref(), true)
-            .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
-        Ok(Self { db })
+impl BitcoinBlockProvider {
+    fn new(maybe_data_dir: Option<PathBuf>) -> sc_cli::Result<Self> {
+        match maybe_data_dir {
+            Some(data_dir) => {
+                tracing::info!("Using local bitcoind database: {}", data_dir.display());
+                let db = BitcoinDB::new(data_dir.as_ref(), true)
+                    .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
+                Ok(Self::Local(db))
+            }
+            #[cfg(feature = "remote-import")]
+            None => {
+                tracing::info!("Using remote block provider.");
+                Ok(Self::Remote(BlockstreamClient::new()))
+            }
+            #[cfg(not(feature = "remote-import"))]
+            None => Err(
+                "Remote block import source can be enabled with `--features remote-import`".into(),
+            ),
+        }
     }
 
-    fn block_at(&self, height: usize) -> sc_cli::Result<bitcoin::Block> {
+    async fn block_at(&self, height: usize) -> sc_cli::Result<bitcoin::Block> {
         use bitcoin::consensus::Decodable;
 
-        let raw_block = self.db.get_raw_block(height).map_err(|err| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to get bitcoin block at #{height}: {err}"),
-            )
-        })?;
+        match self {
+            Self::Local(db) => {
+                let raw_block = db.get_raw_block(height).map_err(|err| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to get bitcoin block at #{height}: {err}"),
+                    )
+                })?;
 
-        Ok(bitcoin::Block::consensus_decode(&mut raw_block.as_slice())
-            .expect("Bad block in the database"))
+                Ok(bitcoin::Block::consensus_decode(&mut raw_block.as_slice())
+                    .expect("Bad block in the database"))
+            }
+            #[cfg(feature = "remote-import")]
+            Self::Remote(rpc_client) => rpc_client
+                .get_block_by_height(height as u32)
+                .await
+                .map_err(|err| sc_cli::Error::Application(Box::new(err))),
+        }
     }
 
-    fn block_count(&self) -> usize {
-        self.db.get_block_count()
+    async fn block_count(&self) -> usize {
+        match self {
+            Self::Local(db) => db.get_block_count(),
+            #[cfg(feature = "remote-import")]
+            Self::Remote(rpc_client) => rpc_client
+                .get_tip_height()
+                .await
+                .expect("Failed to fetch tip height")
+                as usize,
+        }
     }
 }

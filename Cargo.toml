@@ -26,7 +26,10 @@ members = [
     "crates/subcoin-utxo-snapshot",
 ]
 
-default-members = ["crates/subcoin-node"]
+default-members = [
+    "crates/subcoin-node",
+    "crates/subcoin-snapcake",
+]
 
 [workspace.dependencies]
 array-bytes = "6.2.2"

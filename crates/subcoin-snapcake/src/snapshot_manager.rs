@@ -12,6 +12,7 @@ use subcoin_runtime_primitives::Coin;
 use subcoin_utxo_snapshot::{OutputEntry, Utxo, UtxoSnapshotGenerator};
 
 const COUNT_KEY: &[u8; 12] = b"__coin_count";
+
 const INTERVAL: Duration = Duration::from_secs(5);
 
 static MAINNET_SNAPSHOT_SHA256SUMS: LazyLock<HashMap<BlockHash, &str>> = LazyLock::new(|| {
@@ -66,7 +67,10 @@ impl SnapshotStore {
 
         let utxo_csv_entry = UtxoCsvEntry::from(utxo);
         if let Err(e) = wtr.serialize(&utxo_csv_entry) {
-            panic!("Failed to write UTXO entry to CSV: {e}");
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to write UTXO entry to CSV: {e}"),
+            ));
         }
 
         wtr.flush()?;
@@ -135,7 +139,7 @@ impl SnapshotStore {
         match self {
             Self::InMem(list) => snapshot_generator.generate_snapshot_in_mem(
                 target_bitcoin_block_hash,
-                utxos_count as u64,
+                utxos_count,
                 std::mem::take(list),
             ),
             Self::Csv(path) => Self::generate_from_csv(
