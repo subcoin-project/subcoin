@@ -41,6 +41,7 @@ impl BlockstreamClient {
     }
 
     /// Fetch the hash of the latest block (tip hash).
+    #[allow(dead_code)]
     pub async fn get_tip_hash(&self) -> Result<BlockHash, ApiError> {
         let url = format!("{BLOCKSTREAM_API_URL}/blocks/tip/hash");
         let response = self.client.get(&url).send().await?;
