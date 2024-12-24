@@ -5,6 +5,7 @@
 mod cli;
 mod commands;
 mod rpc;
+mod rpc_client;
 mod substrate_cli;
 mod utils;
 
