@@ -272,7 +272,51 @@
 <a href="#272" id="272">272</a>
 <a href="#273" id="273">273</a>
 <a href="#274" id="274">274</a>
+<a href="#275" id="275">275</a>
+<a href="#276" id="276">276</a>
+<a href="#277" id="277">277</a>
+<a href="#278" id="278">278</a>
+<a href="#279" id="279">279</a>
+<a href="#280" id="280">280</a>
+<a href="#281" id="281">281</a>
+<a href="#282" id="282">282</a>
+<a href="#283" id="283">283</a>
+<a href="#284" id="284">284</a>
+<a href="#285" id="285">285</a>
+<a href="#286" id="286">286</a>
+<a href="#287" id="287">287</a>
+<a href="#288" id="288">288</a>
+<a href="#289" id="289">289</a>
+<a href="#290" id="290">290</a>
+<a href="#291" id="291">291</a>
+<a href="#292" id="292">292</a>
+<a href="#293" id="293">293</a>
+<a href="#294" id="294">294</a>
+<a href="#295" id="295">295</a>
+<a href="#296" id="296">296</a>
+<a href="#297" id="297">297</a>
+<a href="#298" id="298">298</a>
+<a href="#299" id="299">299</a>
+<a href="#300" id="300">300</a>
+<a href="#301" id="301">301</a>
+<a href="#302" id="302">302</a>
+<a href="#303" id="303">303</a>
+<a href="#304" id="304">304</a>
+<a href="#305" id="305">305</a>
+<a href="#306" id="306">306</a>
+<a href="#307" id="307">307</a>
+<a href="#308" id="308">308</a>
+<a href="#309" id="309">309</a>
+<a href="#310" id="310">310</a>
+<a href="#311" id="311">311</a>
+<a href="#312" id="312">312</a>
+<a href="#313" id="313">313</a>
+<a href="#314" id="314">314</a>
+<a href="#315" id="315">315</a>
+<a href="#316" id="316">316</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::subcoin_params::CommonParams;
+<span class="attr">#[cfg(feature = <span class="string">"remote-import"</span>)]
+</span><span class="kw">use </span><span class="kw">crate</span>::rpc_client::BlockstreamClient;
 <span class="kw">use </span><span class="kw">crate</span>::utils::Yield;
 <span class="kw">use </span>bitcoin_explorer::BitcoinDB;
 <span class="kw">use </span>futures::FutureExt;
@@ -284,21 +328,24 @@
 <span class="kw">use </span>sp_consensus::BlockOrigin;
 <span class="kw">use </span>sp_runtime::traits::{Block <span class="kw">as </span>BlockT, CheckedDiv, NumberFor, Zero};
 <span class="kw">use </span>sp_runtime::Saturating;
-<span class="kw">use </span>std::path::{Path, PathBuf};
+<span class="kw">use </span>std::path::PathBuf;
 <span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>std::time::{Duration, Instant};
 <span class="kw">use </span>subcoin_primitives::BackendExt;
 <span class="kw">use </span>subcoin_runtime::interface::OpaqueBlock;
 <span class="kw">use </span>subcoin_service::FullClient;
 
-<span class="doccomment">/// Import Bitcoin blocks from bitcoind database.
+<span class="doccomment">/// Import Bitcoin blocks into the node.
 </span><span class="attr">#[derive(clap::Parser, Debug, Clone)]
 </span><span class="kw">pub struct </span>ImportBlocks {
     <span class="doccomment">/// Path to the bitcoind database.
     ///
     /// This corresponds to the value of the `-data-dir` argument in the bitcoind program.
-    </span><span class="attr">#[clap(index = <span class="number">1</span>, value_parser)]
-    </span><span class="kw">pub </span>data_dir: PathBuf,
+    ///
+    /// The blocks will be fetched from remote using the blockstream API if this argument
+    /// is not specified. Note that using the remote source is only for testing purpose.
+    </span><span class="attr">#[clap(long, value_parser)]
+    </span><span class="kw">pub </span>data_dir: <span class="prelude-ty">Option</span>&lt;PathBuf&gt;,
 
     <span class="doccomment">/// Number of blocks to import.
     ///
@@ -354,21 +401,19 @@
     </span><span class="kw">pub async fn </span>run&lt;<span class="lifetime">'a</span>&gt;(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         client: Arc&lt;FullClient&gt;,
-        data_dir: PathBuf,
+        maybe_data_dir: <span class="prelude-ty">Option</span>&lt;PathBuf&gt;,
         import_config: ImportConfig,
         spawn_handle: SpawnTaskHandle,
         maybe_prometheus_config: <span class="prelude-ty">Option</span>&lt;PrometheusConfig&gt;,
     ) -&gt; sc_cli::Result&lt;()&gt; {
-        <span class="kw">let </span>from = (client.info().best_number + <span class="number">1</span>) <span class="kw">as </span>usize;
+        <span class="kw">let </span>block_provider = BitcoinBlockProvider::new(maybe_data_dir)<span class="question-mark">?</span>;
 
-        <span class="kw">let </span>bitcoind_backend = BitcoinBackend::new(<span class="kw-2">&amp;</span>data_dir)<span class="question-mark">?</span>;
-        <span class="kw">let </span>max = bitcoind_backend.block_count();
+        <span class="kw">let </span>max = block_provider.block_count().<span class="kw">await</span>;
         <span class="kw">let </span>to = <span class="self">self</span>.to.unwrap_or(max).min(max);
 
-        <span class="macro">tracing::info!</span>(
-            <span class="string">"Start to import blocks from #{from} to #{to} from bitcoind database: {}"</span>,
-            data_dir.display()
-        );
+        <span class="kw">let </span>from = (client.info().best_number + <span class="number">1</span>) <span class="kw">as </span>usize;
+
+        <span class="macro">tracing::info!</span>(<span class="string">"Start to import blocks from #{from} to #{to}"</span>,);
 
         <span class="kw">const </span>INTERVAL: Duration = Duration::from_secs(<span class="number">1</span>);
 
@@ -402,7 +447,7 @@
         }
 
         <span class="kw">for </span>index <span class="kw">in </span>from..=to {
-            <span class="kw">let </span>block = bitcoind_backend.block_at(index)<span class="question-mark">?</span>;
+            <span class="kw">let </span>block = block_provider.block_at(index).<span class="kw">await</span><span class="question-mark">?</span>;
             bitcoin_block_import
                 .import_block(block, BlockOrigin::Own)
                 .<span class="kw">await
@@ -426,7 +471,11 @@
                                 )
                             });
 
-                    <span class="kw">let </span>speed = speed::&lt;OpaqueBlock&gt;(best_number, last_number, last_update);
+                    <span class="kw">let </span>speed = calculate_import_speed::&lt;OpaqueBlock&gt;(
+                        best_number,
+                        last_number,
+                        last_update,
+                    );
 
                     <span class="macro">tracing::info!</span>(
                         <span class="string">"Imported {total_imported} blocks,{speed}, best#{best_number},{bitcoin_block_hash} ({substrate_block_hash})"</span>,
@@ -460,7 +509,7 @@
 
 <span class="doccomment">/// Calculates `(best_number - last_number) / (now - last_update)` and returns a `String`
 /// representing the speed of import.
-</span><span class="kw">fn </span>speed&lt;B: BlockT&gt;(
+</span><span class="kw">fn </span>calculate_import_speed&lt;B: BlockT&gt;(
     best_number: NumberFor&lt;B&gt;,
     last_number: <span class="prelude-ty">Option</span>&lt;NumberFor&lt;B&gt;&gt;,
     last_update: Instant,
@@ -517,33 +566,68 @@
     </span>}
 }
 
-<span class="kw">struct </span>BitcoinBackend {
-    db: BitcoinDB,
+<span class="kw">enum </span>BitcoinBlockProvider {
+    <span class="doccomment">/// Local bitcoind database.
+    </span>Local(BitcoinDB),
+    <span class="doccomment">/// Remote source.
+    </span><span class="attr">#[cfg(feature = <span class="string">"remote-import"</span>)]
+    </span>Remote(BlockstreamClient),
 }
 
-<span class="kw">impl </span>BitcoinBackend {
-    <span class="kw">fn </span>new(path: <span class="kw">impl </span>AsRef&lt;Path&gt;) -&gt; sc_cli::Result&lt;<span class="self">Self</span>&gt; {
-        <span class="kw">let </span>db = BitcoinDB::new(path.as_ref(), <span class="bool-val">true</span>)
-            .map_err(|err| sc_cli::Error::Application(Box::new(err)))<span class="question-mark">?</span>;
-        <span class="prelude-val">Ok</span>(<span class="self">Self </span>{ db })
+<span class="kw">impl </span>BitcoinBlockProvider {
+    <span class="kw">fn </span>new(maybe_data_dir: <span class="prelude-ty">Option</span>&lt;PathBuf&gt;) -&gt; sc_cli::Result&lt;<span class="self">Self</span>&gt; {
+        <span class="kw">match </span>maybe_data_dir {
+            <span class="prelude-val">Some</span>(data_dir) =&gt; {
+                <span class="macro">tracing::info!</span>(<span class="string">"Using local bitcoind database: {}"</span>, data_dir.display());
+                <span class="kw">let </span>db = BitcoinDB::new(data_dir.as_ref(), <span class="bool-val">true</span>)
+                    .map_err(|err| sc_cli::Error::Application(Box::new(err)))<span class="question-mark">?</span>;
+                <span class="prelude-val">Ok</span>(<span class="self">Self</span>::Local(db))
+            }
+            <span class="attr">#[cfg(feature = <span class="string">"remote-import"</span>)]
+            </span><span class="prelude-val">None </span>=&gt; {
+                <span class="macro">tracing::info!</span>(<span class="string">"Using remote block provider."</span>);
+                <span class="prelude-val">Ok</span>(<span class="self">Self</span>::Remote(BlockstreamClient::new()))
+            }
+            <span class="attr">#[cfg(not(feature = <span class="string">"remote-import"</span>))]
+            </span><span class="prelude-val">None </span>=&gt; <span class="prelude-val">Err</span>(
+                <span class="string">"Remote block import source can be enabled with `--features remote-import`"</span>.into(),
+            ),
+        }
     }
 
-    <span class="kw">fn </span>block_at(<span class="kw-2">&amp;</span><span class="self">self</span>, height: usize) -&gt; sc_cli::Result&lt;bitcoin::Block&gt; {
+    <span class="kw">async fn </span>block_at(<span class="kw-2">&amp;</span><span class="self">self</span>, height: usize) -&gt; sc_cli::Result&lt;bitcoin::Block&gt; {
         <span class="kw">use </span>bitcoin::consensus::Decodable;
 
-        <span class="kw">let </span>raw_block = <span class="self">self</span>.db.get_raw_block(height).map_err(|err| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                <span class="macro">format!</span>(<span class="string">"Failed to get bitcoin block at #{height}: {err}"</span>),
-            )
-        })<span class="question-mark">?</span>;
+        <span class="kw">match </span><span class="self">self </span>{
+            <span class="self">Self</span>::Local(db) =&gt; {
+                <span class="kw">let </span>raw_block = db.get_raw_block(height).map_err(|err| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        <span class="macro">format!</span>(<span class="string">"Failed to get bitcoin block at #{height}: {err}"</span>),
+                    )
+                })<span class="question-mark">?</span>;
 
-        <span class="prelude-val">Ok</span>(bitcoin::Block::consensus_decode(<span class="kw-2">&amp;mut </span>raw_block.as_slice())
-            .expect(<span class="string">"Bad block in the database"</span>))
+                <span class="prelude-val">Ok</span>(bitcoin::Block::consensus_decode(<span class="kw-2">&amp;mut </span>raw_block.as_slice())
+                    .expect(<span class="string">"Bad block in the database"</span>))
+            }
+            <span class="attr">#[cfg(feature = <span class="string">"remote-import"</span>)]
+            </span><span class="self">Self</span>::Remote(rpc_client) =&gt; rpc_client
+                .get_block_by_height(height <span class="kw">as </span>u32)
+                .<span class="kw">await
+                </span>.map_err(|err| sc_cli::Error::Application(Box::new(err))),
+        }
     }
 
-    <span class="kw">fn </span>block_count(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize {
-        <span class="self">self</span>.db.get_block_count()
+    <span class="kw">async fn </span>block_count(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize {
+        <span class="kw">match </span><span class="self">self </span>{
+            <span class="self">Self</span>::Local(db) =&gt; db.get_block_count(),
+            <span class="attr">#[cfg(feature = <span class="string">"remote-import"</span>)]
+            </span><span class="self">Self</span>::Remote(rpc_client) =&gt; rpc_client
+                .get_tip_height()
+                .<span class="kw">await
+                </span>.expect(<span class="string">"Failed to fetch tip height"</span>)
+                <span class="kw">as </span>usize,
+        }
     }
 }
 </code></pre></div></section></main></body></html>

@@ -412,6 +412,10 @@
 <a href="#412" id="412">412</a>
 <a href="#413" id="413">413</a>
 <a href="#414" id="414">414</a>
+<a href="#415" id="415">415</a>
+<a href="#416" id="416">416</a>
+<a href="#417" id="417">417</a>
+<a href="#418" id="418">418</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">super</span>::orphan_blocks_pool::OrphanBlocksPool;
 <span class="kw">use </span><span class="kw">crate</span>::peer_store::PeerStore;
 <span class="kw">use </span><span class="kw">crate</span>::sync::SyncAction;
@@ -722,7 +726,7 @@
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>handle_processed_blocks(<span class="kw-2">&amp;mut </span><span class="self">self</span>, results: ImportManyBlocksResult) {
         <span class="self">self</span>.last_progress_time = Instant::now();
         <span class="kw">for </span>(import_result, hash) <span class="kw">in </span><span class="kw-2">&amp;</span>results.results {
-            <span class="self">self</span>.blocks_in_queue.remove(hash);
+            <span class="kw">let </span>block_number = <span class="self">self</span>.blocks_in_queue.remove(hash);
             <span class="self">self</span>.queued_blocks.remove(hash);
 
             <span class="kw">match </span>import_result {
@@ -730,7 +734,11 @@
                 <span class="prelude-val">Err</span>(BlockImportError::UnknownParent) =&gt; <span class="macro">panic!</span>(<span class="string">"Unknown parent {hash}"</span>),
                 <span class="prelude-val">Err</span>(err) =&gt; {
                     <span class="comment">// TODO: handle error properly
-                    </span><span class="macro">panic!</span>(<span class="string">"Failed to import block {hash:?}: {err:?}"</span>);
+                    </span><span class="kw">if let </span><span class="prelude-val">Some</span>(number) = block_number {
+                        <span class="macro">panic!</span>(<span class="string">"Failed to import block #{number:?},{hash:?}: {err:?}"</span>);
+                    } <span class="kw">else </span>{
+                        <span class="macro">panic!</span>(<span class="string">"Failed to import block #{hash:?}: {err:?}"</span>);
+                    }
                 }
             }
         }

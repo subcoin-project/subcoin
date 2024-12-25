@@ -22,6 +22,8 @@
 <a href="#22" id="22">22</a>
 <a href="#23" id="23">23</a>
 <a href="#24" id="24">24</a>
+<a href="#25" id="25">25</a>
+<a href="#26" id="26">26</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! Subcoin Node Library.
 //!
 //! The main feature of this library is to start and run the node as a CLI application.
@@ -29,6 +31,8 @@
 </span><span class="kw">mod </span>cli;
 <span class="kw">mod </span>commands;
 <span class="kw">mod </span>rpc;
+<span class="attr">#[cfg(feature = <span class="string">"remote-import"</span>)]
+</span><span class="kw">mod </span>rpc_client;
 <span class="kw">mod </span>substrate_cli;
 <span class="kw">mod </span>utils;
 

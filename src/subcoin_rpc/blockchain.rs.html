@@ -109,8 +109,49 @@
 <a href="#109" id="109">109</a>
 <a href="#110" id="110">110</a>
 <a href="#111" id="111">111</a>
+<a href="#112" id="112">112</a>
+<a href="#113" id="113">113</a>
+<a href="#114" id="114">114</a>
+<a href="#115" id="115">115</a>
+<a href="#116" id="116">116</a>
+<a href="#117" id="117">117</a>
+<a href="#118" id="118">118</a>
+<a href="#119" id="119">119</a>
+<a href="#120" id="120">120</a>
+<a href="#121" id="121">121</a>
+<a href="#122" id="122">122</a>
+<a href="#123" id="123">123</a>
+<a href="#124" id="124">124</a>
+<a href="#125" id="125">125</a>
+<a href="#126" id="126">126</a>
+<a href="#127" id="127">127</a>
+<a href="#128" id="128">128</a>
+<a href="#129" id="129">129</a>
+<a href="#130" id="130">130</a>
+<a href="#131" id="131">131</a>
+<a href="#132" id="132">132</a>
+<a href="#133" id="133">133</a>
+<a href="#134" id="134">134</a>
+<a href="#135" id="135">135</a>
+<a href="#136" id="136">136</a>
+<a href="#137" id="137">137</a>
+<a href="#138" id="138">138</a>
+<a href="#139" id="139">139</a>
+<a href="#140" id="140">140</a>
+<a href="#141" id="141">141</a>
+<a href="#142" id="142">142</a>
+<a href="#143" id="143">143</a>
+<a href="#144" id="144">144</a>
+<a href="#145" id="145">145</a>
+<a href="#146" id="146">146</a>
+<a href="#147" id="147">147</a>
+<a href="#148" id="148">148</a>
+<a href="#149" id="149">149</a>
+<a href="#150" id="150">150</a>
+<a href="#151" id="151">151</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::error::Error;
 <span class="kw">use </span>bitcoin::blockdata::block::Header <span class="kw">as </span>BitcoinHeader;
+<span class="kw">use </span>bitcoin::consensus::Encodable;
 <span class="kw">use </span>bitcoin::{Block <span class="kw">as </span>BitcoinBlock, BlockHash};
 <span class="kw">use </span>jsonrpsee::proc_macros::rpc;
 <span class="kw">use </span>sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
@@ -124,13 +165,25 @@
 <span class="doccomment">/// Bitcoin blockchain API.
 </span><span class="attr">#[rpc(client, server)]
 </span><span class="kw">pub trait </span>BlockchainApi {
-    <span class="doccomment">/// Get header.
+    <span class="doccomment">/// Get a block header by its hash.
     </span><span class="attr">#[method(name = <span class="string">"blockchain_getHeader"</span>, blocking)]
     </span><span class="kw">fn </span>header(<span class="kw-2">&amp;</span><span class="self">self</span>, hash: <span class="prelude-ty">Option</span>&lt;BlockHash&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;BitcoinHeader&gt;, Error&gt;;
 
-    <span class="doccomment">/// Get header and body of a block.
+    <span class="doccomment">/// Get a full block (including the header and transactions) by its hash.
     </span><span class="attr">#[method(name = <span class="string">"blockchain_getBlock"</span>, blocking)]
     </span><span class="kw">fn </span>block(<span class="kw-2">&amp;</span><span class="self">self</span>, hash: <span class="prelude-ty">Option</span>&lt;BlockHash&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;BitcoinBlock&gt;, Error&gt;;
+
+    <span class="doccomment">/// Get a full block by its number.
+    </span><span class="attr">#[method(name = <span class="string">"blockchain_getBlockByNumber"</span>, blocking)]
+    </span><span class="kw">fn </span>block_by_number(<span class="kw-2">&amp;</span><span class="self">self</span>, number: <span class="prelude-ty">Option</span>&lt;u32&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;BitcoinBlock&gt;, Error&gt;;
+
+    <span class="doccomment">/// Get a raw block in hex format by its hash.
+    </span><span class="attr">#[method(name = <span class="string">"blockchain_getRawBlock"</span>, blocking)]
+    </span><span class="kw">fn </span>raw_block(<span class="kw-2">&amp;</span><span class="self">self</span>, hash: <span class="prelude-ty">Option</span>&lt;BlockHash&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;String&gt;, Error&gt;;
+
+    <span class="doccomment">/// Get a raw block in hex format by its number.
+    </span><span class="attr">#[method(name = <span class="string">"blockchain_getRawBlockByNumber"</span>, blocking)]
+    </span><span class="kw">fn </span>raw_block_by_number(<span class="kw-2">&amp;</span><span class="self">self</span>, number: <span class="prelude-ty">Option</span>&lt;u32&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;String&gt;, Error&gt;;
 }
 
 <span class="doccomment">/// This struct provides the Bitcoin Blockchain API.
@@ -174,15 +227,13 @@
     <span class="kw">fn </span>header(<span class="kw-2">&amp;</span><span class="self">self</span>, hash: <span class="prelude-ty">Option</span>&lt;BlockHash&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;BitcoinHeader&gt;, Error&gt; {
         <span class="kw">let </span>substrate_block_hash = <span class="self">self</span>.substrate_block_hash(hash)<span class="question-mark">?</span>;
 
-        <span class="kw">let </span>signed_block = <span class="self">self
+        <span class="kw">let </span>header = <span class="self">self
             </span>.client
-            .block(substrate_block_hash)<span class="question-mark">?
-            </span>.ok_or(Error::BlockNotFound)<span class="question-mark">?</span>;
-
-        <span class="kw">let </span>block = signed_block.block;
+            .header(substrate_block_hash)<span class="question-mark">?
+            </span>.ok_or(Error::HeaderNotFound)<span class="question-mark">?</span>;
 
         <span class="kw">let </span>bitcoin_header =
-            extract_bitcoin_block_header::&lt;Block&gt;(block.header()).map_err(Error::Header)<span class="question-mark">?</span>;
+            extract_bitcoin_block_header::&lt;Block&gt;(<span class="kw-2">&amp;</span>header).map_err(Error::Header)<span class="question-mark">?</span>;
 
         <span class="prelude-val">Ok</span>(<span class="prelude-val">Some</span>(bitcoin_header))
     }
@@ -200,6 +251,35 @@
             .map_err(Error::Header)<span class="question-mark">?</span>;
 
         <span class="prelude-val">Ok</span>(<span class="prelude-val">Some</span>(bitcoin_block))
+    }
+
+    <span class="kw">fn </span>block_by_number(<span class="kw-2">&amp;</span><span class="self">self</span>, number: <span class="prelude-ty">Option</span>&lt;u32&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;BitcoinBlock&gt;, Error&gt; {
+        <span class="kw">let </span>block_hash = <span class="kw">match </span>number {
+            <span class="prelude-val">Some</span>(number) =&gt; <span class="prelude-val">Some</span>(<span class="self">self</span>.client.block_hash(number).ok_or(Error::BlockNotFound)<span class="question-mark">?</span>),
+            <span class="prelude-val">None </span>=&gt; <span class="prelude-val">None</span>,
+        };
+
+        <span class="self">self</span>.block(block_hash)
+    }
+
+    <span class="kw">fn </span>raw_block(<span class="kw-2">&amp;</span><span class="self">self</span>, hash: <span class="prelude-ty">Option</span>&lt;BlockHash&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;String&gt;, Error&gt; {
+        <span class="kw">match </span><span class="self">self</span>.block(hash)<span class="question-mark">? </span>{
+            <span class="prelude-val">Some</span>(block) =&gt; {
+                <span class="kw">let </span><span class="kw-2">mut </span>data = Vec::new();
+                block.consensus_encode(<span class="kw-2">&amp;mut </span>data)<span class="question-mark">?</span>;
+                <span class="prelude-val">Ok</span>(<span class="prelude-val">Some</span>(hex::encode(<span class="kw-2">&amp;</span>data)))
+            }
+            <span class="prelude-val">None </span>=&gt; <span class="prelude-val">Ok</span>(<span class="prelude-val">None</span>),
+        }
+    }
+
+    <span class="kw">fn </span>raw_block_by_number(<span class="kw-2">&amp;</span><span class="self">self</span>, number: <span class="prelude-ty">Option</span>&lt;u32&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;String&gt;, Error&gt; {
+        <span class="kw">let </span>block_hash = <span class="kw">match </span>number {
+            <span class="prelude-val">Some</span>(number) =&gt; <span class="prelude-val">Some</span>(<span class="self">self</span>.client.block_hash(number).ok_or(Error::BlockNotFound)<span class="question-mark">?</span>),
+            <span class="prelude-val">None </span>=&gt; <span class="prelude-val">None</span>,
+        };
+
+        <span class="self">self</span>.raw_block(block_hash)
     }
 }
 
