@@ -8,12 +8,16 @@ use sc_rpc_api::UnsafeRpcError;
 pub enum Error {
     #[error("block not found")]
     BlockNotFound,
+    #[error("header not found")]
+    HeaderNotFound,
     #[error("Bitcoin P2P network service unavailable")]
     NetworkUnavailable,
     #[error("substrate block hash not found")]
     SubstrateBlockHashNotFound,
     #[error("Invalid header: {0:?}")]
     Header(subcoin_primitives::HeaderError),
+    #[error(transparent)]
+    BitcoinIO(#[from] bitcoin::io::Error),
     #[error(transparent)]
     Blockchain(#[from] sp_blockchain::Error),
     #[error(transparent)]

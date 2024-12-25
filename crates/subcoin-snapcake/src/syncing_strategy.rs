@@ -32,7 +32,7 @@ use subcoin_service::network_request_handler::{
     v1, VersionedNetworkRequest, VersionedNetworkResponse,
 };
 
-const LOG_TARGET: &'static str = "sync::snapcake";
+const LOG_TARGET: &str = "sync::snapcake";
 
 const SUBCOIN_STRATEGY_KEY: StrategyKey = StrategyKey::new("Subcoin");
 
@@ -61,6 +61,7 @@ pub enum TargetBlock<Block: BlockT> {
 }
 
 /// Build snapcake state syncing strategy.
+#[allow(clippy::too_many_arguments)]
 pub fn build_snapcake_syncing_strategy<Block, Client, Net>(
     protocol_id: ProtocolId,
     fork_id: Option<&str>,
@@ -372,8 +373,8 @@ where
             peer_id,
             key: SUBCOIN_STRATEGY_KEY,
             request: async move {
-                Ok(rx.await?.and_then(|(response, protocol_name)| {
-                    Ok((Box::new(response) as Box<dyn Any + Send>, protocol_name))
+                Ok(rx.await?.map(|(response, protocol_name)| {
+                    (Box::new(response) as Box<dyn Any + Send>, protocol_name)
                 }))
             }
             .boxed(),
@@ -390,12 +391,12 @@ where
         self.peer_best_blocks
             .insert(peer_id, (best_hash, best_number));
 
-        self.state
-            .as_mut()
-            .map(|s| s.add_peer(peer_id, best_hash, best_number));
-        self.chain_sync
-            .as_mut()
-            .map(|s| s.add_peer(peer_id, best_hash, best_number));
+        if let Some(s) = self.state.as_mut() {
+            s.add_peer(peer_id, best_hash, best_number);
+        }
+        if let Some(c) = self.chain_sync.as_mut() {
+            c.add_peer(peer_id, best_hash, best_number);
+        }
 
         // Request the header of target block.
         match self.sync_target {
@@ -448,8 +449,12 @@ where
     }
 
     fn remove_peer(&mut self, peer_id: &PeerId) {
-        self.state.as_mut().map(|s| s.remove_peer(peer_id));
-        self.chain_sync.as_mut().map(|s| s.remove_peer(peer_id));
+        if let Some(s) = self.state.as_mut() {
+            s.remove_peer(peer_id);
+        }
+        if let Some(c) = self.chain_sync.as_mut() {
+            c.remove_peer(peer_id);
+        }
 
         self.peer_best_blocks.remove(peer_id);
         self.pending_header_requests.retain(|(id, _)| id != peer_id);

@@ -22,6 +22,7 @@ hex = { workspace = true }
 indicatif = { workspace = true }
 jsonrpsee = { workspace = true }
 pallet-bitcoin = { workspace = true }
+reqwest = { version = "0.12.9", features = ["json"], optional = true }
 sc-cli = { workspace = true }
 sc-client-api = { workspace = true }
 sc-consensus = { workspace = true }
@@ -55,6 +56,7 @@ subcoin-service = { workspace = true }
 subcoin-utxo-snapshot = { workspace = true }
 substrate-frame-rpc-system = { workspace = true }
 substrate-prometheus-endpoint = { workspace = true }
+thiserror = { workspace = true }
 tracing = { workspace = true }
 txoutset = { workspace = true }
 
@@ -70,4 +72,5 @@ runtime-benchmarks = [
     "sc-service/runtime-benchmarks",
 ]
 rocksdb = ["sc-cli/rocksdb"]
+remote-import = ["reqwest"]
 benchmark = ["frame-benchmarking-cli"]

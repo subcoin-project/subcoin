@@ -308,7 +308,7 @@ impl BlockDownloader {
     pub(crate) fn handle_processed_blocks(&mut self, results: ImportManyBlocksResult) {
         self.last_progress_time = Instant::now();
         for (import_result, hash) in &results.results {
-            self.blocks_in_queue.remove(hash);
+            let block_number = self.blocks_in_queue.remove(hash);
             self.queued_blocks.remove(hash);
 
             match import_result {
@@ -316,7 +316,11 @@ impl BlockDownloader {
                 Err(BlockImportError::UnknownParent) => panic!("Unknown parent {hash}"),
                 Err(err) => {
                     // TODO: handle error properly
-                    panic!("Failed to import block {hash:?}: {err:?}");
+                    if let Some(number) = block_number {
+                        panic!("Failed to import block #{number:?},{hash:?}: {err:?}");
+                    } else {
+                        panic!("Failed to import block #{hash:?}: {err:?}");
+                    }
                 }
             }
         }
