@@ -315,6 +315,15 @@ pub trait TransactionIndex {
     fn tx_index(&self, txid: Txid) -> sp_blockchain::Result<Option<TxPosition>>;
 }
 
+/// Dummy implementor of [`TransactionIndex`].
+pub struct NoTransactionIndex;
+
+impl TransactionIndex for NoTransactionIndex {
+    fn tx_index(&self, _txid: Txid) -> sp_blockchain::Result<Option<TxPosition>> {
+        Ok(None)
+    }
+}
+
 /// Constructs a Substrate header digest from a Bitcoin header.
 ///
 /// NOTE: The bitcoin block hash digest is stored in the reversed byte order, making it

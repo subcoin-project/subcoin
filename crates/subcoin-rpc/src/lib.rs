@@ -10,7 +10,7 @@ use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use subcoin_network::NetworkApi;
-use subcoin_primitives::BitcoinTransactionAdapter;
+use subcoin_primitives::{BitcoinTransactionAdapter, TransactionIndex};
 
 /// Subcoin RPC.
 pub struct SubcoinRpc<Block, Client, TransactionAdapter> {
@@ -29,9 +29,16 @@ where
     TransactionAdapter: BitcoinTransactionAdapter<Block> + Send + Sync + 'static,
 {
     /// Creates a new instance of [`SubcoinRpc`].
-    pub fn new(client: Arc<Client>, network_api: Arc<dyn NetworkApi>) -> Self {
+    pub fn new(
+        client: Arc<Client>,
+        network_api: Arc<dyn NetworkApi>,
+        transaction_indexer: Arc<dyn TransactionIndex + Send + Sync>,
+    ) -> Self {
         Self {
-            blockchain: Blockchain::<_, _, TransactionAdapter>::new(client.clone()),
+            blockchain: Blockchain::<_, _, TransactionAdapter>::new(
+                client.clone(),
+                transaction_indexer,
+            ),
             raw_transactions: RawTransactions::new(client.clone(), network_api.clone()),
             network: Network::new(client, network_api),
         }
