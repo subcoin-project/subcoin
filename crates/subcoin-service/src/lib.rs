@@ -34,7 +34,7 @@ use subcoin_runtime::RuntimeApi;
 
 pub use finalizer::SubcoinFinalizer;
 pub use genesis_block_builder::GenesisBlockBuilder;
-pub use indexer::TransactionIndexer;
+pub use indexer::{TransactionIndexProvider, TransactionIndexer};
 pub use transaction_adapter::TransactionAdapter;
 
 /// This is a specialization of the general Substrate ChainSpec type.

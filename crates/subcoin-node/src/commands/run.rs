@@ -263,9 +263,15 @@ impl RunCmd {
                 _,
                 _,
                 subcoin_service::TransactionAdapter,
-            >::new(bitcoin_network, client.clone());
-            spawn_handle.spawn("tx-index", None, transaction_indexer.clone().run());
-            Arc::new(transaction_indexer)
+            >::new(
+                bitcoin_network,
+                client.clone(),
+                task_manager.spawn_handle(),
+            )?;
+            spawn_handle.spawn("tx-index", None, transaction_indexer.run());
+            Arc::new(subcoin_service::TransactionIndexProvider::new(
+                client.clone(),
+            ))
         } else {
             Arc::new(subcoin_primitives::NoTransactionIndex)
         };

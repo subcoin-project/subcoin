@@ -377,16 +377,16 @@ async fn initialize_outbound_connections(
     // Await all futures concurrently
     let lookup_results = futures::future::join_all(lookup_futures).await;
 
-    for (bootnode_addr, result) in lookup_results {
+    for (bootnode, result) in lookup_results {
         match result {
             Ok(Ok(addr)) => {
                 connection_initiator.initiate_outbound_connection(addr);
             }
             Ok(Err(e)) => {
-                tracing::warn!(%bootnode_addr, "Failed to resolve bootnode address: {e}");
+                tracing::warn!(%bootnode, "Failed to resolve bootnode address: {e}");
             }
             Err(e) => {
-                tracing::warn!(%bootnode_addr, "Failed to perform bootnode DNS lookup: {e}");
+                tracing::warn!(%bootnode, "Failed to perform bootnode DNS lookup: {e}");
             }
         }
     }
@@ -537,4 +537,3 @@ where
 
     Ok(network_handle)
 }
-
