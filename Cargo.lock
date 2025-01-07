@@ -10407,6 +10407,7 @@ dependencies = [
  "sp-blockchain",
  "sp-runtime",
  "subcoin-primitives",
+ "thiserror 1.0.68",
  "tracing",
 ]
 

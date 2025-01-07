@@ -29,8 +29,33 @@ enum IndexAction {
     Revert,
 }
 
-/// Indexer responsible for tracking transactions so that it is possible to query a transaction
-/// by the corresponding txid.
+/// Indexer error type.
+#[derive(Debug, thiserror::Error)]
+pub enum IndexerError {
+    #[error("Block not found: {0}")]
+    BlockNotFound(String),
+
+    #[error("Inconsistent block range. Indexed: {indexed:?}, Processed: {processed}")]
+    InconsistentBlockRange {
+        indexed: Option<IndexedBlockRange>,
+        processed: u32,
+    },
+
+    #[error("Failed to decode data: {0}")]
+    DecodeError(#[from] codec::Error),
+
+    #[error(transparent)]
+    Blockchain(#[from] sp_blockchain::Error),
+}
+
+/// Add result type alias
+pub type Result<T> = std::result::Result<T, IndexerError>;
+
+/// Provides transaction indexing functionality for Bitcoin transactions in Substrate blocks.
+///
+/// The indexer maintains a mapping of Bitcoin transaction IDs to their positions within blocks,
+/// allowing efficient transaction lookups. It handles both new block imports and chain reorganizations.
+#[derive(Debug)]
 pub struct TransactionIndexer<Block, Backend, Client, TransactionAdapter> {
     network: bitcoin::Network,
     client: Arc<Client>,
@@ -67,24 +92,8 @@ where
         network: bitcoin::Network,
         client: Arc<Client>,
         spawn_handle: SpawnTaskHandle,
-    ) -> sp_blockchain::Result<Self> {
-        let maybe_index_gap = if let Some(gap) = load_index_gap(&*client)? {
-            Some(gap)
-        } else if let Some(ref block_range) = load_indexed_block_range(&*client)? {
-            let best_number: u32 = client.info().best_number.saturated_into();
-            let last_indexed_block = block_range.end.saturating_sub(1);
-            if last_indexed_block < best_number {
-                let new_gap = last_indexed_block + 1..best_number + 1;
-                tracing::debug!("Detected transaction indexing gap: {new_gap:?}");
-                Some(new_gap)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        if let Some(gap) = maybe_index_gap {
+    ) -> Result<Self> {
+        if let Some(gap) = Self::detect_index_gap(&client)? {
             let client = client.clone();
             spawn_handle.spawn_blocking("tx-historical-index", None, async move {
                 if let Err(err) = index_historical_blocks::<_, TransactionAdapter, _>(client, gap) {
@@ -100,7 +109,34 @@ where
         })
     }
 
-    pub async fn run(mut self) {
+    /// Detects if there are any gaps in the transaction index.
+    fn detect_index_gap(client: &Client) -> Result<Option<IndexRange>> {
+        let gap = if let Some(gap) = load_index_gap(client)? {
+            Some(gap)
+        } else if let Some(ref block_range) = load_indexed_block_range(client)? {
+            let best_number: u32 = client.info().best_number.saturated_into();
+            let last_indexed_block = block_range.end.saturating_sub(1);
+
+            if last_indexed_block < best_number {
+                let new_gap = last_indexed_block + 1..best_number + 1;
+                tracing::debug!(
+                    last_indexed = last_indexed_block,
+                    best_number = best_number,
+                    ?new_gap,
+                    "Detected transaction indexing gap"
+                );
+                Some(new_gap)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Ok(gap)
+    }
+
+    pub async fn run(self) {
         let mut block_import_stream = self.client.every_import_notification_stream();
 
         while let Some(notification) = block_import_stream.next().await {
@@ -126,10 +162,7 @@ where
     }
 
     /// Handles retracted and enacted blocks during a re-org.
-    fn handle_reorg(
-        &mut self,
-        route: Arc<sp_blockchain::TreeRoute<Block>>,
-    ) -> sp_blockchain::Result<()> {
+    fn handle_reorg(&self, route: Arc<sp_blockchain::TreeRoute<Block>>) -> Result<()> {
         for hash_and_number in route.retracted() {
             let block = self.get_block(hash_and_number.hash)?;
             process_block::<_, TransactionAdapter, _>(&*self.client, block, IndexAction::Revert);
@@ -144,12 +177,11 @@ where
     }
 
     /// Handles a new block import (non-reorg).
-    fn handle_new_block(&mut self, block: Block) -> sp_blockchain::Result<()> {
+    fn handle_new_block(&self, block: Block) -> Result<()> {
         let block_number: u32 = (*block.header().number()).saturated_into();
 
         process_block::<_, TransactionAdapter, _>(&*self.client, block, IndexAction::Apply);
 
-        // TODO: keep indexed_block_range in memory?
         let mut indexed_block_range = load_indexed_block_range(&*self.client)?;
 
         match indexed_block_range.as_mut() {
@@ -158,9 +190,10 @@ where
                     current_range.end += 1;
                     write_tx_indexed_range(&*self.client, current_range.encode())?;
                 } else {
-                    return Err(sp_blockchain::Error::Backend(format!(
-                        "Inconsistent block range! Indexed: {indexed_block_range:?}, Processed: {block_number}",
-                    )));
+                    return Err(IndexerError::InconsistentBlockRange {
+                        indexed: indexed_block_range,
+                        processed: block_number,
+                    });
                 }
             }
             None => {
@@ -172,14 +205,11 @@ where
         Ok(())
     }
 
-    fn get_block(&self, block_hash: Block::Hash) -> sp_blockchain::Result<Block> {
-        Ok(self
-            .client
-            .block(block_hash)
-            .ok()
-            .flatten()
-            .ok_or_else(|| sp_blockchain::Error::Backend(format!("Missing block#{block_hash:?}")))?
-            .block)
+    fn get_block(&self, block_hash: Block::Hash) -> Result<Block> {
+        self.client
+            .block(block_hash)?
+            .ok_or_else(|| IndexerError::BlockNotFound(format!("{block_hash:?}")))
+            .map(|signed| signed.block)
     }
 }
 

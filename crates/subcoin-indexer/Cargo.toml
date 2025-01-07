@@ -15,4 +15,5 @@ sc-service = { workspace = true }
 sp-blockchain = { workspace = true }
 sp-runtime = { workspace = true }
 subcoin-primitives = { workspace = true }
+thiserror = { workspace = true }
 tracing = { workspace = true }

@@ -53,7 +53,7 @@ pub struct Run {
     #[clap(long)]
     pub no_finalizer: bool,
 
-    /// Enable the transaction indexing.
+    /// Enable transaction indexing service.
     #[clap(long)]
     pub tx_index: bool,
 
@@ -267,7 +267,8 @@ impl RunCmd {
                 bitcoin_network,
                 client.clone(),
                 task_manager.spawn_handle(),
-            )?;
+            )
+            .map_err(|err| sp_blockchain::Error::Application(Box::new(err)))?;
             spawn_handle.spawn("tx-index", None, transaction_indexer.run());
             Arc::new(subcoin_indexer::TransactionIndexProvider::new(
                 client.clone(),
