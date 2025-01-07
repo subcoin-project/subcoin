@@ -258,7 +258,7 @@ impl RunCmd {
             };
 
         let transaction_indexer: Arc<dyn TransactionIndex + Send + Sync> = if run.tx_index {
-            let transaction_indexer = subcoin_service::TransactionIndexer::<
+            let transaction_indexer = subcoin_indexer::TransactionIndexer::<
                 _,
                 _,
                 _,
@@ -269,7 +269,7 @@ impl RunCmd {
                 task_manager.spawn_handle(),
             )?;
             spawn_handle.spawn("tx-index", None, transaction_indexer.run());
-            Arc::new(subcoin_service::TransactionIndexProvider::new(
+            Arc::new(subcoin_indexer::TransactionIndexProvider::new(
                 client.clone(),
             ))
         } else {

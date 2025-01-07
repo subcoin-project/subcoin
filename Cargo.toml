@@ -13,6 +13,7 @@ members = [
     "crates/pallet-executive",
     "crates/sc-consensus-nakamoto",
     "crates/subcoin-crypto",
+    "crates/subcoin-indexer",
     "crates/subcoin-informant",
     "crates/subcoin-network",
     "crates/subcoin-node",
@@ -122,6 +123,7 @@ pallet-bitcoin = { path = "crates/pallet-bitcoin", default-features = false }
 pallet-executive = { path = "crates/pallet-executive", default-features = false }
 sc-consensus-nakamoto = { path = "crates/sc-consensus-nakamoto" }
 subcoin-crypto = { path = "crates/subcoin-crypto" }
+subcoin-indexer = { path = "crates/subcoin-indexer" }
 subcoin-informant = { path = "crates/subcoin-informant" }
 subcoin-network = { path = "crates/subcoin-network" }
 subcoin-node = { path = "crates/subcoin-node" }

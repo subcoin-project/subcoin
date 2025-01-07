@@ -5,7 +5,6 @@
 pub mod chain_spec;
 mod finalizer;
 mod genesis_block_builder;
-mod indexer;
 pub mod network_request_handler;
 mod transaction_adapter;
 pub mod transaction_pool;
@@ -34,7 +33,6 @@ use subcoin_runtime::RuntimeApi;
 
 pub use finalizer::SubcoinFinalizer;
 pub use genesis_block_builder::GenesisBlockBuilder;
-pub use indexer::{TransactionIndexProvider, TransactionIndexer};
 pub use transaction_adapter::TransactionAdapter;
 
 /// This is a specialization of the general Substrate ChainSpec type.
