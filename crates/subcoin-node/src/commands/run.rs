@@ -11,7 +11,7 @@ use sc_service::{BasePath, Configuration, TaskManager};
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use subcoin_network::{BlockSyncOption, NetworkApi, SyncStrategy};
-use subcoin_primitives::CONFIRMATION_DEPTH;
+use subcoin_primitives::{TransactionIndex, CONFIRMATION_DEPTH};
 
 /// Options for configuring the Subcoin network behavior.
 #[derive(Copy, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, clap::ValueEnum)]
@@ -52,6 +52,10 @@ pub struct Run {
     /// Do not run the finalizer which will finalize the blocks on confirmation depth.
     #[clap(long)]
     pub no_finalizer: bool,
+
+    /// Enable transaction indexing service.
+    #[clap(long)]
+    pub tx_index: bool,
 
     /// Specify the Subcoin network behavior.
     #[clap(long, default_value = "full")]
@@ -253,6 +257,26 @@ impl RunCmd {
                 Arc::new(network_handle)
             };
 
+        let transaction_indexer: Arc<dyn TransactionIndex + Send + Sync> = if run.tx_index {
+            let transaction_indexer = subcoin_indexer::TransactionIndexer::<
+                _,
+                _,
+                _,
+                subcoin_service::TransactionAdapter,
+            >::new(
+                bitcoin_network,
+                client.clone(),
+                task_manager.spawn_handle(),
+            )
+            .map_err(|err| sp_blockchain::Error::Application(Box::new(err)))?;
+            spawn_handle.spawn("tx-index", None, transaction_indexer.run());
+            Arc::new(subcoin_indexer::TransactionIndexProvider::new(
+                client.clone(),
+            ))
+        } else {
+            Arc::new(subcoin_primitives::NoTransactionIndex)
+        };
+
         // Start JSON-RPC server.
         let gen_rpc_module = || {
             let system_info = sc_rpc::system::SystemInfo {
@@ -270,6 +294,7 @@ impl RunCmd {
                 task_manager.spawn_handle(),
                 system_rpc_tx,
                 network_api.clone(),
+                transaction_indexer.clone(),
             )
         };
 

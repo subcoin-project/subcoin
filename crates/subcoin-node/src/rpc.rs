@@ -3,6 +3,7 @@ use sc_service::SpawnTaskHandle;
 use sc_utils::mpsc::TracingUnboundedSender;
 use std::sync::Arc;
 use subcoin_network::NetworkApi;
+use subcoin_primitives::TransactionIndex;
 use subcoin_runtime::interface::OpaqueBlock;
 use subcoin_service::FullClient;
 use substrate_frame_rpc_system::{System as FrameSystem, SystemApiServer as _};
@@ -14,6 +15,7 @@ pub fn gen_rpc_module(
     spawn_handle: SpawnTaskHandle,
     system_rpc_tx: TracingUnboundedSender<sc_rpc::system::Request<OpaqueBlock>>,
     network_api: Arc<dyn NetworkApi>,
+    transaction_indexer: Arc<dyn TransactionIndex + Send + Sync>,
 ) -> Result<RpcModule<()>, sc_service::Error> {
     use sc_rpc::chain::ChainApiServer;
     use sc_rpc::state::{ChildStateApiServer, StateApiServer};
@@ -47,6 +49,7 @@ pub fn gen_rpc_module(
     subcoin_rpc::SubcoinRpc::<_, _, subcoin_service::TransactionAdapter>::new(
         client.clone(),
         network_api,
+        transaction_indexer,
     )
     .merge_into(&mut module)
     .map_err(into_service_error)?;

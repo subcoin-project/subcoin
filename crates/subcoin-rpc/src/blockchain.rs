@@ -1,7 +1,7 @@
 use crate::error::Error;
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::consensus::Encodable;
-use bitcoin::{Block as BitcoinBlock, BlockHash};
+use bitcoin::{Block as BitcoinBlock, BlockHash, Transaction, Txid};
 use jsonrpsee::proc_macros::rpc;
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 use sp_runtime::traits::Block as BlockT;
@@ -9,6 +9,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use subcoin_primitives::{
     convert_to_bitcoin_block, extract_bitcoin_block_header, BackendExt, BitcoinTransactionAdapter,
+    TransactionIndex, TxPosition,
 };
 
 /// Bitcoin blockchain API.
@@ -33,11 +34,16 @@ pub trait BlockchainApi {
     /// Get a raw block in hex format by its number.
     #[method(name = "blockchain_getRawBlockByNumber", blocking)]
     fn raw_block_by_number(&self, number: Option<u32>) -> Result<Option<String>, Error>;
+
+    /// Get transaction.
+    #[method(name = "blockchain_getTransaction", blocking)]
+    fn transaction(&self, txid: Txid) -> Result<Option<Transaction>, Error>;
 }
 
 /// This struct provides the Bitcoin Blockchain API.
 pub struct Blockchain<Block, Client, TransactionAdapter> {
     client: Arc<Client>,
+    transaction_indexer: Arc<dyn TransactionIndex + Send + Sync>,
     _phantom: PhantomData<(Block, TransactionAdapter)>,
 }
 
@@ -47,9 +53,13 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + 'static,
 {
     /// Constructs a new instance of [`Blockchain`].
-    pub fn new(client: Arc<Client>) -> Self {
+    pub fn new(
+        client: Arc<Client>,
+        transaction_indexer: Arc<dyn TransactionIndex + Send + Sync>,
+    ) -> Self {
         Self {
             client,
+            transaction_indexer,
             _phantom: Default::default(),
         }
     }
@@ -129,6 +139,30 @@ where
         };
 
         self.raw_block(block_hash)
+    }
+
+    fn transaction(&self, txid: Txid) -> Result<Option<Transaction>, Error> {
+        let Some(TxPosition {
+            block_number,
+            index,
+        }) = self.transaction_indexer.tx_index(txid)?
+        else {
+            return Ok(None);
+        };
+        let substrate_block_hash =
+            self.client
+                .hash(block_number.into())?
+                .ok_or(sp_blockchain::Error::Backend(format!(
+                    "Hash not found for #{block_number}"
+                )))?;
+        let substrate_block = self
+            .client
+            .block(substrate_block_hash)?
+            .ok_or(Error::BlockNotFound)?
+            .block;
+        let bitcoin_block = convert_to_bitcoin_block::<Block, TransactionAdapter>(substrate_block)
+            .map_err(Error::Header)?;
+        Ok(bitcoin_block.txdata.into_iter().nth(index as usize))
     }
 }
 

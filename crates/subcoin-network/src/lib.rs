@@ -366,26 +366,27 @@ async fn initialize_outbound_connections(
 
     // Create a vector of futures for DNS lookups
     let lookup_futures = bootnodes.into_iter().map(|bootnode| async move {
-        tokio::net::lookup_host(&bootnode).await.map(|mut addrs| {
+        let res = tokio::net::lookup_host(&bootnode).await.map(|mut addrs| {
             addrs
                 .next()
                 .ok_or_else(|| Error::InvalidBootnode(bootnode.to_string()))
-        })
+        });
+        (bootnode, res)
     });
 
     // Await all futures concurrently
     let lookup_results = futures::future::join_all(lookup_futures).await;
 
-    for result in lookup_results {
+    for (bootnode, result) in lookup_results {
         match result {
             Ok(Ok(addr)) => {
                 connection_initiator.initiate_outbound_connection(addr);
             }
             Ok(Err(e)) => {
-                tracing::error!("Failed to resolve bootnode address: {e}");
+                tracing::warn!(%bootnode, "Failed to resolve bootnode address: {e}");
             }
             Err(e) => {
-                tracing::error!("Failed to perform bootnode DNS lookup: {e}");
+                tracing::warn!(%bootnode, "Failed to perform bootnode DNS lookup: {e}");
             }
         }
     }

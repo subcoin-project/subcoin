@@ -4,8 +4,8 @@ use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::consensus::{Decodable, Encodable};
 use bitcoin::constants::genesis_block;
 use bitcoin::hashes::Hash;
-use bitcoin::{Block as BitcoinBlock, BlockHash, Transaction};
-use codec::Decode;
+use bitcoin::{Block as BitcoinBlock, BlockHash, Transaction, Txid};
+use codec::{Decode, Encode};
 use sc_client_api::AuxStore;
 use sp_blockchain::HeaderBackend;
 use sp_runtime::generic::{Digest, DigestItem};
@@ -298,6 +298,30 @@ fn locator_indexes(mut from: Height) -> Vec<Height> {
     indexes.push(0);
 
     indexes
+}
+
+/// Represents the index of a transaction.
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct TxPosition {
+    /// Number of the block including the transaction.
+    pub block_number: u32,
+    /// Position of the transaction within the block.
+    pub index: u32,
+}
+
+/// Interface for retriving the position of given transaction ID.
+pub trait TransactionIndex {
+    /// Returns the position of given transaction ID if any.
+    fn tx_index(&self, txid: Txid) -> sp_blockchain::Result<Option<TxPosition>>;
+}
+
+/// Dummy implementor of [`TransactionIndex`].
+pub struct NoTransactionIndex;
+
+impl TransactionIndex for NoTransactionIndex {
+    fn tx_index(&self, _txid: Txid) -> sp_blockchain::Result<Option<TxPosition>> {
+        Ok(None)
+    }
 }
 
 /// Constructs a Substrate header digest from a Bitcoin header.
