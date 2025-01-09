@@ -393,6 +393,31 @@
 <a href="#393" id="393">393</a>
 <a href="#394" id="394">394</a>
 <a href="#395" id="395">395</a>
+<a href="#396" id="396">396</a>
+<a href="#397" id="397">397</a>
+<a href="#398" id="398">398</a>
+<a href="#399" id="399">399</a>
+<a href="#400" id="400">400</a>
+<a href="#401" id="401">401</a>
+<a href="#402" id="402">402</a>
+<a href="#403" id="403">403</a>
+<a href="#404" id="404">404</a>
+<a href="#405" id="405">405</a>
+<a href="#406" id="406">406</a>
+<a href="#407" id="407">407</a>
+<a href="#408" id="408">408</a>
+<a href="#409" id="409">409</a>
+<a href="#410" id="410">410</a>
+<a href="#411" id="411">411</a>
+<a href="#412" id="412">412</a>
+<a href="#413" id="413">413</a>
+<a href="#414" id="414">414</a>
+<a href="#415" id="415">415</a>
+<a href="#416" id="416">416</a>
+<a href="#417" id="417">417</a>
+<a href="#418" id="418">418</a>
+<a href="#419" id="419">419</a>
+<a href="#420" id="420">420</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::subcoin_params::{CommonParams, NetworkParams};
 <span class="kw">use </span>clap::Parser;
 <span class="kw">use </span>sc_cli::{
@@ -406,7 +431,7 @@
 <span class="kw">use </span>std::num::NonZeroU32;
 <span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>subcoin_network::{BlockSyncOption, NetworkApi, SyncStrategy};
-<span class="kw">use </span>subcoin_primitives::CONFIRMATION_DEPTH;
+<span class="kw">use </span>subcoin_primitives::{TransactionIndex, CONFIRMATION_DEPTH};
 
 <span class="doccomment">/// Options for configuring the Subcoin network behavior.
 </span><span class="attr">#[derive(Copy, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, clap::ValueEnum)]
@@ -447,6 +472,10 @@
     <span class="doccomment">/// Do not run the finalizer which will finalize the blocks on confirmation depth.
     </span><span class="attr">#[clap(long)]
     </span><span class="kw">pub </span>no_finalizer: bool,
+
+    <span class="doccomment">/// Enable transaction indexing service.
+    </span><span class="attr">#[clap(long)]
+    </span><span class="kw">pub </span>tx_index: bool,
 
     <span class="doccomment">/// Specify the Subcoin network behavior.
     </span><span class="attr">#[clap(long, default_value = <span class="string">"full"</span>)]
@@ -648,6 +677,26 @@
                 Arc::new(network_handle)
             };
 
+        <span class="kw">let </span>transaction_indexer: Arc&lt;<span class="kw">dyn </span>TransactionIndex + Send + Sync&gt; = <span class="kw">if </span>run.tx_index {
+            <span class="kw">let </span>transaction_indexer = subcoin_indexer::TransactionIndexer::&lt;
+                <span class="kw">_</span>,
+                <span class="kw">_</span>,
+                <span class="kw">_</span>,
+                subcoin_service::TransactionAdapter,
+            &gt;::new(
+                bitcoin_network,
+                client.clone(),
+                task_manager.spawn_handle(),
+            )
+            .map_err(|err| sp_blockchain::Error::Application(Box::new(err)))<span class="question-mark">?</span>;
+            spawn_handle.spawn(<span class="string">"tx-index"</span>, <span class="prelude-val">None</span>, transaction_indexer.run());
+            Arc::new(subcoin_indexer::TransactionIndexProvider::new(
+                client.clone(),
+            ))
+        } <span class="kw">else </span>{
+            Arc::new(subcoin_primitives::NoTransactionIndex)
+        };
+
         <span class="comment">// Start JSON-RPC server.
         </span><span class="kw">let </span>gen_rpc_module = || {
             <span class="kw">let </span>system_info = sc_rpc::system::SystemInfo {
@@ -665,6 +714,7 @@
                 task_manager.spawn_handle(),
                 system_rpc_tx,
                 network_api.clone(),
+                transaction_indexer.clone(),
             )
         };
 

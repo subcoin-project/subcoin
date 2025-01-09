@@ -405,14 +405,38 @@
 <a href="#405" id="405">405</a>
 <a href="#406" id="406">406</a>
 <a href="#407" id="407">407</a>
+<a href="#408" id="408">408</a>
+<a href="#409" id="409">409</a>
+<a href="#410" id="410">410</a>
+<a href="#411" id="411">411</a>
+<a href="#412" id="412">412</a>
+<a href="#413" id="413">413</a>
+<a href="#414" id="414">414</a>
+<a href="#415" id="415">415</a>
+<a href="#416" id="416">416</a>
+<a href="#417" id="417">417</a>
+<a href="#418" id="418">418</a>
+<a href="#419" id="419">419</a>
+<a href="#420" id="420">420</a>
+<a href="#421" id="421">421</a>
+<a href="#422" id="422">422</a>
+<a href="#423" id="423">423</a>
+<a href="#424" id="424">424</a>
+<a href="#425" id="425">425</a>
+<a href="#426" id="426">426</a>
+<a href="#427" id="427">427</a>
+<a href="#428" id="428">428</a>
+<a href="#429" id="429">429</a>
+<a href="#430" id="430">430</a>
+<a href="#431" id="431">431</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! Primitives for the client.
 
 </span><span class="kw">use </span>bitcoin::blockdata::block::Header <span class="kw">as </span>BitcoinHeader;
 <span class="kw">use </span>bitcoin::consensus::{Decodable, Encodable};
 <span class="kw">use </span>bitcoin::constants::genesis_block;
 <span class="kw">use </span>bitcoin::hashes::Hash;
-<span class="kw">use </span>bitcoin::{Block <span class="kw">as </span>BitcoinBlock, BlockHash, Transaction};
-<span class="kw">use </span>codec::Decode;
+<span class="kw">use </span>bitcoin::{Block <span class="kw">as </span>BitcoinBlock, BlockHash, Transaction, Txid};
+<span class="kw">use </span>codec::{Decode, Encode};
 <span class="kw">use </span>sc_client_api::AuxStore;
 <span class="kw">use </span>sp_blockchain::HeaderBackend;
 <span class="kw">use </span>sp_runtime::generic::{Digest, DigestItem};
@@ -705,6 +729,30 @@
     </span>indexes.push(<span class="number">0</span>);
 
     indexes
+}
+
+<span class="doccomment">/// Represents the index of a transaction.
+</span><span class="attr">#[derive(Debug, Clone, Encode, Decode)]
+</span><span class="kw">pub struct </span>TxPosition {
+    <span class="doccomment">/// Number of the block including the transaction.
+    </span><span class="kw">pub </span>block_number: u32,
+    <span class="doccomment">/// Position of the transaction within the block.
+    </span><span class="kw">pub </span>index: u32,
+}
+
+<span class="doccomment">/// Interface for retriving the position of given transaction ID.
+</span><span class="kw">pub trait </span>TransactionIndex {
+    <span class="doccomment">/// Returns the position of given transaction ID if any.
+    </span><span class="kw">fn </span>tx_index(<span class="kw-2">&amp;</span><span class="self">self</span>, txid: Txid) -&gt; sp_blockchain::Result&lt;<span class="prelude-ty">Option</span>&lt;TxPosition&gt;&gt;;
+}
+
+<span class="doccomment">/// Dummy implementor of [`TransactionIndex`].
+</span><span class="kw">pub struct </span>NoTransactionIndex;
+
+<span class="kw">impl </span>TransactionIndex <span class="kw">for </span>NoTransactionIndex {
+    <span class="kw">fn </span>tx_index(<span class="kw-2">&amp;</span><span class="self">self</span>, _txid: Txid) -&gt; sp_blockchain::Result&lt;<span class="prelude-ty">Option</span>&lt;TxPosition&gt;&gt; {
+        <span class="prelude-val">Ok</span>(<span class="prelude-val">None</span>)
+    }
 }
 
 <span class="doccomment">/// Constructs a Substrate header digest from a Bitcoin header.

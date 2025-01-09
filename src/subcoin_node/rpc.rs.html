@@ -53,11 +53,15 @@
 <a href="#53" id="53">53</a>
 <a href="#54" id="54">54</a>
 <a href="#55" id="55">55</a>
+<a href="#56" id="56">56</a>
+<a href="#57" id="57">57</a>
+<a href="#58" id="58">58</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>jsonrpsee::RpcModule;
 <span class="kw">use </span>sc_service::SpawnTaskHandle;
 <span class="kw">use </span>sc_utils::mpsc::TracingUnboundedSender;
 <span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>subcoin_network::NetworkApi;
+<span class="kw">use </span>subcoin_primitives::TransactionIndex;
 <span class="kw">use </span>subcoin_runtime::interface::OpaqueBlock;
 <span class="kw">use </span>subcoin_service::FullClient;
 <span class="kw">use </span>substrate_frame_rpc_system::{System <span class="kw">as </span>FrameSystem, SystemApiServer <span class="kw">as _</span>};
@@ -69,6 +73,7 @@
     spawn_handle: SpawnTaskHandle,
     system_rpc_tx: TracingUnboundedSender&lt;sc_rpc::system::Request&lt;OpaqueBlock&gt;&gt;,
     network_api: Arc&lt;<span class="kw">dyn </span>NetworkApi&gt;,
+    transaction_indexer: Arc&lt;<span class="kw">dyn </span>TransactionIndex + Send + Sync&gt;,
 ) -&gt; <span class="prelude-ty">Result</span>&lt;RpcModule&lt;()&gt;, sc_service::Error&gt; {
     <span class="kw">use </span>sc_rpc::chain::ChainApiServer;
     <span class="kw">use </span>sc_rpc::state::{ChildStateApiServer, StateApiServer};
@@ -102,6 +107,7 @@
     </span>subcoin_rpc::SubcoinRpc::&lt;<span class="kw">_</span>, <span class="kw">_</span>, subcoin_service::TransactionAdapter&gt;::new(
         client.clone(),
         network_api,
+        transaction_indexer,
     )
     .merge_into(<span class="kw-2">&amp;mut </span>module)
     .map_err(into_service_error)<span class="question-mark">?</span>;

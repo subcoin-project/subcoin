@@ -536,6 +536,7 @@
 <a href="#536" id="536">536</a>
 <a href="#537" id="537">537</a>
 <a href="#538" id="538">538</a>
+<a href="#539" id="539">539</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! # Bitcoin Network
 //!
 //! This crate facilitates communication with other nodes in the Bitcoin P2P network. It handles
@@ -904,26 +905,27 @@
 
     <span class="comment">// Create a vector of futures for DNS lookups
     </span><span class="kw">let </span>lookup_futures = bootnodes.into_iter().map(|bootnode| <span class="kw">async move </span>{
-        tokio::net::lookup_host(<span class="kw-2">&amp;</span>bootnode).<span class="kw">await</span>.map(|<span class="kw-2">mut </span>addrs| {
+        <span class="kw">let </span>res = tokio::net::lookup_host(<span class="kw-2">&amp;</span>bootnode).<span class="kw">await</span>.map(|<span class="kw-2">mut </span>addrs| {
             addrs
                 .next()
                 .ok_or_else(|| Error::InvalidBootnode(bootnode.to_string()))
-        })
+        });
+        (bootnode, res)
     });
 
     <span class="comment">// Await all futures concurrently
     </span><span class="kw">let </span>lookup_results = futures::future::join_all(lookup_futures).<span class="kw">await</span>;
 
-    <span class="kw">for </span>result <span class="kw">in </span>lookup_results {
+    <span class="kw">for </span>(bootnode, result) <span class="kw">in </span>lookup_results {
         <span class="kw">match </span>result {
             <span class="prelude-val">Ok</span>(<span class="prelude-val">Ok</span>(addr)) =&gt; {
                 connection_initiator.initiate_outbound_connection(addr);
             }
             <span class="prelude-val">Ok</span>(<span class="prelude-val">Err</span>(e)) =&gt; {
-                <span class="macro">tracing::error!</span>(<span class="string">"Failed to resolve bootnode address: {e}"</span>);
+                <span class="macro">tracing::warn!</span>(%bootnode, <span class="string">"Failed to resolve bootnode address: {e}"</span>);
             }
             <span class="prelude-val">Err</span>(e) =&gt; {
-                <span class="macro">tracing::error!</span>(<span class="string">"Failed to perform bootnode DNS lookup: {e}"</span>);
+                <span class="macro">tracing::warn!</span>(%bootnode, <span class="string">"Failed to perform bootnode DNS lookup: {e}"</span>);
             }
         }
     }

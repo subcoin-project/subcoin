@@ -55,6 +55,13 @@
 <a href="#55" id="55">55</a>
 <a href="#56" id="56">56</a>
 <a href="#57" id="57">57</a>
+<a href="#58" id="58">58</a>
+<a href="#59" id="59">59</a>
+<a href="#60" id="60">60</a>
+<a href="#61" id="61">61</a>
+<a href="#62" id="62">62</a>
+<a href="#63" id="63">63</a>
+<a href="#64" id="64">64</a>
 </pre></div><pre class="rust"><code><span class="kw">mod </span>blockchain;
 <span class="kw">mod </span>error;
 <span class="kw">mod </span>network;
@@ -67,7 +74,7 @@
 <span class="kw">use </span>sp_runtime::traits::Block <span class="kw">as </span>BlockT;
 <span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>subcoin_network::NetworkApi;
-<span class="kw">use </span>subcoin_primitives::BitcoinTransactionAdapter;
+<span class="kw">use </span>subcoin_primitives::{BitcoinTransactionAdapter, TransactionIndex};
 
 <span class="doccomment">/// Subcoin RPC.
 </span><span class="kw">pub struct </span>SubcoinRpc&lt;Block, Client, TransactionAdapter&gt; {
@@ -86,9 +93,16 @@
     TransactionAdapter: BitcoinTransactionAdapter&lt;Block&gt; + Send + Sync + <span class="lifetime">'static</span>,
 {
     <span class="doccomment">/// Creates a new instance of [`SubcoinRpc`].
-    </span><span class="kw">pub fn </span>new(client: Arc&lt;Client&gt;, network_api: Arc&lt;<span class="kw">dyn </span>NetworkApi&gt;) -&gt; <span class="self">Self </span>{
+    </span><span class="kw">pub fn </span>new(
+        client: Arc&lt;Client&gt;,
+        network_api: Arc&lt;<span class="kw">dyn </span>NetworkApi&gt;,
+        transaction_indexer: Arc&lt;<span class="kw">dyn </span>TransactionIndex + Send + Sync&gt;,
+    ) -&gt; <span class="self">Self </span>{
         <span class="self">Self </span>{
-            blockchain: Blockchain::&lt;<span class="kw">_</span>, <span class="kw">_</span>, TransactionAdapter&gt;::new(client.clone()),
+            blockchain: Blockchain::&lt;<span class="kw">_</span>, <span class="kw">_</span>, TransactionAdapter&gt;::new(
+                client.clone(),
+                transaction_indexer,
+            ),
             raw_transactions: RawTransactions::new(client.clone(), network_api.clone()),
             network: Network::new(client, network_api),
         }
