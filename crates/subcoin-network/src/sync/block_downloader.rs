@@ -341,7 +341,7 @@ impl BlockDownloader {
                     "Corrupted state, number for {block_hash} not found in `queued_blocks`",
                 );
 
-                if max_block_number.map_or(false, |target_block| block_number > target_block) {
+                if max_block_number.is_some_and(|target_block| block_number > target_block) {
                     None
                 } else {
                     self.blocks_in_queue.insert(block_hash, block_number);

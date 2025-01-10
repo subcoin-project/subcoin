@@ -82,7 +82,7 @@ impl ImportBlocksCmd {
     }
 
     /// Run the import-blocks command
-    pub async fn run<'a>(
+    pub async fn run(
         &self,
         client: Arc<FullClient>,
         maybe_data_dir: Option<PathBuf>,
