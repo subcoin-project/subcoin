@@ -27,6 +27,7 @@
 //! - [`BlockVerification`]: Represents the level of block verification (None, Full, HeaderOnly).
 
 mod header_verify;
+mod script_verify;
 mod tx_verify;
 
 use crate::chain_params::ChainParams;
@@ -43,7 +44,6 @@ use sc_client_api::{AuxStore, Backend, StorageProvider};
 use sp_blockchain::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
 use std::collections::{HashMap, HashSet};
-use std::ffi::c_uint;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subcoin_primitives::runtime::{bitcoin_block_subsidy, Coin};
@@ -330,7 +330,11 @@ where
                 .expect("Txid must exist as initialized in `check_block_sanity()`; qed")
         };
 
-        let flags = get_block_script_flags(block_number, block.block_hash(), &self.chain_params);
+        let flags = script_verify::get_block_script_flags(
+            block_number,
+            block.block_hash(),
+            &self.chain_params,
+        );
 
         let mut block_fee = 0;
         let mut spent_utxos = HashSet::new();
@@ -420,18 +424,12 @@ where
                 }
 
                 if self.verify_script {
-                    let script_verify_result = bitcoinconsensus::verify_with_flags(
-                        spent_output.script_pubkey.as_bytes(),
-                        spent_output.value.to_sat(),
+                    script_verify::verify_input_script(
+                        &spent_output,
                         spending_transaction,
                         input_index,
                         flags,
-                    );
-
-                    match script_verify_result {
-                        Ok(()) | Err(bitcoinconsensus::Error::ERR_SCRIPT) => {}
-                        Err(script_error) => return Err(script_error.into()),
-                    }
+                    )?;
                 }
 
                 spent_utxos.insert(coin);
@@ -526,47 +524,6 @@ fn find_utxo_in_current_block(
                 .cloned()
                 .map(|txout| (txout, is_coinbase))
         })
-}
-
-/// Returns the script validation flags for the specified block.
-///
-/// <https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L2360>
-fn get_block_script_flags(
-    height: u32,
-    block_hash: BlockHash,
-    chain_params: &ChainParams,
-) -> c_uint {
-    if let Some(flag) = chain_params
-        .script_flag_exceptions
-        .get(&block_hash)
-        .copied()
-    {
-        return flag;
-    }
-
-    let mut flags = bitcoinconsensus::VERIFY_P2SH | bitcoinconsensus::VERIFY_WITNESS;
-
-    // Enforce the DERSIG (BIP66) rule
-    if height >= chain_params.params.bip66_height {
-        flags |= bitcoinconsensus::VERIFY_DERSIG;
-    }
-
-    // Enforce CHECKLOCKTIMEVERIFY (BIP65)
-    if height >= chain_params.params.bip65_height {
-        flags |= bitcoinconsensus::VERIFY_CHECKLOCKTIMEVERIFY;
-    }
-
-    // Enforce CHECKSEQUENCEVERIFY (BIP112)
-    if height >= chain_params.csv_height {
-        flags |= bitcoinconsensus::VERIFY_CHECKSEQUENCEVERIFY;
-    }
-
-    // Enforce BIP147 NULLDUMMY (activated simultaneously with segwit)
-    if height >= chain_params.segwit_height {
-        flags |= bitcoinconsensus::VERIFY_NULLDUMMY;
-    }
-
-    flags
 }
 
 /// Returns the base block size.
