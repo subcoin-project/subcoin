@@ -175,6 +175,13 @@ impl<T> Stack<T> {
     }
 }
 
+impl Stack<Vec<u8>> {
+    #[inline]
+    pub fn push_num(&mut self, num: ScriptNum) {
+        self.data.push(num.to_bytes())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
