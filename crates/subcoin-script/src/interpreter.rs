@@ -24,8 +24,6 @@ pub fn eval_script(
     // let mut exec_stack = Vec::new();
     // let mut in_exec = true;
 
-    let verify_minimaldata = flags.verify_minimaldata();
-
     for instruction in script.instructions() {
         let instruction = instruction.map_err(Error::Script)?;
 
@@ -80,115 +78,110 @@ pub fn eval_script(
                     stack.push(n.to_bytes());
                 }
                 OP_1ADD => {
-                    let n = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?
-                        .add(1.into())?;
+                    let n = stack.pop_num()?.add(1.into())?;
                     stack.push(n.to_bytes());
                 }
                 OP_1SUB => {
-                    let n = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?
-                        .sub(1.into())?;
+                    let n = stack.pop_num()?.sub(1.into())?;
                     stack.push(n.to_bytes());
                 }
                 OP_NEGATE => {
-                    let n =
-                        ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?.neg()?;
+                    let n = stack.pop_num()?.neg()?;
                     stack.push(n.to_bytes());
                 }
                 OP_ABS => {
-                    let n = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?.abs();
+                    let n = stack.pop_num()?.abs();
                     stack.push(n.to_bytes());
                 }
                 OP_NOT => {
-                    let n =
-                        ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?.is_zero();
+                    let n = stack.pop_num()?.is_zero();
                     let n = ScriptNum::from(n);
                     stack.push(n.to_bytes());
                 }
                 OP_0NOTEQUAL => {
-                    let n =
-                        !ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?.is_zero();
+                    let n = !stack.pop_num()?.is_zero();
                     let n = ScriptNum::from(n);
                     stack.push(n.to_bytes());
                 }
                 OP_ADD => {
-                    let v1 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
-                    let v2 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
+                    let v1 = stack.pop_num()?;
+                    let v2 = stack.pop_num()?;
                     stack.push((v1 + v2)?.to_bytes());
                 }
                 OP_SUB => {
-                    let v1 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
-                    let v2 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
+                    let v1 = stack.pop_num()?;
+                    let v2 = stack.pop_num()?;
                     stack.push((v2 - v1)?.to_bytes());
                 }
                 OP_BOOLAND => {
-                    let v1 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
-                    let v2 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
+                    let v1 = stack.pop_num()?;
+                    let v2 = stack.pop_num()?;
                     let v = ScriptNum::from(!v1.is_zero() && !v2.is_zero());
                     stack.push(v.to_bytes());
                 }
                 OP_BOOLOR => {
-                    let v1 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
-                    let v2 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
+                    let v1 = stack.pop_num()?;
+                    let v2 = stack.pop_num()?;
                     let v = ScriptNum::from(!v1.is_zero() || !v2.is_zero());
                     stack.push(v.to_bytes());
                 }
                 OP_NUMEQUAL => {
-                    let v1 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
-                    let v2 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
+                    let v1 = stack.pop_num()?;
+                    let v2 = stack.pop_num()?;
                     let v = ScriptNum::from(v1 == v2);
                     stack.push(v.to_bytes());
                 }
                 OP_NUMEQUALVERIFY => {
-                    let v1 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
-                    let v2 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
+                    let v1 = stack.pop_num()?;
+                    let v2 = stack.pop_num()?;
                     if v1 != v2 {
                         return Err(Error::EqualVerify);
                     }
                 }
                 OP_NUMNOTEQUAL => {
-                    let v1 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
-                    let v2 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
+                    let v1 = stack.pop_num()?;
+                    let v2 = stack.pop_num()?;
                     let v = ScriptNum::from(v1 != v2);
                     stack.push(v.to_bytes());
                 }
                 OP_LESSTHAN => {
-                    let v1 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
-                    let v2 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
+                    let v1 = stack.pop_num()?;
+                    let v2 = stack.pop_num()?;
                     let v = ScriptNum::from(v1 > v2);
                     stack.push(v.to_bytes());
                 }
                 OP_GREATERTHAN => {
-                    let v1 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
-                    let v2 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
+                    let v1 = stack.pop_num()?;
+                    let v2 = stack.pop_num()?;
                     let v = ScriptNum::from(v1 < v2);
                     stack.push(v.to_bytes());
                 }
                 OP_LESSTHANOREQUAL => {
-                    let v1 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
-                    let v2 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
+                    let v1 = stack.pop_num()?;
+                    let v2 = stack.pop_num()?;
                     let v = ScriptNum::from(v1 >= v2);
                     stack.push(v.to_bytes());
                 }
                 OP_GREATERTHANOREQUAL => {
-                    let v1 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
-                    let v2 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
+                    let v1 = stack.pop_num()?;
+                    let v2 = stack.pop_num()?;
                     let v = ScriptNum::from(v1 <= v2);
                     stack.push(v.to_bytes());
                 }
                 OP_MIN => {
-                    let v1 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
-                    let v2 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
+                    let v1 = stack.pop_num()?;
+                    let v2 = stack.pop_num()?;
                     stack.push(std::cmp::min(v1, v2).to_bytes());
                 }
                 OP_MAX => {
-                    let v1 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
-                    let v2 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
+                    let v1 = stack.pop_num()?;
+                    let v2 = stack.pop_num()?;
                     stack.push(std::cmp::max(v1, v2).to_bytes());
                 }
                 OP_WITHIN => {
-                    let v1 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
-                    let v2 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
-                    let v3 = ScriptNum::from_bytes(&stack.pop()?, verify_minimaldata, None)?;
+                    let v1 = stack.pop_num()?;
+                    let v2 = stack.pop_num()?;
+                    let v3 = stack.pop_num()?;
                     if v2 <= v3 && v3 < v1 {
                         stack.push(vec![1].into());
                     } else {

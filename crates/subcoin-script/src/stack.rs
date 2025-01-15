@@ -1,14 +1,20 @@
+use crate::num::ScriptNum;
 use crate::Error;
 use std::ops::{Deref, DerefMut};
 
 #[derive(Debug, Default, PartialEq, Clone)]
 pub struct Stack<T = Vec<u8>> {
     data: Vec<T>,
+    verify_minimaldata: bool,
 }
 
+#[cfg(test)]
 impl<T> From<Vec<T>> for Stack<T> {
     fn from(data: Vec<T>) -> Self {
-        Self { data }
+        Self {
+            data,
+            verify_minimaldata: true,
+        }
     }
 }
 
@@ -28,8 +34,11 @@ impl<T> DerefMut for Stack<T> {
 
 impl<T> Stack<T> {
     #[inline]
-    pub fn new() -> Self {
-        Self { data: Vec::new() }
+    pub fn new(verify_minimaldata: bool) -> Self {
+        Self {
+            data: Vec::new(),
+            verify_minimaldata,
+        }
     }
 
     #[inline]
@@ -53,6 +62,13 @@ impl<T> Stack<T> {
     #[inline]
     pub fn pop(&mut self) -> Result<T, Error> {
         self.data.pop().ok_or(Error::InvalidStackOperation)
+    }
+
+    pub fn pop_num(&mut self) -> Result<ScriptNum, Error>
+    where
+        T: AsRef<[u8]>,
+    {
+        ScriptNum::from_bytes(self.pop()?.as_ref(), self.verify_minimaldata, None)
     }
 
     #[inline]
