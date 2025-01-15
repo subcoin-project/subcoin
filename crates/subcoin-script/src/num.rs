@@ -11,6 +11,14 @@ pub struct ScriptNum {
     value: i64,
 }
 
+impl<T: Into<i64>> From<T> for ScriptNum {
+    fn from(value: T) -> Self {
+        Self {
+            value: value.into(),
+        }
+    }
+}
+
 impl ScriptNum {
     /// Maximum script number length in bytes
     pub const MAX_NUM_SIZE: usize = 4;
@@ -105,11 +113,17 @@ impl ScriptNum {
     pub fn value(&self) -> i64 {
         self.value
     }
-}
 
-impl From<i64> for ScriptNum {
-    fn from(value: i64) -> Self {
-        Self { value }
+    pub fn is_zero(&self) -> bool {
+        self.value == 0
+    }
+
+    pub fn abs(&self) -> Self {
+        if self.value < 0 {
+            (-self.value).into()
+        } else {
+            self.value.into()
+        }
     }
 }
 
@@ -169,7 +183,7 @@ mod tests {
     #[test]
     fn test_script_num_to_bytes() {
         let tests = vec![
-            (0, vec![]),
+            (0i64, vec![]),
             (1, hex_to_bytes("01")),
             (-1, hex_to_bytes("81")),
             (127, hex_to_bytes("7f")),
