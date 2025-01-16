@@ -1,7 +1,7 @@
 use crate::num::ScriptNum;
 use crate::opcode::Opcode;
 use crate::stack::Stack;
-use crate::{Error, ScriptExecutionData, SigVersion, VerificationFlags};
+use crate::{Error, ScriptExecutionData, SigVersion, SignatureChecker, VerificationFlags};
 use bitcoin::hashes::{hash160, ripemd160, sha1, sha256, sha256d, Hash};
 use bitcoin::script::Instruction;
 use bitcoin::Script;
@@ -11,6 +11,7 @@ pub fn eval_script(
     stack: &mut Stack,
     script: &Script,
     flags: VerificationFlags,
+    checker: &dyn SignatureChecker,
     sig_version: SigVersion,
     exec_data: &mut ScriptExecutionData,
 ) -> Result<(), Error> {
@@ -56,18 +57,14 @@ pub fn eval_script(
                         unreachable!("Instruction::Op(opcode) contains non-push opcode only");
                     }
 
-                    // ===================
                     // Constants
-                    // ===================
                     OP_1NEGATE | OP_1 | OP_2 | OP_3 | OP_4 | OP_5 | OP_6 | OP_7 | OP_8 | OP_9
                     | OP_10 | OP_11 | OP_12 | OP_13 | OP_14 | OP_15 | OP_16 => {
                         let value = (opcode as u8 as i32).wrapping_sub(OP_1 as u8 as i32 - 1);
                         stack.push_num(ScriptNum::from(value as i64));
                     }
 
-                    // ===================
                     // Flow control
-                    // ===================
                     OP_NOP => {}
                     OP_IF => {}
                     OP_NOTIF => {}
@@ -76,9 +73,7 @@ pub fn eval_script(
                     OP_VERIFY => {}
                     OP_RETURN => {}
 
-                    // ===================
                     // Stack
-                    // ===================
                     OP_TOALTSTACK => alt_stack.push(stack.pop()?),
                     OP_FROMALTSTACK => {
                         let v = alt_stack
@@ -128,9 +123,7 @@ pub fn eval_script(
                     OP_SWAP => stack.swap(1)?,
                     OP_TUCK => stack.tuck()?,
 
-                    // ===================
                     // Splice
-                    // ===================
                     OP_CAT | OP_SUBSTR | OP_LEFT | OP_RIGHT => {
                         return Err(Error::DisabledOpcode(op))
                     }
@@ -139,9 +132,7 @@ pub fn eval_script(
                         stack.push_num(n);
                     }
 
-                    // ===================
                     // Bitwise logic
-                    // ===================
                     OP_INVERT | OP_AND | OP_OR | OP_XOR => return Err(Error::DisabledOpcode(op)),
                     OP_EQUAL => {
                         let v1 = stack.pop()?;
@@ -159,9 +150,7 @@ pub fn eval_script(
                         }
                     }
 
-                    // ===================
                     // Arithmetic
-                    // ===================
                     OP_2MUL | OP_2DIV | OP_MUL | OP_DIV | OP_MOD | OP_LSHIFT | OP_RSHIFT => {
                         return Err(Error::DisabledOpcode(op));
                     }
@@ -270,9 +259,7 @@ pub fn eval_script(
                         }
                     }
 
-                    // ===================
                     // Crypto
-                    // ===================
                     OP_RIPEMD160 => {
                         let v = ripemd160::Hash::hash(&stack.pop()?);
                         stack.push(v.to_byte_array().to_vec());
@@ -300,15 +287,55 @@ pub fn eval_script(
                     OP_CHECKMULTISIGVERIFY => {}
                     OP_CHECKSIGADD => {}
 
-                    // ===================
                     // Locktime
-                    // ===================
-                    OP_CHECKLOCKTIMEVERIFY => {}
-                    OP_CHECKSEQUENCEVERIFY => {}
+                    OP_CHECKLOCKTIMEVERIFY => {
+                        // Note that elsewhere numeric opcodes are limited to
+                        // operands in the range -2**31+1 to 2**31-1, however it is
+                        // legal for opcodes to produce results exceeding that
+                        // range. This limitation is implemented by CScriptNum's
+                        // default 4-byte limit.
+                        //
+                        // If we kept to that limit we'd have a year 2038 problem,
+                        // even though the nLockTime field in transactions
+                        // themselves is uint32 which only becomes meaningless
+                        // after the year 2106.
+                        //
+                        // Thus as a special case we tell CScriptNum to accept up
+                        // to 5-byte bignums, which are good until 2**39-1, well
+                        // beyond the 2**32-1 limit of the nLockTime field itself.
+                        let lock_time = stack.pop_num_with_max_size(5)?;
 
-                    // ===================
+                        // In the rare event that the argument may be < 0 due to
+                        // some arithmetic being done first, you can always use
+                        // 0 MAX CHECKLOCKTIMEVERIFY.
+                        if lock_time.is_negative() {
+                            return Err(Error::NegativeLocktime);
+                        }
+
+                        if !checker.check_lock_time(lock_time) {
+                            return Err(Error::UnsatisfiedLocktime);
+                        }
+                    }
+                    OP_CHECKSEQUENCEVERIFY => {
+                        // Below flags apply in the context of BIP 68
+                        // If this flag set, CTxIn::nSequence is NOT interpreted as a
+                        // relative lock-time.
+                        const SEQUENCE_LOCKTIME_DISABLE_FLAG: u32 = 1u32 << 31;
+
+                        let sequence = stack.pop_num_with_max_size(5)?;
+
+                        if sequence.is_negative() {
+                            return Err(Error::NegativeLocktime);
+                        }
+
+                        if (sequence.value() & SEQUENCE_LOCKTIME_DISABLE_FLAG as i64) == 0
+                            && !checker.check_sequence(sequence)
+                        {
+                            return Err(Error::UnsatisfiedLocktime);
+                        }
+                    }
+
                     // Reserved words
-                    // ===================
                     OP_RESERVED | OP_VER | OP_RESERVED1 | OP_RESERVED2 => {}
                     OP_VERIF | OP_VERNOTIF => {
                         return Err(Error::DisabledOpcode(op));

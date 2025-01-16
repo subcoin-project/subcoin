@@ -72,6 +72,17 @@ impl<T> Stack<T> {
         ScriptNum::from_bytes(self.pop()?.as_ref(), self.verify_minimaldata, None)
     }
 
+    pub fn pop_num_with_max_size(&mut self, max_size: usize) -> Result<ScriptNum, Error>
+    where
+        T: AsRef<[u8]>,
+    {
+        ScriptNum::from_bytes(
+            self.pop()?.as_ref(),
+            self.verify_minimaldata,
+            Some(max_size),
+        )
+    }
+
     /// Push an element onto the stack.
     #[inline]
     pub fn push(&mut self, value: T) {

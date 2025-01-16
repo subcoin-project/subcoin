@@ -3,6 +3,7 @@ pub mod num;
 pub mod opcode;
 pub mod stack;
 
+use self::num::ScriptNum;
 use bitcoin::opcodes::Opcode;
 use bitflags::bitflags;
 use primitive_types::H256;
@@ -41,6 +42,13 @@ impl VerificationFlags {
     pub fn verify_minimaldata(&self) -> bool {
         self.contains(Self::MINIMALDATA)
     }
+}
+
+/// Checks transaction signature
+pub trait SignatureChecker {
+    fn check_lock_time(&self, lock_time: ScriptNum) -> bool;
+
+    fn check_sequence(&self, sequence: ScriptNum) -> bool;
 }
 
 /// Represents different signature verification schemes used in Bitcoin
@@ -100,6 +108,10 @@ pub enum Error {
     DisabledOpcode(Opcode),
     #[error("{0} is unknown")]
     UnknownOpcode(Opcode),
+    #[error("negative locktime")]
+    NegativeLocktime,
+    #[error("unsatisfied locktime")]
+    UnsatisfiedLocktime,
     #[error("disable upgrable nops")]
     DiscourageUpgradableNops,
     #[error("equal verify")]

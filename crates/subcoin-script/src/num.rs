@@ -116,6 +116,10 @@ impl ScriptNum {
         self.value == 0
     }
 
+    pub fn is_negative(&self) -> bool {
+        self.value < 0
+    }
+
     pub fn abs(&self) -> Self {
         if self.value < 0 {
             (-self.value).into()
