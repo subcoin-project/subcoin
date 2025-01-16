@@ -41,6 +41,7 @@ impl<T> Stack<T> {
         }
     }
 
+    // Ensure there are at least `n` elements on the stack.
     #[inline]
     pub fn require(&self, len: usize) -> Result<(), Error> {
         if self.data.len() < len {
@@ -71,6 +72,7 @@ impl<T> Stack<T> {
         ScriptNum::from_bytes(self.pop()?.as_ref(), self.verify_minimaldata, None)
     }
 
+    /// Push an element onto the stack.
     #[inline]
     pub fn push(&mut self, value: T) {
         self.data.push(value)
@@ -83,6 +85,13 @@ impl<T> Stack<T> {
         Ok(&self.data[self.data.len() - pos])
     }
 
+    pub fn peek_bool(&self) -> Result<bool, Error>
+    where
+        T: AsRef<[u8]>,
+    {
+        Ok(cast_to_bool(self.last()?.as_ref()))
+    }
+
     #[inline]
     pub fn remove(&mut self, i: usize) -> Result<T, Error> {
         let pos = i + 1;
@@ -91,71 +100,88 @@ impl<T> Stack<T> {
         Ok(self.data.remove(to_remove))
     }
 
-    pub fn drop(&mut self, i: usize) -> Result<(), Error> {
-        self.require(i)?;
-        let mut j = i;
-        while j > 0 {
+    /// Removes the top `n` stack items.
+    pub fn drop(&mut self, n: usize) -> Result<(), Error> {
+        self.require(n)?;
+        for _ in 0..n {
             self.data.pop();
-            j -= 1;
         }
         Ok(())
     }
 
-    pub fn dup(&mut self, i: usize) -> Result<(), Error>
+    /// Duplicates the top N items on the stack.
+    ///
+    /// dup(1): [x1 x2] -> [x1 x2 x2]
+    /// dup(2): [x1 x2] -> [x1 x2 x1 x2]
+    pub fn dup(&mut self, n: usize) -> Result<(), Error>
     where
         T: Clone,
     {
-        self.require(i)?;
-        let mut j = i;
-        while j > 0 {
-            let v = self.data[self.data.len() - i].clone();
-            self.data.push(v);
-            j -= 1;
-        }
-        Ok(())
-    }
-
-    pub fn over(&mut self, i: usize) -> Result<(), Error>
-    where
-        T: Clone,
-    {
-        let mut j = i * 2;
-        self.require(j)?;
-        let to_clone = j;
-        while j > i {
-            let v = self.data[self.data.len() - to_clone].clone();
-            self.data.push(v);
-            j -= 1;
-        }
-        Ok(())
-    }
-
-    pub fn rot(&mut self, i: usize) -> Result<(), Error> {
-        let mut j = i * 3;
-        self.require(j)?;
-        let to_remove = self.data.len() - j;
-        let limit = j - i;
-        while j > limit {
-            let v = self.data.remove(to_remove);
-            self.data.push(v);
-            j -= 1;
-        }
-        Ok(())
-    }
-
-    pub fn swap(&mut self, i: usize) -> Result<(), Error> {
-        let mut j = i * 2;
-        let mut k = i;
-        self.require(j)?;
+        self.require(n)?;
         let len = self.data.len();
-        while k > 0 {
-            self.data.swap(len - j, len - k);
-            j -= 1;
-            k -= 1;
-        }
+        // Extend the stack with a clone of the top `n` items in place.
+        self.data.extend_from_within(len - n..);
         Ok(())
     }
 
+    /// Copies N items N items back to the top of the stack.
+    ///
+    /// over(1): [... x1 x2 x3] -> [... x1 x2 x3 x2]
+    /// over(2): [... x1 x2 x3 x4] -> [... x1 x2 x3 x4 x1 x2]
+    pub fn over(&mut self, n: usize) -> Result<(), Error>
+    where
+        T: Clone,
+    {
+        let count = n * 2;
+        self.require(count)?;
+
+        let len = self.data.len();
+
+        // Extend the stack with a clone of the items `n` back in place.
+        self.data.extend_from_within(len - count..len - count + n);
+
+        Ok(())
+    }
+
+    /// Rotates the top 3N items on the stack to the left N times.
+    ///
+    /// - rot(1): [x1 x2 x3] -> [x2 x3 x1]
+    /// - rot(2): [x1 x2 x3 x4 x5 x6] -> [x3 x4 x5 x6 x1 x2]
+    pub fn rot(&mut self, n: usize) -> Result<(), Error>
+    where
+        T: Clone,
+    {
+        let count = n * 3;
+        self.require(count)?;
+
+        let len = self.data.len();
+        let start_index = len - count;
+        let slice = &mut self.data[start_index..];
+
+        // Perform in-place rotation using swaps
+        slice.rotate_left(n);
+
+        Ok(())
+    }
+
+    // Swaps the top N items on the stack with those below them.
+    //
+    // Stack transformation:
+    // - swap(1): [x1 x2] -> [x2 x1]
+    // - swap(2): [x1 x2 x3 x4] -> [x3 x4 x1 x2]
+    pub fn swap(&mut self, n: usize) -> Result<(), Error> {
+        let count = n * 2;
+        self.require(count)?;
+        let len = self.data.len();
+        // Use slices to perform the swap
+        let (lower, upper) = self.data.split_at_mut(len - count + n);
+        lower[len - count..].swap_with_slice(&mut upper[..n]);
+        Ok(())
+    }
+
+    /// Removes the second-to-top stack item.
+    ///
+    /// nip: [x1 x2 x3] -> [x1 x3]
     pub fn nip(&mut self) -> Result<(), Error> {
         self.require(2)?;
         let len = self.data.len();
@@ -163,6 +189,10 @@ impl<T> Stack<T> {
         Ok(())
     }
 
+    // Copies the item at the top of the stack and inserts it before the 2nd
+    // to top item.
+    //
+    // [... x1 x2] -> [... x2 x1 x2]
     pub fn tuck(&mut self) -> Result<(), Error>
     where
         T: Clone,
@@ -180,6 +210,19 @@ impl Stack<Vec<u8>> {
     pub fn push_num(&mut self, num: ScriptNum) {
         self.data.push(num.to_bytes())
     }
+}
+
+fn cast_to_bool(data: &[u8]) -> bool {
+    if data.is_empty() {
+        return false;
+    }
+
+    if data[..data.len() - 1].iter().any(|x| x != &0) {
+        return true;
+    }
+
+    let last = data[data.len() - 1];
+    !(last == 0 || last == 0x80)
 }
 
 #[cfg(test)]

@@ -99,6 +99,8 @@ pub enum Error {
     DisabledOpcode(Opcode),
     #[error("equal verify")]
     EqualVerify,
+    #[error("invalid alt stack operation")]
+    InvalidAltStackOperation,
     #[error("script error: {0:?}")]
     Script(bitcoin::script::Error),
 }

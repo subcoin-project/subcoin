@@ -6,9 +6,7 @@ use bitcoin::opcodes::Opcode;
 use bitcoin::script::Instruction;
 use bitcoin::{Script, Witness};
 use primitive_types::H256;
-use std::ops::Add;
-use std::ops::Neg;
-use std::ops::Sub;
+use std::ops::{Add, Neg, Sub};
 
 pub fn eval_script(
     stack: &mut Stack,
@@ -17,8 +15,7 @@ pub fn eval_script(
     sig_version: SigVersion,
     exec_data: &mut ScriptExecutionData,
 ) -> Result<(), Error> {
-    // Create an alternate stack
-    // let mut alt_stack = Vec::new();
+    let mut alt_stack = Stack::new(true);
 
     // Create a vector of conditional execution states
     // let mut exec_stack = Vec::new();
@@ -58,6 +55,10 @@ pub fn eval_script(
                 | OP_2MUL | OP_2DIV | OP_MUL | OP_DIV | OP_MOD | OP_LSHIFT | OP_RSHIFT => {
                     return Err(Error::DisabledOpcode(opcode));
                 }
+
+                // ===================
+                // Bitwise logic
+                // ===================
                 OP_EQUAL => {
                     let v1 = stack.pop()?;
                     let v2 = stack.pop()?;
@@ -73,10 +74,18 @@ pub fn eval_script(
                         return Err(Error::EqualVerify);
                     }
                 }
+
+                // ===================
+                // Splice
+                // ===================
                 OP_SIZE => {
                     let n = ScriptNum::from(stack.last()?.len() as i64);
                     stack.push_num(n);
                 }
+
+                // ===================
+                // Arithmetic
+                // ===================
                 OP_1ADD => {
                     let n = stack.pop_num()?.add(1.into())?;
                     stack.push_num(n);
@@ -181,14 +190,71 @@ pub fn eval_script(
                         stack.push(Vec::new());
                     }
                 }
+
+                // ===================
+                // Stack
+                // ===================
+                OP_TOALTSTACK => alt_stack.push(stack.pop()?),
+                OP_FROMALTSTACK => {
+                    stack.push(
+                        alt_stack
+                            .pop()
+                            .map_err(|_| Error::InvalidAltStackOperation)?,
+                    );
+                }
+                OP_2DROP => stack.drop(2)?,
+                OP_2DUP => stack.dup(2)?,
+                OP_3DUP => stack.dup(3)?,
+                OP_2OVER => stack.over(2)?,
+                OP_2ROT => stack.rot(2)?,
+                OP_2SWAP => stack.swap(2)?,
+                OP_IFDUP => {
+                    if stack.peek_bool()? {
+                        stack.dup(1)?;
+                    }
+                }
+                OP_DEPTH => {
+                    // Push the current number of stack items onto the stack.
+                    let depth = ScriptNum::from(stack.len() as i64);
+                    stack.push_num(depth);
+                }
+                OP_DROP => {
+                    stack.pop()?;
+                }
+                OP_DUP => stack.dup(1)?,
+                OP_NIP => stack.nip()?,
+                OP_OVER => stack.over(1)?,
+                OP_PICK => {
+                    // Pop the top stack element as N. Copy the Nth stack element to the top.
+                    let n = stack.pop_num()?.value();
+                    if n < 0 || n >= stack.len() as i64 {
+                        return Err(Error::InvalidStackOperation);
+                    }
+                    let v = stack.top(n as usize)?.clone();
+                    stack.push(v);
+                }
+                OP_ROLL => {
+                    // Pop the top stack element as N. Move the Nth stack element to the top.
+                    let n = stack.pop_num()?.value();
+                    if n < 0 || n >= stack.len() as i64 {
+                        return Err(Error::InvalidStackOperation);
+                    }
+                    let v = stack.remove(n as usize)?;
+                    stack.push(v);
+                }
+                OP_ROT => stack.rot(1)?,
+                OP_SWAP => stack.swap(1)?,
+                OP_TUCK => stack.tuck()?,
+
                 OP_NOP => {}
+
                 OP_PUSHNUM_NEG1 | OP_PUSHNUM_1 | OP_PUSHNUM_2 | OP_PUSHNUM_3 | OP_PUSHNUM_4
                 | OP_PUSHNUM_5 | OP_PUSHNUM_6 | OP_PUSHNUM_7 | OP_PUSHNUM_8 | OP_PUSHNUM_9
                 | OP_PUSHNUM_10 | OP_PUSHNUM_11 | OP_PUSHNUM_12 | OP_PUSHNUM_13 | OP_PUSHNUM_14
                 | OP_PUSHNUM_15 | OP_PUSHNUM_16 => {
                     let value =
                         (opcode.to_u8() as i32).wrapping_sub(OP_PUSHNUM_1.to_u8() as i32 - 1);
-                    stack.push(ScriptNum::from(value as i64).to_bytes());
+                    stack.push_num(ScriptNum::from(value as i64));
                 }
                 _ => {}
             },
