@@ -20,7 +20,8 @@ pub fn eval_script(
     let mut alt_stack = Stack::new(true);
 
     // Create a vector of conditional execution states
-    // let mut exec_stack = Vec::new();
+    let mut exec_stack: Vec<bool> = Vec::new();
+
     // let mut in_exec = true;
 
     for instruction in script.instructions() {
@@ -32,6 +33,8 @@ pub fn eval_script(
             }
             Instruction::Op(op) => {
                 let opcode = Opcode::from_u8(op.to_u8()).ok_or(Error::UnknownOpcode(op))?;
+
+                let executing = exec_stack.iter().all(|x| *x);
 
                 match opcode {
                     OP_0 | OP_PUSHBYTES_1 | OP_PUSHBYTES_2 | OP_PUSHBYTES_3 | OP_PUSHBYTES_4
@@ -66,12 +69,42 @@ pub fn eval_script(
 
                     // Flow control
                     OP_NOP => {}
-                    OP_IF => {}
-                    OP_NOTIF => {}
-                    OP_ELSE => {}
-                    OP_ENDIF => {}
-                    OP_VERIFY => {}
-                    OP_RETURN => {}
+                    OP_IF => {
+                        let exec_value = if executing {
+                            stack.pop_bool().map_err(|_| Error::UnbalancedConditional)?
+                        } else {
+                            false
+                        };
+                        exec_stack.push(exec_value);
+                    }
+                    OP_NOTIF => {
+                        let exec_value = if executing {
+                            stack.pop_bool().map_err(|_| Error::UnbalancedConditional)?
+                        } else {
+                            false
+                        };
+                        exec_stack.push(!exec_value);
+                    }
+                    OP_ELSE => {
+                        if let Some(last) = exec_stack.last_mut() {
+                            *last = !*last;
+                        } else {
+                            return Err(Error::UnbalancedConditional);
+                        }
+                    }
+                    OP_ENDIF => {
+                        if exec_stack.is_empty() {
+                            return Err(Error::UnbalancedConditional);
+                        }
+                        exec_stack.pop();
+                    }
+                    OP_VERIFY => {
+                        let exec_value = stack.pop_bool()?;
+                        if !exec_value {
+                            return Err(Error::Verify);
+                        }
+                    }
+                    OP_RETURN => return Err(Error::ReturnOpcode),
 
                     // Stack
                     OP_TOALTSTACK => alt_stack.push(stack.pop()?),

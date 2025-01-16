@@ -112,10 +112,16 @@ pub enum Error {
     NegativeLocktime,
     #[error("unsatisfied locktime")]
     UnsatisfiedLocktime,
+    #[error("unbalanced conditional")]
+    UnbalancedConditional,
     #[error("disable upgrable nops")]
     DiscourageUpgradableNops,
     #[error("equal verify")]
     EqualVerify,
+    #[error("verify")]
+    Verify,
+    #[error("return opcode")]
+    ReturnOpcode,
     #[error("invalid alt stack operation")]
     InvalidAltStackOperation,
     #[error("script error: {0:?}")]

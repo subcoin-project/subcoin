@@ -103,6 +103,13 @@ impl<T> Stack<T> {
         Ok(cast_to_bool(self.last()?.as_ref()))
     }
 
+    pub fn pop_bool(&mut self) -> Result<bool, Error>
+    where
+        T: AsRef<[u8]>,
+    {
+        Ok(cast_to_bool(self.pop()?.as_ref()))
+    }
+
     #[inline]
     pub fn remove(&mut self, i: usize) -> Result<T, Error> {
         let pos = i + 1;
