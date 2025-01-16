@@ -3,8 +3,6 @@
 use crate::Error;
 use std::ops::{Add, Neg, Sub};
 
-const DEFAULT_MAX_NUM_SIZE: usize = 4;
-
 /// A numeric type used in Bitcoin Script operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ScriptNum {

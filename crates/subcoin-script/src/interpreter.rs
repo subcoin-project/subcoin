@@ -1,11 +1,10 @@
 use crate::num::ScriptNum;
+use crate::opcode::Opcode;
 use crate::stack::Stack;
 use crate::{Error, ScriptExecutionData, SigVersion, VerificationFlags};
-use bitcoin::opcodes::all::*;
-use bitcoin::opcodes::Opcode;
+use bitcoin::hashes::{hash160, ripemd160, sha1, sha256, sha256d, Hash};
 use bitcoin::script::Instruction;
-use bitcoin::{Script, Witness};
-use primitive_types::H256;
+use bitcoin::Script;
 use std::ops::{Add, Neg, Sub};
 
 pub fn eval_script(
@@ -15,6 +14,8 @@ pub fn eval_script(
     sig_version: SigVersion,
     exec_data: &mut ScriptExecutionData,
 ) -> Result<(), Error> {
+    use crate::opcode::Opcode::*;
+
     let mut alt_stack = Stack::new(true);
 
     // Create a vector of conditional execution states
@@ -28,236 +29,296 @@ pub fn eval_script(
             Instruction::PushBytes(p) => {
                 stack.push(p.as_bytes().to_vec());
             }
-            Instruction::Op(opcode) => match opcode {
-                OP_PUSHDATA1 | OP_PUSHDATA2 | OP_PUSHDATA4 | OP_PUSHBYTES_0 | OP_PUSHBYTES_1
-                | OP_PUSHBYTES_2 | OP_PUSHBYTES_3 | OP_PUSHBYTES_4 | OP_PUSHBYTES_5
-                | OP_PUSHBYTES_6 | OP_PUSHBYTES_7 | OP_PUSHBYTES_8 | OP_PUSHBYTES_9
-                | OP_PUSHBYTES_10 | OP_PUSHBYTES_11 | OP_PUSHBYTES_12 | OP_PUSHBYTES_13
-                | OP_PUSHBYTES_14 | OP_PUSHBYTES_15 | OP_PUSHBYTES_16 | OP_PUSHBYTES_17
-                | OP_PUSHBYTES_18 | OP_PUSHBYTES_19 | OP_PUSHBYTES_20 | OP_PUSHBYTES_21
-                | OP_PUSHBYTES_22 | OP_PUSHBYTES_23 | OP_PUSHBYTES_24 | OP_PUSHBYTES_25
-                | OP_PUSHBYTES_26 | OP_PUSHBYTES_27 | OP_PUSHBYTES_28 | OP_PUSHBYTES_29
-                | OP_PUSHBYTES_30 | OP_PUSHBYTES_31 | OP_PUSHBYTES_32 | OP_PUSHBYTES_33
-                | OP_PUSHBYTES_34 | OP_PUSHBYTES_35 | OP_PUSHBYTES_36 | OP_PUSHBYTES_37
-                | OP_PUSHBYTES_38 | OP_PUSHBYTES_39 | OP_PUSHBYTES_40 | OP_PUSHBYTES_41
-                | OP_PUSHBYTES_42 | OP_PUSHBYTES_43 | OP_PUSHBYTES_44 | OP_PUSHBYTES_45
-                | OP_PUSHBYTES_46 | OP_PUSHBYTES_47 | OP_PUSHBYTES_48 | OP_PUSHBYTES_49
-                | OP_PUSHBYTES_50 | OP_PUSHBYTES_51 | OP_PUSHBYTES_52 | OP_PUSHBYTES_53
-                | OP_PUSHBYTES_54 | OP_PUSHBYTES_55 | OP_PUSHBYTES_56 | OP_PUSHBYTES_57
-                | OP_PUSHBYTES_58 | OP_PUSHBYTES_59 | OP_PUSHBYTES_60 | OP_PUSHBYTES_61
-                | OP_PUSHBYTES_62 | OP_PUSHBYTES_63 | OP_PUSHBYTES_64 | OP_PUSHBYTES_65
-                | OP_PUSHBYTES_66 | OP_PUSHBYTES_67 | OP_PUSHBYTES_68 | OP_PUSHBYTES_69
-                | OP_PUSHBYTES_70 | OP_PUSHBYTES_71 | OP_PUSHBYTES_72 | OP_PUSHBYTES_73
-                | OP_PUSHBYTES_74 | OP_PUSHBYTES_75 => {
-                    unreachable!("Instruction::Op(opcode) contains non-push opcode only");
-                }
-                OP_CAT | OP_SUBSTR | OP_LEFT | OP_RIGHT | OP_INVERT | OP_AND | OP_OR | OP_XOR
-                | OP_2MUL | OP_2DIV | OP_MUL | OP_DIV | OP_MOD | OP_LSHIFT | OP_RSHIFT => {
-                    return Err(Error::DisabledOpcode(opcode));
-                }
+            Instruction::Op(op) => {
+                let opcode = Opcode::from_u8(op.to_u8()).ok_or(Error::UnknownOpcode(op))?;
 
-                // ===================
-                // Bitwise logic
-                // ===================
-                OP_EQUAL => {
-                    let v1 = stack.pop()?;
-                    let v2 = stack.pop()?;
-                    if v1 == v2 {
-                        stack.push(vec![1]);
-                    } else {
-                        stack.push(Vec::new());
+                match opcode {
+                    OP_0 | OP_PUSHBYTES_1 | OP_PUSHBYTES_2 | OP_PUSHBYTES_3 | OP_PUSHBYTES_4
+                    | OP_PUSHBYTES_5 | OP_PUSHBYTES_6 | OP_PUSHBYTES_7 | OP_PUSHBYTES_8
+                    | OP_PUSHBYTES_9 | OP_PUSHBYTES_10 | OP_PUSHBYTES_11 | OP_PUSHBYTES_12
+                    | OP_PUSHBYTES_13 | OP_PUSHBYTES_14 | OP_PUSHBYTES_15 | OP_PUSHBYTES_16
+                    | OP_PUSHBYTES_17 | OP_PUSHBYTES_18 | OP_PUSHBYTES_19 | OP_PUSHBYTES_20
+                    | OP_PUSHBYTES_21 | OP_PUSHBYTES_22 | OP_PUSHBYTES_23 | OP_PUSHBYTES_24
+                    | OP_PUSHBYTES_25 | OP_PUSHBYTES_26 | OP_PUSHBYTES_27 | OP_PUSHBYTES_28
+                    | OP_PUSHBYTES_29 | OP_PUSHBYTES_30 | OP_PUSHBYTES_31 | OP_PUSHBYTES_32
+                    | OP_PUSHBYTES_33 | OP_PUSHBYTES_34 | OP_PUSHBYTES_35 | OP_PUSHBYTES_36
+                    | OP_PUSHBYTES_37 | OP_PUSHBYTES_38 | OP_PUSHBYTES_39 | OP_PUSHBYTES_40
+                    | OP_PUSHBYTES_41 | OP_PUSHBYTES_42 | OP_PUSHBYTES_43 | OP_PUSHBYTES_44
+                    | OP_PUSHBYTES_45 | OP_PUSHBYTES_46 | OP_PUSHBYTES_47 | OP_PUSHBYTES_48
+                    | OP_PUSHBYTES_49 | OP_PUSHBYTES_50 | OP_PUSHBYTES_51 | OP_PUSHBYTES_52
+                    | OP_PUSHBYTES_53 | OP_PUSHBYTES_54 | OP_PUSHBYTES_55 | OP_PUSHBYTES_56
+                    | OP_PUSHBYTES_57 | OP_PUSHBYTES_58 | OP_PUSHBYTES_59 | OP_PUSHBYTES_60
+                    | OP_PUSHBYTES_61 | OP_PUSHBYTES_62 | OP_PUSHBYTES_63 | OP_PUSHBYTES_64
+                    | OP_PUSHBYTES_65 | OP_PUSHBYTES_66 | OP_PUSHBYTES_67 | OP_PUSHBYTES_68
+                    | OP_PUSHBYTES_69 | OP_PUSHBYTES_70 | OP_PUSHBYTES_71 | OP_PUSHBYTES_72
+                    | OP_PUSHBYTES_73 | OP_PUSHBYTES_74 | OP_PUSHBYTES_75 | OP_PUSHDATA1
+                    | OP_PUSHDATA2 | OP_PUSHDATA4 => {
+                        unreachable!("Instruction::Op(opcode) contains non-push opcode only");
                     }
-                }
-                OP_EQUALVERIFY => {
-                    let equal = stack.pop()? == stack.pop()?;
-                    if !equal {
-                        return Err(Error::EqualVerify);
-                    }
-                }
 
-                // ===================
-                // Splice
-                // ===================
-                OP_SIZE => {
-                    let n = ScriptNum::from(stack.last()?.len() as i64);
-                    stack.push_num(n);
-                }
-
-                // ===================
-                // Arithmetic
-                // ===================
-                OP_1ADD => {
-                    let n = stack.pop_num()?.add(1.into())?;
-                    stack.push_num(n);
-                }
-                OP_1SUB => {
-                    let n = stack.pop_num()?.sub(1.into())?;
-                    stack.push_num(n);
-                }
-                OP_NEGATE => {
-                    let n = stack.pop_num()?.neg()?;
-                    stack.push_num(n);
-                }
-                OP_ABS => {
-                    let n = stack.pop_num()?.abs();
-                    stack.push_num(n);
-                }
-                OP_NOT => {
-                    let n = stack.pop_num()?.is_zero();
-                    let n = ScriptNum::from(n);
-                    stack.push_num(n);
-                }
-                OP_0NOTEQUAL => {
-                    let n = !stack.pop_num()?.is_zero();
-                    stack.push_num(ScriptNum::from(n));
-                }
-                OP_ADD => {
-                    let v1 = stack.pop_num()?;
-                    let v2 = stack.pop_num()?;
-                    stack.push_num((v1 + v2)?);
-                }
-                OP_SUB => {
-                    let v1 = stack.pop_num()?;
-                    let v2 = stack.pop_num()?;
-                    stack.push_num((v2 - v1)?);
-                }
-                OP_BOOLAND => {
-                    let v1 = stack.pop_num()?;
-                    let v2 = stack.pop_num()?;
-                    let v = ScriptNum::from(!v1.is_zero() && !v2.is_zero());
-                    stack.push_num(v);
-                }
-                OP_BOOLOR => {
-                    let v1 = stack.pop_num()?;
-                    let v2 = stack.pop_num()?;
-                    let v = ScriptNum::from(!v1.is_zero() || !v2.is_zero());
-                    stack.push_num(v);
-                }
-                OP_NUMEQUAL => {
-                    let v1 = stack.pop_num()?;
-                    let v2 = stack.pop_num()?;
-                    stack.push_num(ScriptNum::from(v1 == v2));
-                }
-                OP_NUMEQUALVERIFY => {
-                    let v1 = stack.pop_num()?;
-                    let v2 = stack.pop_num()?;
-                    if v1 != v2 {
-                        return Err(Error::EqualVerify);
+                    // ===================
+                    // Constants
+                    // ===================
+                    OP_1NEGATE | OP_1 | OP_2 | OP_3 | OP_4 | OP_5 | OP_6 | OP_7 | OP_8 | OP_9
+                    | OP_10 | OP_11 | OP_12 | OP_13 | OP_14 | OP_15 | OP_16 => {
+                        let value = (opcode as u8 as i32).wrapping_sub(OP_1 as u8 as i32 - 1);
+                        stack.push_num(ScriptNum::from(value as i64));
                     }
-                }
-                OP_NUMNOTEQUAL => {
-                    let v1 = stack.pop_num()?;
-                    let v2 = stack.pop_num()?;
-                    stack.push_num(ScriptNum::from(v1 != v2));
-                }
-                OP_LESSTHAN => {
-                    let v1 = stack.pop_num()?;
-                    let v2 = stack.pop_num()?;
-                    stack.push_num(ScriptNum::from(v1 > v2));
-                }
-                OP_GREATERTHAN => {
-                    let v1 = stack.pop_num()?;
-                    let v2 = stack.pop_num()?;
-                    stack.push_num(ScriptNum::from(v1 < v2));
-                }
-                OP_LESSTHANOREQUAL => {
-                    let v1 = stack.pop_num()?;
-                    let v2 = stack.pop_num()?;
-                    stack.push_num(ScriptNum::from(v1 >= v2));
-                }
-                OP_GREATERTHANOREQUAL => {
-                    let v1 = stack.pop_num()?;
-                    let v2 = stack.pop_num()?;
-                    stack.push_num(ScriptNum::from(v1 <= v2));
-                }
-                OP_MIN => {
-                    let v1 = stack.pop_num()?;
-                    let v2 = stack.pop_num()?;
-                    stack.push_num(std::cmp::min(v1, v2));
-                }
-                OP_MAX => {
-                    let v1 = stack.pop_num()?;
-                    let v2 = stack.pop_num()?;
-                    stack.push_num(std::cmp::max(v1, v2));
-                }
-                OP_WITHIN => {
-                    let v1 = stack.pop_num()?;
-                    let v2 = stack.pop_num()?;
-                    let v3 = stack.pop_num()?;
-                    if v2 <= v3 && v3 < v1 {
-                        stack.push(vec![1].into());
-                    } else {
-                        stack.push(Vec::new());
-                    }
-                }
 
-                // ===================
-                // Stack
-                // ===================
-                OP_TOALTSTACK => alt_stack.push(stack.pop()?),
-                OP_FROMALTSTACK => {
-                    stack.push(
-                        alt_stack
+                    // ===================
+                    // Flow control
+                    // ===================
+                    OP_NOP => {}
+                    OP_IF => {}
+                    OP_NOTIF => {}
+                    OP_ELSE => {}
+                    OP_ENDIF => {}
+                    OP_VERIFY => {}
+                    OP_RETURN => {}
+
+                    // ===================
+                    // Stack
+                    // ===================
+                    OP_TOALTSTACK => alt_stack.push(stack.pop()?),
+                    OP_FROMALTSTACK => {
+                        let v = alt_stack
                             .pop()
-                            .map_err(|_| Error::InvalidAltStackOperation)?,
-                    );
-                }
-                OP_2DROP => stack.drop(2)?,
-                OP_2DUP => stack.dup(2)?,
-                OP_3DUP => stack.dup(3)?,
-                OP_2OVER => stack.over(2)?,
-                OP_2ROT => stack.rot(2)?,
-                OP_2SWAP => stack.swap(2)?,
-                OP_IFDUP => {
-                    if stack.peek_bool()? {
-                        stack.dup(1)?;
+                            .map_err(|_| Error::InvalidAltStackOperation)?;
+                        stack.push(v);
                     }
-                }
-                OP_DEPTH => {
-                    // Push the current number of stack items onto the stack.
-                    let depth = ScriptNum::from(stack.len() as i64);
-                    stack.push_num(depth);
-                }
-                OP_DROP => {
-                    stack.pop()?;
-                }
-                OP_DUP => stack.dup(1)?,
-                OP_NIP => stack.nip()?,
-                OP_OVER => stack.over(1)?,
-                OP_PICK => {
-                    // Pop the top stack element as N. Copy the Nth stack element to the top.
-                    let n = stack.pop_num()?.value();
-                    if n < 0 || n >= stack.len() as i64 {
-                        return Err(Error::InvalidStackOperation);
+                    OP_2DROP => stack.drop(2)?,
+                    OP_2DUP => stack.dup(2)?,
+                    OP_3DUP => stack.dup(3)?,
+                    OP_2OVER => stack.over(2)?,
+                    OP_2ROT => stack.rot(2)?,
+                    OP_2SWAP => stack.swap(2)?,
+                    OP_IFDUP => {
+                        if stack.peek_bool()? {
+                            stack.dup(1)?;
+                        }
                     }
-                    let v = stack.top(n as usize)?.clone();
-                    stack.push(v);
-                }
-                OP_ROLL => {
-                    // Pop the top stack element as N. Move the Nth stack element to the top.
-                    let n = stack.pop_num()?.value();
-                    if n < 0 || n >= stack.len() as i64 {
-                        return Err(Error::InvalidStackOperation);
+                    OP_DEPTH => {
+                        // Push the current number of stack items onto the stack.
+                        let depth = ScriptNum::from(stack.len() as i64);
+                        stack.push_num(depth);
                     }
-                    let v = stack.remove(n as usize)?;
-                    stack.push(v);
-                }
-                OP_ROT => stack.rot(1)?,
-                OP_SWAP => stack.swap(1)?,
-                OP_TUCK => stack.tuck()?,
+                    OP_DROP => stack.drop(1)?,
+                    OP_DUP => stack.dup(1)?,
+                    OP_NIP => stack.nip()?,
+                    OP_OVER => stack.over(1)?,
+                    OP_PICK => {
+                        // Pop the top stack element as N. Copy the Nth stack element to the top.
+                        let n = stack.pop_num()?.value();
+                        if n < 0 || n >= stack.len() as i64 {
+                            return Err(Error::InvalidStackOperation);
+                        }
+                        let v = stack.top(n as usize)?.clone();
+                        stack.push(v);
+                    }
+                    OP_ROLL => {
+                        // Pop the top stack element as N. Move the Nth stack element to the top.
+                        let n = stack.pop_num()?.value();
+                        if n < 0 || n >= stack.len() as i64 {
+                            return Err(Error::InvalidStackOperation);
+                        }
+                        let v = stack.remove(n as usize)?;
+                        stack.push(v);
+                    }
+                    OP_ROT => stack.rot(1)?,
+                    OP_SWAP => stack.swap(1)?,
+                    OP_TUCK => stack.tuck()?,
 
-                OP_NOP => {}
+                    // ===================
+                    // Splice
+                    // ===================
+                    OP_CAT | OP_SUBSTR | OP_LEFT | OP_RIGHT => {
+                        return Err(Error::DisabledOpcode(op))
+                    }
+                    OP_SIZE => {
+                        let n = ScriptNum::from(stack.last()?.len() as i64);
+                        stack.push_num(n);
+                    }
 
-                OP_PUSHNUM_NEG1 | OP_PUSHNUM_1 | OP_PUSHNUM_2 | OP_PUSHNUM_3 | OP_PUSHNUM_4
-                | OP_PUSHNUM_5 | OP_PUSHNUM_6 | OP_PUSHNUM_7 | OP_PUSHNUM_8 | OP_PUSHNUM_9
-                | OP_PUSHNUM_10 | OP_PUSHNUM_11 | OP_PUSHNUM_12 | OP_PUSHNUM_13 | OP_PUSHNUM_14
-                | OP_PUSHNUM_15 | OP_PUSHNUM_16 => {
-                    let value =
-                        (opcode.to_u8() as i32).wrapping_sub(OP_PUSHNUM_1.to_u8() as i32 - 1);
-                    stack.push_num(ScriptNum::from(value as i64));
+                    // ===================
+                    // Bitwise logic
+                    // ===================
+                    OP_INVERT | OP_AND | OP_OR | OP_XOR => return Err(Error::DisabledOpcode(op)),
+                    OP_EQUAL => {
+                        let v1 = stack.pop()?;
+                        let v2 = stack.pop()?;
+                        if v1 == v2 {
+                            stack.push(vec![1]);
+                        } else {
+                            stack.push(Vec::new());
+                        }
+                    }
+                    OP_EQUALVERIFY => {
+                        let equal = stack.pop()? == stack.pop()?;
+                        if !equal {
+                            return Err(Error::EqualVerify);
+                        }
+                    }
+
+                    // ===================
+                    // Arithmetic
+                    // ===================
+                    OP_2MUL | OP_2DIV | OP_MUL | OP_DIV | OP_MOD | OP_LSHIFT | OP_RSHIFT => {
+                        return Err(Error::DisabledOpcode(op));
+                    }
+                    OP_1ADD => {
+                        let n = stack.pop_num()?.add(1.into())?;
+                        stack.push_num(n);
+                    }
+                    OP_1SUB => {
+                        let n = stack.pop_num()?.sub(1.into())?;
+                        stack.push_num(n);
+                    }
+                    OP_NEGATE => {
+                        let n = stack.pop_num()?.neg()?;
+                        stack.push_num(n);
+                    }
+                    OP_ABS => {
+                        let n = stack.pop_num()?.abs();
+                        stack.push_num(n);
+                    }
+                    OP_NOT => {
+                        let n = stack.pop_num()?.is_zero();
+                        let n = ScriptNum::from(n);
+                        stack.push_num(n);
+                    }
+                    OP_0NOTEQUAL => {
+                        let n = !stack.pop_num()?.is_zero();
+                        stack.push_num(ScriptNum::from(n));
+                    }
+                    OP_ADD => {
+                        let v1 = stack.pop_num()?;
+                        let v2 = stack.pop_num()?;
+                        stack.push_num((v1 + v2)?);
+                    }
+                    OP_SUB => {
+                        let v1 = stack.pop_num()?;
+                        let v2 = stack.pop_num()?;
+                        stack.push_num((v2 - v1)?);
+                    }
+                    OP_BOOLAND => {
+                        let v1 = stack.pop_num()?;
+                        let v2 = stack.pop_num()?;
+                        let v = ScriptNum::from(!v1.is_zero() && !v2.is_zero());
+                        stack.push_num(v);
+                    }
+                    OP_BOOLOR => {
+                        let v1 = stack.pop_num()?;
+                        let v2 = stack.pop_num()?;
+                        let v = ScriptNum::from(!v1.is_zero() || !v2.is_zero());
+                        stack.push_num(v);
+                    }
+                    OP_NUMEQUAL => {
+                        let v1 = stack.pop_num()?;
+                        let v2 = stack.pop_num()?;
+                        stack.push_num(ScriptNum::from(v1 == v2));
+                    }
+                    OP_NUMEQUALVERIFY => {
+                        let v1 = stack.pop_num()?;
+                        let v2 = stack.pop_num()?;
+                        if v1 != v2 {
+                            return Err(Error::EqualVerify);
+                        }
+                    }
+                    OP_NUMNOTEQUAL => {
+                        let v1 = stack.pop_num()?;
+                        let v2 = stack.pop_num()?;
+                        stack.push_num(ScriptNum::from(v1 != v2));
+                    }
+                    OP_LESSTHAN => {
+                        let v1 = stack.pop_num()?;
+                        let v2 = stack.pop_num()?;
+                        stack.push_num(ScriptNum::from(v1 > v2));
+                    }
+                    OP_GREATERTHAN => {
+                        let v1 = stack.pop_num()?;
+                        let v2 = stack.pop_num()?;
+                        stack.push_num(ScriptNum::from(v1 < v2));
+                    }
+                    OP_LESSTHANOREQUAL => {
+                        let v1 = stack.pop_num()?;
+                        let v2 = stack.pop_num()?;
+                        stack.push_num(ScriptNum::from(v1 >= v2));
+                    }
+                    OP_GREATERTHANOREQUAL => {
+                        let v1 = stack.pop_num()?;
+                        let v2 = stack.pop_num()?;
+                        stack.push_num(ScriptNum::from(v1 <= v2));
+                    }
+                    OP_MIN => {
+                        let v1 = stack.pop_num()?;
+                        let v2 = stack.pop_num()?;
+                        stack.push_num(std::cmp::min(v1, v2));
+                    }
+                    OP_MAX => {
+                        let v1 = stack.pop_num()?;
+                        let v2 = stack.pop_num()?;
+                        stack.push_num(std::cmp::max(v1, v2));
+                    }
+                    OP_WITHIN => {
+                        let v1 = stack.pop_num()?;
+                        let v2 = stack.pop_num()?;
+                        let v3 = stack.pop_num()?;
+                        if v2 <= v3 && v3 < v1 {
+                            stack.push(vec![1].into());
+                        } else {
+                            stack.push(Vec::new());
+                        }
+                    }
+
+                    // ===================
+                    // Crypto
+                    // ===================
+                    OP_RIPEMD160 => {
+                        let v = ripemd160::Hash::hash(&stack.pop()?);
+                        stack.push(v.to_byte_array().to_vec());
+                    }
+                    OP_SHA1 => {
+                        let v = sha1::Hash::hash(&stack.pop()?);
+                        stack.push(v.to_byte_array().to_vec());
+                    }
+                    OP_SHA256 => {
+                        let v = sha256::Hash::hash(&stack.pop()?);
+                        stack.push(v.to_byte_array().to_vec());
+                    }
+                    OP_HASH160 => {
+                        let v = hash160::Hash::hash(&stack.pop()?);
+                        stack.push(v.to_byte_array().to_vec());
+                    }
+                    OP_HASH256 => {
+                        let v = sha256d::Hash::hash(&stack.pop()?);
+                        stack.push(v.to_byte_array().to_vec());
+                    }
+                    OP_CODESEPARATOR => {}
+                    OP_CHECKSIG => {}
+                    OP_CHECKSIGVERIFY => {}
+                    OP_CHECKMULTISIG => {}
+                    OP_CHECKMULTISIGVERIFY => {}
+                    OP_CHECKSIGADD => {}
+
+                    // ===================
+                    // Locktime
+                    // ===================
+                    OP_CHECKLOCKTIMEVERIFY => {}
+                    OP_CHECKSEQUENCEVERIFY => {}
+
+                    // ===================
+                    // Reserved words
+                    // ===================
+                    OP_RESERVED | OP_VER | OP_RESERVED1 | OP_RESERVED2 => {}
+                    OP_VERIF | OP_VERNOTIF => {
+                        return Err(Error::DisabledOpcode(op));
+                    }
+                    OP_NOP1 | OP_NOP4 | OP_NOP5 | OP_NOP6 | OP_NOP7 | OP_NOP8 | OP_NOP9
+                    | OP_NOP10 => {
+                        return Err(Error::DiscourageUpgradableNops);
+                    }
                 }
-                _ => {}
-            },
+            }
         }
     }
 

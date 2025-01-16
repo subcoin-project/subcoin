@@ -1,6 +1,7 @@
-mod interpreter;
-mod num;
-mod stack;
+pub mod interpreter;
+pub mod num;
+pub mod opcode;
+pub mod stack;
 
 use bitcoin::opcodes::Opcode;
 use bitflags::bitflags;
@@ -97,6 +98,10 @@ pub enum Error {
     InvalidStackOperation,
     #[error("{0} is disabled")]
     DisabledOpcode(Opcode),
+    #[error("{0} is unknown")]
+    UnknownOpcode(Opcode),
+    #[error("disable upgrable nops")]
+    DiscourageUpgradableNops,
     #[error("equal verify")]
     EqualVerify,
     #[error("invalid alt stack operation")]
