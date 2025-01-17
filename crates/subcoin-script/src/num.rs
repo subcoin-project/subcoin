@@ -1,7 +1,14 @@
 //! Script numeric
 
-use crate::Error;
 use std::ops::{Add, Neg, Sub};
+
+#[derive(Debug, Eq, PartialEq, thiserror::Error)]
+pub enum NumError {
+    #[error("Script number overflow")]
+    Overflow,
+    #[error("Non-minimally encoded script number")]
+    NotMinimallyEncoded,
+}
 
 /// A numeric type used in Bitcoin Script operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -26,11 +33,11 @@ impl ScriptNum {
         data: &[u8],
         require_minimal: bool,
         max_size: Option<usize>,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, NumError> {
         let max_size = max_size.unwrap_or(Self::MAX_NUM_SIZE);
 
         if data.len() > max_size {
-            return Err(Error::NumberOverflow);
+            return Err(NumError::Overflow);
         }
 
         if data.is_empty() {
@@ -39,7 +46,7 @@ impl ScriptNum {
 
         // Check for minimal encoding if required
         if require_minimal && !Self::is_minimally_encoded(data) {
-            return Err(Error::NumberNotMinimallyEncoded);
+            return Err(NumError::NotMinimallyEncoded);
         }
 
         let mut result = 0i64;
@@ -130,35 +137,35 @@ impl ScriptNum {
 }
 
 impl Add for ScriptNum {
-    type Output = Result<Self, Error>;
+    type Output = Result<Self, NumError>;
 
-    fn add(self, other: Self) -> Result<Self, Error> {
+    fn add(self, other: Self) -> Result<Self, NumError> {
         self.value
             .checked_add(other.value)
             .map(|v| Self { value: v })
-            .ok_or(Error::NumberOverflow)
+            .ok_or(NumError::Overflow)
     }
 }
 
 impl Sub for ScriptNum {
-    type Output = Result<Self, Error>;
+    type Output = Result<Self, NumError>;
 
-    fn sub(self, other: Self) -> Result<Self, Error> {
+    fn sub(self, other: Self) -> Result<Self, NumError> {
         self.value
             .checked_sub(other.value)
             .map(|v| Self { value: v })
-            .ok_or(Error::NumberOverflow)
+            .ok_or(NumError::Overflow)
     }
 }
 
 impl Neg for ScriptNum {
-    type Output = Result<Self, Error>;
+    type Output = Result<Self, NumError>;
 
-    fn neg(self) -> Result<Self, Error> {
+    fn neg(self) -> Result<Self, NumError> {
         self.value
             .checked_neg()
             .map(|v| Self { value: v })
-            .ok_or(Error::NumberOverflow)
+            .ok_or(NumError::Overflow)
     }
 }
 
@@ -242,7 +249,7 @@ mod tests {
     #[test]
     fn test_script_num_from_bytes() {
         let tests = vec![
-            ("80", Err(Error::NumberNotMinimallyEncoded), true, None),
+            ("80", Err(NumError::NotMinimallyEncoded), true, None),
             // Empty bytes.
             ("", Ok(0), true, None),
             ("01", Ok(1), true, None),
@@ -299,54 +306,34 @@ mod tests {
             // ("ffffffffffffffffff", Ok(1), true, Some(9)),
             // ("ffffffffffffffffff7f", Ok(-1), true, Some(10)),
             // ("ffffffffffffffffffff", Ok(1), true, Some(10)),
-            ("0000008000", Err(Error::NumberOverflow), true, None),
-            ("0000008080", Err(Error::NumberOverflow), true, None),
-            ("0000009000", Err(Error::NumberOverflow), true, None),
-            ("0000009080", Err(Error::NumberOverflow), true, None),
-            ("ffffffff00", Err(Error::NumberOverflow), true, None),
-            ("ffffffff80", Err(Error::NumberOverflow), true, None),
-            ("0000000001", Err(Error::NumberOverflow), true, None),
-            ("0000000081", Err(Error::NumberOverflow), true, None),
-            ("ffffffffffff00", Err(Error::NumberOverflow), true, None),
-            ("ffffffffffff80", Err(Error::NumberOverflow), true, None),
-            ("ffffffffffffff00", Err(Error::NumberOverflow), true, None),
-            ("ffffffffffffff80", Err(Error::NumberOverflow), true, None),
-            ("ffffffffffffff7f", Err(Error::NumberOverflow), true, None),
-            ("ffffffffffffffff", Err(Error::NumberOverflow), true, None),
-            ("00", Err(Error::NumberNotMinimallyEncoded), true, None),
-            ("0100", Err(Error::NumberNotMinimallyEncoded), true, None),
-            ("7f00", Err(Error::NumberNotMinimallyEncoded), true, None),
-            ("800000", Err(Error::NumberNotMinimallyEncoded), true, None),
-            ("810000", Err(Error::NumberNotMinimallyEncoded), true, None),
-            ("000100", Err(Error::NumberNotMinimallyEncoded), true, None),
-            ("ff7f00", Err(Error::NumberNotMinimallyEncoded), true, None),
-            (
-                "00800000",
-                Err(Error::NumberNotMinimallyEncoded),
-                true,
-                None,
-            ),
-            (
-                "ffff0000",
-                Err(Error::NumberNotMinimallyEncoded),
-                true,
-                None,
-            ),
-            (
-                "00000800",
-                Err(Error::NumberNotMinimallyEncoded),
-                true,
-                None,
-            ),
-            (
-                "00007000",
-                Err(Error::NumberNotMinimallyEncoded),
-                true,
-                None,
-            ),
+            ("0000008000", Err(NumError::Overflow), true, None),
+            ("0000008080", Err(NumError::Overflow), true, None),
+            ("0000009000", Err(NumError::Overflow), true, None),
+            ("0000009080", Err(NumError::Overflow), true, None),
+            ("ffffffff00", Err(NumError::Overflow), true, None),
+            ("ffffffff80", Err(NumError::Overflow), true, None),
+            ("0000000001", Err(NumError::Overflow), true, None),
+            ("0000000081", Err(NumError::Overflow), true, None),
+            ("ffffffffffff00", Err(NumError::Overflow), true, None),
+            ("ffffffffffff80", Err(NumError::Overflow), true, None),
+            ("ffffffffffffff00", Err(NumError::Overflow), true, None),
+            ("ffffffffffffff80", Err(NumError::Overflow), true, None),
+            ("ffffffffffffff7f", Err(NumError::Overflow), true, None),
+            ("ffffffffffffffff", Err(NumError::Overflow), true, None),
+            ("00", Err(NumError::NotMinimallyEncoded), true, None),
+            ("0100", Err(NumError::NotMinimallyEncoded), true, None),
+            ("7f00", Err(NumError::NotMinimallyEncoded), true, None),
+            ("800000", Err(NumError::NotMinimallyEncoded), true, None),
+            ("810000", Err(NumError::NotMinimallyEncoded), true, None),
+            ("000100", Err(NumError::NotMinimallyEncoded), true, None),
+            ("ff7f00", Err(NumError::NotMinimallyEncoded), true, None),
+            ("00800000", Err(NumError::NotMinimallyEncoded), true, None),
+            ("ffff0000", Err(NumError::NotMinimallyEncoded), true, None),
+            ("00000800", Err(NumError::NotMinimallyEncoded), true, None),
+            ("00007000", Err(NumError::NotMinimallyEncoded), true, None),
             (
                 "0009000100",
-                Err(Error::NumberNotMinimallyEncoded),
+                Err(NumError::NotMinimallyEncoded),
                 true,
                 Some(5),
             ),

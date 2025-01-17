@@ -1,11 +1,77 @@
+mod multisig;
+mod sig;
+
 use crate::num::ScriptNum;
 use crate::opcode::Opcode;
 use crate::stack::Stack;
-use crate::{Error, ScriptExecutionData, SigVersion, SignatureChecker, VerificationFlags};
+use crate::{EcdsaSignature, SchnorrSignature, ScriptExecutionData, SigVersion, VerificationFlags};
 use bitcoin::hashes::{hash160, ripemd160, sha1, sha256, sha256d, Hash};
 use bitcoin::script::Instruction;
-use bitcoin::Script;
+use bitcoin::{PublicKey, Script, ScriptBuf};
 use std::ops::{Add, Neg, Sub};
+
+#[derive(Debug, Eq, PartialEq, thiserror::Error)]
+pub enum Error {
+    #[error("invalid stack operation")]
+    InvalidStackOperation,
+    #[error("{0} is disabled")]
+    DisabledOpcode(bitcoin::opcodes::Opcode),
+    #[error("{0} is unknown")]
+    UnknownOpcode(bitcoin::opcodes::Opcode),
+    #[error("negative locktime")]
+    NegativeLocktime,
+    #[error("unsatisfied locktime")]
+    UnsatisfiedLocktime,
+    #[error("unbalanced conditional")]
+    UnbalancedConditional,
+    #[error("disable upgrable nops")]
+    DiscourageUpgradableNops,
+    #[error("equal verify")]
+    EqualVerify,
+    #[error("verify")]
+    Verify,
+    #[error("Checksig verify")]
+    CheckSigVerify,
+    #[error("return opcode")]
+    ReturnOpcode,
+    #[error("invalid alt stack operation")]
+    InvalidAltStackOperation,
+    #[error("rust-bitcoin script error: {0:?}")]
+    Script(bitcoin::script::Error),
+    #[error(transparent)]
+    Stack(#[from] crate::stack::StackError),
+    #[error(transparent)]
+    Num(#[from] crate::num::NumError),
+    #[error(transparent)]
+    Sig(#[from] sig::SigError),
+    #[error(transparent)]
+    Multisig(#[from] multisig::MultisigError),
+}
+
+type Result<T> = std::result::Result<T, Error>;
+
+/// Checks transaction signature
+pub trait SignatureChecker {
+    fn check_ecdsa_signature(
+        &self,
+        script_sig: &EcdsaSignature,
+        pubkey: &PublicKey,
+        script_code: &Script,
+        sig_version: SigVersion,
+    ) -> std::result::Result<(), sig::SigError>;
+
+    fn check_schnorr_signature(
+        &self,
+        sig: &SchnorrSignature,
+        pubkey: &PublicKey,
+        sig_version: SigVersion,
+        exec_data: &ScriptExecutionData,
+    ) -> std::result::Result<(), sig::SigError>;
+
+    fn check_lock_time(&self, lock_time: ScriptNum) -> bool;
+
+    fn check_sequence(&self, sequence: ScriptNum) -> bool;
+}
 
 pub fn eval_script(
     stack: &mut Stack,
@@ -14,7 +80,7 @@ pub fn eval_script(
     checker: &dyn SignatureChecker,
     sig_version: SigVersion,
     exec_data: &mut ScriptExecutionData,
-) -> Result<(), Error> {
+) -> Result<()> {
     use crate::opcode::Opcode::*;
 
     let mut alt_stack = Stack::new(true);
@@ -22,10 +88,10 @@ pub fn eval_script(
     // Create a vector of conditional execution states
     let mut exec_stack: Vec<bool> = Vec::new();
 
-    // let mut in_exec = true;
+    let mut begincode = 0;
 
-    for instruction in script.instructions() {
-        let instruction = instruction.map_err(Error::Script)?;
+    for instruction in script.instruction_indices() {
+        let (pc, instruction) = instruction.map_err(Error::Script)?;
 
         match instruction {
             Instruction::PushBytes(p) => {
@@ -204,13 +270,12 @@ pub fn eval_script(
                         stack.push_num(n);
                     }
                     OP_NOT => {
-                        let n = stack.pop_num()?.is_zero();
-                        let n = ScriptNum::from(n);
+                        let n = ScriptNum::from(stack.pop_num()?.is_zero());
                         stack.push_num(n);
                     }
                     OP_0NOTEQUAL => {
-                        let n = !stack.pop_num()?.is_zero();
-                        stack.push_num(ScriptNum::from(n));
+                        let n = ScriptNum::from(!stack.pop_num()?.is_zero());
+                        stack.push_num(n);
                     }
                     OP_ADD => {
                         let v1 = stack.pop_num()?;
@@ -274,12 +339,12 @@ pub fn eval_script(
                     OP_MIN => {
                         let v1 = stack.pop_num()?;
                         let v2 = stack.pop_num()?;
-                        stack.push_num(std::cmp::min(v1, v2));
+                        stack.push_num(v1.min(v2));
                     }
                     OP_MAX => {
                         let v1 = stack.pop_num()?;
                         let v2 = stack.pop_num()?;
-                        stack.push_num(std::cmp::max(v1, v2));
+                        stack.push_num(v1.max(v2));
                     }
                     OP_WITHIN => {
                         let v1 = stack.pop_num()?;
@@ -313,12 +378,56 @@ pub fn eval_script(
                         let v = sha256d::Hash::hash(&stack.pop()?);
                         stack.push(v.to_byte_array().to_vec());
                     }
-                    OP_CODESEPARATOR => {}
-                    OP_CHECKSIG => {}
-                    OP_CHECKSIGVERIFY => {}
-                    OP_CHECKMULTISIG => {}
-                    OP_CHECKMULTISIGVERIFY => {}
-                    OP_CHECKSIGADD => {}
+                    OP_CODESEPARATOR => {
+                        begincode = pc;
+                    }
+                    OP_CHECKSIG | OP_CHECKSIGVERIFY => {
+                        // [sig pubkey]
+                        let pubkey = stack.pop()?;
+                        let sig = stack.pop()?;
+
+                        let success = sig::eval_checksig(
+                            &sig,
+                            &pubkey,
+                            begincode,
+                            &exec_data,
+                            &flags,
+                            checker,
+                            sig_version,
+                        )?;
+
+                        match opcode {
+                            OP_CHECKSIG => {
+                                if success {
+                                    stack.push(vec![1]);
+                                } else {
+                                    stack.push(Vec::new());
+                                }
+                            }
+                            OP_CHECKSIGVERIFY if !success => {
+                                return Err(Error::CheckSigVerify);
+                            }
+                            _ => {}
+                        }
+                    }
+                    OP_CHECKMULTISIG | OP_CHECKMULTISIGVERIFY => {
+                        multisig::execute_checkmultisig(
+                            stack,
+                            &flags,
+                            begincode,
+                            script,
+                            sig_version,
+                            checker,
+                            if opcode == OP_CHECKMULTISIG {
+                                multisig::Operation::CheckMultisig
+                            } else {
+                                multisig::Operation::CheckMultisigVerify
+                            },
+                        )?;
+                    }
+                    OP_CHECKSIGADD => {
+                        todo!("checksigadd")
+                    }
 
                     // Locktime
                     OP_CHECKLOCKTIMEVERIFY => {
@@ -369,7 +478,11 @@ pub fn eval_script(
                     }
 
                     // Reserved words
-                    OP_RESERVED | OP_VER | OP_RESERVED1 | OP_RESERVED2 => {}
+                    OP_RESERVED | OP_VER | OP_RESERVED1 | OP_RESERVED2 => {
+                        if executing {
+                            return Err(Error::DisabledOpcode(op));
+                        }
+                    }
                     OP_VERIF | OP_VERNOTIF => {
                         return Err(Error::DisabledOpcode(op));
                     }

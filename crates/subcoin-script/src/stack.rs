@@ -1,6 +1,15 @@
 use crate::num::ScriptNum;
-use crate::Error;
 use std::ops::{Deref, DerefMut};
+
+#[derive(Debug, Eq, PartialEq, thiserror::Error)]
+pub enum StackError {
+    #[error("invalid stack operation")]
+    InvalidOperation,
+    #[error(transparent)]
+    Num(#[from] crate::num::NumError),
+}
+
+type Result<T> = std::result::Result<T, StackError>;
 
 #[derive(Debug, Default, PartialEq, Clone)]
 pub struct Stack<T = Vec<u8>> {
@@ -43,36 +52,39 @@ impl<T> Stack<T> {
 
     // Ensure there are at least `n` elements on the stack.
     #[inline]
-    pub fn require(&self, len: usize) -> Result<(), Error> {
+    pub fn require(&self, len: usize) -> Result<()> {
         if self.data.len() < len {
-            return Err(Error::InvalidStackOperation);
+            return Err(StackError::InvalidOperation);
         }
         Ok(())
     }
 
     #[inline]
-    pub fn last(&self) -> Result<&T, Error> {
-        self.data.last().ok_or(Error::InvalidStackOperation)
+    pub fn last(&self) -> Result<&T> {
+        self.data.last().ok_or(StackError::InvalidOperation)
     }
 
     #[inline]
-    pub fn last_mut(&mut self) -> Result<&mut T, Error> {
-        self.data.last_mut().ok_or(Error::InvalidStackOperation)
+    pub fn last_mut(&mut self) -> Result<&mut T> {
+        self.data.last_mut().ok_or(StackError::InvalidOperation)
     }
 
     #[inline]
-    pub fn pop(&mut self) -> Result<T, Error> {
-        self.data.pop().ok_or(Error::InvalidStackOperation)
+    pub fn pop(&mut self) -> Result<T> {
+        self.data.pop().ok_or(StackError::InvalidOperation)
     }
 
-    pub fn pop_num(&mut self) -> Result<ScriptNum, Error>
+    #[inline]
+    pub fn pop_num(&mut self) -> Result<ScriptNum>
     where
         T: AsRef<[u8]>,
     {
         ScriptNum::from_bytes(self.pop()?.as_ref(), self.verify_minimaldata, None)
+            .map_err(Into::into)
     }
 
-    pub fn pop_num_with_max_size(&mut self, max_size: usize) -> Result<ScriptNum, Error>
+    #[inline]
+    pub fn pop_num_with_max_size(&mut self, max_size: usize) -> Result<ScriptNum>
     where
         T: AsRef<[u8]>,
     {
@@ -81,6 +93,7 @@ impl<T> Stack<T> {
             self.verify_minimaldata,
             Some(max_size),
         )
+        .map_err(Into::into)
     }
 
     /// Push an element onto the stack.
@@ -90,20 +103,22 @@ impl<T> Stack<T> {
     }
 
     #[inline]
-    pub fn top(&self, i: usize) -> Result<&T, Error> {
+    pub fn top(&self, i: usize) -> Result<&T> {
         let pos = i + 1;
         self.require(pos)?;
         Ok(&self.data[self.data.len() - pos])
     }
 
-    pub fn peek_bool(&self) -> Result<bool, Error>
+    #[inline]
+    pub fn peek_bool(&self) -> Result<bool>
     where
         T: AsRef<[u8]>,
     {
         Ok(cast_to_bool(self.last()?.as_ref()))
     }
 
-    pub fn pop_bool(&mut self) -> Result<bool, Error>
+    #[inline]
+    pub fn pop_bool(&mut self) -> Result<bool>
     where
         T: AsRef<[u8]>,
     {
@@ -111,7 +126,7 @@ impl<T> Stack<T> {
     }
 
     #[inline]
-    pub fn remove(&mut self, i: usize) -> Result<T, Error> {
+    pub fn remove(&mut self, i: usize) -> Result<T> {
         let pos = i + 1;
         self.require(pos)?;
         let to_remove = self.data.len() - pos;
@@ -119,7 +134,7 @@ impl<T> Stack<T> {
     }
 
     /// Removes the top `n` stack items.
-    pub fn drop(&mut self, n: usize) -> Result<(), Error> {
+    pub fn drop(&mut self, n: usize) -> Result<()> {
         self.require(n)?;
         for _ in 0..n {
             self.data.pop();
@@ -131,7 +146,7 @@ impl<T> Stack<T> {
     ///
     /// dup(1): [x1 x2] -> [x1 x2 x2]
     /// dup(2): [x1 x2] -> [x1 x2 x1 x2]
-    pub fn dup(&mut self, n: usize) -> Result<(), Error>
+    pub fn dup(&mut self, n: usize) -> Result<()>
     where
         T: Clone,
     {
@@ -146,7 +161,7 @@ impl<T> Stack<T> {
     ///
     /// over(1): [... x1 x2 x3] -> [... x1 x2 x3 x2]
     /// over(2): [... x1 x2 x3 x4] -> [... x1 x2 x3 x4 x1 x2]
-    pub fn over(&mut self, n: usize) -> Result<(), Error>
+    pub fn over(&mut self, n: usize) -> Result<()>
     where
         T: Clone,
     {
@@ -165,7 +180,7 @@ impl<T> Stack<T> {
     ///
     /// - rot(1): [x1 x2 x3] -> [x2 x3 x1]
     /// - rot(2): [x1 x2 x3 x4 x5 x6] -> [x3 x4 x5 x6 x1 x2]
-    pub fn rot(&mut self, n: usize) -> Result<(), Error>
+    pub fn rot(&mut self, n: usize) -> Result<()>
     where
         T: Clone,
     {
@@ -176,7 +191,6 @@ impl<T> Stack<T> {
         let start_index = len - count;
         let slice = &mut self.data[start_index..];
 
-        // Perform in-place rotation using swaps
         slice.rotate_left(n);
 
         Ok(())
@@ -187,7 +201,7 @@ impl<T> Stack<T> {
     // Stack transformation:
     // - swap(1): [x1 x2] -> [x2 x1]
     // - swap(2): [x1 x2 x3 x4] -> [x3 x4 x1 x2]
-    pub fn swap(&mut self, n: usize) -> Result<(), Error> {
+    pub fn swap(&mut self, n: usize) -> Result<()> {
         let count = n * 2;
         self.require(count)?;
         let len = self.data.len();
@@ -200,7 +214,7 @@ impl<T> Stack<T> {
     /// Removes the second-to-top stack item.
     ///
     /// nip: [x1 x2 x3] -> [x1 x3]
-    pub fn nip(&mut self) -> Result<(), Error> {
+    pub fn nip(&mut self) -> Result<()> {
         self.require(2)?;
         let len = self.data.len();
         self.data.swap_remove(len - 2);
@@ -211,7 +225,7 @@ impl<T> Stack<T> {
     // to top item.
     //
     // [... x1 x2] -> [... x2 x1 x2]
-    pub fn tuck(&mut self) -> Result<(), Error>
+    pub fn tuck(&mut self) -> Result<()>
     where
         T: Clone,
     {
@@ -231,16 +245,10 @@ impl Stack<Vec<u8>> {
 }
 
 fn cast_to_bool(data: &[u8]) -> bool {
-    if data.is_empty() {
-        return false;
+    match data.split_last() {
+        Some((&last, rest)) => rest.iter().any(|&x| x != 0) || (last != 0 && last != 0x80),
+        None => false,
     }
-
-    if data[..data.len() - 1].iter().any(|x| x != &0) {
-        return true;
-    }
-
-    let last = data[data.len() - 1];
-    !(last == 0 || last == 0x80)
 }
 
 #[cfg(test)]
@@ -251,22 +259,22 @@ mod tests {
     fn test_stack_require() {
         let stack: Stack<u8> = vec![].into();
         assert_eq!(stack.require(0), Ok(()));
-        assert_eq!(stack.require(1), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.require(1), Err(StackError::InvalidOperation));
         let stack: Stack<u8> = vec![0].into();
         assert_eq!(stack.require(0), Ok(()));
         assert_eq!(stack.require(1), Ok(()));
-        assert_eq!(stack.require(2), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.require(2), Err(StackError::InvalidOperation));
         let stack: Stack<u8> = vec![0, 5].into();
         assert_eq!(stack.require(0), Ok(()));
         assert_eq!(stack.require(1), Ok(()));
         assert_eq!(stack.require(2), Ok(()));
-        assert_eq!(stack.require(3), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.require(3), Err(StackError::InvalidOperation));
     }
 
     #[test]
     fn test_stack_last() {
         let stack: Stack<u8> = vec![].into();
-        assert_eq!(stack.last(), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.last(), Err(StackError::InvalidOperation));
         let stack: Stack<u8> = vec![0].into();
         assert_eq!(stack.last(), Ok(&0));
         let stack: Stack<u8> = vec![0, 5].into();
@@ -276,7 +284,7 @@ mod tests {
     #[test]
     fn test_stack_pop() {
         let mut stack: Stack<u8> = vec![].into();
-        assert_eq!(stack.pop(), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.pop(), Err(StackError::InvalidOperation));
         assert_eq!(stack, vec![].into());
         let mut stack: Stack<u8> = vec![0].into();
         assert_eq!(stack.pop(), Ok(0));
@@ -299,24 +307,24 @@ mod tests {
     #[test]
     fn test_stack_top() {
         let stack: Stack<u8> = vec![].into();
-        assert_eq!(stack.top(0), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.top(0), Err(StackError::InvalidOperation));
         let stack: Stack<u8> = vec![0].into();
         assert_eq!(stack.top(0), Ok(&0));
-        assert_eq!(stack.top(1), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.top(1), Err(StackError::InvalidOperation));
         let stack: Stack<u8> = vec![0, 5].into();
         assert_eq!(stack.top(0), Ok(&5));
         assert_eq!(stack.top(1), Ok(&0));
-        assert_eq!(stack.top(2), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.top(2), Err(StackError::InvalidOperation));
     }
 
     #[test]
     fn test_stack_remove() {
         let mut stack: Stack<u8> = vec![].into();
-        assert_eq!(stack.remove(0), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.remove(0), Err(StackError::InvalidOperation));
         assert_eq!(stack, vec![].into());
         let mut stack: Stack<u8> = vec![0].into();
         assert_eq!(stack.remove(0), Ok(0));
-        assert_eq!(stack.remove(0), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.remove(0), Err(StackError::InvalidOperation));
         assert_eq!(stack, vec![].into());
         let mut stack: Stack<u8> = vec![0, 5].into();
         assert_eq!(stack.remove(1), Ok(0));
@@ -332,7 +340,7 @@ mod tests {
         let mut stack: Stack<u8> = vec![0, 5].into();
         assert_eq!(stack.drop(0), Ok(()));
         assert_eq!(stack, vec![0, 5].into());
-        assert_eq!(stack.drop(3), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.drop(3), Err(StackError::InvalidOperation));
         assert_eq!(stack, vec![0, 5].into());
         assert_eq!(stack.drop(1), Ok(()));
         assert_eq!(stack, vec![0].into());
@@ -345,11 +353,11 @@ mod tests {
     fn test_stack_dup() {
         let mut stack: Stack<u8> = vec![].into();
         assert_eq!(stack.dup(0), Ok(()));
-        assert_eq!(stack.dup(1), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.dup(1), Err(StackError::InvalidOperation));
         assert_eq!(stack, vec![].into());
         let mut stack: Stack<u8> = vec![0].into();
         assert_eq!(stack.dup(0), Ok(()));
-        assert_eq!(stack.dup(2), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.dup(2), Err(StackError::InvalidOperation));
         assert_eq!(stack, vec![0].into());
         assert_eq!(stack.dup(1), Ok(()));
         assert_eq!(stack, vec![0, 0].into());
@@ -364,9 +372,9 @@ mod tests {
     fn test_stack_over() {
         let mut stack: Stack<u8> = vec![0].into();
         assert_eq!(stack.over(0), Ok(()));
-        assert_eq!(stack.over(1), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.over(1), Err(StackError::InvalidOperation));
         let mut stack: Stack<u8> = vec![0, 5].into();
-        assert_eq!(stack.over(2), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.over(2), Err(StackError::InvalidOperation));
         assert_eq!(stack.over(1), Ok(()));
         assert_eq!(stack, vec![0, 5, 0].into());
         assert_eq!(stack.over(1), Ok(()));
@@ -380,17 +388,17 @@ mod tests {
     fn test_stack_rot() {
         let mut stack: Stack<u8> = vec![0, 5].into();
         assert_eq!(stack.rot(0), Ok(()));
-        assert_eq!(stack.rot(1), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.rot(1), Err(StackError::InvalidOperation));
         assert_eq!(stack, vec![0, 5].into());
         let mut stack: Stack<u8> = vec![0, 1, 2].into();
-        assert_eq!(stack.rot(2), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.rot(2), Err(StackError::InvalidOperation));
         assert_eq!(stack.rot(1), Ok(()));
         assert_eq!(stack, vec![1, 2, 0].into());
         let mut stack: Stack<u8> = vec![0, 1, 2, 3].into();
         assert_eq!(stack.rot(1), Ok(()));
         assert_eq!(stack, vec![0, 2, 3, 1].into());
         let mut stack: Stack<u8> = vec![0, 1, 2, 3, 4, 5].into();
-        assert_eq!(stack.rot(3), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.rot(3), Err(StackError::InvalidOperation));
         assert_eq!(stack.rot(2), Ok(()));
         assert_eq!(stack, vec![2, 3, 4, 5, 0, 1].into());
     }
@@ -400,7 +408,7 @@ mod tests {
         let mut stack: Stack<u8> = vec![].into();
         assert_eq!(stack.swap(0), Ok(()));
         assert_eq!(stack, vec![].into());
-        assert_eq!(stack.swap(1), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.swap(1), Err(StackError::InvalidOperation));
         let mut stack: Stack<u8> = vec![0, 1, 2, 3].into();
         assert_eq!(stack.swap(0), Ok(()));
         assert_eq!(stack, vec![0, 1, 2, 3].into());
@@ -408,20 +416,20 @@ mod tests {
         assert_eq!(stack, vec![0, 1, 3, 2].into());
         assert_eq!(stack.swap(2), Ok(()));
         assert_eq!(stack, vec![3, 2, 0, 1].into());
-        assert_eq!(stack.swap(3), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.swap(3), Err(StackError::InvalidOperation));
         assert_eq!(stack, vec![3, 2, 0, 1].into());
     }
 
     #[test]
     fn test_stack_nip() {
         let mut stack: Stack<u8> = vec![].into();
-        assert_eq!(stack.nip(), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.nip(), Err(StackError::InvalidOperation));
         let mut stack: Stack<u8> = vec![0].into();
-        assert_eq!(stack.nip(), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.nip(), Err(StackError::InvalidOperation));
         let mut stack: Stack<u8> = vec![0, 1].into();
         assert_eq!(stack.nip(), Ok(()));
         assert_eq!(stack, vec![1].into());
-        assert_eq!(stack.nip(), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.nip(), Err(StackError::InvalidOperation));
         let mut stack: Stack<u8> = vec![0, 1, 2, 3].into();
         assert_eq!(stack.nip(), Ok(()));
         assert_eq!(stack, vec![0, 1, 3].into());
@@ -432,9 +440,9 @@ mod tests {
     #[test]
     fn test_stack_tuck() {
         let mut stack: Stack<u8> = vec![].into();
-        assert_eq!(stack.tuck(), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.tuck(), Err(StackError::InvalidOperation));
         let mut stack: Stack<u8> = vec![0].into();
-        assert_eq!(stack.tuck(), Err(Error::InvalidStackOperation));
+        assert_eq!(stack.tuck(), Err(StackError::InvalidOperation));
         let mut stack: Stack<u8> = vec![0, 1].into();
         assert_eq!(stack.tuck(), Ok(()));
         assert_eq!(stack, vec![1, 0, 1].into());
