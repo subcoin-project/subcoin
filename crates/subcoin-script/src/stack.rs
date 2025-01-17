@@ -240,7 +240,16 @@ impl<T> Stack<T> {
 impl Stack<Vec<u8>> {
     #[inline]
     pub fn push_num(&mut self, num: ScriptNum) {
-        self.data.push(num.to_bytes())
+        self.push(num.to_bytes())
+    }
+
+    #[inline]
+    pub fn push_bool(&mut self, boolean: bool) {
+        if boolean {
+            self.push(vec![1]);
+        } else {
+            self.push(Vec::new());
+        }
     }
 }
 

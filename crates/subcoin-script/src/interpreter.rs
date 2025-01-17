@@ -135,21 +135,13 @@ pub fn eval_script(
 
                     // Flow control
                     OP_NOP => {}
-                    OP_IF => {
-                        let exec_value = if executing {
-                            stack.pop_bool().map_err(|_| Error::UnbalancedConditional)?
+                    OP_IF | OP_NOTIF => {
+                        let exec_value = pop_exec_value(stack, executing)?;
+                        exec_stack.push(if opcode == OP_IF {
+                            exec_value
                         } else {
-                            false
-                        };
-                        exec_stack.push(exec_value);
-                    }
-                    OP_NOTIF => {
-                        let exec_value = if executing {
-                            stack.pop_bool().map_err(|_| Error::UnbalancedConditional)?
-                        } else {
-                            false
-                        };
-                        exec_stack.push(!exec_value);
+                            !exec_value
+                        });
                     }
                     OP_ELSE => {
                         if let Some(last) = exec_stack.last_mut() {
@@ -234,13 +226,8 @@ pub fn eval_script(
                     // Bitwise logic
                     OP_INVERT | OP_AND | OP_OR | OP_XOR => return Err(Error::DisabledOpcode(op)),
                     OP_EQUAL => {
-                        let v1 = stack.pop()?;
-                        let v2 = stack.pop()?;
-                        if v1 == v2 {
-                            stack.push(vec![1]);
-                        } else {
-                            stack.push(Vec::new());
-                        }
+                        let equal = stack.pop()? == stack.pop()?;
+                        stack.push_bool(equal);
                     }
                     OP_EQUALVERIFY => {
                         let equal = stack.pop()? == stack.pop()?;
@@ -288,15 +275,15 @@ pub fn eval_script(
                         stack.push_num((v2 - v1)?);
                     }
                     OP_BOOLAND => {
-                        let v1 = stack.pop_num()?;
-                        let v2 = stack.pop_num()?;
-                        let v = ScriptNum::from(!v1.is_zero() && !v2.is_zero());
+                        let v1 = stack.pop_num()?.is_zero();
+                        let v2 = stack.pop_num()?.is_zero();
+                        let v = ScriptNum::from(!v1 && !v2);
                         stack.push_num(v);
                     }
                     OP_BOOLOR => {
-                        let v1 = stack.pop_num()?;
-                        let v2 = stack.pop_num()?;
-                        let v = ScriptNum::from(!v1.is_zero() || !v2.is_zero());
+                        let v1 = stack.pop_num()?.is_zero();
+                        let v2 = stack.pop_num()?.is_zero();
+                        let v = ScriptNum::from(!v1 || !v2);
                         stack.push_num(v);
                     }
                     OP_NUMEQUAL => {
@@ -319,22 +306,22 @@ pub fn eval_script(
                     OP_LESSTHAN => {
                         let v1 = stack.pop_num()?;
                         let v2 = stack.pop_num()?;
-                        stack.push_num(ScriptNum::from(v1 > v2));
+                        stack.push_num(ScriptNum::from(v2 < v1));
                     }
                     OP_GREATERTHAN => {
                         let v1 = stack.pop_num()?;
                         let v2 = stack.pop_num()?;
-                        stack.push_num(ScriptNum::from(v1 < v2));
+                        stack.push_num(ScriptNum::from(v2 > v1));
                     }
                     OP_LESSTHANOREQUAL => {
                         let v1 = stack.pop_num()?;
                         let v2 = stack.pop_num()?;
-                        stack.push_num(ScriptNum::from(v1 >= v2));
+                        stack.push_num(ScriptNum::from(v2 <= v1));
                     }
                     OP_GREATERTHANOREQUAL => {
                         let v1 = stack.pop_num()?;
                         let v2 = stack.pop_num()?;
-                        stack.push_num(ScriptNum::from(v1 <= v2));
+                        stack.push_num(ScriptNum::from(v2 >= v1));
                     }
                     OP_MIN => {
                         let v1 = stack.pop_num()?;
@@ -347,14 +334,11 @@ pub fn eval_script(
                         stack.push_num(v1.max(v2));
                     }
                     OP_WITHIN => {
+                        // [x min max]
                         let v1 = stack.pop_num()?;
                         let v2 = stack.pop_num()?;
                         let v3 = stack.pop_num()?;
-                        if v2 <= v3 && v3 < v1 {
-                            stack.push(vec![1].into());
-                        } else {
-                            stack.push(Vec::new());
-                        }
+                        stack.push_bool((v2..v1).contains(&v3));
                     }
 
                     // Crypto
@@ -382,7 +366,7 @@ pub fn eval_script(
                         begincode = pc;
                     }
                     OP_CHECKSIG | OP_CHECKSIGVERIFY => {
-                        // [sig pubkey]
+                        // [sig pubkey] -> bool
                         let pubkey = stack.pop()?;
                         let sig = stack.pop()?;
 
@@ -397,13 +381,7 @@ pub fn eval_script(
                         )?;
 
                         match opcode {
-                            OP_CHECKSIG => {
-                                if success {
-                                    stack.push(vec![1]);
-                                } else {
-                                    stack.push(Vec::new());
-                                }
-                            }
+                            OP_CHECKSIG => stack.push_bool(success),
                             OP_CHECKSIGVERIFY if !success => {
                                 return Err(Error::CheckSigVerify);
                             }
@@ -496,6 +474,14 @@ pub fn eval_script(
     }
 
     Ok(())
+}
+
+fn pop_exec_value(stack: &mut Stack, executing: bool) -> Result<bool> {
+    if executing {
+        stack.pop_bool().map_err(|_| Error::UnbalancedConditional)
+    } else {
+        Ok(false)
+    }
 }
 
 #[cfg(test)]
