@@ -1,6 +1,7 @@
 pub mod interpreter;
 pub mod num;
 pub mod opcode;
+pub mod signature_checker;
 pub mod stack;
 
 use self::num::ScriptNum;

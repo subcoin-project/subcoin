@@ -26,12 +26,8 @@ pub enum Error {
     UnbalancedConditional,
     #[error("disable upgrable nops")]
     DiscourageUpgradableNops,
-    #[error("equal verify")]
-    EqualVerify,
-    #[error("verify")]
-    Verify,
-    #[error("Checksig verify")]
-    CheckSigVerify,
+    #[error("failed verify operation: {0:?}")]
+    FailedVerify(bitcoin::opcodes::Opcode),
     #[error("return opcode")]
     ReturnOpcode,
     #[error("invalid alt stack operation")]
@@ -49,29 +45,6 @@ pub enum Error {
 }
 
 type Result<T> = std::result::Result<T, Error>;
-
-/// Checks transaction signature
-pub trait SignatureChecker {
-    fn check_ecdsa_signature(
-        &self,
-        script_sig: &EcdsaSignature,
-        pubkey: &PublicKey,
-        script_code: &Script,
-        sig_version: SigVersion,
-    ) -> std::result::Result<(), sig::SigError>;
-
-    fn check_schnorr_signature(
-        &self,
-        sig: &SchnorrSignature,
-        pubkey: &PublicKey,
-        sig_version: SigVersion,
-        exec_data: &ScriptExecutionData,
-    ) -> std::result::Result<(), sig::SigError>;
-
-    fn check_lock_time(&self, lock_time: ScriptNum) -> bool;
-
-    fn check_sequence(&self, sequence: ScriptNum) -> bool;
-}
 
 pub fn eval_script(
     stack: &mut Stack,
@@ -136,6 +109,7 @@ pub fn eval_script(
                     // Flow control
                     OP_NOP => {}
                     OP_IF | OP_NOTIF => {
+                        // TODO: tapscript support
                         let exec_value = pop_exec_value(stack, executing)?;
                         exec_stack.push(if opcode == OP_IF {
                             exec_value
@@ -144,6 +118,7 @@ pub fn eval_script(
                         });
                     }
                     OP_ELSE => {
+                        // toggle top.
                         if let Some(last) = exec_stack.last_mut() {
                             *last = !*last;
                         } else {
@@ -159,7 +134,7 @@ pub fn eval_script(
                     OP_VERIFY => {
                         let exec_value = stack.pop_bool()?;
                         if !exec_value {
-                            return Err(Error::Verify);
+                            return Err(Error::FailedVerify(op));
                         }
                     }
                     OP_RETURN => return Err(Error::ReturnOpcode),
@@ -192,22 +167,19 @@ pub fn eval_script(
                     OP_DUP => stack.dup(1)?,
                     OP_NIP => stack.nip()?,
                     OP_OVER => stack.over(1)?,
-                    OP_PICK => {
-                        // Pop the top stack element as N. Copy the Nth stack element to the top.
+                    OP_PICK | OP_ROLL => {
+                        // Pop the top stack element as N.
                         let n = stack.pop_num()?.value();
                         if n < 0 || n >= stack.len() as i64 {
                             return Err(Error::InvalidStackOperation);
                         }
-                        let v = stack.top(n as usize)?.clone();
-                        stack.push(v);
-                    }
-                    OP_ROLL => {
-                        // Pop the top stack element as N. Move the Nth stack element to the top.
-                        let n = stack.pop_num()?.value();
-                        if n < 0 || n >= stack.len() as i64 {
-                            return Err(Error::InvalidStackOperation);
-                        }
-                        let v = stack.remove(n as usize)?;
+                        let v = if opcode == OP_PICK {
+                            // Copy the Nth stack element to the top.
+                            stack.top(n as usize)?.clone()
+                        } else {
+                            // Move the Nth stack element to the top.
+                            stack.remove(n as usize)?
+                        };
                         stack.push(v);
                     }
                     OP_ROT => stack.rot(1)?,
@@ -232,7 +204,7 @@ pub fn eval_script(
                     OP_EQUALVERIFY => {
                         let equal = stack.pop()? == stack.pop()?;
                         if !equal {
-                            return Err(Error::EqualVerify);
+                            return Err(Error::FailedVerify(op));
                         }
                     }
 
@@ -275,16 +247,14 @@ pub fn eval_script(
                         stack.push_num((v2 - v1)?);
                     }
                     OP_BOOLAND => {
-                        let v1 = stack.pop_num()?.is_zero();
-                        let v2 = stack.pop_num()?.is_zero();
-                        let v = ScriptNum::from(!v1 && !v2);
-                        stack.push_num(v);
+                        let v1 = !stack.pop_num()?.is_zero();
+                        let v2 = !stack.pop_num()?.is_zero();
+                        stack.push_num(ScriptNum::from(v1 && v2));
                     }
                     OP_BOOLOR => {
-                        let v1 = stack.pop_num()?.is_zero();
-                        let v2 = stack.pop_num()?.is_zero();
-                        let v = ScriptNum::from(!v1 || !v2);
-                        stack.push_num(v);
+                        let v1 = !stack.pop_num()?.is_zero();
+                        let v2 = !stack.pop_num()?.is_zero();
+                        stack.push_num(ScriptNum::from(v1 || v2));
                     }
                     OP_NUMEQUAL => {
                         let v1 = stack.pop_num()?;
@@ -295,7 +265,7 @@ pub fn eval_script(
                         let v1 = stack.pop_num()?;
                         let v2 = stack.pop_num()?;
                         if v1 != v2 {
-                            return Err(Error::EqualVerify);
+                            return Err(Error::FailedVerify(op));
                         }
                     }
                     OP_NUMNOTEQUAL => {
@@ -373,6 +343,7 @@ pub fn eval_script(
                         let success = sig::eval_checksig(
                             &sig,
                             &pubkey,
+                            script,
                             begincode,
                             &exec_data,
                             &flags,
@@ -383,7 +354,7 @@ pub fn eval_script(
                         match opcode {
                             OP_CHECKSIG => stack.push_bool(success),
                             OP_CHECKSIGVERIFY if !success => {
-                                return Err(Error::CheckSigVerify);
+                                return Err(Error::FailedVerify(op));
                             }
                             _ => {}
                         }
@@ -404,7 +375,7 @@ pub fn eval_script(
                         )?;
                     }
                     OP_CHECKSIGADD => {
-                        todo!("checksigadd")
+                        todo!("checksigadd for tapscript")
                     }
 
                     // Locktime
@@ -471,6 +442,10 @@ pub fn eval_script(
                 }
             }
         }
+    }
+
+    if !exec_stack.is_empty() {
+        return Err(Error::UnbalancedConditional);
     }
 
     Ok(())
