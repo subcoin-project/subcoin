@@ -1,4 +1,4 @@
-use super::SignatureChecker;
+use crate::signature_checker::SignatureChecker;
 use crate::{EcdsaSignature, SchnorrSignature, ScriptExecutionData, SigVersion, VerificationFlags};
 use bitcoin::{PublicKey, Script};
 
@@ -84,7 +84,9 @@ fn eval_checksig_pre_tapscript(
 
     let script_code = Script::from_bytes(&subscript);
 
-    let success = checker.check_ecdsa_signature(&signature, &pubkey, script_code, sig_version)?;
+    let success = checker
+        .check_ecdsa_signature(&signature, &pubkey, script_code, sig_version)
+        .map_err(SigError::Secp256k1)?;
 
     if !success && flags.contains(VerificationFlags::NULLFAIL) && !sig.is_empty() {
         return Err(SigError::NullFail);
@@ -301,7 +303,24 @@ fn eval_checksig_tapscript(
     let sig = SchnorrSignature::from_slice(sig).map_err(SigError::Secp256k1)?;
     let pubkey = PublicKey::from_slice(pubkey).map_err(SigError::FromSlice)?;
 
-    checker.check_schnorr_signature(&sig, &pubkey, sig_version, exec_data)?;
+    checker
+        .check_schnorr_signature(&sig, &pubkey, sig_version, exec_data)
+        .map_err(SigError::Secp256k1)?;
 
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tests_is_public_key() {
+        assert!(!is_public_key(&[]));
+        assert!(!is_public_key(&[1]));
+        assert!(is_public_key(&hex::decode("0495dfb90f202c7d016ef42c65bc010cd26bb8237b06253cc4d12175097bef767ed6b1fcb3caf1ed57c98d92e6cb70278721b952e29a335134857acd4c199b9d2f").unwrap()));
+        assert!(is_public_key(&[2; 33]));
+        assert!(is_public_key(&[3; 33]));
+        assert!(!is_public_key(&[4; 33]));
+    }
 }

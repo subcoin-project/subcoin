@@ -1,13 +1,13 @@
 mod multisig;
 mod sig;
 
-use crate::num::ScriptNum;
-use crate::opcode::Opcode;
-use crate::stack::Stack;
-use crate::{EcdsaSignature, SchnorrSignature, ScriptExecutionData, SigVersion, VerificationFlags};
+use crate::num::{NumError, ScriptNum};
+use crate::signature_checker::SignatureChecker;
+use crate::stack::{Stack, StackError};
+use crate::{ScriptExecutionData, SigVersion, VerificationFlags};
 use bitcoin::hashes::{hash160, ripemd160, sha1, sha256, sha256d, Hash};
 use bitcoin::script::Instruction;
-use bitcoin::{PublicKey, Script, ScriptBuf};
+use bitcoin::Script;
 use std::ops::{Add, Neg, Sub};
 
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
@@ -35,9 +35,9 @@ pub enum Error {
     #[error("rust-bitcoin script error: {0:?}")]
     Script(bitcoin::script::Error),
     #[error(transparent)]
-    Stack(#[from] crate::stack::StackError),
+    Stack(#[from] StackError),
     #[error(transparent)]
-    Num(#[from] crate::num::NumError),
+    Num(#[from] NumError),
     #[error(transparent)]
     Sig(#[from] sig::SigError),
     #[error(transparent)]
@@ -53,10 +53,10 @@ pub fn eval_script(
     checker: &dyn SignatureChecker,
     sig_version: SigVersion,
     exec_data: &mut ScriptExecutionData,
-) -> Result<()> {
+) -> Result<bool> {
     use crate::opcode::Opcode::*;
 
-    let mut alt_stack = Stack::new(true);
+    let mut alt_stack = Stack::default();
 
     // Create a vector of conditional execution states
     let mut exec_stack: Vec<bool> = Vec::new();
@@ -71,7 +71,8 @@ pub fn eval_script(
                 stack.push(p.as_bytes().to_vec());
             }
             Instruction::Op(op) => {
-                let opcode = Opcode::from_u8(op.to_u8()).ok_or(Error::UnknownOpcode(op))?;
+                let opcode =
+                    crate::opcode::Opcode::from_u8(op.to_u8()).ok_or(Error::UnknownOpcode(op))?;
 
                 let executing = exec_stack.iter().all(|x| *x);
 
@@ -448,7 +449,9 @@ pub fn eval_script(
         return Err(Error::UnbalancedConditional);
     }
 
-    Ok(())
+    let success = !stack.is_empty() && stack.peek_bool()?;
+
+    Ok(success)
 }
 
 fn pop_exec_value(stack: &mut Stack, executing: bool) -> Result<bool> {
@@ -462,4 +465,84 @@ fn pop_exec_value(stack: &mut Stack, executing: bool) -> Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::signature_checker::SkipSignatureCheck;
+    use bitcoin::opcodes::all::*;
+    use bitcoin::script::Builder;
+
+    fn basic_test(
+        script: &Script,
+        expected: std::result::Result<bool, Error>,
+        expected_stack: Option<Stack>,
+    ) {
+        let flags = VerificationFlags::P2SH;
+        let version = SigVersion::Base;
+        let checker = SkipSignatureCheck::new();
+        let mut stack = Stack::default();
+        let eval_result = eval_script(
+            &mut stack,
+            script,
+            flags,
+            &checker,
+            version,
+            &mut ScriptExecutionData::default(),
+        );
+        assert_eq!(eval_result, expected);
+        if expected.is_ok() {
+            assert_eq!(stack, expected_stack.expect("eval result is Ok"));
+        }
+    }
+
+    #[test]
+    fn test_equal() {
+        let script = Builder::new()
+            .push_slice(&[0x4])
+            .push_slice(&[0x4])
+            .push_opcode(OP_EQUAL)
+            .into_script();
+        let result = Ok(true);
+        basic_test(&script, result, Some(Stack::from(vec![vec![1]])));
+    }
+
+    #[test]
+    fn test_equal_false() {
+        let script = Builder::default()
+            .push_slice(&[0x4])
+            .push_slice(&[0x3])
+            .push_opcode(OP_EQUAL)
+            .into_script();
+        let result = Ok(false);
+        basic_test(&script, result, Some(Stack::from(vec![vec![]])));
+    }
+
+    #[test]
+    fn test_equal_invalid_stack() {
+        let script = Builder::default()
+            .push_slice(&[0x4])
+            .push_opcode(OP_EQUAL)
+            .into_script();
+        let result = Err(StackError::InvalidOperation.into());
+        basic_test(&script, result, None);
+    }
+
+    #[test]
+    fn test_equal_verify() {
+        let script = Builder::default()
+            .push_slice(&[0x4])
+            .push_slice(&[0x4])
+            .push_opcode(OP_EQUALVERIFY)
+            .into_script();
+        let result = Ok(false);
+        basic_test(&script, result, Some(Stack::default()));
+    }
+
+    #[test]
+    fn test_equal_verify_failed() {
+        let script = Builder::default()
+            .push_slice(&[0x4])
+            .push_slice(&[0x3])
+            .push_opcode(OP_EQUALVERIFY)
+            .into_script();
+        let result = Err(Error::FailedVerify(OP_EQUALVERIFY));
+        basic_test(&script, result, None);
+    }
 }

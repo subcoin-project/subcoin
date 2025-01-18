@@ -1,8 +1,7 @@
-use bitcoin::Script;
-
-use super::SignatureChecker;
+use crate::signature_checker::SignatureChecker;
 use crate::stack::{Stack, StackError};
 use crate::{SigVersion, VerificationFlags};
+use bitcoin::Script;
 
 /// Maximum number of public keys per multisig
 pub const MAX_PUBKEYS_PER_MULTISIG: i64 = 20;

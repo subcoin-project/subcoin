@@ -4,9 +4,7 @@ pub mod opcode;
 pub mod signature_checker;
 pub mod stack;
 
-use self::num::ScriptNum;
 use bitcoin::key::PublicKey;
-use bitcoin::Script;
 use bitflags::bitflags;
 use primitive_types::H256;
 
