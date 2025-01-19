@@ -52,6 +52,14 @@ impl<T> GenericStack<T> {
         }
     }
 
+    /// Explicitly an empty stack, [].
+    pub fn empty() -> Self
+    where
+        T: Default,
+    {
+        Default::default()
+    }
+
     pub fn with_data(data: Vec<T>) -> Self {
         Self {
             data,
@@ -114,8 +122,9 @@ impl<T> GenericStack<T> {
 
     /// Push an element onto the stack.
     #[inline]
-    pub fn push(&mut self, value: T) {
-        self.data.push(value)
+    pub fn push(&mut self, value: T) -> &mut Self {
+        self.data.push(value);
+        self
     }
 
     #[inline]
@@ -255,17 +264,19 @@ impl<T> GenericStack<T> {
 
 impl Stack {
     #[inline]
-    pub fn push_num(&mut self, num: ScriptNum) {
-        self.push(num.to_bytes())
+    pub fn push_num(&mut self, num: impl Into<ScriptNum>) -> &mut Self {
+        self.push(num.into().to_bytes());
+        self
     }
 
     #[inline]
-    pub fn push_bool(&mut self, boolean: bool) {
+    pub fn push_bool(&mut self, boolean: bool) -> &mut Self {
         if boolean {
             self.push(vec![1]);
         } else {
             self.push(Vec::new());
         }
+        self
     }
 }
 
