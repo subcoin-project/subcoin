@@ -3,6 +3,8 @@ pub mod num;
 pub mod opcode;
 pub mod signature_checker;
 pub mod stack;
+#[cfg(test)]
+mod tests;
 
 use bitcoin::key::PublicKey;
 use bitflags::bitflags;
