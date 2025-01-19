@@ -118,6 +118,22 @@ impl VerificationFlags {
     pub fn verify_minimaldata(&self) -> bool {
         self.contains(Self::MINIMALDATA)
     }
+
+    pub fn verify_sigpushonly(&self) -> bool {
+        self.contains(Self::SIGPUSHONLY)
+    }
+
+    pub fn verify_p2sh(&self) -> bool {
+        self.contains(Self::P2SH)
+    }
+
+    pub fn verify_witness(&self) -> bool {
+        self.contains(Self::WITNESS)
+    }
+
+    pub fn verify_discourage_upgradable_witness_program(&self) -> bool {
+        self.contains(Self::DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM)
+    }
 }
 
 /// Represents different signature verification schemes used in Bitcoin

@@ -245,11 +245,11 @@ impl Opcode {
     }
 
     pub fn is_push_value(&self) -> bool {
-        *self >= Opcode::OP_1NEGATE && *self <= Opcode::OP_16
+        (Opcode::OP_1NEGATE..=Opcode::OP_16).contains(self)
     }
 
     pub fn is_within_op_n(&self) -> bool {
-        *self >= Opcode::OP_1 && *self <= Opcode::OP_16
+        (Opcode::OP_1..=Opcode::OP_16).contains(self)
     }
 
     pub fn decode_op_n(&self) -> u8 {
