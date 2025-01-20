@@ -52,14 +52,6 @@ impl<T> GenericStack<T> {
         }
     }
 
-    /// Explicitly an empty stack, [].
-    pub fn empty() -> Self
-    where
-        T: Default,
-    {
-        Default::default()
-    }
-
     pub fn with_data(data: Vec<T>) -> Self {
         Self {
             data,
@@ -72,6 +64,18 @@ impl<T> GenericStack<T> {
             data: Vec::new(),
             verify_minimaldata,
         }
+    }
+
+    /// Explicitly an empty stack, [].
+    pub fn empty() -> Self
+    where
+        T: Default,
+    {
+        Default::default()
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
     }
 
     // Ensure there are at least `n` elements on the stack.

@@ -1,12 +1,23 @@
-use super::{multisig, sig, Error, Result};
+mod multisig;
+mod sig;
+
+use super::{Error, Result};
 use crate::num::ScriptNum;
 use crate::signature_checker::SignatureChecker;
-use crate::stack::Stack;
+use crate::stack::{Stack, StackError};
 use crate::{ScriptExecutionData, SigVersion, VerificationFlags};
 use bitcoin::hashes::{hash160, ripemd160, sha1, sha256, sha256d, Hash};
 use bitcoin::script::Instruction;
 use bitcoin::Script;
 use std::ops::{Add, Neg, Sub};
+
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
+pub enum EvalScriptError {
+    #[error(transparent)]
+    Sig(#[from] sig::SigError),
+    #[error(transparent)]
+    Multisig(#[from] multisig::MultisigError),
+}
 
 pub fn eval_script(
     stack: &mut Stack,
@@ -135,7 +146,7 @@ pub fn eval_script(
                         // Pop the top stack element as N.
                         let n = stack.pop_num()?.value();
                         if n < 0 || n >= stack.len() as i64 {
-                            return Err(Error::InvalidStackOperation);
+                            return Err(StackError::InvalidOperation.into());
                         }
                         let v = if opcode == OP_PICK {
                             // Copy the Nth stack element to the top.
@@ -312,7 +323,8 @@ pub fn eval_script(
                             &flags,
                             checker,
                             sig_version,
-                        )?;
+                        )
+                        .map_err(EvalScriptError::Sig)?;
 
                         match opcode {
                             OP_CHECKSIG => {
@@ -337,7 +349,8 @@ pub fn eval_script(
                             } else {
                                 multisig::Operation::CheckMultisigVerify
                             },
-                        )?;
+                        )
+                        .map_err(EvalScriptError::Multisig)?;
                     }
                     OP_CHECKSIGADD => {
                         todo!("checksigadd for tapscript")
