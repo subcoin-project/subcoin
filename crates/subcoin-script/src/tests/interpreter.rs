@@ -1,4 +1,4 @@
-use crate::interpreter::{eval_script, Error};
+use crate::interpreter::{eval_script, ScriptError};
 use crate::num::ScriptNum;
 use crate::signature_checker::SkipSignatureCheck;
 use crate::stack::{Stack, StackError};
@@ -9,7 +9,7 @@ use bitcoin::script::{Builder, Script};
 
 struct EvalResult {
     /// Result of [`eval_script`].
-    result: Result<bool, Error>,
+    result: Result<bool, ScriptError>,
     /// Stack of after the evaluation if no error occurs.
     expected_stack: Option<Stack>,
 }
@@ -22,7 +22,7 @@ impl EvalResult {
         }
     }
 
-    fn err(err: impl Into<Error>) -> Self {
+    fn err(err: impl Into<ScriptError>) -> Self {
         Self {
             result: Err(err.into()),
             expected_stack: None,
@@ -43,7 +43,7 @@ fn basic_test(script: &Script, eval_result: EvalResult) {
     let eval_script_result = eval_script(
         &mut stack,
         script,
-        flags,
+        &flags,
         &checker,
         version,
         &mut ScriptExecutionData::default(),
@@ -105,7 +105,7 @@ fn test_equal_verify_failed() {
         .push_slice(&[0x3])
         .push_opcode(OP_EQUALVERIFY)
         .into_script();
-    let result = EvalResult::err(Error::FailedVerify(OP_EQUALVERIFY));
+    let result = EvalResult::err(ScriptError::FailedVerify(OP_EQUALVERIFY));
     basic_test(&script, result);
 }
 
@@ -586,7 +586,7 @@ fn test_numequalverify_failed() {
         .push_int(3)
         .push_opcode(OP_NUMEQUALVERIFY)
         .into_script();
-    let result = EvalResult::err(Error::FailedVerify(OP_NUMEQUALVERIFY));
+    let result = EvalResult::err(ScriptError::FailedVerify(OP_NUMEQUALVERIFY));
     basic_test(&script, result);
 }
 

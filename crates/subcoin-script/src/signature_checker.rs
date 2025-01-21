@@ -64,10 +64,10 @@ impl SignatureChecker for SkipSignatureCheck {
 
     fn check_ecdsa_signature(
         &self,
-        script_sig: &EcdsaSignature,
-        pubkey: &PublicKey,
-        script_code: &Script,
-        sig_version: SigVersion,
+        _script_sig: &EcdsaSignature,
+        _pubkey: &PublicKey,
+        _script_code: &Script,
+        _sig_version: SigVersion,
     ) -> Result<bool, Error> {
         Ok(true)
     }
@@ -83,19 +83,19 @@ impl SignatureChecker for SkipSignatureCheck {
 
     fn check_schnorr_signature(
         &self,
-        sig: &SchnorrSignature,
-        pubkey: &PublicKey,
-        sig_version: SigVersion,
-        exec_data: &ScriptExecutionData,
+        _sig: &SchnorrSignature,
+        _pubkey: &PublicKey,
+        _sig_version: SigVersion,
+        _exec_data: &ScriptExecutionData,
     ) -> Result<bool, Error> {
         Ok(true)
     }
 
-    fn check_lock_time(&self, lock_time: ScriptNum) -> bool {
+    fn check_lock_time(&self, _lock_time: ScriptNum) -> bool {
         true
     }
 
-    fn check_sequence(&self, sequence: ScriptNum) -> bool {
+    fn check_sequence(&self, _sequence: ScriptNum) -> bool {
         true
     }
 }

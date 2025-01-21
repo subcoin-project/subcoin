@@ -1,7 +1,7 @@
 mod multisig;
 mod sig;
 
-use super::{Error, Result};
+use super::ScriptError;
 use crate::num::ScriptNum;
 use crate::signature_checker::SignatureChecker;
 use crate::stack::{Stack, StackError};
@@ -22,11 +22,11 @@ pub enum EvalScriptError {
 pub fn eval_script(
     stack: &mut Stack,
     script: &Script,
-    flags: VerificationFlags,
+    flags: &VerificationFlags,
     checker: &dyn SignatureChecker,
     sig_version: SigVersion,
     exec_data: &mut ScriptExecutionData,
-) -> Result<bool> {
+) -> Result<bool, ScriptError> {
     use crate::opcode::Opcode::*;
 
     let mut alt_stack = Stack::default();
@@ -37,15 +37,15 @@ pub fn eval_script(
     let mut begincode = 0;
 
     for instruction in script.instruction_indices() {
-        let (pc, instruction) = instruction.map_err(Error::Script)?;
+        let (pc, instruction) = instruction.map_err(ScriptError::RustBitcoinScript)?;
 
         match instruction {
             Instruction::PushBytes(p) => {
                 stack.push(p.as_bytes().to_vec());
             }
             Instruction::Op(op) => {
-                let opcode =
-                    crate::opcode::Opcode::from_u8(op.to_u8()).ok_or(Error::UnknownOpcode(op))?;
+                let opcode = crate::opcode::Opcode::from_u8(op.to_u8())
+                    .ok_or(ScriptError::UnknownOpcode(op))?;
 
                 let executing = exec_stack.iter().all(|x| *x);
 
@@ -96,22 +96,22 @@ pub fn eval_script(
                         if let Some(last) = exec_stack.last_mut() {
                             *last = !*last;
                         } else {
-                            return Err(Error::UnbalancedConditional);
+                            return Err(ScriptError::UnbalancedConditional);
                         }
                     }
                     OP_ENDIF => {
                         if exec_stack.is_empty() {
-                            return Err(Error::UnbalancedConditional);
+                            return Err(ScriptError::UnbalancedConditional);
                         }
                         exec_stack.pop();
                     }
                     OP_VERIFY => {
                         let exec_value = stack.pop_bool()?;
                         if !exec_value {
-                            return Err(Error::FailedVerify(op));
+                            return Err(ScriptError::FailedVerify(op));
                         }
                     }
-                    OP_RETURN => return Err(Error::ReturnOpcode),
+                    OP_RETURN => return Err(ScriptError::ReturnOpcode),
 
                     // Stack
                     OP_TOALTSTACK => {
@@ -120,7 +120,7 @@ pub fn eval_script(
                     OP_FROMALTSTACK => {
                         let v = alt_stack
                             .pop()
-                            .map_err(|_| Error::InvalidAltStackOperation)?;
+                            .map_err(|_| ScriptError::InvalidAltStackOperation)?;
                         stack.push(v);
                     }
                     OP_2DROP => stack.drop(2)?,
@@ -163,14 +163,16 @@ pub fn eval_script(
 
                     // Splice
                     OP_CAT | OP_SUBSTR | OP_LEFT | OP_RIGHT => {
-                        return Err(Error::DisabledOpcode(op))
+                        return Err(ScriptError::DisabledOpcode(op))
                     }
                     OP_SIZE => {
                         stack.push_num(stack.last()?.len() as i64);
                     }
 
                     // Bitwise logic
-                    OP_INVERT | OP_AND | OP_OR | OP_XOR => return Err(Error::DisabledOpcode(op)),
+                    OP_INVERT | OP_AND | OP_OR | OP_XOR => {
+                        return Err(ScriptError::DisabledOpcode(op))
+                    }
                     OP_EQUAL => {
                         let equal = stack.pop()? == stack.pop()?;
                         stack.push_bool(equal);
@@ -178,13 +180,13 @@ pub fn eval_script(
                     OP_EQUALVERIFY => {
                         let equal = stack.pop()? == stack.pop()?;
                         if !equal {
-                            return Err(Error::FailedVerify(op));
+                            return Err(ScriptError::FailedVerify(op));
                         }
                     }
 
                     // Arithmetic
                     OP_2MUL | OP_2DIV | OP_MUL | OP_DIV | OP_MOD | OP_LSHIFT | OP_RSHIFT => {
-                        return Err(Error::DisabledOpcode(op));
+                        return Err(ScriptError::DisabledOpcode(op));
                     }
                     OP_1ADD => {
                         let n = stack.pop_num()?.add(1.into())?;
@@ -239,7 +241,7 @@ pub fn eval_script(
                         let v1 = stack.pop_num()?;
                         let v2 = stack.pop_num()?;
                         if v1 != v2 {
-                            return Err(Error::FailedVerify(op));
+                            return Err(ScriptError::FailedVerify(op));
                         }
                     }
                     OP_NUMNOTEQUAL => {
@@ -331,7 +333,7 @@ pub fn eval_script(
                                 stack.push_bool(success);
                             }
                             OP_CHECKSIGVERIFY if !success => {
-                                return Err(Error::FailedVerify(op));
+                                return Err(ScriptError::FailedVerify(op));
                             }
                             _ => {}
                         }
@@ -378,11 +380,11 @@ pub fn eval_script(
                         // some arithmetic being done first, you can always use
                         // 0 MAX CHECKLOCKTIMEVERIFY.
                         if lock_time.is_negative() {
-                            return Err(Error::NegativeLocktime);
+                            return Err(ScriptError::NegativeLocktime);
                         }
 
                         if !checker.check_lock_time(lock_time) {
-                            return Err(Error::UnsatisfiedLocktime);
+                            return Err(ScriptError::UnsatisfiedLocktime);
                         }
                     }
                     OP_CHECKSEQUENCEVERIFY => {
@@ -394,28 +396,28 @@ pub fn eval_script(
                         let sequence = stack.pop_num_with_max_size(5)?;
 
                         if sequence.is_negative() {
-                            return Err(Error::NegativeLocktime);
+                            return Err(ScriptError::NegativeLocktime);
                         }
 
                         if (sequence.value() & SEQUENCE_LOCKTIME_DISABLE_FLAG as i64) == 0
                             && !checker.check_sequence(sequence)
                         {
-                            return Err(Error::UnsatisfiedLocktime);
+                            return Err(ScriptError::UnsatisfiedLocktime);
                         }
                     }
 
                     // Reserved words
                     OP_RESERVED | OP_VER | OP_RESERVED1 | OP_RESERVED2 => {
                         if executing {
-                            return Err(Error::DisabledOpcode(op));
+                            return Err(ScriptError::DisabledOpcode(op));
                         }
                     }
                     OP_VERIF | OP_VERNOTIF => {
-                        return Err(Error::DisabledOpcode(op));
+                        return Err(ScriptError::DisabledOpcode(op));
                     }
                     OP_NOP1 | OP_NOP4 | OP_NOP5 | OP_NOP6 | OP_NOP7 | OP_NOP8 | OP_NOP9
                     | OP_NOP10 => {
-                        return Err(Error::DiscourageUpgradableNops);
+                        return Err(ScriptError::DiscourageUpgradableNops);
                     }
                 }
             }
@@ -423,7 +425,7 @@ pub fn eval_script(
     }
 
     if !exec_stack.is_empty() {
-        return Err(Error::UnbalancedConditional);
+        return Err(ScriptError::UnbalancedConditional);
     }
 
     let success = !stack.is_empty() && stack.peek_bool()?;
@@ -431,9 +433,11 @@ pub fn eval_script(
     Ok(success)
 }
 
-fn pop_exec_value(stack: &mut Stack, executing: bool) -> Result<bool> {
+fn pop_exec_value(stack: &mut Stack, executing: bool) -> Result<bool, ScriptError> {
     if executing {
-        stack.pop_bool().map_err(|_| Error::UnbalancedConditional)
+        stack
+            .pop_bool()
+            .map_err(|_| ScriptError::UnbalancedConditional)
     } else {
         Ok(false)
     }

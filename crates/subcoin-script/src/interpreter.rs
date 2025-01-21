@@ -1,23 +1,14 @@
 mod eval;
-// mod verify;
+mod verify;
 
 use crate::num::NumError;
 use crate::stack::StackError;
 
 pub use self::eval::eval_script;
-// pub use self::verify::verify_script;
+pub use self::verify::verify_script;
 
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
-pub enum Error {
-    #[error("{0} is unknown")]
-    UnknownOpcode(bitcoin::opcodes::Opcode),
-    #[error("return opcode")]
-    ReturnOpcode,
-    #[error("signature push only")]
-    SignaturePushOnly,
-    #[error("witness malleated p2sh")]
-    WitnessMalleatedP2SH,
-
+pub enum ScriptError {
     ///////////////////////////
     // Script error.
     ///////////////////////////
@@ -67,8 +58,18 @@ pub enum Error {
     WitnessMalleated,
     #[error("witness unexpected")]
     WitnessUnexpected,
+    #[error("witness malleated p2sh")]
+    WitnessMalleatedP2SH,
     #[error("clean stack")]
     CleanStack,
+    #[error("signature push only")]
+    SigPushOnly,
+    #[error("witness program witness empty")]
+    WitnessProgramWitnessEmpty,
+    #[error("witness program mismatch")]
+    WitnessProgramMismatch,
+    #[error("witness program wrong length")]
+    WitnessProgramWrongLength,
 
     // Softfork safeness.
     #[error("disable upgrable nops")]
@@ -107,15 +108,27 @@ pub enum Error {
     #[error("error count")]
     ErrorCount,
 
+    // Extended errors.
+    #[error("return opcode")]
+    ReturnOpcode,
     #[error("invalid alt stack operation")]
     InvalidAltStackOperation,
-
+    #[error("{0} is unknown")]
+    UnknownOpcode(bitcoin::opcodes::Opcode),
     #[error("rust-bitcoin script error: {0:?}")]
-    Script(bitcoin::script::Error),
+    RustBitcoinScript(bitcoin::script::Error),
     #[error(transparent)]
     Num(#[from] NumError),
     #[error(transparent)]
     EvalScript(#[from] eval::EvalScriptError),
+}
+
+#[derive(Debug, Eq, PartialEq, thiserror::Error)]
+pub enum Error {
+    #[error("witness malleated p2sh")]
+    WitnessMalleatedP2SH,
+    #[error("invalid script: {0:?}")]
+    Script(#[from] ScriptError),
 }
 
 type Result<T> = std::result::Result<T, Error>;
