@@ -11,9 +11,12 @@ const WITNESS_V0_SCRIPTHASH_SIZE: usize = 32;
 const WITNESS_V0_KEYHASH_SIZE: usize = 20;
 const WITNESS_V0_TAPROOT_SIZE: usize = 32;
 
-// Helper types and constants
+/// MaxStackSize is the maximum combined height of stack and alt stack during execution.
 const MAX_STACK_SIZE: usize = 1000;
+
+/// Max bytes pushable to the stack in individual scripts.
 const MAX_SCRIPT_ELEMENT_SIZE: usize = 520;
+
 const SCRIPT_VERIFY_DISCOURAGE_OP_SUCCESS: u32 = 1 << 0;
 
 fn parse_witness_program(script: &Script) -> Option<WitnessProgram> {
@@ -32,7 +35,7 @@ pub fn verify_script(
     checker: &impl SignatureChecker,
     sig_version: SigVersion,
 ) -> Result<(), ScriptError> {
-    if flags.contains(VerificationFlags::SIGPUSHONLY) && !script_sig.is_push_only() {
+    if flags.intersects(VerificationFlags::SIGPUSHONLY) && !script_sig.is_push_only() {
         return Err(ScriptError::SigPushOnly);
     }
 
@@ -49,7 +52,7 @@ pub fn verify_script(
         &mut ScriptExecutionData::default(),
     )?;
 
-    let mut stack_copy = if flags.contains(VerificationFlags::P2SH) {
+    let mut stack_copy = if flags.intersects(VerificationFlags::P2SH) {
         Some(stack.clone())
     } else {
         None
@@ -126,7 +129,7 @@ pub fn verify_script(
         }
 
         // P2SH witness program
-        if flags.contains(VerificationFlags::WITNESS) {
+        if flags.intersects(VerificationFlags::WITNESS) {
             if let Some(witness_program) = parse_witness_program(pubkey2) {
                 let mut push_bytes = PushBytesBuf::new();
                 push_bytes
@@ -154,7 +157,7 @@ pub fn verify_script(
     // The CLEANSTACK check is only performed after potential P2SH evaluation,
     // as the non-P2SH evaluation of a P2SH script will obviously not result in
     // a clean stack (the P2SH inputs remain). The same holds for witness evaluation.
-    if flags.contains(VerificationFlags::CLEANSTACK) {
+    if flags.intersects(VerificationFlags::CLEANSTACK) {
         // Disallow CLEANSTACK without P2SH, as otherwise a switch CLEANSTACK->P2SH+CLEANSTACK
         // would be possible, which is not a softfork (and P2SH should be one).
         assert!(
@@ -166,7 +169,7 @@ pub fn verify_script(
         }
     }
 
-    if flags.contains(VerificationFlags::WITNESS) {
+    if flags.intersects(VerificationFlags::WITNESS) {
         // We can't check for correct unexpected witness data if P2SH was off, so require
         // that WITNESS implies P2SH. Otherwise, going from WITNESS->P2SH+WITNESS would be
         // possible, which is not a softfork.
@@ -247,7 +250,7 @@ fn verify_witness_program(
         && !is_p2sh
     {
         // BIP 341 Taproot: 32-byte non-P2SH witness v1 program (which encodes a P2C-tweaked pubkey)
-        if !flags.contains(VerificationFlags::TAPROOT) {
+        if !flags.intersects(VerificationFlags::TAPROOT) {
             return Ok(());
         }
 
@@ -257,7 +260,7 @@ fn verify_witness_program(
 
         // Handle annex.
         todo!("Taproot")
-    } else if flags.contains(VerificationFlags::DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM) {
+    } else if flags.intersects(VerificationFlags::DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM) {
         return Err(ScriptError::DiscourageUpgradableWitnessProgram);
     }
 
@@ -283,7 +286,7 @@ fn execute_witness_script(
                 Instruction::Op(opcode) => {
                     // New opcodes will be listed here. May use a different sigversion to modify existing opcodes.
                     if is_op_success(opcode.to_u8()) {
-                        if flags.contains(VerificationFlags::DISCOURAGE_OP_SUCCESS) {
+                        if flags.intersects(VerificationFlags::DISCOURAGE_OP_SUCCESS) {
                             return Err(ScriptError::DiscourageOpSuccess);
                         }
                         return Ok(());

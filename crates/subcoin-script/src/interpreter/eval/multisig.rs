@@ -102,7 +102,7 @@ fn eval_checkmultisig(
         success = sigs.len() - s <= keys.len() - k;
     }
 
-    if !stack.pop()?.is_empty() && flags.contains(VerificationFlags::NULLDUMMY) {
+    if !stack.pop()?.is_empty() && flags.intersects(VerificationFlags::NULLDUMMY) {
         return Err(MultisigError::SignatureNullDummy);
     }
 

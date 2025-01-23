@@ -50,7 +50,8 @@ fn basic_test(script: &Script, eval_result: EvalResult) {
     );
     assert_eq!(eval_script_result, expected);
     if expected.is_ok() {
-        let expected_stack = expected_stack.expect("Stack must be checked if eval result is ok");
+        let expected_stack =
+            expected_stack.expect("Expected stack must be Some if eval result is ok");
         assert_eq!(stack, expected_stack);
     }
 }

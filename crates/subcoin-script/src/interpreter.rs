@@ -12,7 +12,9 @@ pub enum ScriptError {
     ///////////////////////////
     // Script error.
     ///////////////////////////
-    #[error("eval script false")]
+    /// ErrEvalFalse is returned when the script evaluated without error but
+    /// terminated with a false top stack element.
+    #[error("script terminated with a false stack element")]
     EvalFalse,
     #[error("op return")]
     OpReturn,
@@ -24,7 +26,9 @@ pub enum ScriptError {
     PushSize,
     #[error("op count")]
     OpCount,
-    #[error("stack size")]
+    // ErrStackSize is returned when stack and altstack combined depth
+    // is over the limit.
+    #[error("stack overflow")]
     StackSize,
     #[error("sig count")]
     SigCount,
@@ -38,16 +42,27 @@ pub enum ScriptError {
     // Logical/Format/Canonical errors.
     #[error("bad opcode")]
     BadOpcode,
+    // ErrDisabledOpcode is returned when a disabled opcode is encountered
+    // in a script.
     #[error("{0} is disabled")]
     DisabledOpcode(bitcoin::opcodes::Opcode),
     #[error(transparent)]
     Stack(#[from] StackError),
+    // ErrUnbalancedConditional is returned when an OP_ELSE or OP_ENDIF is
+    // encountered in a script without first having an OP_IF or OP_NOTIF or
+    // the end of script is reached without encountering an OP_ENDIF when
+    // an OP_IF or OP_NOTIF was previously encountered.
     #[error("unbalanced conditional")]
     UnbalancedConditional,
 
     // CHECKLOCKTIMEVERIFY and CHECKSEQUENCEVERIFY
+    // ErrNegativeLockTime is returned when a script contains an opcode that
+    // interprets a negative lock time.
     #[error("negative locktime")]
     NegativeLocktime,
+    // ErrUnsatisfiedLockTime is returned when a script contains an opcode
+    // that involves a lock time and the required lock time has not been
+    // reached.
     #[error("unsatisfied locktime")]
     UnsatisfiedLocktime,
 
@@ -60,6 +75,9 @@ pub enum ScriptError {
     WitnessUnexpected,
     #[error("witness malleated p2sh")]
     WitnessMalleatedP2SH,
+    // ErrCleanStack is returned when the ScriptVerifyCleanStack flag
+    // is set, and after evaluation, the stack does not contain only a
+    // single element.
     #[error("clean stack")]
     CleanStack,
     #[error("signature push only")]
@@ -78,8 +96,14 @@ pub enum ScriptError {
     DiscourageUpgradableWitnessProgram,
     #[error("discourage upgradable taproot program")]
     DiscourageUpgradableTaprootProgram,
-    #[error("discourage op success")]
+    // ErrDiscourageOpSuccess is returned if
+    // ScriptVerifyDiscourageOpSuccess is active, and a OP_SUCCESS op code
+    // is encountered during tapscript validation.
+    #[error("OP_SUCCESS encountered when ScriptVerifyDiscourageOpSuccess is active.")]
     DiscourageOpSuccess,
+    // ErrDiscourageUpgradeableTaprootVersion is returned if
+    // ScriptVerifyDiscourageUpgradeableTaprootVersion is active and a leaf
+    // version encountered isn't the base leaf version.
     #[error("discourage upgrable pubkey type")]
     DiscourageUpgradablePubkeyType,
 
@@ -96,11 +120,16 @@ pub enum ScriptError {
     TaprootValidationWeight,
     #[error("taproot checkmultisig")]
     TaprootCheckmultisig,
+    // ErrMinimalIf is returned if ScriptVerifyWitness is set and the
+    // operand of an OP_IF/OP_NOF_IF are not either an empty vector or
+    // [0x01].
     #[error("taproot minimalif")]
     TaprootMinimalif,
 
     // Constant scriptCode
-    #[error("op codeseparator")]
+    // ErrCodeSeparator is returned when OP_CODESEPARATOR is used in a
+    // non-segwit script.
+    #[error("OP_CODESEPARATOR is used in a non-segwit script.")]
     OpCodeSeparator,
     #[error("sig findanddelete")]
     SigFindAndDelete,

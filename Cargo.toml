@@ -57,6 +57,8 @@ indicatif = "0.17.9"
 ip_network = "0.4.1"
 jsonrpsee = { version = "0.24.3", features = ["server"] }
 log = { version = "0.4", default-features = false }
+num-bigint = "0.4.6"
+num-traits = "0.2.19"
 parking_lot = "0.12"
 primitive-types = "0.13"
 scale-info = { version = "2.11.6", default-features = false }
