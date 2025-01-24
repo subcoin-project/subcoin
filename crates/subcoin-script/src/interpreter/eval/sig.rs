@@ -143,7 +143,7 @@ fn eval_checksig_pre_tapscript(
     Ok(true)
 }
 
-fn find_and_delete(script: &mut Vec<u8>, sig: &[u8]) -> usize {
+pub(super) fn find_and_delete(script: &mut Vec<u8>, sig: &[u8]) -> usize {
     if sig.is_empty() || sig.len() > script.len() {
         return 0;
     }
@@ -172,7 +172,10 @@ fn find_and_delete(script: &mut Vec<u8>, sig: &[u8]) -> usize {
     found
 }
 
-fn check_signature_encoding(sig: &[u8], flags: &VerificationFlags) -> Result<(), SigError> {
+pub(super) fn check_signature_encoding(
+    sig: &[u8],
+    flags: &VerificationFlags,
+) -> Result<(), SigError> {
     // Empty signature. Not strictly DER encoded, but allowed to provide a
     // compact way to provide an invalid signature for use with CHECK(MULTI)SIG
     if sig.is_empty() {
@@ -325,7 +328,7 @@ fn is_defined_hashtype_signature(sig: &[u8]) -> bool {
 
 // Checks whether or not the passed public key adheres to
 // the strict encoding requirements if enabled.
-fn check_pubkey_encoding(
+pub(super) fn check_pubkey_encoding(
     pubkey: &[u8],
     flags: &VerificationFlags,
     sig_version: SigVersion,

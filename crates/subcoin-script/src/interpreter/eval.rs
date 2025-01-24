@@ -2,6 +2,7 @@ mod multisig;
 mod sig;
 
 use super::ScriptError;
+use crate::interpreter::eval::multisig::MAX_OPS_PER_SCRIPT;
 use crate::num::ScriptNum;
 use crate::signature_checker::SignatureChecker;
 use crate::stack::{Stack, StackError};
@@ -16,7 +17,7 @@ pub enum EvalScriptError {
     #[error(transparent)]
     Sig(#[from] sig::SigError),
     #[error(transparent)]
-    Multisig(#[from] multisig::MultisigError),
+    MultiSig(#[from] multisig::MultiSigError),
 }
 
 pub fn eval_script(
@@ -35,6 +36,7 @@ pub fn eval_script(
     let mut exec_stack: Vec<bool> = Vec::new();
 
     let mut begincode = 0;
+    let mut op_count = 0;
 
     for instruction in script.instruction_indices() {
         let (pc, instruction) = instruction.map_err(ScriptError::RustBitcoinScript)?;
@@ -44,6 +46,16 @@ pub fn eval_script(
                 stack.push(p.as_bytes().to_vec());
             }
             Instruction::Op(op) => {
+                if matches!(sig_version, SigVersion::Base | SigVersion::WitnessV0) {
+                    if op.to_u8() > bitcoin::opcodes::all::OP_PUSHNUM_16.to_u8() {
+                        op_count += 1;
+
+                        if op_count > MAX_OPS_PER_SCRIPT {
+                            return Err(ScriptError::ExceedsMaxOps);
+                        }
+                    }
+                }
+
                 let opcode = crate::opcode::Opcode::from_u8(op.to_u8())
                     .ok_or(ScriptError::UnknownOpcode(op))?;
 
@@ -92,7 +104,7 @@ pub fn eval_script(
                         });
                     }
                     OP_ELSE => {
-                        // toggle top.
+                        // Toggle top.
                         if let Some(last) = exec_stack.last_mut() {
                             *last = !*last;
                         } else {
@@ -339,6 +351,12 @@ pub fn eval_script(
                         }
                     }
                     OP_CHECKMULTISIG | OP_CHECKMULTISIGVERIFY => {
+                        let multisig_op = if opcode == OP_CHECKMULTISIG {
+                            multisig::MultiSigOp::CheckMultiSig
+                        } else {
+                            multisig::MultiSigOp::CheckMultiSigVerify
+                        };
+
                         multisig::execute_checkmultisig(
                             stack,
                             &flags,
@@ -346,13 +364,10 @@ pub fn eval_script(
                             script,
                             sig_version,
                             checker,
-                            if opcode == OP_CHECKMULTISIG {
-                                multisig::Operation::CheckMultisig
-                            } else {
-                                multisig::Operation::CheckMultisigVerify
-                            },
+                            multisig_op,
+                            &mut op_count,
                         )
-                        .map_err(EvalScriptError::Multisig)?;
+                        .map_err(EvalScriptError::MultiSig)?;
                     }
                     OP_CHECKSIGADD => {
                         todo!("checksigadd for tapscript")

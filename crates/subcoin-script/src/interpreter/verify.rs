@@ -298,7 +298,7 @@ fn execute_witness_script(
 
         // Tapscript enforces initial stack size limits (altstack is empty here)
         if stack.len() > MAX_STACK_SIZE {
-            return Err(ScriptError::StackSize);
+            return Err(ScriptError::ExceedsStackLimit);
         }
     }
 

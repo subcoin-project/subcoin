@@ -24,12 +24,11 @@ pub enum ScriptError {
     ScriptSize,
     #[error("push size")]
     PushSize,
-    #[error("op count")]
-    OpCount,
-    // ErrStackSize is returned when stack and altstack combined depth
-    // is over the limit.
+    #[error("too many ops in script")]
+    ExceedsMaxOps,
+    // Stack and altstack combined depth is over the limit.
     #[error("stack overflow")]
-    StackSize,
+    ExceedsStackLimit,
     #[error("sig count")]
     SigCount,
     #[error("pubkey count")]
