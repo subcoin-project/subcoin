@@ -1,8 +1,8 @@
 mod multisig;
 mod sig;
 
+use super::constants::MAX_OPS_PER_SCRIPT;
 use super::ScriptError;
-use crate::interpreter::eval::multisig::MAX_OPS_PER_SCRIPT;
 use crate::num::ScriptNum;
 use crate::signature_checker::SignatureChecker;
 use crate::stack::{Stack, StackError};

@@ -1,24 +1,10 @@
+use crate::interpreter::constants::{
+    COMPRESSED_PUBKEY_SIZE, HALF_ORDER, SIGHASH_ALL, SIGHASH_ANYONECANPAY, SIGHASH_SINGLE,
+};
 use crate::signature_checker::SignatureChecker;
 use crate::{EcdsaSignature, SchnorrSignature, ScriptExecutionData, SigVersion, VerificationFlags};
 use bitcoin::{PublicKey, Script};
 use num_bigint::Sign;
-use num_traits::Num;
-use std::sync::LazyLock;
-
-static HALF_ORDER: LazyLock<num_bigint::BigInt> = LazyLock::new(|| {
-    const N: &str = "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141";
-
-    num_bigint::BigInt::from_str_radix(N, 16).expect("Static value must be valid")
-});
-
-// Constants for hash type
-const SIGHASH_ALL: u8 = 0x01;
-const SIGHASH_NONE: u8 = 0x02;
-const SIGHASH_SINGLE: u8 = 0x03;
-const SIGHASH_ANYONECANPAY: u8 = 0x80;
-
-// Constant for compressed public key size
-const COMPRESSED_PUBKEY_SIZE: usize = 33;
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum SigEncodingError {

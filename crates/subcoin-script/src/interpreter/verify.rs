@@ -1,4 +1,6 @@
+use super::constants::{MAX_STACK_SIZE, WITNESS_V0_SCRIPTHASH_SIZE};
 use super::{eval_script, Error, ScriptError};
+use crate::interpreter::constants::MAX_SCRIPT_ELEMENT_SIZE;
 use crate::signature_checker::SignatureChecker;
 use crate::stack::Stack;
 use crate::{ScriptExecutionData, SigVersion, VerificationFlags};
@@ -6,18 +8,6 @@ use bitcoin::hashes::{sha256, sha256d, Hash};
 use bitcoin::opcodes::all::{OP_CHECKSIG, OP_DUP, OP_EQUALVERIFY, OP_HASH160};
 use bitcoin::script::{Builder, Instruction, PushBytes, PushBytesBuf};
 use bitcoin::{Opcode, Script, Witness, WitnessProgram, WitnessVersion};
-
-const WITNESS_V0_SCRIPTHASH_SIZE: usize = 32;
-const WITNESS_V0_KEYHASH_SIZE: usize = 20;
-const WITNESS_V0_TAPROOT_SIZE: usize = 32;
-
-/// MaxStackSize is the maximum combined height of stack and alt stack during execution.
-const MAX_STACK_SIZE: usize = 1000;
-
-/// Max bytes pushable to the stack in individual scripts.
-const MAX_SCRIPT_ELEMENT_SIZE: usize = 520;
-
-const SCRIPT_VERIFY_DISCOURAGE_OP_SUCCESS: u32 = 1 << 0;
 
 fn parse_witness_program(script: &Script) -> Option<WitnessProgram> {
     script.witness_version().and_then(|witness_version| {
