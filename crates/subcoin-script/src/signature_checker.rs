@@ -3,7 +3,7 @@ use crate::{EcdsaSignature, PublicKey, SchnorrSignature, ScriptExecutionData, Si
 use bitcoin::secp256k1::{Error, Message, Secp256k1, VerifyOnly};
 use bitcoin::{Script, XOnlyPublicKey};
 
-/// Checks transaction signature
+/// Checks transaction signature.
 pub trait SignatureChecker {
     fn verify_ecdsa_signature(
         &self,
@@ -40,11 +40,12 @@ pub trait SignatureChecker {
     fn check_sequence(&self, sequence: ScriptNum) -> bool;
 }
 
-pub struct SkipSignatureCheck {
+/// A SignatureChecker implementation that skips all signature checks.
+pub struct NoSignatureCheck {
     secp: Secp256k1<VerifyOnly>,
 }
 
-impl SkipSignatureCheck {
+impl NoSignatureCheck {
     pub fn new() -> Self {
         Self {
             secp: Secp256k1::verification_only(),
@@ -52,7 +53,7 @@ impl SkipSignatureCheck {
     }
 }
 
-impl SignatureChecker for SkipSignatureCheck {
+impl SignatureChecker for NoSignatureCheck {
     fn verify_ecdsa_signature(
         &self,
         sig: &EcdsaSignature,

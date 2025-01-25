@@ -1,6 +1,6 @@
 use crate::interpreter::{eval_script, ScriptError};
 use crate::num::ScriptNum;
-use crate::signature_checker::SkipSignatureCheck;
+use crate::signature_checker::NoSignatureCheck;
 use crate::stack::{Stack, StackError};
 use crate::{ScriptExecutionData, SigVersion, VerificationFlags};
 use bitcoin::hex::FromHex;
@@ -38,7 +38,7 @@ fn basic_test(script: &Script, eval_result: EvalResult) {
 
     let flags = VerificationFlags::P2SH;
     let version = SigVersion::Base;
-    let checker = SkipSignatureCheck::new();
+    let checker = NoSignatureCheck::new();
     let mut stack = Stack::default();
     let eval_script_result = eval_script(
         &mut stack,

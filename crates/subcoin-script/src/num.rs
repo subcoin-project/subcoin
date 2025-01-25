@@ -2,6 +2,7 @@
 
 use std::ops::{Add, Neg, Sub};
 
+/// Script number error type.
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
 pub enum NumError {
     #[error("Script number overflow")]
@@ -10,7 +11,7 @@ pub enum NumError {
     NotMinimallyEncoded,
 }
 
-/// A numeric type used in Bitcoin Script operations
+/// A numeric type used in Bitcoin Script operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ScriptNum {
     value: i64,
@@ -25,10 +26,10 @@ impl<T: Into<i64>> From<T> for ScriptNum {
 }
 
 impl ScriptNum {
-    /// Maximum script number length in bytes
+    /// Maximum script number length in bytes.
     pub const MAX_NUM_SIZE: usize = 4;
 
-    /// Construct a ScriptNum from a vector of bytes with size validation
+    /// Construct a [`ScriptNum`] with size validation.
     pub fn from_bytes(
         data: &[u8],
         require_minimal: bool,
@@ -51,12 +52,12 @@ impl ScriptNum {
 
         let mut result = 0i64;
 
-        // Parse bytes in little-endian order
+        // Parse bytes in little-endian order.
         for (i, &byte) in data.iter().enumerate() {
             result |= i64::from(byte).wrapping_shl(8 * i as u32);
         }
 
-        // Check sign bit and extend if necessary
+        // Check sign bit and extend if necessary.
         if data
             .last()
             .expect("Data must not be empty as checked above; qed")
@@ -70,7 +71,7 @@ impl ScriptNum {
         }
     }
 
-    /// Convert the number to a minimally encoded byte vector
+    /// Convert the number to a minimally encoded byte vector.
     pub fn to_bytes(&self) -> Vec<u8> {
         if self.value == 0 {
             return vec![];
@@ -78,19 +79,19 @@ impl ScriptNum {
 
         let mut result = Vec::new();
 
-        let mut absvalue = self.value.abs();
+        let mut abs_value = self.value.abs();
 
-        while absvalue != 0 {
-            result.push((absvalue & 0xff) as u8);
-            absvalue >>= 8;
+        while abs_value != 0 {
+            result.push((abs_value & 0xff) as u8);
+            abs_value >>= 8;
         }
 
-        let neg = self.value < 0;
+        let negative = self.value < 0;
 
         // Handle sign bit
         if result.last().unwrap() & 0x80 != 0 {
-            result.push(if neg { 0x80 } else { 0 });
-        } else if neg {
+            result.push(if negative { 0x80 } else { 0 });
+        } else if negative {
             let len = result.len();
             result[len - 1] |= 0x80;
         }
@@ -98,13 +99,13 @@ impl ScriptNum {
         result
     }
 
-    /// Check if byte array is minimally encoded
+    /// Check if the byte array is minimally encoded.
     fn is_minimally_encoded(data: &[u8]) -> bool {
         if data.is_empty() {
             return true;
         }
 
-        // Check leading zeros
+        // Check leading zeros.
         if data[data.len() - 1] & 0x7f == 0 {
             if data.len() <= 1 || (data[data.len() - 2] & 0x80) == 0 {
                 return false;
@@ -114,7 +115,7 @@ impl ScriptNum {
         true
     }
 
-    /// Get the underlying value
+    /// Get the underlying value.
     pub fn value(&self) -> i64 {
         self.value
     }
@@ -138,7 +139,7 @@ impl Add for ScriptNum {
     fn add(self, other: Self) -> Result<Self, NumError> {
         self.value
             .checked_add(other.value)
-            .map(|v| Self { value: v })
+            .map(|value| Self { value })
             .ok_or(NumError::Overflow)
     }
 }
@@ -149,7 +150,7 @@ impl Sub for ScriptNum {
     fn sub(self, other: Self) -> Result<Self, NumError> {
         self.value
             .checked_sub(other.value)
-            .map(|v| Self { value: v })
+            .map(|value| Self { value })
             .ok_or(NumError::Overflow)
     }
 }
@@ -160,7 +161,7 @@ impl Neg for ScriptNum {
     fn neg(self) -> Result<Self, NumError> {
         self.value
             .checked_neg()
-            .map(|v| Self { value: v })
+            .map(|value| Self { value })
             .ok_or(NumError::Overflow)
     }
 }
@@ -181,7 +182,7 @@ mod tests {
 
     // Helper function to convert hex string to bytes
     fn hex_to_bytes(s: &str) -> Vec<u8> {
-        hex::decode(s).expect("invalid hex in source file")
+        hex::decode(s).expect("Invalid hex")
     }
 
     // Test for converting script numbers to byte representations
@@ -233,8 +234,7 @@ mod tests {
             let got_bytes = ScriptNum::from(num).to_bytes();
             assert_eq!(
                 got_bytes, expected,
-                "Bytes: did not get expected bytes for {} - got {:?}, want {:?}",
-                num, got_bytes, expected
+                "Did not get expected bytes for {num}, got {got_bytes:?}, want {expected:?}",
             );
         }
     }
@@ -353,7 +353,8 @@ mod tests {
                 ScriptNum::from_bytes(&serialized, minimal_encoding, max_size).map(|num| num.value);
             assert_eq!(
                 result, expected_result,
-                "failed to convert {serialized_in_hex} to ScriptNum, got: {result:?}, expected {expected_result:?}"
+                "Failed to convert bytes {serialized_in_hex} to ScriptNum, \
+                got: {result:?}, expected {expected_result:?}"
             );
         }
     }

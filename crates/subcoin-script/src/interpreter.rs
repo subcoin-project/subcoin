@@ -159,5 +159,3 @@ pub enum Error {
     #[error("invalid script: {0:?}")]
     Script(#[from] ScriptError),
 }
-
-type Result<T> = std::result::Result<T, Error>;

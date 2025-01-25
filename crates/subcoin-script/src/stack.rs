@@ -13,6 +13,7 @@ pub type Stack = GenericStack<Vec<u8>>;
 
 type Result<T> = std::result::Result<T, StackError>;
 
+/// A stack used for managing script execution data with various operations.
 #[derive(Debug, Default, PartialEq, Clone)]
 pub struct GenericStack<T = Vec<u8>> {
     data: Vec<T>,
@@ -87,21 +88,25 @@ impl<T> GenericStack<T> {
         Ok(())
     }
 
+    /// Returns the last element of the stack.
     #[inline]
     pub fn last(&self) -> Result<&T> {
         self.data.last().ok_or(StackError::InvalidOperation)
     }
 
+    /// Returns the last element of the stack as mutable.
     #[inline]
     pub fn last_mut(&mut self) -> Result<&mut T> {
         self.data.last_mut().ok_or(StackError::InvalidOperation)
     }
 
+    /// Removes and returns the last element of the stack.
     #[inline]
     pub fn pop(&mut self) -> Result<T> {
         self.data.pop().ok_or(StackError::InvalidOperation)
     }
 
+    /// Pops a number from the stack and converts it into a ScriptNum.
     #[inline]
     pub fn pop_num(&mut self) -> Result<ScriptNum>
     where
@@ -131,6 +136,9 @@ impl<T> GenericStack<T> {
         self
     }
 
+    /// Returns the element at the specified position from the top of the stack.
+    ///
+    /// `self.top(0)` is equalant to `self.last()`.
     #[inline]
     pub fn top(&self, i: usize) -> Result<&T> {
         let pos = i + 1;
@@ -138,6 +146,7 @@ impl<T> GenericStack<T> {
         Ok(&self.data[self.data.len() - pos])
     }
 
+    /// Peeks the top element and converts it to a boolean.
     #[inline]
     pub fn peek_bool(&self) -> Result<bool>
     where
@@ -146,6 +155,7 @@ impl<T> GenericStack<T> {
         Ok(cast_to_bool(self.last()?.as_ref()))
     }
 
+    /// Pops the top element and converts it to a boolean.
     #[inline]
     pub fn pop_bool(&mut self) -> Result<bool>
     where
@@ -154,6 +164,7 @@ impl<T> GenericStack<T> {
         Ok(cast_to_bool(self.pop()?.as_ref()))
     }
 
+    /// Removes the element at the given index.
     #[inline]
     pub fn remove(&mut self, i: usize) -> Result<T> {
         let pos = i + 1;
@@ -284,6 +295,7 @@ impl Stack {
     }
 }
 
+/// Converts a byte slice to a boolean.
 fn cast_to_bool(data: &[u8]) -> bool {
     match data.split_last() {
         Some((&last, rest)) => rest.iter().any(|&x| x != 0) || (last != 0 && last != 0x80),
