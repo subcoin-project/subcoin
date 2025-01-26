@@ -1,7 +1,5 @@
 use super::{eval_script, ScriptError};
-use crate::interpreter::constants::{
-    MAX_SCRIPT_ELEMENT_SIZE, MAX_STACK_SIZE, WITNESS_V0_SCRIPTHASH_SIZE,
-};
+use crate::constants::{MAX_SCRIPT_ELEMENT_SIZE, MAX_STACK_SIZE, WITNESS_V0_SCRIPTHASH_SIZE};
 use crate::signature_checker::SignatureChecker;
 use crate::stack::Stack;
 use crate::{ScriptExecutionData, SigVersion, VerificationFlags};

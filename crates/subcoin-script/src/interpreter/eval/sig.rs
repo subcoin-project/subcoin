@@ -1,4 +1,4 @@
-use crate::interpreter::constants::{
+use crate::constants::{
     COMPRESSED_PUBKEY_SIZE, HALF_ORDER, SIGHASH_ALL, SIGHASH_ANYONECANPAY, SIGHASH_SINGLE,
 };
 use crate::signature_checker::SignatureChecker;

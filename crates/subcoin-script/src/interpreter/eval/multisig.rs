@@ -1,5 +1,5 @@
 use super::sig::{check_pubkey_encoding, check_signature_encoding};
-use crate::interpreter::constants::{MAX_OPS_PER_SCRIPT, MAX_PUBKEYS_PER_MULTISIG};
+use crate::constants::{MAX_OPS_PER_SCRIPT, MAX_PUBKEYS_PER_MULTISIG};
 use crate::signature_checker::SignatureChecker;
 use crate::stack::{Stack, StackError};
 use crate::{EcdsaSignature, SigVersion, VerificationFlags};

@@ -1,3 +1,4 @@
+pub mod constants;
 pub mod interpreter;
 pub mod num;
 pub mod opcode;

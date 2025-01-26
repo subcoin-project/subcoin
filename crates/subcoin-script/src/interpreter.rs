@@ -1,4 +1,3 @@
-mod constants;
 mod eval;
 mod verify;
 

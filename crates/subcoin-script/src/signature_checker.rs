@@ -1,11 +1,13 @@
-use std::sync::LazyLock;
-
 use crate::num::ScriptNum;
 use crate::{EcdsaSignature, SchnorrSignature, ScriptExecutionData, SigVersion};
+use bitcoin::locktime::absolute::LockTime as AbsoluteLockTime;
+use bitcoin::locktime::relative::LockTime as RelativeLockTime;
 use bitcoin::secp256k1::{All, Error, Message, Secp256k1};
 use bitcoin::sighash::{Annex, Prevouts, SighashCache, TaprootError};
 use bitcoin::taproot::TapLeafHash;
+use bitcoin::transaction::Version;
 use bitcoin::{Amount, PublicKey, Script, Transaction, TxOut, XOnlyPublicKey};
+use std::sync::LazyLock;
 
 static SECP: LazyLock<Secp256k1<All>> = LazyLock::new(|| Secp256k1::new());
 
@@ -85,6 +87,7 @@ impl SignatureChecker for NoSignatureCheck {
 
 /// A SignatureChecker implementation that skips all signature checks.
 pub struct TransactionSignatureChecker {
+    tx: Transaction,
     input_index: usize,
     input_amount: u64,
     prevouts: Vec<TxOut>,
@@ -147,11 +150,80 @@ impl SignatureChecker for TransactionSignatureChecker {
         Ok(self.verify_schnorr_signature(sig, &msg, pk).is_ok())
     }
 
-    fn check_lock_time(&self, _lock_time: ScriptNum) -> bool {
-        true
+    fn check_lock_time(&self, lock_time: ScriptNum) -> bool {
+        let Ok(lock_time) = u32::try_from(lock_time.value()).map(AbsoluteLockTime::from_consensus)
+        else {
+            return false;
+        };
+
+        // There are two kinds of nLockTime: lock-by-blockheight
+        // and lock-by-blocktime, distinguished by whether
+        // nLockTime < LOCKTIME_THRESHOLD.
+        //
+        // We want to compare apples to apples, so fail the script
+        // unless the type of nLockTime being tested is the same as
+        // the nLockTime in the transaction.
+        //
+        // Now that we know we're comparing apples-to-apples, the
+        // comparison is a simple numeric one.
+        match (lock_time, self.tx.lock_time) {
+            (AbsoluteLockTime::Blocks(h1), AbsoluteLockTime::Blocks(h2)) if h1 > h2 => {
+                return false
+            }
+            (AbsoluteLockTime::Seconds(t1), AbsoluteLockTime::Seconds(t2)) if t1 > t2 => {
+                return false
+            }
+            (AbsoluteLockTime::Blocks(_), AbsoluteLockTime::Seconds(_)) => return false,
+            (AbsoluteLockTime::Seconds(_), AbsoluteLockTime::Blocks(_)) => return false,
+            _ => {}
+        }
+
+        // Finally the nLockTime feature can be disabled and thus
+        // CHECKLOCKTIMEVERIFY bypassed if every txin has been
+        // finalized by setting nSequence to maxint. The
+        // transaction would be allowed into the blockchain, making
+        // the opcode ineffective.
+        //
+        // Testing if this vin is not final is sufficient to
+        // prevent this condition. Alternatively we could test all
+        // inputs, but testing just this input minimizes the data
+        // required to prove correct CHECKLOCKTIMEVERIFY execution.
+        self.tx.input[self.input_index].sequence.is_final()
     }
 
-    fn check_sequence(&self, _sequence: ScriptNum) -> bool {
+    fn check_sequence(&self, sequence: ScriptNum) -> bool {
+        // Fail if the transaction's version number is not set high
+        // enough to trigger BIP 68 rules.
+        if self.tx.version < Version::TWO {
+            return false;
+        }
+
+        // Relative lock times are supported by comparing the passed
+        // in operand to the sequence number of the input.
+        let Some(tx_lock_time) = self.tx.input[self.input_index]
+            .sequence
+            .to_relative_lock_time()
+        else {
+            return false;
+        };
+
+        let Some(lock_time) = u32::try_from(sequence.value())
+            .ok()
+            .and_then(|seq| RelativeLockTime::from_consensus(seq).ok())
+        else {
+            return false;
+        };
+
+        match (lock_time, tx_lock_time) {
+            (RelativeLockTime::Blocks(h1), RelativeLockTime::Blocks(h2)) if h1 > h2 => {
+                return false
+            }
+            (RelativeLockTime::Time(t1), RelativeLockTime::Time(t2)) if t1 > t2 => return false,
+            (RelativeLockTime::Blocks(_), RelativeLockTime::Time(_)) => return false,
+            (RelativeLockTime::Time(_), RelativeLockTime::Blocks(_)) => return false,
+            _ => {}
+        }
+
         true
     }
 }
