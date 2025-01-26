@@ -3,7 +3,7 @@ use crate::interpreter::constants::{
 };
 use crate::signature_checker::SignatureChecker;
 use crate::{EcdsaSignature, SchnorrSignature, ScriptExecutionData, SigVersion, VerificationFlags};
-use bitcoin::{PublicKey, Script};
+use bitcoin::{PublicKey, Script, XOnlyPublicKey};
 use num_bigint::Sign;
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
@@ -52,8 +52,12 @@ pub enum SigError {
     Der(#[from] SigEncodingError),
     #[error("generating key from slice: {0:?}")]
     FromSlice(bitcoin::key::FromSliceError),
+    #[error("schnorr signature error: {0:?}")]
+    SigFromSlice(bitcoin::taproot::SigFromSliceError),
     #[error("secp256k1 error: {0:?}")]
     Secp256k1(bitcoin::secp256k1::Error),
+    #[error("taproot error: {0:?}")]
+    Taproot(bitcoin::sighash::TaprootError),
     #[error("ecdsa error: {0:?}")]
     Ecdsa(bitcoin::ecdsa::Error),
 }
@@ -65,7 +69,7 @@ pub fn eval_checksig(
     begincodehash: usize,
     exec_data: &ScriptExecutionData,
     flags: &VerificationFlags,
-    checker: &dyn SignatureChecker,
+    checker: &mut impl SignatureChecker,
     sig_version: SigVersion,
 ) -> Result<bool, SigError> {
     match sig_version {
@@ -97,11 +101,12 @@ fn eval_checksig_pre_tapscript(
     script: &Script,
     begincodehash: usize,
     flags: &VerificationFlags,
-    checker: &dyn SignatureChecker,
+    checker: &mut impl SignatureChecker,
     sig_version: SigVersion,
 ) -> Result<bool, SigError> {
     let mut subscript = script.as_bytes()[begincodehash..].to_vec();
 
+    // Drop the signature in pre-segwit scripts but not segwit scripts
     if matches!(sig_version, SigVersion::Base) {
         let found = find_and_delete(&mut subscript, sig);
 
@@ -356,16 +361,16 @@ fn eval_checksig_tapscript(
     pubkey: &[u8],
     begincodehash: usize,
     flags: &VerificationFlags,
-    checker: &dyn SignatureChecker,
+    checker: &mut impl SignatureChecker,
     sig_version: SigVersion,
     exec_data: &ScriptExecutionData,
 ) -> Result<bool, SigError> {
-    let sig = SchnorrSignature::from_slice(sig).map_err(SigError::Secp256k1)?;
-    let pubkey = PublicKey::from_slice(pubkey).map_err(SigError::FromSlice)?;
+    let sig = SchnorrSignature::from_slice(sig).map_err(SigError::SigFromSlice)?;
+    let pubkey = XOnlyPublicKey::from_slice(pubkey).map_err(SigError::Secp256k1)?;
 
     checker
         .check_schnorr_signature(&sig, &pubkey, sig_version, exec_data)
-        .map_err(SigError::Secp256k1)?;
+        .map_err(SigError::Taproot)?;
 
     Ok(true)
 }

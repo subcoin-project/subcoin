@@ -25,8 +25,8 @@ pub enum ScriptError {
     ScriptSize,
     #[error("push size")]
     PushSize,
-    #[error("too many ops in script")]
-    ExceedsMaxOps,
+    #[error("Exceeds max ops per script")]
+    OpCount,
     // Stack and altstack combined depth is over the limit.
     #[error("stack overflow")]
     ExceedsStackLimit,
@@ -37,7 +37,7 @@ pub enum ScriptError {
 
     // Failed verify operations.
     #[error("failed verify operation: {0:?}")]
-    FailedVerify(bitcoin::opcodes::Opcode),
+    Verify(bitcoin::opcodes::Opcode),
 
     // Logical/Format/Canonical errors.
     #[error("bad opcode")]
@@ -138,8 +138,6 @@ pub enum ScriptError {
     ErrorCount,
 
     // Extended errors.
-    #[error("return opcode")]
-    ReturnOpcode,
     #[error("invalid alt stack operation")]
     InvalidAltStackOperation,
     #[error("{0} is unknown")]

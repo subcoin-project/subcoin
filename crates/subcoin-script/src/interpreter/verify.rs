@@ -23,7 +23,7 @@ pub fn verify_script(
     script_pubkey: &Script,
     witness: &Witness,
     flags: VerificationFlags,
-    checker: &impl SignatureChecker,
+    checker: &mut impl SignatureChecker,
     sig_version: SigVersion,
 ) -> Result<(), ScriptError> {
     if flags.intersects(VerificationFlags::SIGPUSHONLY) && !script_sig.is_push_only() {
@@ -178,7 +178,7 @@ fn verify_witness_program(
     witness: &Witness,
     witness_program: WitnessProgram,
     flags: &VerificationFlags,
-    checker: &impl SignatureChecker,
+    checker: &mut impl SignatureChecker,
     is_p2sh: bool,
 ) -> Result<(), ScriptError> {
     let stack = Stack::with_data(witness.to_vec());
@@ -265,7 +265,7 @@ fn execute_witness_script(
     exec_script: &Script,
     flags: &VerificationFlags,
     sig_version: SigVersion,
-    checker: &impl SignatureChecker,
+    checker: &mut impl SignatureChecker,
     exec_data: &mut ScriptExecutionData,
 ) -> Result<(), ScriptError> {
     let mut stack = Stack::new(stack_span.to_vec(), true);

@@ -38,13 +38,13 @@ fn basic_test(script: &Script, eval_result: EvalResult) {
 
     let flags = VerificationFlags::P2SH;
     let version = SigVersion::Base;
-    let checker = NoSignatureCheck::new();
+    let mut checker = NoSignatureCheck;
     let mut stack = Stack::default();
     let eval_script_result = eval_script(
         &mut stack,
         script,
         &flags,
-        &checker,
+        &mut checker,
         version,
         &mut ScriptExecutionData::default(),
     );
@@ -106,7 +106,7 @@ fn test_equal_verify_failed() {
         .push_slice(&[0x3])
         .push_opcode(OP_EQUALVERIFY)
         .into_script();
-    let result = EvalResult::err(ScriptError::FailedVerify(OP_EQUALVERIFY));
+    let result = EvalResult::err(ScriptError::Verify(OP_EQUALVERIFY));
     basic_test(&script, result);
 }
 
@@ -587,7 +587,7 @@ fn test_numequalverify_failed() {
         .push_int(3)
         .push_opcode(OP_NUMEQUALVERIFY)
         .into_script();
-    let result = EvalResult::err(ScriptError::FailedVerify(OP_NUMEQUALVERIFY));
+    let result = EvalResult::err(ScriptError::Verify(OP_NUMEQUALVERIFY));
     basic_test(&script, result);
 }
 

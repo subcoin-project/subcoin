@@ -22,10 +22,10 @@ pub enum MultiSigError {
     CheckSigVerify,
     #[error(transparent)]
     Stack(#[from] StackError),
-    #[error(transparent)]
-    Signature(#[from] super::sig::SigError),
     #[error("ECDSA error: {0:?}")]
     Ecdsa(bitcoin::ecdsa::Error),
+    #[error(transparent)]
+    Signature(#[from] super::sig::SigError),
     #[error("Secp256k1 error: {0:?}")]
     Secp256k1(bitcoin::secp256k1::Error),
     #[error("generating key from slice: {0:?}")]
@@ -43,7 +43,7 @@ pub fn execute_checkmultisig(
     begincode: usize,
     script: &Script,
     sig_version: SigVersion,
-    checker: &dyn SignatureChecker,
+    checker: &mut impl SignatureChecker,
     multisig_op: MultiSigOp,
     op_count: &mut usize,
 ) -> Result<(), MultiSigError> {
@@ -76,7 +76,7 @@ fn eval_checkmultisig(
     begincode: usize,
     script: &Script,
     sig_version: SigVersion,
-    checker: &dyn SignatureChecker,
+    checker: &mut impl SignatureChecker,
     op_count: &mut usize,
 ) -> Result<bool, MultiSigError> {
     if matches!(sig_version, SigVersion::Tapscript) {

@@ -1,7 +1,7 @@
 mod multisig;
 mod sig;
 
-use super::constants::MAX_OPS_PER_SCRIPT;
+use super::constants::{MAX_OPS_PER_SCRIPT, MAX_SCRIPT_ELEMENT_SIZE};
 use super::ScriptError;
 use crate::num::ScriptNum;
 use crate::signature_checker::SignatureChecker;
@@ -24,7 +24,7 @@ pub fn eval_script(
     stack: &mut Stack,
     script: &Script,
     flags: &VerificationFlags,
-    checker: &dyn SignatureChecker,
+    checker: &mut impl SignatureChecker,
     sig_version: SigVersion,
     exec_data: &mut ScriptExecutionData,
 ) -> Result<bool, ScriptError> {
@@ -41,25 +41,29 @@ pub fn eval_script(
     for instruction in script.instruction_indices() {
         let (pc, instruction) = instruction.map_err(ScriptError::RustBitcoinScript)?;
 
+        let executing = exec_stack.iter().all(|x| *x);
+
         match instruction {
             Instruction::PushBytes(p) => {
+                if p.len() > MAX_SCRIPT_ELEMENT_SIZE {
+                    return Err(ScriptError::PushSize);
+                }
                 stack.push(p.as_bytes().to_vec());
             }
             Instruction::Op(op) => {
                 if matches!(sig_version, SigVersion::Base | SigVersion::WitnessV0) {
+                    // Note how OP_RESERVED does not count towards the opcode limit.
                     if op.to_u8() > bitcoin::opcodes::all::OP_PUSHNUM_16.to_u8() {
                         op_count += 1;
 
                         if op_count > MAX_OPS_PER_SCRIPT {
-                            return Err(ScriptError::ExceedsMaxOps);
+                            return Err(ScriptError::OpCount);
                         }
                     }
                 }
 
                 let opcode = crate::opcode::Opcode::from_u8(op.to_u8())
                     .ok_or(ScriptError::UnknownOpcode(op))?;
-
-                let executing = exec_stack.iter().all(|x| *x);
 
                 match opcode {
                     OP_0 | OP_PUSHBYTES_1 | OP_PUSHBYTES_2 | OP_PUSHBYTES_3 | OP_PUSHBYTES_4
@@ -120,10 +124,10 @@ pub fn eval_script(
                     OP_VERIFY => {
                         let exec_value = stack.pop_bool()?;
                         if !exec_value {
-                            return Err(ScriptError::FailedVerify(op));
+                            return Err(ScriptError::Verify(op));
                         }
                     }
-                    OP_RETURN => return Err(ScriptError::ReturnOpcode),
+                    OP_RETURN => return Err(ScriptError::OpReturn),
 
                     // Stack
                     OP_TOALTSTACK => {
@@ -192,7 +196,7 @@ pub fn eval_script(
                     OP_EQUALVERIFY => {
                         let equal = stack.pop()? == stack.pop()?;
                         if !equal {
-                            return Err(ScriptError::FailedVerify(op));
+                            return Err(ScriptError::Verify(op));
                         }
                     }
 
@@ -253,7 +257,7 @@ pub fn eval_script(
                         let v1 = stack.pop_num()?;
                         let v2 = stack.pop_num()?;
                         if v1 != v2 {
-                            return Err(ScriptError::FailedVerify(op));
+                            return Err(ScriptError::Verify(op));
                         }
                     }
                     OP_NUMNOTEQUAL => {
@@ -345,7 +349,7 @@ pub fn eval_script(
                                 stack.push_bool(success);
                             }
                             OP_CHECKSIGVERIFY if !success => {
-                                return Err(ScriptError::FailedVerify(op));
+                                return Err(ScriptError::Verify(op));
                             }
                             _ => {}
                         }
