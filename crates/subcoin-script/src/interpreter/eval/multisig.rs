@@ -25,7 +25,9 @@ pub enum MultiSigError {
     #[error("ECDSA error: {0:?}")]
     Ecdsa(bitcoin::ecdsa::Error),
     #[error(transparent)]
-    Signature(#[from] super::sig::SigError),
+    CheckSig(#[from] super::sig::CheckSigError),
+    #[error(transparent)]
+    Signature(#[from] crate::signature_checker::SignatureError),
     #[error("Secp256k1 error: {0:?}")]
     Secp256k1(bitcoin::secp256k1::Error),
     #[error("generating key from slice: {0:?}")]
@@ -160,7 +162,7 @@ fn eval_checkmultisig(
 
         if checker
             .check_ecdsa_signature(&sig, &key, &subscript, sig_version)
-            .map_err(MultiSigError::Secp256k1)?
+            .map_err(MultiSigError::Signature)?
         {
             s += 1;
         }

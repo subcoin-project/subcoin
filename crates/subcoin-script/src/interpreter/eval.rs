@@ -15,7 +15,7 @@ use std::ops::{Add, Neg, Sub};
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum EvalScriptError {
     #[error(transparent)]
-    Sig(#[from] sig::SigError),
+    Sig(#[from] sig::CheckSigError),
     #[error(transparent)]
     MultiSig(#[from] multisig::MultiSigError),
 }

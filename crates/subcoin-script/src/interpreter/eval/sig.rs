@@ -7,7 +7,7 @@ use bitcoin::{PublicKey, Script, XOnlyPublicKey};
 use num_bigint::Sign;
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
-pub enum SigEncodingError {
+pub enum SignatureEncodingError {
     #[error("DER encoded signature is too short")]
     TooShort,
     #[error("DER encoded signature is too long")]
@@ -35,7 +35,7 @@ pub enum SigEncodingError {
 }
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
-pub enum SigError {
+pub enum CheckSigError {
     #[error("")]
     FindAndDelete,
     #[error("Unsupported signature hash type")]
@@ -49,15 +49,15 @@ pub enum SigError {
     #[error("")]
     HighS,
     #[error("invalid signature encoding: {0:?}")]
-    Der(#[from] SigEncodingError),
+    Der(#[from] SignatureEncodingError),
     #[error("generating key from slice: {0:?}")]
     FromSlice(bitcoin::key::FromSliceError),
     #[error("schnorr signature error: {0:?}")]
     SigFromSlice(bitcoin::taproot::SigFromSliceError),
+    #[error("invalid signature: {0:?}")]
+    Signature(crate::signature_checker::SignatureError),
     #[error("secp256k1 error: {0:?}")]
     Secp256k1(bitcoin::secp256k1::Error),
-    #[error("taproot error: {0:?}")]
-    Taproot(bitcoin::sighash::TaprootError),
     #[error("ecdsa error: {0:?}")]
     Ecdsa(bitcoin::ecdsa::Error),
 }
@@ -71,7 +71,7 @@ pub fn eval_checksig(
     flags: &VerificationFlags,
     checker: &mut impl SignatureChecker,
     sig_version: SigVersion,
-) -> Result<bool, SigError> {
+) -> Result<bool, CheckSigError> {
     match sig_version {
         SigVersion::Base | SigVersion::WitnessV0 => eval_checksig_pre_tapscript(
             sig,
@@ -103,7 +103,7 @@ fn eval_checksig_pre_tapscript(
     flags: &VerificationFlags,
     checker: &mut impl SignatureChecker,
     sig_version: SigVersion,
-) -> Result<bool, SigError> {
+) -> Result<bool, CheckSigError> {
     let mut subscript = script.as_bytes()[begincodehash..].to_vec();
 
     // Drop the signature in pre-segwit scripts but not segwit scripts
@@ -111,24 +111,24 @@ fn eval_checksig_pre_tapscript(
         let found = find_and_delete(&mut subscript, sig);
 
         if found > 0 && flags.intersects(VerificationFlags::CONST_SCRIPTCODE) {
-            return Err(SigError::FindAndDelete);
+            return Err(CheckSigError::FindAndDelete);
         }
     }
 
     check_signature_encoding(sig, flags)?;
     check_pubkey_encoding(pubkey, flags, sig_version)?;
 
-    let signature = EcdsaSignature::from_slice(sig).map_err(SigError::Ecdsa)?;
-    let pubkey = PublicKey::from_slice(pubkey).map_err(SigError::FromSlice)?;
+    let signature = EcdsaSignature::from_slice(sig).map_err(CheckSigError::Ecdsa)?;
+    let pubkey = PublicKey::from_slice(pubkey).map_err(CheckSigError::FromSlice)?;
 
     let script_code = Script::from_bytes(&subscript);
 
     let success = checker
         .check_ecdsa_signature(&signature, &pubkey, script_code, sig_version)
-        .map_err(SigError::Secp256k1)?;
+        .map_err(CheckSigError::Signature)?;
 
     if !success && flags.intersects(VerificationFlags::NULLFAIL) && !sig.is_empty() {
-        return Err(SigError::NullFail);
+        return Err(CheckSigError::NullFail);
     }
 
     Ok(true)
@@ -166,7 +166,7 @@ pub(super) fn find_and_delete(script: &mut Vec<u8>, sig: &[u8]) -> usize {
 pub(super) fn check_signature_encoding(
     sig: &[u8],
     flags: &VerificationFlags,
-) -> Result<(), SigError> {
+) -> Result<(), CheckSigError> {
     // Empty signature. Not strictly DER encoded, but allowed to provide a
     // compact way to provide an invalid signature for use with CHECK(MULTI)SIG
     if sig.is_empty() {
@@ -176,7 +176,7 @@ pub(super) fn check_signature_encoding(
     if flags.intersects(
         VerificationFlags::DERSIG | VerificationFlags::LOW_S | VerificationFlags::STRICTENC,
     ) {
-        is_valid_signature_encoding(sig).map_err(SigError::Der)?;
+        is_valid_signature_encoding(sig).map_err(CheckSigError::Der)?;
     }
 
     if flags.intersects(VerificationFlags::LOW_S) {
@@ -184,7 +184,7 @@ pub(super) fn check_signature_encoding(
     }
 
     if flags.intersects(VerificationFlags::STRICTENC) && !is_defined_hashtype_signature(sig) {
-        return Err(SigError::UnsupportedSigHashType);
+        return Err(CheckSigError::UnsupportedSigHashType);
     }
 
     Ok(())
@@ -201,24 +201,24 @@ struct EncodedS {
 // 0x30 [total-length] 0x02 [R-length] [R] 0x02 [S-length] [S] [sighash-type]
 //
 // https://github.com/bitcoin/bips/blob/master/bip-0062.mediawiki#der-encoding
-fn is_valid_signature_encoding(sig: &[u8]) -> Result<EncodedS, SigEncodingError> {
+fn is_valid_signature_encoding(sig: &[u8]) -> Result<EncodedS, SignatureEncodingError> {
     // Minimum and maximum size constraints
     if sig.len() < 9 {
-        return Err(SigEncodingError::TooShort);
+        return Err(SignatureEncodingError::TooShort);
     }
 
     if sig.len() > 73 {
-        return Err(SigEncodingError::TooLong);
+        return Err(SignatureEncodingError::TooLong);
     }
 
     // A signature is of type 0x30 (compound)
     if sig[0] != 0x30 {
-        return Err(SigEncodingError::InvalidSequenceId);
+        return Err(SignatureEncodingError::InvalidSequenceId);
     }
 
     // Make sure the length covers the entire signature
     if sig[1] as usize != sig.len() - 3 {
-        return Err(SigEncodingError::InvalidDataLength);
+        return Err(SignatureEncodingError::InvalidDataLength);
     }
 
     // Extract the length of the R element
@@ -226,7 +226,7 @@ fn is_valid_signature_encoding(sig: &[u8]) -> Result<EncodedS, SigEncodingError>
 
     // Make sure the length of the S element is still inside the signature
     if 5 + len_r >= sig.len() {
-        return Err(SigEncodingError::InvalidDataLength);
+        return Err(SignatureEncodingError::InvalidDataLength);
     }
 
     // Extract the length of the S element
@@ -234,47 +234,47 @@ fn is_valid_signature_encoding(sig: &[u8]) -> Result<EncodedS, SigEncodingError>
 
     // Verify that the length of the signature matches the sum of the length of the elements
     if len_r + len_s + 7 != sig.len() {
-        return Err(SigEncodingError::InvalidDataLength);
+        return Err(SignatureEncodingError::InvalidDataLength);
     }
 
     // Check whether the R element is an integer
     if sig[2] != 0x02 {
-        return Err(SigEncodingError::InvalidIntegerIdR);
+        return Err(SignatureEncodingError::InvalidIntegerIdR);
     }
 
     // Zero-length integers are not allowed for R
     if len_r == 0 {
-        return Err(SigEncodingError::ZeroLengthR);
+        return Err(SignatureEncodingError::ZeroLengthR);
     }
 
     // Negative numbers are not allowed for R
     if sig[4] & 0x80 != 0 {
-        return Err(SigEncodingError::NegativeR);
+        return Err(SignatureEncodingError::NegativeR);
     }
 
     // Null bytes at the start of R are not allowed, unless R would otherwise be interpreted as a negative number
     if len_r > 1 && sig[4] == 0x00 && sig[5] & 0x80 == 0 {
-        return Err(SigEncodingError::TooMuchPaddingR);
+        return Err(SignatureEncodingError::TooMuchPaddingR);
     }
 
     // Check whether the S element is an integer
     if sig[len_r + 4] != 0x02 {
-        return Err(SigEncodingError::InvalidIntegerIdS);
+        return Err(SignatureEncodingError::InvalidIntegerIdS);
     }
 
     // Zero-length integers are not allowed for S
     if len_s == 0 {
-        return Err(SigEncodingError::ZeroLengthS);
+        return Err(SignatureEncodingError::ZeroLengthS);
     }
 
     // Negative numbers are not allowed for S
     if sig[len_r + 6] & 0x80 != 0 {
-        return Err(SigEncodingError::NegativeS);
+        return Err(SignatureEncodingError::NegativeS);
     }
 
     // Null bytes at the start of S are not allowed, unless S would otherwise be interpreted as a negative number
     if len_s > 1 && sig[len_r + 6] == 0x00 && sig[len_r + 7] & 0x80 == 0 {
-        return Err(SigEncodingError::TooMuchPaddingS);
+        return Err(SignatureEncodingError::TooMuchPaddingS);
     }
 
     Ok(EncodedS {
@@ -283,8 +283,8 @@ fn is_valid_signature_encoding(sig: &[u8]) -> Result<EncodedS, SigEncodingError>
     })
 }
 
-fn is_low_der_signature(sig: &[u8]) -> Result<(), SigError> {
-    let encoded_s = is_valid_signature_encoding(sig).map_err(SigError::Der)?;
+fn is_low_der_signature(sig: &[u8]) -> Result<(), CheckSigError> {
+    let encoded_s = is_valid_signature_encoding(sig).map_err(CheckSigError::Der)?;
 
     let s_bytes = &sig[encoded_s.offset..encoded_s.offset + encoded_s.length];
 
@@ -299,7 +299,7 @@ fn is_low_der_signature(sig: &[u8]) -> Result<(), SigError> {
 
     if s_value > *HALF_ORDER {
         // signature is not canonical due to unnecessarily high S value
-        return Err(SigError::HighS);
+        return Err(CheckSigError::HighS);
     }
 
     Ok(())
@@ -323,16 +323,16 @@ pub(super) fn check_pubkey_encoding(
     pubkey: &[u8],
     flags: &VerificationFlags,
     sig_version: SigVersion,
-) -> Result<(), SigError> {
+) -> Result<(), CheckSigError> {
     if flags.intersects(VerificationFlags::STRICTENC) && !is_public_key(pubkey) {
-        return Err(SigError::BadPubKey);
+        return Err(CheckSigError::BadPubKey);
     }
 
     if flags.intersects(VerificationFlags::WITNESS_PUBKEYTYPE)
         && matches!(sig_version, SigVersion::WitnessV0)
         && !is_compressed_pubkey(pubkey)
     {
-        return Err(SigError::WitnessPubKeyType);
+        return Err(CheckSigError::WitnessPubKeyType);
     }
 
     Ok(())
@@ -364,13 +364,13 @@ fn eval_checksig_tapscript(
     checker: &mut impl SignatureChecker,
     sig_version: SigVersion,
     exec_data: &ScriptExecutionData,
-) -> Result<bool, SigError> {
-    let sig = SchnorrSignature::from_slice(sig).map_err(SigError::SigFromSlice)?;
-    let pubkey = XOnlyPublicKey::from_slice(pubkey).map_err(SigError::Secp256k1)?;
+) -> Result<bool, CheckSigError> {
+    let sig = SchnorrSignature::from_slice(sig).map_err(CheckSigError::SigFromSlice)?;
+    let pubkey = XOnlyPublicKey::from_slice(pubkey).map_err(CheckSigError::Secp256k1)?;
 
     checker
         .check_schnorr_signature(&sig, &pubkey, sig_version, exec_data)
-        .map_err(SigError::Taproot)?;
+        .map_err(CheckSigError::Signature)?;
 
     Ok(true)
 }
@@ -423,7 +423,7 @@ mod tests {
                 Ok(()),
             ),
             // empty
-            ("".to_string(), Err(SigError::BadPubKey)),
+            ("".to_string(), Err(CheckSigError::BadPubKey)),
             // hybrid
             (
                 [
@@ -433,7 +433,7 @@ mod tests {
                     "0d4b8",
                 ]
                 .concat(),
-                Err(SigError::BadPubKey),
+                Err(CheckSigError::BadPubKey),
             ),
         ];
 
