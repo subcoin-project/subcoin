@@ -2,7 +2,7 @@ use super::{eval_script, ScriptError};
 use crate::constants::{MAX_SCRIPT_ELEMENT_SIZE, MAX_STACK_SIZE, WITNESS_V0_SCRIPTHASH_SIZE};
 use crate::signature_checker::SignatureChecker;
 use crate::stack::Stack;
-use crate::{ScriptExecutionData, SigVersion, VerificationFlags};
+use crate::{ScriptExecutionData, SigVersion, VerifyFlags};
 use bitcoin::hashes::Hash;
 use bitcoin::opcodes::all::{OP_CHECKSIG, OP_DUP, OP_EQUALVERIFY, OP_HASH160};
 use bitcoin::script::{Builder, Instruction, PushBytesBuf};
@@ -20,11 +20,11 @@ pub fn verify_script(
     script_sig: &Script,
     script_pubkey: &Script,
     witness: &Witness,
-    flags: VerificationFlags,
+    flags: VerifyFlags,
     checker: &mut impl SignatureChecker,
     sig_version: SigVersion,
 ) -> Result<(), ScriptError> {
-    if flags.intersects(VerificationFlags::SIGPUSHONLY) && !script_sig.is_push_only() {
+    if flags.intersects(VerifyFlags::SIGPUSHONLY) && !script_sig.is_push_only() {
         return Err(ScriptError::SigPushOnly);
     }
 
@@ -41,7 +41,7 @@ pub fn verify_script(
         &mut ScriptExecutionData::default(),
     )?;
 
-    let mut stack_copy = if flags.intersects(VerificationFlags::P2SH) {
+    let mut stack_copy = if flags.intersects(VerifyFlags::P2SH) {
         Some(stack.clone())
     } else {
         None
@@ -118,7 +118,7 @@ pub fn verify_script(
         }
 
         // P2SH witness program
-        if flags.intersects(VerificationFlags::WITNESS) {
+        if flags.intersects(VerifyFlags::WITNESS) {
             if let Some(witness_program) = parse_witness_program(pubkey2) {
                 let mut push_bytes = PushBytesBuf::new();
                 push_bytes
@@ -146,7 +146,7 @@ pub fn verify_script(
     // The CLEANSTACK check is only performed after potential P2SH evaluation,
     // as the non-P2SH evaluation of a P2SH script will obviously not result in
     // a clean stack (the P2SH inputs remain). The same holds for witness evaluation.
-    if flags.intersects(VerificationFlags::CLEANSTACK) {
+    if flags.intersects(VerifyFlags::CLEANSTACK) {
         // Disallow CLEANSTACK without P2SH, as otherwise a switch CLEANSTACK->P2SH+CLEANSTACK
         // would be possible, which is not a softfork (and P2SH should be one).
         assert!(
@@ -158,7 +158,7 @@ pub fn verify_script(
         }
     }
 
-    if flags.intersects(VerificationFlags::WITNESS) {
+    if flags.intersects(VerifyFlags::WITNESS) {
         // We can't check for correct unexpected witness data if P2SH was off, so require
         // that WITNESS implies P2SH. Otherwise, going from WITNESS->P2SH+WITNESS would be
         // possible, which is not a softfork.
@@ -175,7 +175,7 @@ pub fn verify_script(
 fn verify_witness_program(
     witness: &Witness,
     witness_program: WitnessProgram,
-    flags: &VerificationFlags,
+    flags: &VerifyFlags,
     checker: &mut impl SignatureChecker,
     is_p2sh: bool,
 ) -> Result<(), ScriptError> {
@@ -239,7 +239,7 @@ fn verify_witness_program(
         && !is_p2sh
     {
         // BIP 341 Taproot: 32-byte non-P2SH witness v1 program (which encodes a P2C-tweaked pubkey)
-        if !flags.intersects(VerificationFlags::TAPROOT) {
+        if !flags.intersects(VerifyFlags::TAPROOT) {
             return Ok(());
         }
 
@@ -249,7 +249,7 @@ fn verify_witness_program(
 
         // Handle annex.
         todo!("Taproot")
-    } else if flags.intersects(VerificationFlags::DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM) {
+    } else if flags.intersects(VerifyFlags::DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM) {
         return Err(ScriptError::DiscourageUpgradableWitnessProgram);
     }
 
@@ -261,7 +261,7 @@ fn verify_witness_program(
 fn execute_witness_script(
     stack_span: &[Vec<u8>],
     exec_script: &Script,
-    flags: &VerificationFlags,
+    flags: &VerifyFlags,
     sig_version: SigVersion,
     checker: &mut impl SignatureChecker,
     exec_data: &mut ScriptExecutionData,
@@ -275,7 +275,7 @@ fn execute_witness_script(
                 Instruction::Op(opcode) => {
                     // New opcodes will be listed here. May use a different sigversion to modify existing opcodes.
                     if is_op_success(opcode.to_u8()) {
-                        if flags.intersects(VerificationFlags::DISCOURAGE_OP_SUCCESS) {
+                        if flags.intersects(VerifyFlags::DISCOURAGE_OP_SUCCESS) {
                             return Err(ScriptError::DiscourageOpSuccess);
                         }
                         return Ok(());

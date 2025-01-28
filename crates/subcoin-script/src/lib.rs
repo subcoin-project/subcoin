@@ -18,7 +18,7 @@ bitflags! {
     /// Script verification flags.
     ///
     /// https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/script/interpreter.h#L45
-    pub struct VerificationFlags: u32 {
+    pub struct VerifyFlags: u32 {
         const NONE = 0;
 
         /// Evaluate P2SH subscripts (BIP16).
@@ -114,7 +114,7 @@ bitflags! {
     }
 }
 
-impl VerificationFlags {
+impl VerifyFlags {
     pub fn verify_minimaldata(&self) -> bool {
         self.contains(Self::MINIMALDATA)
     }

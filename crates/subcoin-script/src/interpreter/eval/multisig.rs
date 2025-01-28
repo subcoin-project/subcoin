@@ -2,7 +2,7 @@ use super::sig::{check_pubkey_encoding, check_signature_encoding, CheckSigError}
 use crate::constants::{MAX_OPS_PER_SCRIPT, MAX_PUBKEYS_PER_MULTISIG};
 use crate::signature_checker::{SignatureChecker, SignatureError};
 use crate::stack::{Stack, StackError};
-use crate::{EcdsaSignature, SigVersion, VerificationFlags};
+use crate::{EcdsaSignature, SigVersion, VerifyFlags};
 use bitcoin::script::PushBytesBuf;
 use bitcoin::{PublicKey, Script};
 
@@ -41,7 +41,7 @@ pub enum MultiSigOp {
 
 pub fn check_multisig(
     stack: &mut Stack,
-    flags: &VerificationFlags,
+    flags: &VerifyFlags,
     begincode: usize,
     script: &Script,
     sig_version: SigVersion,
@@ -74,7 +74,7 @@ pub fn check_multisig(
 
 fn eval_checkmultisig(
     stack: &mut Stack,
-    flags: &VerificationFlags,
+    flags: &VerifyFlags,
     begincode: usize,
     script: &Script,
     sig_version: SigVersion,
@@ -125,7 +125,7 @@ fn eval_checkmultisig(
     // Since the dummy argument is otherwise not checked, it could be any
     // value which unfortunately provides a source of malleability.  Thus,
     // there is a script flag to force an error when the value is NOT 0.
-    if flags.intersects(VerificationFlags::NULLDUMMY) && !dummy.is_empty() {
+    if flags.intersects(VerifyFlags::NULLDUMMY) && !dummy.is_empty() {
         return Err(CheckMultiSigError::SignatureNullDummy(dummy.len()));
     }
 

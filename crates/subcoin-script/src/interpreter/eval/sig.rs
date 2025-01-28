@@ -2,7 +2,7 @@ use crate::constants::{
     COMPRESSED_PUBKEY_SIZE, HALF_ORDER, SIGHASH_ALL, SIGHASH_ANYONECANPAY, SIGHASH_SINGLE,
 };
 use crate::signature_checker::SignatureChecker;
-use crate::{EcdsaSignature, SchnorrSignature, ScriptExecutionData, SigVersion, VerificationFlags};
+use crate::{EcdsaSignature, SchnorrSignature, ScriptExecutionData, SigVersion, VerifyFlags};
 use bitcoin::{PublicKey, Script, XOnlyPublicKey};
 use num_bigint::Sign;
 
@@ -68,7 +68,7 @@ pub fn check_sig(
     script: &Script,
     begincodehash: usize,
     exec_data: &ScriptExecutionData,
-    flags: &VerificationFlags,
+    flags: &VerifyFlags,
     checker: &mut impl SignatureChecker,
     sig_version: SigVersion,
 ) -> Result<bool, CheckSigError> {
@@ -100,7 +100,7 @@ fn eval_checksig_pre_tapscript(
     pubkey: &[u8],
     script: &Script,
     begincodehash: usize,
-    flags: &VerificationFlags,
+    flags: &VerifyFlags,
     checker: &mut impl SignatureChecker,
     sig_version: SigVersion,
 ) -> Result<bool, CheckSigError> {
@@ -110,7 +110,7 @@ fn eval_checksig_pre_tapscript(
     if matches!(sig_version, SigVersion::Base) {
         let found = find_and_delete(&mut subscript, sig);
 
-        if found > 0 && flags.intersects(VerificationFlags::CONST_SCRIPTCODE) {
+        if found > 0 && flags.intersects(VerifyFlags::CONST_SCRIPTCODE) {
             return Err(CheckSigError::FindAndDelete);
         }
     }
@@ -127,7 +127,7 @@ fn eval_checksig_pre_tapscript(
         .check_ecdsa_signature(&signature, &pubkey, script_code, sig_version)
         .map_err(CheckSigError::Signature)?;
 
-    if !success && flags.intersects(VerificationFlags::NULLFAIL) && !sig.is_empty() {
+    if !success && flags.intersects(VerifyFlags::NULLFAIL) && !sig.is_empty() {
         return Err(CheckSigError::NullFail);
     }
 
@@ -165,7 +165,7 @@ pub(super) fn find_and_delete(script: &mut Vec<u8>, sig: &[u8]) -> usize {
 
 pub(super) fn check_signature_encoding(
     sig: &[u8],
-    flags: &VerificationFlags,
+    flags: &VerifyFlags,
 ) -> Result<(), CheckSigError> {
     // Empty signature. Not strictly DER encoded, but allowed to provide a
     // compact way to provide an invalid signature for use with CHECK(MULTI)SIG
@@ -173,17 +173,15 @@ pub(super) fn check_signature_encoding(
         return Ok(());
     }
 
-    if flags.intersects(
-        VerificationFlags::DERSIG | VerificationFlags::LOW_S | VerificationFlags::STRICTENC,
-    ) {
+    if flags.intersects(VerifyFlags::DERSIG | VerifyFlags::LOW_S | VerifyFlags::STRICTENC) {
         is_valid_signature_encoding(sig).map_err(CheckSigError::Der)?;
     }
 
-    if flags.intersects(VerificationFlags::LOW_S) {
+    if flags.intersects(VerifyFlags::LOW_S) {
         is_low_der_signature(sig)?;
     }
 
-    if flags.intersects(VerificationFlags::STRICTENC) && !is_defined_hashtype_signature(sig) {
+    if flags.intersects(VerifyFlags::STRICTENC) && !is_defined_hashtype_signature(sig) {
         return Err(CheckSigError::UnsupportedSigHashType);
     }
 
@@ -321,14 +319,14 @@ fn is_defined_hashtype_signature(sig: &[u8]) -> bool {
 // the strict encoding requirements if enabled.
 pub(super) fn check_pubkey_encoding(
     pubkey: &[u8],
-    flags: &VerificationFlags,
+    flags: &VerifyFlags,
     sig_version: SigVersion,
 ) -> Result<(), CheckSigError> {
-    if flags.intersects(VerificationFlags::STRICTENC) && !is_public_key(pubkey) {
+    if flags.intersects(VerifyFlags::STRICTENC) && !is_public_key(pubkey) {
         return Err(CheckSigError::BadPubKey);
     }
 
-    if flags.intersects(VerificationFlags::WITNESS_PUBKEYTYPE)
+    if flags.intersects(VerifyFlags::WITNESS_PUBKEYTYPE)
         && matches!(sig_version, SigVersion::WitnessV0)
         && !is_compressed_pubkey(pubkey)
     {
@@ -360,7 +358,7 @@ fn eval_checksig_tapscript(
     sig: &[u8],
     pubkey: &[u8],
     begincodehash: usize,
-    flags: &VerificationFlags,
+    flags: &VerifyFlags,
     checker: &mut impl SignatureChecker,
     sig_version: SigVersion,
     exec_data: &ScriptExecutionData,
@@ -437,7 +435,7 @@ mod tests {
             ),
         ];
 
-        let flags = VerificationFlags::STRICTENC;
+        let flags = VerifyFlags::STRICTENC;
 
         for (hex_str, expected_result) in tests {
             let key = hex::decode(hex_str).expect("Invalid hex string");
@@ -657,7 +655,7 @@ mod tests {
             },
         ];
 
-        let flags = VerificationFlags::STRICTENC;
+        let flags = VerifyFlags::STRICTENC;
 
         for TestCase {
             name,

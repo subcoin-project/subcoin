@@ -8,7 +8,7 @@ use crate::constants::{
 use crate::num::ScriptNum;
 use crate::signature_checker::SignatureChecker;
 use crate::stack::{Stack, StackError};
-use crate::{ScriptExecutionData, SigVersion, VerificationFlags};
+use crate::{ScriptExecutionData, SigVersion, VerifyFlags};
 use bitcoin::hashes::{hash160, ripemd160, sha1, sha256, sha256d, Hash};
 use bitcoin::script::Instruction;
 use bitcoin::Script;
@@ -20,7 +20,7 @@ pub use self::sig::CheckSigError;
 pub fn eval_script(
     stack: &mut Stack,
     script: &Script,
-    flags: &VerificationFlags,
+    flags: &VerifyFlags,
     checker: &mut impl SignatureChecker,
     sig_version: SigVersion,
     exec_data: &mut ScriptExecutionData,
@@ -40,7 +40,7 @@ pub fn eval_script(
     let mut op_count = 0;
     let mut opcode_pos = 0;
 
-    let instructions = if flags.intersects(VerificationFlags::MINIMALDATA) {
+    let instructions = if flags.intersects(VerifyFlags::MINIMALDATA) {
         script.instruction_indices_minimal()
     } else {
         script.instruction_indices()
@@ -124,7 +124,7 @@ pub fn eval_script(
 
                             // Under witness v0 rules it is only a policy rule, enabled through SCRIPT_VERIFY_MINIMALIF.
                             if matches!(sig_version, SigVersion::WitnessV0)
-                                && flags.intersects(VerificationFlags::MINIMALIF)
+                                && flags.intersects(VerifyFlags::MINIMALIF)
                             {
                                 if top.len() > 1 || (top.len() == 1 && top[0] != 1) {
                                     return Err(ScriptError::Minimalif);
@@ -360,7 +360,7 @@ pub fn eval_script(
                     OP_CODESEPARATOR => {
                         // Use of OP_CODESEPARATOR is rejected in pre-segwit script.
                         if matches!(sig_version, SigVersion::Base)
-                            && flags.intersects(VerificationFlags::CONST_SCRIPTCODE)
+                            && flags.intersects(VerifyFlags::CONST_SCRIPTCODE)
                         {
                             return Err(ScriptError::OpCodeSeparator);
                         }
@@ -439,7 +439,7 @@ pub fn eval_script(
                     // Locktime
                     OP_CHECKLOCKTIMEVERIFY => {
                         // not enabled; treat as a NOP3
-                        if !flags.intersects(VerificationFlags::CHECKLOCKTIMEVERIFY) {
+                        if !flags.intersects(VerifyFlags::CHECKLOCKTIMEVERIFY) {
                             continue;
                         }
 
@@ -472,7 +472,7 @@ pub fn eval_script(
                     }
                     OP_CHECKSEQUENCEVERIFY => {
                         // not enabled; treat as a NOP3
-                        if !flags.intersects(VerificationFlags::CHECKSEQUENCEVERIFY) {
+                        if !flags.intersects(VerifyFlags::CHECKSEQUENCEVERIFY) {
                             continue;
                         }
 
@@ -505,7 +505,7 @@ pub fn eval_script(
                     }
                     OP_NOP1 | OP_NOP4 | OP_NOP5 | OP_NOP6 | OP_NOP7 | OP_NOP8 | OP_NOP9
                     | OP_NOP10 => {
-                        if flags.intersects(VerificationFlags::DISCOURAGE_UPGRADABLE_NOPS) {
+                        if flags.intersects(VerifyFlags::DISCOURAGE_UPGRADABLE_NOPS) {
                             return Err(ScriptError::DiscourageUpgradableNops);
                         }
                     }
