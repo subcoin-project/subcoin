@@ -18,20 +18,20 @@ pub enum CheckMultiSigError {
     SignatureNullDummy(usize),
     #[error("OP_CHECKMULTISIG and OP_CHECKMULTISIGVERIFY are disabled during tapscript execution")]
     TapscriptCheckMultiSig,
-    #[error("")]
-    CheckSigVerify,
-    #[error(transparent)]
-    Stack(#[from] StackError),
+    #[error("CHECK_MULTISIGVERIFY failed")]
+    CheckMultiSigVerify,
     #[error("ECDSA error: {0:?}")]
     Ecdsa(bitcoin::ecdsa::Error),
+    #[error("Generating key from slice: {0:?}")]
+    FromSlice(bitcoin::key::FromSliceError),
+    #[error("Secp256k1 error: {0:?}")]
+    Secp256k1(bitcoin::secp256k1::Error),
     #[error(transparent)]
     CheckSig(#[from] CheckSigError),
     #[error(transparent)]
     Signature(#[from] SignatureError),
-    #[error("Secp256k1 error: {0:?}")]
-    Secp256k1(bitcoin::secp256k1::Error),
-    #[error("Generating key from slice: {0:?}")]
-    FromSlice(bitcoin::key::FromSliceError),
+    #[error(transparent)]
+    Stack(#[from] StackError),
 }
 
 pub enum MultiSigOp {
@@ -64,7 +64,7 @@ pub fn check_multisig(
             stack.push_bool(success);
         }
         MultiSigOp::CheckMultiSigVerify if !success => {
-            return Err(CheckMultiSigError::CheckSigVerify);
+            return Err(CheckMultiSigError::CheckMultiSigVerify);
         }
         _ => {}
     }
@@ -105,12 +105,12 @@ fn eval_checkmultisig(
         keys.push(stack.pop()?);
     }
 
-    let sigs_count = stack.pop_num()?;
-    let sigs_count = sigs_count.value() as usize;
-    if sigs_count < 0 || sigs_count > keys_count {
+    let sigs_count = stack.pop_num()?.value();
+    if sigs_count < 0 || sigs_count as usize > keys_count {
         return Err(CheckMultiSigError::InvalidSignatureCount(keys_count));
     }
 
+    let sigs_count = sigs_count as usize;
     let mut sigs = Vec::with_capacity(sigs_count);
     for _ in 0..sigs_count {
         sigs.push(stack.pop()?);
@@ -134,25 +134,29 @@ fn eval_checkmultisig(
 
     for signature in &sigs {
         if matches!(sig_version, SigVersion::Base) {
-            let mut push_bytes_sig = PushBytesBuf::new();
-            push_bytes_sig
+            let mut push_buf = PushBytesBuf::new();
+            push_buf
                 .extend_from_slice(&signature)
-                .expect("Failed to convert signature to PushBytes");
-            let sig = bitcoin::script::Builder::default()
-                .push_slice(push_bytes_sig)
+                .expect("Signature within length limits");
+            let sig_script = bitcoin::script::Builder::default()
+                .push_slice(push_buf)
                 .into_script();
-            super::sig::find_and_delete(&mut subscript, sig.as_bytes());
+            let found = super::sig::find_and_delete(&mut subscript, sig_script.as_bytes());
+            if found > 0 && flags.intersects(VerifyFlags::CONST_SCRIPTCODE) {
+                return Err(CheckSigError::FindAndDelete.into());
+            }
         }
     }
 
     let subscript = Script::from_bytes(&subscript);
 
+    // Verify signatures against public keys.
     let mut success = true;
-    let mut k = 0;
-    let mut s = 0;
-    while s < sigs.len() && success {
-        let key = &keys[k];
-        let sig = &sigs[s];
+    let mut key_idx = 0;
+    let mut sig_idx = 0;
+    while sig_idx < sigs.len() && success {
+        let key = &keys[key_idx];
+        let sig = &sigs[sig_idx];
 
         check_signature_encoding(sig, flags)?;
         check_pubkey_encoding(key, flags, sig_version)?;
@@ -164,12 +168,12 @@ fn eval_checkmultisig(
             .check_ecdsa_signature(&sig, &key, &subscript, sig_version)
             .map_err(CheckMultiSigError::Signature)?
         {
-            s += 1;
+            sig_idx += 1;
         }
+        key_idx += 1;
 
-        k += 1;
-
-        success = sigs.len() - s <= keys.len() - k;
+        // Early exit if remaining keys can't satisfy remaining signatures.
+        success = sigs.len() - sig_idx <= keys.len() - key_idx;
     }
 
     Ok(success)

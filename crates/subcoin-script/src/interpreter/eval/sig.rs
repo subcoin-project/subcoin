@@ -1,5 +1,6 @@
 use crate::constants::{
     COMPRESSED_PUBKEY_SIZE, HALF_ORDER, SIGHASH_ALL, SIGHASH_ANYONECANPAY, SIGHASH_SINGLE,
+    VALIDATION_WEIGHT_PER_SIGOP_PASSED,
 };
 use crate::signature_checker::SignatureChecker;
 use crate::{EcdsaSignature, SchnorrSignature, ScriptExecutionData, SigVersion, VerifyFlags};
@@ -36,18 +37,25 @@ pub enum SignatureEncodingError {
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum CheckSigError {
-    #[error("")]
+    #[error("Signature found during find_and_delete in CONST_SCRIPTCODE mode")]
     FindAndDelete,
     #[error("Unsupported signature hash type")]
     UnsupportedSigHashType,
+    #[error("discourage upgradable hash type")]
+    DiscourageUpgradablePubkeyType,
     #[error("Unsupported public key type")]
     BadPubKey,
+    #[error("public key type")]
+    PubKeyType,
     #[error("ScriptVerifyWitness is set and the public key used in checksig/checkmultisig isn't serialized in a compressed format.")]
     WitnessPubKeyType,
-    #[error("")]
+    // Signatures are not empty on failed checksig or checkmultisig operations.
+    #[error("signatures are not empty on failed checksig/checkmultisig operations.")]
     NullFail,
-    #[error("")]
+    #[error("Signature violates low-S requirement")]
     HighS,
+    #[error("Exceeded tapscript validation weight")]
+    TapscriptValidationWeight,
     #[error("invalid signature encoding: {0:?}")]
     Der(#[from] SignatureEncodingError),
     #[error("generating key from slice: {0:?}")]
@@ -67,7 +75,7 @@ pub fn check_sig(
     pubkey: &[u8],
     script: &Script,
     begincodehash: usize,
-    exec_data: &ScriptExecutionData,
+    exec_data: &mut ScriptExecutionData,
     flags: &VerifyFlags,
     checker: &mut impl SignatureChecker,
     sig_version: SigVersion,
@@ -82,15 +90,9 @@ pub fn check_sig(
             checker,
             sig_version,
         ),
-        SigVersion::Taproot => eval_checksig_tapscript(
-            sig,
-            pubkey,
-            begincodehash,
-            flags,
-            checker,
-            sig_version,
-            exec_data,
-        ),
+        SigVersion::Taproot => {
+            eval_checksig_tapscript(sig, pubkey, flags, checker, sig_version, exec_data)
+        }
         SigVersion::Tapscript => unreachable!("key path in Taproot has no script"),
     }
 }
@@ -131,7 +133,7 @@ fn eval_checksig_pre_tapscript(
         return Err(CheckSigError::NullFail);
     }
 
-    Ok(true)
+    Ok(success)
 }
 
 pub(super) fn find_and_delete(script: &mut Vec<u8>, sig: &[u8]) -> usize {
@@ -357,18 +359,52 @@ fn is_compressed_pubkey(pubkey: &[u8]) -> bool {
 fn eval_checksig_tapscript(
     sig: &[u8],
     pubkey: &[u8],
-    begincodehash: usize,
     flags: &VerifyFlags,
     checker: &mut impl SignatureChecker,
     sig_version: SigVersion,
-    exec_data: &ScriptExecutionData,
+    exec_data: &mut ScriptExecutionData,
 ) -> Result<bool, CheckSigError> {
-    let sig = SchnorrSignature::from_slice(sig).map_err(CheckSigError::SigFromSlice)?;
-    let pubkey = XOnlyPublicKey::from_slice(pubkey).map_err(CheckSigError::Secp256k1)?;
+    // The following validation sequence is consensus critical. Please note how --
+    // upgradable public key versions precede other rules;
+    // the script execution fails when using empty signature with invalid public key;
+    // the script execution fails when using non-empty invalid signature.
+    let success = !sig.is_empty();
 
-    checker
-        .check_schnorr_signature(&sig, &pubkey, sig_version, exec_data)
-        .map_err(CheckSigError::Signature)?;
+    if success {
+        // Implement the sigops/witnesssize ratio test.
+        // Passing with an upgradable public key version is also counted.
+        assert!(exec_data.validation_weight_left_init);
+        exec_data.validation_weight_left = exec_data
+            .validation_weight_left
+            .checked_sub(VALIDATION_WEIGHT_PER_SIGOP_PASSED)
+            .ok_or(CheckSigError::TapscriptValidationWeight)?;
+    }
+
+    match pubkey.len() {
+        0 => return Err(CheckSigError::PubKeyType),
+        32 => {
+            if success {
+                let sig = SchnorrSignature::from_slice(sig).map_err(CheckSigError::SigFromSlice)?;
+                let pubkey =
+                    XOnlyPublicKey::from_slice(pubkey).map_err(CheckSigError::Secp256k1)?;
+
+                if !checker
+                    .check_schnorr_signature(&sig, &pubkey, sig_version, exec_data)
+                    .map_err(CheckSigError::Signature)?
+                {
+                    return Ok(false);
+                }
+            }
+        }
+        _ => {
+            // New public key version softforks should be defined before this `else` block.
+            // Generally, the new code should not do anything but failing the script execution. To avoid
+            // consensus bugs, it should not modify any existing values (including `success`).
+            if flags.intersects(VerifyFlags::DISCOURAGE_UPGRADABLE_PUBKEYTYPE) {
+                return Err(CheckSigError::DiscourageUpgradablePubkeyType);
+            }
+        }
+    }
 
     Ok(true)
 }

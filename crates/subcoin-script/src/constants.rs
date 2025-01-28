@@ -25,10 +25,12 @@ pub const SIGHASH_NONE: u8 = 0x02;
 pub const SIGHASH_SINGLE: u8 = 0x03;
 pub const SIGHASH_ANYONECANPAY: u8 = 0x80;
 
-// Below flags apply in the context of BIP 68
-// If this flag set, CTxIn::nSequence is NOT interpreted as a
-// relative lock-time.
+/// Below flags apply in the context of BIP 68
+/// If this flag set, CTxIn::nSequence is NOT interpreted as a relative lock-time.
 pub const SEQUENCE_LOCKTIME_DISABLE_FLAG: u32 = 1u32 << 31;
+
+/// Validation weight per passsing signature (Tapscript only, see BIP 342).
+pub const VALIDATION_WEIGHT_PER_SIGOP_PASSED: i64 = 50;
 
 pub static HALF_ORDER: LazyLock<num_bigint::BigInt> = LazyLock::new(|| {
     pub const N: &str = "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141";
