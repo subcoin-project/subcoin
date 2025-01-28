@@ -37,8 +37,7 @@ use bitcoin::blockdata::constants::{COINBASE_MATURITY, MAX_BLOCK_SIGOPS_COST};
 use bitcoin::blockdata::weight::WITNESS_SCALE_FACTOR;
 use bitcoin::consensus::Encodable;
 use bitcoin::{
-    Amount, Block as BitcoinBlock, BlockHash, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid,
-    VarInt, Weight,
+    Amount, Block as BitcoinBlock, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid, VarInt, Weight,
 };
 use sc_client_api::{AuxStore, Backend, StorageProvider};
 use sp_blockchain::HeaderBackend;
@@ -56,13 +55,26 @@ pub use tx_verify::Error as TxError;
 /// The maximum allowed weight for a block, see BIP 141 (network rule).
 pub const MAX_BLOCK_WEIGHT: Weight = Weight::MAX_BLOCK;
 
+/// Represents the Bitcoin script backend.
+#[derive(Copy, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
+pub enum ScriptEngine {
+    /// Uses the Bitcoin Core bindings for script verification.
+    #[default]
+    Core,
+    /// Uses the Rust-based Bitcoin script interpreter (Subcoin) for script verification.
+    /// This is an experimental feature, not yet fully validated for production use.
+    Subcoin,
+}
+
 /// Represents the level of block verification.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Copy, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 #[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
 pub enum BlockVerification {
     /// No verification performed.
     None,
     /// Full verification, including verifying the transactions.
+    #[default]
     Full,
     /// Verify the block header only, without the transaction veification.
     HeaderOnly,
