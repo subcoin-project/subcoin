@@ -1,20 +1,20 @@
-use super::sig::{check_pubkey_encoding, check_signature_encoding};
+use super::sig::{check_pubkey_encoding, check_signature_encoding, CheckSigError};
 use crate::constants::{MAX_OPS_PER_SCRIPT, MAX_PUBKEYS_PER_MULTISIG};
-use crate::signature_checker::SignatureChecker;
+use crate::signature_checker::{SignatureChecker, SignatureError};
 use crate::stack::{Stack, StackError};
 use crate::{EcdsaSignature, SigVersion, VerificationFlags};
 use bitcoin::script::PushBytesBuf;
 use bitcoin::{PublicKey, Script};
 
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
-pub enum MultiSigError {
+pub enum CheckMultiSigError {
     #[error("Invalid number of pubkeys, expected in the range of [0, {MAX_PUBKEYS_PER_MULTISIG}]")]
     InvalidPubkeyCount,
     #[error("Exceeded max OPS limit {MAX_OPS_PER_SCRIPT}")]
     TooManyOps,
     #[error("Invalid number of signatures, expected in the range of [0, {0}]")]
     InvalidSignatureCount(usize),
-    #[error("multisig dummy argument has length {0} instead of 0")]
+    #[error("Multisig dummy argument has length {0} instead of 0")]
     SignatureNullDummy(usize),
     #[error("OP_CHECKMULTISIG and OP_CHECKMULTISIGVERIFY are disabled during tapscript execution")]
     TapscriptCheckMultiSig,
@@ -25,12 +25,12 @@ pub enum MultiSigError {
     #[error("ECDSA error: {0:?}")]
     Ecdsa(bitcoin::ecdsa::Error),
     #[error(transparent)]
-    CheckSig(#[from] super::sig::CheckSigError),
+    CheckSig(#[from] CheckSigError),
     #[error(transparent)]
-    Signature(#[from] crate::signature_checker::SignatureError),
+    Signature(#[from] SignatureError),
     #[error("Secp256k1 error: {0:?}")]
     Secp256k1(bitcoin::secp256k1::Error),
-    #[error("generating key from slice: {0:?}")]
+    #[error("Generating key from slice: {0:?}")]
     FromSlice(bitcoin::key::FromSliceError),
 }
 
@@ -39,7 +39,7 @@ pub enum MultiSigOp {
     CheckMultiSigVerify,
 }
 
-pub fn execute_checkmultisig(
+pub fn check_multisig(
     stack: &mut Stack,
     flags: &VerificationFlags,
     begincode: usize,
@@ -48,7 +48,7 @@ pub fn execute_checkmultisig(
     checker: &mut impl SignatureChecker,
     multisig_op: MultiSigOp,
     op_count: &mut usize,
-) -> Result<(), MultiSigError> {
+) -> Result<(), CheckMultiSigError> {
     let success = eval_checkmultisig(
         stack,
         flags,
@@ -64,7 +64,7 @@ pub fn execute_checkmultisig(
             stack.push_bool(success);
         }
         MultiSigOp::CheckMultiSigVerify if !success => {
-            return Err(MultiSigError::CheckSigVerify);
+            return Err(CheckMultiSigError::CheckSigVerify);
         }
         _ => {}
     }
@@ -80,16 +80,16 @@ fn eval_checkmultisig(
     sig_version: SigVersion,
     checker: &mut impl SignatureChecker,
     op_count: &mut usize,
-) -> Result<bool, MultiSigError> {
+) -> Result<bool, CheckMultiSigError> {
     if matches!(sig_version, SigVersion::Tapscript) {
-        return Err(MultiSigError::TapscriptCheckMultiSig);
+        return Err(CheckMultiSigError::TapscriptCheckMultiSig);
     }
 
     // ([sig ...] num_of_signatures [pubkey ...] num_of_pubkeys -- bool)
 
     let keys_count = stack.pop_num()?;
     if keys_count < 0.into() || keys_count > MAX_PUBKEYS_PER_MULTISIG.into() {
-        return Err(MultiSigError::InvalidPubkeyCount);
+        return Err(CheckMultiSigError::InvalidPubkeyCount);
     }
 
     let keys_count = keys_count.value() as usize;
@@ -97,7 +97,7 @@ fn eval_checkmultisig(
     *op_count += keys_count;
 
     if *op_count > MAX_OPS_PER_SCRIPT {
-        return Err(MultiSigError::TooManyOps);
+        return Err(CheckMultiSigError::TooManyOps);
     }
 
     let mut keys = Vec::with_capacity(keys_count);
@@ -108,7 +108,7 @@ fn eval_checkmultisig(
     let sigs_count = stack.pop_num()?;
     let sigs_count = sigs_count.value() as usize;
     if sigs_count < 0 || sigs_count > keys_count {
-        return Err(MultiSigError::InvalidSignatureCount(keys_count));
+        return Err(CheckMultiSigError::InvalidSignatureCount(keys_count));
     }
 
     let mut sigs = Vec::with_capacity(sigs_count);
@@ -126,7 +126,7 @@ fn eval_checkmultisig(
     // value which unfortunately provides a source of malleability.  Thus,
     // there is a script flag to force an error when the value is NOT 0.
     if flags.intersects(VerificationFlags::NULLDUMMY) && !dummy.is_empty() {
-        return Err(MultiSigError::SignatureNullDummy(dummy.len()));
+        return Err(CheckMultiSigError::SignatureNullDummy(dummy.len()));
     }
 
     // Drop the signature in pre-segwit scripts but not segwit scripts
@@ -157,12 +157,12 @@ fn eval_checkmultisig(
         check_signature_encoding(sig, flags)?;
         check_pubkey_encoding(key, flags, sig_version)?;
 
-        let sig = EcdsaSignature::from_slice(&sig).map_err(MultiSigError::Ecdsa)?;
-        let key = PublicKey::from_slice(&key).map_err(MultiSigError::FromSlice)?;
+        let sig = EcdsaSignature::from_slice(&sig).map_err(CheckMultiSigError::Ecdsa)?;
+        let key = PublicKey::from_slice(&key).map_err(CheckMultiSigError::FromSlice)?;
 
         if checker
             .check_ecdsa_signature(&sig, &key, &subscript, sig_version)
-            .map_err(MultiSigError::Signature)?
+            .map_err(CheckMultiSigError::Signature)?
         {
             s += 1;
         }

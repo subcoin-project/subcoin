@@ -2,7 +2,9 @@ mod multisig;
 mod sig;
 
 use super::ScriptError;
-use crate::constants::{MAX_OPS_PER_SCRIPT, MAX_SCRIPT_ELEMENT_SIZE};
+use crate::constants::{
+    MAX_OPS_PER_SCRIPT, MAX_SCRIPT_ELEMENT_SIZE, MAX_STACK_SIZE, SEQUENCE_LOCKTIME_DISABLE_FLAG,
+};
 use crate::num::ScriptNum;
 use crate::signature_checker::SignatureChecker;
 use crate::stack::{Stack, StackError};
@@ -12,13 +14,8 @@ use bitcoin::script::Instruction;
 use bitcoin::Script;
 use std::ops::{Add, Neg, Sub};
 
-#[derive(Debug, PartialEq, Eq, thiserror::Error)]
-pub enum EvalScriptError {
-    #[error(transparent)]
-    Sig(#[from] sig::CheckSigError),
-    #[error(transparent)]
-    MultiSig(#[from] multisig::MultiSigError),
-}
+pub use self::multisig::CheckMultiSigError;
+pub use self::sig::CheckSigError;
 
 pub fn eval_script(
     stack: &mut Stack,
@@ -30,6 +27,10 @@ pub fn eval_script(
 ) -> Result<bool, ScriptError> {
     use crate::opcode::Opcode::*;
 
+    if matches!(sig_version, SigVersion::Taproot) {
+        return Err(ScriptError::NoScriptExecution);
+    }
+
     let mut alt_stack = Stack::default();
 
     // Create a vector of conditional execution states
@@ -37,9 +38,16 @@ pub fn eval_script(
 
     let mut begincode = 0;
     let mut op_count = 0;
+    let mut opcode_pos = 0;
 
-    for instruction in script.instruction_indices() {
-        let (pc, instruction) = instruction.map_err(ScriptError::RustBitcoinScript)?;
+    let instructions = if flags.intersects(VerificationFlags::MINIMALDATA) {
+        script.instruction_indices_minimal()
+    } else {
+        script.instruction_indices()
+    };
+
+    for instruction in instructions {
+        let (pc, instruction) = instruction.map_err(ScriptError::ReadInstruction)?;
 
         let executing = exec_stack.iter().all(|x| *x);
 
@@ -48,6 +56,7 @@ pub fn eval_script(
                 if p.len() > MAX_SCRIPT_ELEMENT_SIZE {
                     return Err(ScriptError::PushSize);
                 }
+                // TODO: avoid allocation?
                 stack.push(p.as_bytes().to_vec());
             }
             Instruction::Op(op) => {
@@ -99,13 +108,37 @@ pub fn eval_script(
                     // Flow control
                     OP_NOP => {}
                     OP_IF | OP_NOTIF => {
-                        // TODO: tapscript support
-                        let exec_value = pop_exec_value(stack, executing)?;
-                        exec_stack.push(if opcode == OP_IF {
-                            exec_value
-                        } else {
-                            !exec_value
-                        });
+                        let mut value = false;
+
+                        if executing {
+                            let top = stack.pop()?;
+
+                            // Tapscript requires minimal IF/NOTIF inputs as a consensus rule.
+                            if matches!(sig_version, SigVersion::Tapscript) {
+                                // The input argument to the OP_IF and OP_NOTIF opcodes must be either
+                                // exactly 0 (the empty vector) or exactly 1 (the one-byte vector with value 1).
+                                if top.len() > 1 || (top.len() == 1 && top[0] != 1) {
+                                    return Err(ScriptError::TaprootMinimalif);
+                                }
+                            }
+
+                            // Under witness v0 rules it is only a policy rule, enabled through SCRIPT_VERIFY_MINIMALIF.
+                            if matches!(sig_version, SigVersion::WitnessV0)
+                                && flags.intersects(VerificationFlags::MINIMALIF)
+                            {
+                                if top.len() > 1 || (top.len() == 1 && top[0] != 1) {
+                                    return Err(ScriptError::Minimalif);
+                                }
+                            }
+
+                            value = crate::stack::cast_to_bool(&top);
+
+                            if opcode == OP_NOTIF {
+                                value = !value;
+                            }
+                        }
+
+                        exec_stack.push(value);
                     }
                     OP_ELSE => {
                         // Toggle top.
@@ -296,7 +329,7 @@ pub fn eval_script(
                         stack.push_num(v1.max(v2));
                     }
                     OP_WITHIN => {
-                        // [x min max]
+                        // [v3 v2 v1] = [x min max]
                         let v1 = stack.pop_num()?;
                         let v2 = stack.pop_num()?;
                         let v3 = stack.pop_num()?;
@@ -325,14 +358,22 @@ pub fn eval_script(
                         stack.push(v.to_byte_array().to_vec());
                     }
                     OP_CODESEPARATOR => {
+                        // Use of OP_CODESEPARATOR is rejected in pre-segwit script.
+                        if matches!(sig_version, SigVersion::Base)
+                            && flags.intersects(VerificationFlags::CONST_SCRIPTCODE)
+                        {
+                            return Err(ScriptError::OpCodeSeparator);
+                        }
+
                         begincode = pc;
+                        exec_data.codeseparator_pos = opcode_pos;
                     }
                     OP_CHECKSIG | OP_CHECKSIGVERIFY => {
                         // [sig pubkey] -> bool
                         let pubkey = stack.pop()?;
                         let sig = stack.pop()?;
 
-                        let success = sig::eval_checksig(
+                        let success = sig::check_sig(
                             &sig,
                             &pubkey,
                             script,
@@ -342,7 +383,7 @@ pub fn eval_script(
                             checker,
                             sig_version,
                         )
-                        .map_err(EvalScriptError::Sig)?;
+                        .map_err(ScriptError::CheckSig)?;
 
                         match opcode {
                             OP_CHECKSIG => {
@@ -361,7 +402,7 @@ pub fn eval_script(
                             multisig::MultiSigOp::CheckMultiSigVerify
                         };
 
-                        multisig::execute_checkmultisig(
+                        multisig::check_multisig(
                             stack,
                             &flags,
                             begincode,
@@ -371,14 +412,37 @@ pub fn eval_script(
                             multisig_op,
                             &mut op_count,
                         )
-                        .map_err(EvalScriptError::MultiSig)?;
+                        .map_err(ScriptError::CheckMultiSig)?;
                     }
                     OP_CHECKSIGADD => {
-                        todo!("checksigadd for tapscript")
+                        // (sig num pubkey -- num)
+                        let pubkey = stack.pop()?;
+                        let num = stack.pop_num()?;
+                        let sig = stack.pop()?;
+
+                        let success = sig::check_sig(
+                            &sig,
+                            &pubkey,
+                            script,
+                            begincode,
+                            &exec_data,
+                            &flags,
+                            checker,
+                            sig_version,
+                        )
+                        .map_err(ScriptError::CheckSig)?;
+
+                        let v = num.value() + if success { 1 } else { 0 };
+                        stack.push_num(v);
                     }
 
                     // Locktime
                     OP_CHECKLOCKTIMEVERIFY => {
+                        // not enabled; treat as a NOP3
+                        if !flags.intersects(VerificationFlags::CHECKLOCKTIMEVERIFY) {
+                            continue;
+                        }
+
                         // Note that elsewhere numeric opcodes are limited to
                         // operands in the range -2**31+1 to 2**31-1, however it is
                         // legal for opcodes to produce results exceeding that
@@ -407,11 +471,16 @@ pub fn eval_script(
                         }
                     }
                     OP_CHECKSEQUENCEVERIFY => {
-                        // Below flags apply in the context of BIP 68
-                        // If this flag set, CTxIn::nSequence is NOT interpreted as a
-                        // relative lock-time.
-                        const SEQUENCE_LOCKTIME_DISABLE_FLAG: u32 = 1u32 << 31;
+                        // not enabled; treat as a NOP3
+                        if !flags.intersects(VerificationFlags::CHECKSEQUENCEVERIFY) {
+                            continue;
+                        }
 
+                        // opcodeCheckSequenceVerify compares the top item on the data stack to the
+                        // LockTime field of the transaction containing the script signature
+                        // validating if the transaction outputs are spendable yet.  If flag
+                        // ScriptVerifyCheckSequenceVerify is not set, the code continues as if OP_NOP3
+                        // were executed.
                         let sequence = stack.pop_num_with_max_size(5)?;
 
                         if sequence.is_negative() {
@@ -436,10 +505,18 @@ pub fn eval_script(
                     }
                     OP_NOP1 | OP_NOP4 | OP_NOP5 | OP_NOP6 | OP_NOP7 | OP_NOP8 | OP_NOP9
                     | OP_NOP10 => {
-                        return Err(ScriptError::DiscourageUpgradableNops);
+                        if flags.intersects(VerificationFlags::DISCOURAGE_UPGRADABLE_NOPS) {
+                            return Err(ScriptError::DiscourageUpgradableNops);
+                        }
                     }
                 }
             }
+        }
+
+        opcode_pos += 1;
+
+        if stack.len() + alt_stack.len() > MAX_STACK_SIZE {
+            return Err(ScriptError::StackSize);
         }
     }
 
@@ -450,14 +527,4 @@ pub fn eval_script(
     let success = !stack.is_empty() && stack.peek_bool()?;
 
     Ok(success)
-}
-
-fn pop_exec_value(stack: &mut Stack, executing: bool) -> Result<bool, ScriptError> {
-    if executing {
-        stack
-            .pop_bool()
-            .map_err(|_| ScriptError::UnbalancedConditional)
-    } else {
-        Ok(false)
-    }
 }

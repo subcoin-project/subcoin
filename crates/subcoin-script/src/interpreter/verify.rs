@@ -6,7 +6,7 @@ use crate::{ScriptExecutionData, SigVersion, VerificationFlags};
 use bitcoin::hashes::Hash;
 use bitcoin::opcodes::all::{OP_CHECKSIG, OP_DUP, OP_EQUALVERIFY, OP_HASH160};
 use bitcoin::script::{Builder, Instruction, PushBytesBuf};
-use bitcoin::{Script, Witness, WitnessProgram};
+use bitcoin::{Script, Witness, WitnessProgram, WitnessVersion};
 
 fn parse_witness_program(script: &Script) -> Option<WitnessProgram> {
     script.witness_version().and_then(|witness_version| {
@@ -181,9 +181,9 @@ fn verify_witness_program(
 ) -> Result<(), ScriptError> {
     let stack = Stack::with_data(witness.to_vec());
 
-    let witness_version = witness_program.version() as u8;
+    let witness_version = witness_program.version();
 
-    if witness_version == 0 {
+    if witness_version == WitnessVersion::V0 {
         match witness_program.program().len() {
             WITNESS_V0_SCRIPTHASH_SIZE => {
                 // BIP141 P2WSH: 32-byte witness v0 program (which encodes SHA256(script))
@@ -234,7 +234,7 @@ fn verify_witness_program(
             }
             _ => return Err(ScriptError::WitnessProgramWrongLength),
         }
-    } else if witness_version == 1
+    } else if witness_version == WitnessVersion::V1
         && witness_program.program().len() == WITNESS_V0_SCRIPTHASH_SIZE
         && !is_p2sh
     {
@@ -271,7 +271,7 @@ fn execute_witness_script(
     if sig_version == SigVersion::Tapscript {
         // OP_SUCCESSx processing overrides everything, including stack element size limits
         for instruction in exec_script.instructions() {
-            match instruction.map_err(ScriptError::RustBitcoinScript)? {
+            match instruction.map_err(ScriptError::ReadInstruction)? {
                 Instruction::Op(opcode) => {
                     // New opcodes will be listed here. May use a different sigversion to modify existing opcodes.
                     if is_op_success(opcode.to_u8()) {
@@ -287,7 +287,7 @@ fn execute_witness_script(
 
         // Tapscript enforces initial stack size limits (altstack is empty here)
         if stack.len() > MAX_STACK_SIZE {
-            return Err(ScriptError::ExceedsStackLimit);
+            return Err(ScriptError::StackSize);
         }
     }
 

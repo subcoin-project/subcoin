@@ -296,7 +296,7 @@ impl Stack {
 }
 
 /// Converts a byte slice to a boolean.
-fn cast_to_bool(data: &[u8]) -> bool {
+pub fn cast_to_bool(data: &[u8]) -> bool {
     match data.split_last() {
         Some((&last, rest)) => rest.iter().any(|&x| x != 0) || (last != 0 && last != 0x80),
         None => false,

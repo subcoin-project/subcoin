@@ -1,6 +1,7 @@
 mod eval;
 mod verify;
 
+use crate::constants::{MAX_OPS_PER_SCRIPT, MAX_SCRIPT_ELEMENT_SIZE, MAX_STACK_SIZE};
 use crate::num::NumError;
 use crate::stack::StackError;
 
@@ -16,19 +17,19 @@ pub enum ScriptError {
     /// terminated with a false top stack element.
     #[error("script terminated with a false stack element")]
     EvalFalse,
-    #[error("op return")]
+    #[error("Return early if OP_RETURN is executed in the script.")]
     OpReturn,
 
     // Max sizes.
-    #[error("script size")]
+    #[error("Exceeds max script size")]
     ScriptSize,
-    #[error("push size")]
+    #[error("Size of the element pushed to the stack exceeds MAX_SCRIPT_ELEMENT_SIZE ({MAX_SCRIPT_ELEMENT_SIZE})")]
     PushSize,
-    #[error("Exceeds max ops per script")]
+    #[error("Exceeds max operations ({MAX_OPS_PER_SCRIPT}) per script")]
     OpCount,
     // Stack and altstack combined depth is over the limit.
-    #[error("stack overflow")]
-    ExceedsStackLimit,
+    #[error("Exceeds stack limit ({MAX_STACK_SIZE})")]
+    StackSize,
     #[error("sig count")]
     SigCount,
     #[error("pubkey count")]
@@ -41,9 +42,8 @@ pub enum ScriptError {
     // Logical/Format/Canonical errors.
     #[error("bad opcode")]
     BadOpcode,
-    // ErrDisabledOpcode is returned when a disabled opcode is encountered
-    // in a script.
-    #[error("{0} is disabled")]
+    // A disabled opcode is encountered in a script.
+    #[error("attempt to execute disabled opcode {0}")]
     DisabledOpcode(bitcoin::opcodes::Opcode),
     #[error(transparent)]
     Stack(#[from] StackError),
@@ -55,14 +55,12 @@ pub enum ScriptError {
     UnbalancedConditional,
 
     // CHECKLOCKTIMEVERIFY and CHECKSEQUENCEVERIFY
-    // ErrNegativeLockTime is returned when a script contains an opcode that
-    // interprets a negative lock time.
-    #[error("negative locktime")]
+    // Script contains an opcode that interprets a negative lock time.
+    #[error("Locktime is negative")]
     NegativeLocktime,
-    // ErrUnsatisfiedLockTime is returned when a script contains an opcode
-    // that involves a lock time and the required lock time has not been
-    // reached.
-    #[error("unsatisfied locktime")]
+    // Script contains an opcode that involves a lock time and the required
+    // lock time has not been reached.
+    #[error("Required lock time has not been reached.")]
     UnsatisfiedLocktime,
 
     // Malleability
@@ -79,6 +77,11 @@ pub enum ScriptError {
     // single element.
     #[error("clean stack")]
     CleanStack,
+    // ErrMinimalIf is returned if ScriptVerifyWitness is set and the
+    // operand of an OP_IF/OP_NOF_IF are not either an empty vector or
+    // [0x01].
+    #[error("minimal if")]
+    Minimalif,
     #[error("signature push only")]
     SigPushOnly,
     #[error("witness program witness empty")]
@@ -89,7 +92,7 @@ pub enum ScriptError {
     WitnessProgramWrongLength,
 
     // Softfork safeness.
-    #[error("disable upgrable nops")]
+    #[error("NOP opcode encountered when DISCOURAGE_UPGRADABLE_NOPS flag is set")]
     DiscourageUpgradableNops,
     #[error("discourage upgradable witness program")]
     DiscourageUpgradableWitnessProgram,
@@ -126,8 +129,7 @@ pub enum ScriptError {
     TaprootMinimalif,
 
     // Constant scriptCode
-    // ErrCodeSeparator is returned when OP_CODESEPARATOR is used in a
-    // non-segwit script.
+    // OP_CODESEPARATOR is used in a non-segwit script.
     #[error("OP_CODESEPARATOR is used in a non-segwit script.")]
     OpCodeSeparator,
     #[error("sig findanddelete")]
@@ -137,16 +139,20 @@ pub enum ScriptError {
     ErrorCount,
 
     // Extended errors.
-    #[error("invalid alt stack operation")]
+    #[error("No script execution")]
+    NoScriptExecution,
+    #[error("Invalid alt stack operation")]
     InvalidAltStackOperation,
     #[error("{0} is unknown")]
     UnknownOpcode(bitcoin::opcodes::Opcode),
-    #[error("rust-bitcoin script error: {0:?}")]
-    RustBitcoinScript(bitcoin::script::Error),
+    #[error("Failed to read instruction: {0:?}")]
+    ReadInstruction(bitcoin::script::Error),
     #[error(transparent)]
     Num(#[from] NumError),
     #[error(transparent)]
-    EvalScript(#[from] eval::EvalScriptError),
+    CheckSig(#[from] eval::CheckSigError),
+    #[error(transparent)]
+    CheckMultiSig(#[from] eval::CheckMultiSigError),
 }
 
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
