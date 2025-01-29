@@ -62,6 +62,8 @@ pub enum ScriptEngine {
     /// Uses the Bitcoin Core bindings for script verification.
     #[default]
     Core,
+    /// No script verification.
+    None,
     /// Uses the Rust-based Bitcoin script interpreter (Subcoin) for script verification.
     /// This is an experimental feature, not yet fully validated for production use.
     Subcoin,
@@ -146,6 +148,8 @@ pub enum Error {
     #[error(transparent)]
     Header(#[from] HeaderError),
     #[error(transparent)]
+    Script(#[from] subcoin_script::interpreter::ScriptError),
+    #[error(transparent)]
     BitcoinConsensus(#[from] bitcoinconsensus::Error),
     #[error("Bip34 error: {0:?}")]
     Bip34(Bip34Error),
@@ -164,7 +168,7 @@ pub struct BlockVerifier<Block, Client, BE> {
     header_verifier: HeaderVerifier<Block, Client>,
     block_verification: BlockVerification,
     coin_storage_key: Arc<dyn CoinStorageKey>,
-    verify_script: bool,
+    script_engine: ScriptEngine,
     _phantom: PhantomData<(Block, BE)>,
 }
 
@@ -175,7 +179,7 @@ impl<Block, Client, BE> BlockVerifier<Block, Client, BE> {
         network: bitcoin::Network,
         block_verification: BlockVerification,
         coin_storage_key: Arc<dyn CoinStorageKey>,
-        verify_script: bool,
+        script_engine: ScriptEngine,
     ) -> Self {
         let chain_params = ChainParams::new(network);
         let header_verifier = HeaderVerifier::new(client.clone(), chain_params.clone());
@@ -185,7 +189,7 @@ impl<Block, Client, BE> BlockVerifier<Block, Client, BE> {
             header_verifier,
             block_verification,
             coin_storage_key,
-            verify_script,
+            script_engine,
             _phantom: Default::default(),
         }
     }
@@ -435,13 +439,35 @@ where
                     return Err(Error::PrematureSpendOfCoinbase);
                 }
 
-                if self.verify_script {
-                    script_verify::verify_input_script(
-                        &spent_output,
-                        spending_transaction,
-                        input_index,
-                        flags,
-                    )?;
+                match self.script_engine {
+                    ScriptEngine::Core => {
+                        script_verify::verify_input_script(
+                            &spent_output,
+                            spending_transaction,
+                            input_index,
+                            flags,
+                        )?;
+                    }
+                    ScriptEngine::None => {
+                        // Skip script verification.
+                    }
+                    ScriptEngine::Subcoin => {
+                        let mut checker =
+                            subcoin_script::signature_checker::TransactionSignatureChecker::new(
+                                input_index,
+                                spent_output.value.to_sat(),
+                                tx.clone(),
+                            );
+                        let sig_version = subcoin_script::SigVersion::Base;
+                        subcoin_script::interpreter::verify_script(
+                            &input.script_sig,
+                            &spent_output.script_pubkey,
+                            &input.witness,
+                            subcoin_script::VerifyFlags::from_bits(flags).expect("Invalid flags"),
+                            &mut checker,
+                            sig_version,
+                        )?;
+                    }
                 }
 
                 spent_utxos.insert(coin);

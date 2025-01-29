@@ -5,7 +5,7 @@ use sc_cli::{
     RpcEndpoint, RpcParams, SharedParams, SubstrateCli, SyncMode,
 };
 use sc_client_api::UsageProvider;
-use sc_consensus_nakamoto::{BitcoinBlockImporter, ScriptEngine};
+use sc_consensus_nakamoto::BitcoinBlockImporter;
 use sc_service::config::{IpNetwork, RpcBatchRequestConfig};
 use sc_service::{BasePath, Configuration, TaskManager};
 use std::num::NonZeroU32;
@@ -58,12 +58,8 @@ pub struct Run {
     pub tx_index: bool,
 
     /// Specify the Subcoin network behavior.
-    #[clap(long)]
+    #[clap(long, default_value = "full")]
     pub subcoin_network: SubcoinNetworkOption,
-
-    /// Specifies which script engine to use for script verification.
-    #[clap(long, default_value = "core")]
-    pub script_engine: ScriptEngine,
 
     /// Disable automatic hardware benchmarks.
     ///

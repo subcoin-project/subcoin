@@ -9,12 +9,12 @@ repository.workspace = true
 
 [dependencies]
 codec = { workspace = true, default-features = false }
-pallet-executive = { workspace = true, default-features = false }
 frame-system = { workspace = true, default-features = false }
 frame-system-rpc-runtime-api = { workspace = true, default-features = false }
 frame-support = { workspace = true, default-features = false }
 log = { workspace = true, default-features = false }
 pallet-bitcoin = { workspace = true, default-features = false }
+pallet-executive = { workspace = true, default-features = false }
 scale-info = { workspace = true, default-features = false }
 sp-api = { workspace = true, default-features = false }
 sp-block-builder = { workspace = true, default-features = false }
@@ -34,12 +34,12 @@ substrate-wasm-builder = { workspace = true, optional = true }
 default = ["std"]
 std = [
     "codec/std",
-    "pallet-executive/std",
     "frame-system/std",
     "frame-system-rpc-runtime-api/std",
     "frame-support/std",
     "log/std",
     "pallet-bitcoin/std",
+    "pallet-executive/std",
     "scale-info/std",
     "sp-api/std",
     "sp-block-builder/std",

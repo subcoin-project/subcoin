@@ -17,11 +17,11 @@ use std::ops::{Add, Neg, Sub};
 pub use self::multisig::CheckMultiSigError;
 pub use self::sig::CheckSigError;
 
-pub fn eval_script(
+pub fn eval_script<SC: SignatureChecker>(
     stack: &mut Stack,
     script: &Script,
     flags: &VerifyFlags,
-    checker: &mut impl SignatureChecker,
+    checker: &mut SC,
     sig_version: SigVersion,
     exec_data: &mut ScriptExecutionData,
 ) -> Result<bool, ScriptError> {

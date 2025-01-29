@@ -16,12 +16,12 @@ fn parse_witness_program(script: &Script) -> Option<WitnessProgram> {
 
 /// - Ok(()): `return true` in C++.
 /// - Err(err): `return false` with `serror` set.
-pub fn verify_script(
+pub fn verify_script<SC: SignatureChecker>(
     script_sig: &Script,
     script_pubkey: &Script,
     witness: &Witness,
     flags: VerifyFlags,
-    checker: &mut impl SignatureChecker,
+    checker: &mut SC,
     sig_version: SigVersion,
 ) -> Result<(), ScriptError> {
     if flags.intersects(VerifyFlags::SIGPUSHONLY) && !script_sig.is_push_only() {

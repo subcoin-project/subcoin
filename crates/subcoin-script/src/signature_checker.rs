@@ -111,6 +111,19 @@ pub struct TransactionSignatureChecker {
     taproot_annex_scriptleaf: Option<(TapLeafHash, Option<Vec<u8>>)>,
 }
 
+impl TransactionSignatureChecker {
+    pub fn new(input_index: usize, input_amount: u64, tx: Transaction) -> Self {
+        Self {
+            tx: tx.clone(),
+            input_index,
+            input_amount,
+            prevouts: Vec::new(),
+            sighash_cache: SighashCache::new(tx),
+            taproot_annex_scriptleaf: None,
+        }
+    }
+}
+
 impl SignatureChecker for TransactionSignatureChecker {
     fn check_ecdsa_signature(
         &mut self,

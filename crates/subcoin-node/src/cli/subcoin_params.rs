@@ -1,5 +1,5 @@
 use clap::Parser;
-use sc_consensus_nakamoto::{BlockVerification, ImportConfig};
+use sc_consensus_nakamoto::{BlockVerification, ImportConfig, ScriptEngine};
 use std::path::PathBuf;
 use subcoin_network::PeerId;
 
@@ -86,9 +86,9 @@ pub struct CommonParams {
     #[clap(long, default_value = "full")]
     pub block_verification: BlockVerification,
 
-    /// Whether to verify the TxIn scripts during the block verification.
-    #[clap(long, default_value_t = true)]
-    pub verify_script: bool,
+    /// Specifies the backend for Bitcoin script verification.
+    #[clap(long, default_value = "core")]
+    pub script_engine: ScriptEngine,
 
     /// Specify custom base path.
     #[arg(long, short = 'd', value_name = "PATH")]
@@ -145,7 +145,7 @@ impl CommonParams {
             network: self.bitcoin_network(),
             block_verification: self.block_verification,
             execute_block: true,
-            verify_script: self.verify_script,
+            script_engine: self.script_engine,
         }
     }
 }

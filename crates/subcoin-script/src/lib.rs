@@ -186,9 +186,3 @@ pub struct ScriptExecutionData {
     /// The hash of the corresponding output
     pub output_hash: Option<H256>,
 }
-
-#[derive(Debug, Eq, PartialEq, thiserror::Error)]
-pub enum Error {
-    #[error(transparent)]
-    Interpreter(#[from] interpreter::Error),
-}

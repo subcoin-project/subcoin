@@ -20,6 +20,7 @@
 
 use crate::metrics::Metrics;
 use crate::verification::{BlockVerification, BlockVerifier};
+use crate::ScriptEngine;
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::hashes::Hash;
 use bitcoin::{Block as BitcoinBlock, BlockHash, Network, Work};
@@ -54,8 +55,8 @@ pub struct ImportConfig {
     pub block_verification: BlockVerification,
     /// Whether to execute the transactions in the block.
     pub execute_block: bool,
-    /// Whether to verify the Bitcoin script.
-    pub verify_script: bool,
+    /// Bitcoin script interpreter.
+    pub script_engine: ScriptEngine,
 }
 
 #[derive(Debug, Default)]
@@ -139,7 +140,7 @@ where
             config.network,
             config.block_verification,
             coin_storage_key,
-            config.verify_script,
+            config.script_engine,
         );
         let metrics = match registry {
             Some(registry) => Metrics::register(registry)

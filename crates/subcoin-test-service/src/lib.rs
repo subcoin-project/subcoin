@@ -3,6 +3,7 @@ use bitcoin::hex::FromHex;
 use bitcoin::Block;
 use sc_consensus_nakamoto::{
     BitcoinBlockImport, BitcoinBlockImporter, BlockVerification, ImportConfig, ImportStatus,
+    ScriptEngine,
 };
 use sc_service::config::{
     BlocksPruning, DatabaseSource, ExecutorConfiguration, KeystoreConfig, NetworkConfiguration,
@@ -141,7 +142,7 @@ pub async fn new_test_node_and_produce_blocks(
                 network: bitcoin::Network::Bitcoin,
                 block_verification: BlockVerification::None,
                 execute_block: true,
-                verify_script: true,
+                script_engine: ScriptEngine::Core,
             },
             Arc::new(subcoin_service::CoinStorageKey),
             None,
