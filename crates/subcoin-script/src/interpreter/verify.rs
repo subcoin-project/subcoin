@@ -1,5 +1,7 @@
 use super::{eval_script, ScriptError};
-use crate::constants::{MAX_SCRIPT_ELEMENT_SIZE, MAX_STACK_SIZE, WITNESS_V0_SCRIPTHASH_SIZE};
+use crate::constants::{
+    MAX_SCRIPT_ELEMENT_SIZE, MAX_STACK_SIZE, WITNESS_V0_KEYHASH_SIZE, WITNESS_V0_SCRIPTHASH_SIZE,
+};
 use crate::signature_checker::SignatureChecker;
 use crate::stack::Stack;
 use crate::{ScriptExecutionData, SigVersion, VerifyFlags};
@@ -184,55 +186,55 @@ fn verify_witness_program(
     let witness_version = witness_program.version();
 
     if witness_version == WitnessVersion::V0 {
-        match witness_program.program().len() {
-            WITNESS_V0_SCRIPTHASH_SIZE => {
-                // BIP141 P2WSH: 32-byte witness v0 program (which encodes SHA256(script))
-                if witness.is_empty() {
-                    return Err(ScriptError::WitnessProgramWitnessEmpty);
-                }
+        let program_size = witness_program.program().len();
 
-                let script_bytes = stack.last()?;
-                let exec_script = Script::from_bytes(script_bytes);
-
-                let exec_script_hash: [u8; 32] = exec_script.wscript_hash().to_byte_array();
-
-                if exec_script_hash.as_slice() != witness_program.program().as_bytes() {
-                    return Err(ScriptError::WitnessProgramMismatch);
-                }
-
-                execute_witness_script(
-                    &stack,
-                    &exec_script,
-                    flags,
-                    SigVersion::WitnessV0,
-                    checker,
-                    &mut ScriptExecutionData::default(),
-                )?;
+        if program_size == WITNESS_V0_SCRIPTHASH_SIZE {
+            // BIP141 P2WSH: 32-byte witness v0 program (which encodes SHA256(script))
+            if witness.is_empty() {
+                return Err(ScriptError::WitnessProgramWitnessEmpty);
             }
-            WITNESS_V0_KEYHASH_SIZE => {
-                // BIP141 P2WPKH: 20-byte witness v0 program (which encodes Hash160(pubkey))
-                if stack.len() != 2 {
-                    return Err(ScriptError::WitnessProgramMismatch);
-                }
 
-                let exec_script = Builder::default()
-                    .push_opcode(OP_DUP)
-                    .push_opcode(OP_HASH160)
-                    .push_slice(witness_program.program())
-                    .push_opcode(OP_EQUALVERIFY)
-                    .push_opcode(OP_CHECKSIG)
-                    .into_script();
+            let script_bytes = stack.last()?;
+            let exec_script = Script::from_bytes(script_bytes);
 
-                execute_witness_script(
-                    &stack,
-                    &exec_script,
-                    flags,
-                    SigVersion::WitnessV0,
-                    checker,
-                    &mut ScriptExecutionData::default(),
-                )?;
+            let exec_script_hash: [u8; 32] = exec_script.wscript_hash().to_byte_array();
+
+            if exec_script_hash.as_slice() != witness_program.program().as_bytes() {
+                return Err(ScriptError::WitnessProgramMismatch);
             }
-            _ => return Err(ScriptError::WitnessProgramWrongLength),
+
+            execute_witness_script(
+                &stack,
+                &exec_script,
+                flags,
+                SigVersion::WitnessV0,
+                checker,
+                &mut ScriptExecutionData::default(),
+            )?;
+        } else if program_size == WITNESS_V0_KEYHASH_SIZE {
+            // BIP141 P2WPKH: 20-byte witness v0 program (which encodes Hash160(pubkey))
+            if stack.len() != 2 {
+                return Err(ScriptError::WitnessProgramMismatch);
+            }
+
+            let exec_script = Builder::default()
+                .push_opcode(OP_DUP)
+                .push_opcode(OP_HASH160)
+                .push_slice(witness_program.program())
+                .push_opcode(OP_EQUALVERIFY)
+                .push_opcode(OP_CHECKSIG)
+                .into_script();
+
+            execute_witness_script(
+                &stack,
+                &exec_script,
+                flags,
+                SigVersion::WitnessV0,
+                checker,
+                &mut ScriptExecutionData::default(),
+            )?;
+        } else {
+            return Err(ScriptError::WitnessProgramWrongLength);
         }
     } else if witness_version == WitnessVersion::V1
         && witness_program.program().len() == WITNESS_V0_SCRIPTHASH_SIZE
