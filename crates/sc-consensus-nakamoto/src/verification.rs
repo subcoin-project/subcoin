@@ -37,7 +37,8 @@ use bitcoin::blockdata::constants::{COINBASE_MATURITY, MAX_BLOCK_SIGOPS_COST};
 use bitcoin::blockdata::weight::WITNESS_SCALE_FACTOR;
 use bitcoin::consensus::Encodable;
 use bitcoin::{
-    Amount, Block as BitcoinBlock, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid, VarInt, Weight,
+    Amount, Block as BitcoinBlock, BlockHash, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid,
+    VarInt, Weight,
 };
 use sc_client_api::{AuxStore, Backend, StorageProvider};
 use sp_blockchain::HeaderBackend;
@@ -97,63 +98,97 @@ pub struct TransactionContext {
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// The merkle root of the block is invalid.
-    #[error("Invalid merkle root")]
-    BadMerkleRoot,
+    #[error("Invalid merkle root in block#{0}")]
+    BadMerkleRoot(BlockHash),
     /// Block must contain at least one coinbase transaction.
-    #[error("Transaction list is empty")]
-    EmptyTransactionList,
-    #[error("Block is too large")]
-    BadBlockLength,
-    #[error("First transaction is not coinbase")]
-    FirstTransactionIsNotCoinbase,
-    #[error("Block contains more than one coinbase")]
-    MultipleCoinbase,
-    #[error("Transaction input script contains too many sigops (max: {MAX_BLOCK_SIGOPS_COST})")]
-    TooManySigOps { block_number: u32 },
-    #[error("Invalid witness commitment")]
-    BadWitnessCommitment,
-    #[error("Transaction is not finalized")]
-    TransactionNotFinal,
-    #[error("Block contains duplicate transaction at index {0}")]
-    DuplicateTransaction(usize),
-    #[error("Block height mismatches in coinbase (got: {got}, expected: {expected})")]
-    BadCoinbaseBlockHeight { got: u32, expected: u32 },
-    /// Referenced output does not exist or was spent before.
+    #[error("Block {0} has an empty transaction list")]
+    EmptyTransactionList(BlockHash),
+    /// Block size exceeds the limit.
+    #[error("Block {0} exceeds maximum allowed size")]
+    BlockTooLarge(BlockHash),
+    /// First transaction must be a coinbase.
+    #[error("First transaction in block {0} is not a coinbase")]
+    FirstTransactionIsNotCoinbase(BlockHash),
+    /// A block must contain only one coinbase transaction.
+    #[error("Block {0} contains multiple coinbase transactions")]
+    MultipleCoinbase(BlockHash),
     #[error(
-        "Missing UTXO in state for transaction ({context:?}). Missing UTXO: {missing_outpoint:?}"
+        "Block {block_hash} has incorrect coinbase height, (expected: {expected}, got: {got})"
+    )]
+    BadCoinbaseBlockHeight {
+        block_hash: BlockHash,
+        got: u32,
+        expected: u32,
+    },
+    /// Coinbase transaction is prematurely spent.
+    #[error("Premature spend of coinbase transaction in block {0}")]
+    PrematureSpendOfCoinbase(BlockHash),
+
+    /// Block contains duplicate transactions.
+    #[error("Block {block_hash} contains duplicate transaction at index {index}")]
+    DuplicateTransaction { block_hash: BlockHash, index: usize },
+    /// A transaction is not finalized.
+    #[error("Transaction in block {0} is not finalized")]
+    TransactionNotFinal(BlockHash),
+    /// Transaction script contains too many signature operations.
+    #[error("Transaction in block #{block_number},{block_hash} exceeds signature operation limit (max: {MAX_BLOCK_SIGOPS_COST})")]
+    TooManySigOps {
+        block_hash: BlockHash,
+        block_number: u32,
+    },
+    /// Witness commitment in the block is invalid.
+    #[error("Invalid witness commitment in block {0}")]
+    BadWitnessCommitment(BlockHash),
+
+    /// UTXO referenced by a transaction is missing
+    #[error(
+        "Missing UTXO in state for transaction ({context:?}) in block {block_hash}. Missing UTXO: {missing_outpoint:?}"
     )]
     MissingUtxoInState {
+        block_hash: BlockHash,
         /// Context of the transaction being processed.
         context: TransactionContext,
         /// UTXO missing from the UTXO set.
         missing_outpoint: OutPoint,
     },
-    /// Referenced output has already been spent in this block.
-    #[error("UTXO already spent in current block (#{block_number}:{txid}: {utxo:?})")]
+    /// UTXO has already been spent within the same block.
+    #[error("UTXO already spent in current block (#{block_number},{block_hash}:{txid}: {utxo:?})")]
     AlreadySpentInCurrentBlock {
+        block_hash: BlockHash,
         block_number: u32,
         txid: Txid,
         utxo: OutPoint,
     },
-    #[error("Premature spend of coinbase")]
-    PrematureSpendOfCoinbase,
-    #[error("Total input amount is below total output amount ({value_in} < {value_out})")]
-    InsufficientFunds { value_in: u64, value_out: u64 },
-    // Invalid coinbase value.
-    #[error("Block reward is larger than the sum of block fee and subsidy")]
-    InvalidBlockReward,
+    /// Insufficient funds: total input amount is lower than the total output amount.
+    #[error("Block {block_hash} has an invalid transaction: total input {value_in} < total output {value_out}")]
+    InsufficientFunds {
+        block_hash: BlockHash,
+        value_in: u64,
+        value_out: u64,
+    },
+    /// Block reward (coinbase value) exceeds the allowed subsidy + transaction fees.
+    #[error("Block {0} reward exceeds allowed amount (subsidy + fees)")]
+    InvalidBlockReward(BlockHash),
+    /// A transaction script failed verification.
+    #[error(
+        "Script verification failure in block {block_hash}. Context: {context:?}, input_index: {input_index}: {error:?}"
+    )]
+    BadScript {
+        block_hash: BlockHash,
+        context: TransactionContext,
+        input_index: usize,
+        error: subcoin_script::interpreter::ScriptError,
+    },
     #[error(transparent)]
     Transaction(#[from] TxError),
     /// Block header error.
     #[error(transparent)]
     Header(#[from] HeaderError),
     #[error(transparent)]
-    Script(#[from] subcoin_script::interpreter::ScriptError),
-    #[error(transparent)]
     BitcoinConsensus(#[from] bitcoinconsensus::Error),
-    #[error("Bip34 error: {0:?}")]
-    Bip34(Bip34Error),
-    #[error("Bitcoin codec: {0:?}")]
+    #[error("BIP34 error in block {0}: {1:?}")]
+    Bip34(BlockHash, Bip34Error),
+    #[error("Bitcoin codec error: {0:?}")]
     BitcoinCodec(bitcoin::io::Error),
     /// An error occurred in the client.
     #[error(transparent)]
@@ -208,12 +243,13 @@ where
     pub fn verify_block(&self, block_number: u32, block: &BitcoinBlock) -> Result<(), Error> {
         let txids = self.check_block_sanity(block_number, block)?;
 
-        self.contextual_check_block(block_number, block, txids)
+        self.contextual_check_block(block_number, block.block_hash(), block, txids)
     }
 
     fn contextual_check_block(
         &self,
         block_number: u32,
+        block_hash: BlockHash,
         block: &BitcoinBlock,
         txids: HashMap<usize, Txid>,
     ) -> Result<(), Error> {
@@ -224,12 +260,12 @@ where
                 if block_number >= self.chain_params.segwit_height
                     && !block.check_witness_commitment()
                 {
-                    return Err(Error::BadWitnessCommitment);
+                    return Err(Error::BadWitnessCommitment(block_hash));
                 }
 
                 // Check the block weight with witness data.
                 if block.weight() > MAX_BLOCK_WEIGHT {
-                    return Err(Error::BadBlockLength);
+                    return Err(Error::BlockTooLarge(block_hash));
                 }
 
                 self.verify_transactions(block_number, block, txids, lock_time_cutoff)?;
@@ -258,8 +294,10 @@ where
         block_number: u32,
         block: &BitcoinBlock,
     ) -> Result<HashMap<usize, Txid>, Error> {
+        let block_hash = block.block_hash();
+
         if block.txdata.is_empty() {
-            return Err(Error::EmptyTransactionList);
+            return Err(Error::EmptyTransactionList(block_hash));
         }
 
         // Size limits, without tx witness data.
@@ -267,11 +305,11 @@ where
             || Weight::from_wu((block_base_size(block) * WITNESS_SCALE_FACTOR) as u64)
                 > MAX_BLOCK_WEIGHT
         {
-            return Err(Error::BadBlockLength);
+            return Err(Error::BlockTooLarge(block_hash));
         }
 
         if !block.txdata[0].is_coinbase() {
-            return Err(Error::FirstTransactionIsNotCoinbase);
+            return Err(Error::FirstTransactionIsNotCoinbase(block_hash));
         }
 
         // Check duplicate transactions
@@ -284,13 +322,13 @@ where
 
         for (index, tx) in block.txdata.iter().enumerate() {
             if index > 0 && tx.is_coinbase() {
-                return Err(Error::MultipleCoinbase);
+                return Err(Error::MultipleCoinbase(block_hash));
             }
 
             let txid = tx.compute_txid();
             if !seen_transactions.insert(txid) {
                 // If txid is already in the set, we've found a duplicate.
-                return Err(Error::DuplicateTransaction(index));
+                return Err(Error::DuplicateTransaction { block_hash, index });
             }
 
             check_transaction_sanity(tx)?;
@@ -301,7 +339,10 @@ where
         }
 
         if sig_ops * WITNESS_SCALE_FACTOR > MAX_BLOCK_SIGOPS_COST as usize {
-            return Err(Error::TooManySigOps { block_number });
+            return Err(Error::TooManySigOps {
+                block_hash,
+                block_number,
+            });
         }
 
         // Inline `Block::check_merkle_root()` to avoid redundantly computing txid.
@@ -318,7 +359,7 @@ where
             .map(|merkle_root| block.header.merkle_root == merkle_root)
             .unwrap_or(false)
         {
-            return Err(Error::BadMerkleRoot);
+            return Err(Error::BadMerkleRoot(block_hash));
         }
 
         Ok(txids)
@@ -352,6 +393,8 @@ where
             &self.chain_params,
         );
 
+        let block_hash = block.block_hash();
+
         let mut block_fee = 0;
         let mut spent_utxos = HashSet::new();
 
@@ -363,12 +406,15 @@ where
             if tx_index == 0 {
                 // Enforce rule that the coinbase starts with serialized block height.
                 if block_number >= self.chain_params.params.bip34_height {
-                    let block_height_in_coinbase =
-                        block.bip34_block_height().map_err(Error::Bip34)? as u32;
+                    let block_height_in_coinbase = block
+                        .bip34_block_height()
+                        .map_err(|err| Error::Bip34(block_hash, err))?
+                        as u32;
                     if block_height_in_coinbase != block_number {
                         return Err(Error::BadCoinbaseBlockHeight {
-                            got: block_height_in_coinbase,
+                            block_hash,
                             expected: block_number,
+                            got: block_height_in_coinbase,
                         });
                     }
                 }
@@ -377,7 +423,7 @@ where
             }
 
             if !is_final(tx, block_number, lock_time_cutoff) {
-                return Err(Error::TransactionNotFinal);
+                return Err(Error::TransactionNotFinal(block_hash));
             }
 
             tx_data.clear();
@@ -417,6 +463,7 @@ where
 
                 if spent_utxos.contains(&coin) {
                     return Err(Error::AlreadySpentInCurrentBlock {
+                        block_hash,
                         block_number,
                         txid: get_txid(tx_index),
                         utxo: coin,
@@ -426,6 +473,7 @@ where
                 // Access coin.
                 let (spent_output, is_coinbase, coin_height) =
                     access_coin(coin).ok_or_else(|| Error::MissingUtxoInState {
+                        block_hash,
                         context: TransactionContext {
                             block_number,
                             tx_index,
@@ -436,7 +484,7 @@ where
 
                 // If coin is coinbase, check that it's matured.
                 if is_coinbase && block_number - coin_height < COINBASE_MATURITY {
-                    return Err(Error::PrematureSpendOfCoinbase);
+                    return Err(Error::PrematureSpendOfCoinbase(block_hash));
                 }
 
                 match self.script_engine {
@@ -466,7 +514,17 @@ where
                             subcoin_script::VerifyFlags::from_bits(flags).expect("Invalid flags"),
                             &mut checker,
                             sig_version,
-                        )?;
+                        )
+                        .map_err(|error| Error::BadScript {
+                            block_hash,
+                            context: TransactionContext {
+                                block_number,
+                                tx_index,
+                                txid: get_txid(tx_index),
+                            },
+                            input_index,
+                            error,
+                        })?;
                     }
                 }
 
@@ -483,7 +541,10 @@ where
             });
 
             if sig_ops_cost > MAX_BLOCK_SIGOPS_COST as usize {
-                return Err(Error::TooManySigOps { block_number });
+                return Err(Error::TooManySigOps {
+                    block_hash,
+                    block_number,
+                });
             }
 
             let value_out = tx
@@ -497,6 +558,7 @@ where
             let tx_fee = value_in
                 .checked_sub(value_out)
                 .ok_or(Error::InsufficientFunds {
+                    block_hash,
                     value_in,
                     value_out,
                 })?;
@@ -514,7 +576,7 @@ where
 
         // Ensures no inflation.
         if coinbase_value > block_fee + subsidy {
-            return Err(Error::InvalidBlockReward);
+            return Err(Error::InvalidBlockReward(block_hash));
         }
 
         Ok(())
