@@ -25,8 +25,8 @@ in newer blockchains (Ethereum, Polkadot, Near, etc) with a global chain state.
 ## Features
 
 - 🔄 **Fast Sync**. Employs Substrate's advanced state sync strategy, enabling Bitcoin fast sync
-by downloading all headers and the state at a specific block, in decentralized manner. This allows
-new users to quickly sync to the latest state of the Bitcoin chain by running a Subcoin node.
+  by downloading all headers and the state at a specific block, in decentralized manner. This allows
+  new users to quickly sync to the latest state of the Bitcoin chain by running a Subcoin node.
 
 - 🔗 **Substrate Integration**. Utilizes Substrate framework to provide production-level blockchain infrastructures.
 
@@ -57,6 +57,17 @@ has not been audited as well. Use at your own risk.
 Contributions to Subcoin are welcome! If you have ideas for improvements, bug fixes, or new features,
 feel free to open an issue or submit a pull request. Make sure to follow the contribution guidelines
 and code of conduct when contributing to the project.
+
+## Acknowledgements
+
+Subcoin builds on the work of several open-source Bitcoin projects. We are grateful to the developers and communities behind:
+
+- **[Bitcoin Core](https://github.com/bitcoin/bitcoin):** The original Bitcoin implementation.
+- **[btcd](https://github.com/btcsuite/btcd):** A Go-based Bitcoin full node.
+- **[Parity Bitcoin](https://github.com/paritytech/parity-bitcoin):** A Rust-based Bitcoin implementation.
+- **[rust-bitcoin](https://github.com/rust-bitcoin/rust-bitcoin):** A library for Bitcoin protocol in Rust.
+
+We also thank the broader Bitcoin communities for their contributions to decentralized technology. If we missed anyone, please let us know!
 
 ## Donations
 
