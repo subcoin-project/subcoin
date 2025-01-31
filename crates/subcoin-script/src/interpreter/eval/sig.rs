@@ -70,7 +70,7 @@ pub enum CheckSigError {
     Ecdsa(bitcoin::ecdsa::Error),
 }
 
-pub fn check_sig(
+pub(super) fn handle_checksig(
     sig: &[u8],
     pubkey: &[u8],
     script: &Script,

@@ -39,7 +39,10 @@ pub enum MultiSigOp {
     CheckMultiSigVerify,
 }
 
-pub fn check_multisig(
+/// Handles the OP_CHECKMULTISIG opcode.
+///
+/// This opcode validates a multi-signature script against the provided public keys and signatures.
+pub(super) fn handle_checkmultisig(
     stack: &mut Stack,
     flags: &VerifyFlags,
     begincode: usize,

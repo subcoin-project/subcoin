@@ -36,7 +36,7 @@ pub enum ScriptError {
     PubkeyCount,
 
     // Failed verify operations.
-    #[error("failed verify operation: {0:?}")]
+    #[error("OP_VERIFY failed at opcode: {0:?}")]
     Verify(bitcoin::opcodes::Opcode),
 
     // Logical/Format/Canonical errors.

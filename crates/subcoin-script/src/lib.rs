@@ -152,12 +152,6 @@ pub enum SigVersion {
     Tapscript,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SigHash {
-    None,
-    All,
-}
-
 // https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/script/interpreter.h#L198
 #[derive(Default)]
 pub struct ScriptExecutionData {

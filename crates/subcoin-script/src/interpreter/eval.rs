@@ -373,7 +373,7 @@ pub fn eval_script<SC: SignatureChecker>(
                         let pubkey = stack.pop()?;
                         let sig = stack.pop()?;
 
-                        let success = sig::check_sig(
+                        let success = sig::handle_checksig(
                             &sig,
                             &pubkey,
                             script,
@@ -382,8 +382,7 @@ pub fn eval_script<SC: SignatureChecker>(
                             &flags,
                             checker,
                             sig_version,
-                        )
-                        .map_err(ScriptError::CheckSig)?;
+                        )?;
 
                         match opcode {
                             OP_CHECKSIG => {
@@ -402,7 +401,7 @@ pub fn eval_script<SC: SignatureChecker>(
                             multisig::MultiSigOp::CheckMultiSigVerify
                         };
 
-                        multisig::check_multisig(
+                        multisig::handle_checkmultisig(
                             stack,
                             &flags,
                             begincode,
@@ -411,8 +410,7 @@ pub fn eval_script<SC: SignatureChecker>(
                             checker,
                             multisig_op,
                             &mut op_count,
-                        )
-                        .map_err(ScriptError::CheckMultiSig)?;
+                        )?;
                     }
                     OP_CHECKSIGADD => {
                         // (sig num pubkey -- num)
@@ -420,7 +418,7 @@ pub fn eval_script<SC: SignatureChecker>(
                         let num = stack.pop_num()?;
                         let sig = stack.pop()?;
 
-                        let success = sig::check_sig(
+                        let success = sig::handle_checksig(
                             &sig,
                             &pubkey,
                             script,
