@@ -48,7 +48,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use subcoin_primitives::runtime::{bitcoin_block_subsidy, Coin};
 use subcoin_primitives::CoinStorageKey;
-use tx_verify::{check_transaction_sanity, get_legacy_sig_op_count, is_final};
+use tx_verify::{check_transaction_sanity, get_legacy_sig_op_count, is_final_tx};
 
 pub use header_verify::{Error as HeaderError, HeaderVerifier};
 pub use tx_verify::Error as TxError;
@@ -387,6 +387,12 @@ where
                 .expect("Txid must exist as initialized in `check_block_sanity()`; qed")
         };
 
+        let tx_context = |tx_index| TransactionContext {
+            block_number,
+            tx_index,
+            txid: get_txid(tx_index),
+        };
+
         let flags = script_verify::get_block_script_flags(
             block_number,
             block.block_hash(),
@@ -422,7 +428,7 @@ where
                 continue;
             }
 
-            if !is_final(tx, block_number, lock_time_cutoff) {
+            if !is_final_tx(tx, block_number, lock_time_cutoff) {
                 return Err(Error::TransactionNotFinal(block_hash));
             }
 
@@ -474,11 +480,7 @@ where
                 let (spent_output, is_coinbase, coin_height) =
                     access_coin(coin).ok_or_else(|| Error::MissingUtxoInState {
                         block_hash,
-                        context: TransactionContext {
-                            block_number,
-                            tx_index,
-                            txid: get_txid(tx_index),
-                        },
+                        context: tx_context(tx_index),
                         missing_outpoint: coin,
                     })?;
 
@@ -504,24 +506,22 @@ where
                             subcoin_script::signature_checker::TransactionSignatureChecker::new(
                                 input_index,
                                 spent_output.value.to_sat(),
-                                tx.clone(),
+                                tx.clone(), // TODO: avoid clone entire TX for verifying every single input.
                             );
                         let sig_version = subcoin_script::SigVersion::Base;
+                        let verify_flags =
+                            subcoin_script::VerifyFlags::from_bits(flags).expect("Invalid flags");
                         subcoin_script::interpreter::verify_script(
                             &input.script_sig,
                             &spent_output.script_pubkey,
                             &input.witness,
-                            subcoin_script::VerifyFlags::from_bits(flags).expect("Invalid flags"),
+                            verify_flags,
                             &mut checker,
                             sig_version,
                         )
                         .map_err(|error| Error::BadScript {
                             block_hash,
-                            context: TransactionContext {
-                                block_number,
-                                tx_index,
-                                txid: get_txid(tx_index),
-                            },
+                            context: tx_context(tx_index),
                             input_index,
                             error,
                         })?;

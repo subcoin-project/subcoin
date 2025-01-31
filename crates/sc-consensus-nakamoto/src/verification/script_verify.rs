@@ -44,6 +44,7 @@ pub fn get_block_script_flags(
     flags
 }
 
+/// Verifies the input for given input_index in the transaction is valid.
 pub fn verify_input_script(
     spent_output: &TxOut,
     spending_transaction: &[u8],

@@ -10,9 +10,9 @@ use bitcoin::opcodes::all::{OP_CHECKSIG, OP_DUP, OP_EQUALVERIFY, OP_HASH160};
 use bitcoin::script::{Builder, Instruction, PushBytesBuf};
 use bitcoin::{Script, Witness, WitnessProgram, WitnessVersion};
 
-fn parse_witness_program(script: &Script) -> Option<WitnessProgram> {
-    script.witness_version().and_then(|witness_version| {
-        WitnessProgram::new(witness_version, &script.as_bytes()[2..]).ok()
+fn parse_witness_program(script_pubkey: &Script) -> Option<WitnessProgram> {
+    script_pubkey.witness_version().and_then(|witness_version| {
+        WitnessProgram::new(witness_version, &script_pubkey.as_bytes()[2..]).ok()
     })
 }
 
@@ -69,8 +69,10 @@ pub fn verify_script<SC: SignatureChecker>(
     let mut had_witness = false;
 
     // Verify witness program
-    if flags.verify_witness() {
+    if flags.intersects(VerifyFlags::WITNESS) {
         if let Some(witness_program) = parse_witness_program(script_pubkey) {
+            // script_sig must be empty for all native witness programs, otherwise
+            // we introduce malleability.
             if !script_sig.is_empty() {
                 return Err(ScriptError::WitnessMalleated);
             }

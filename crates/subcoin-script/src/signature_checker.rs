@@ -27,6 +27,16 @@ pub enum SignatureError {
 
 /// Checks transaction signature.
 pub trait SignatureChecker {
+    /// Verifies an ECDSA signature against a message and public key.
+    ///
+    /// # Arguments
+    /// * `sig` - The ECDSA signature to verify.
+    /// * `msg` - The message that was signed.
+    /// * `pk` - The public key corresponding to the signature.
+    ///
+    /// # Returns
+    /// - `Ok(())` if the signature is valid.
+    /// - `Err(SignatureError)` if the signature is invalid or an error occurs.
     fn verify_ecdsa_signature(
         &self,
         sig: &EcdsaSignature,
@@ -37,6 +47,18 @@ pub trait SignatureChecker {
             .map_err(SignatureError::Secp256k1)
     }
 
+    /// Checks an ECDSA signature in the context of a Bitcoin transaction.
+    ///
+    /// # Arguments
+    /// * `sig` - The ECDSA signature to check.
+    /// * `pk` - The public key corresponding to the signature.
+    /// * `script_code` - The script code for the transaction input.
+    /// * `sig_version` - The signature version (e.g., `SigVersion::Base` or `SigVersion::WitnessV0`).
+    ///
+    /// # Returns
+    /// - `Ok(true)` if the signature is valid.
+    /// - `Ok(false)` if the signature is invalid.
+    /// - `Err(SignatureError)` if an error occurs.
     fn check_ecdsa_signature(
         &mut self,
         sig: &EcdsaSignature,
@@ -45,6 +67,16 @@ pub trait SignatureChecker {
         sig_version: SigVersion,
     ) -> Result<bool, SignatureError>;
 
+    /// Verifies a Schnorr signature against a message and public key.
+    ///
+    /// # Arguments
+    /// * `sig` - The Schnorr signature to verify.
+    /// * `msg` - The message that was signed.
+    /// * `pk` - The public key corresponding to the signature.
+    ///
+    /// # Returns
+    /// - `Ok(())` if the signature is valid.
+    /// - `Err(SignatureError)` if the signature is invalid or an error occurs.
     fn verify_schnorr_signature(
         &self,
         sig: &SchnorrSignature,
@@ -55,6 +87,18 @@ pub trait SignatureChecker {
             .map_err(SignatureError::Secp256k1)
     }
 
+    /// Checks a Schnorr signature in the context of a Bitcoin transaction.
+    ///
+    /// # Arguments
+    /// * `sig` - The Schnorr signature to check.
+    /// * `pk` - The public key corresponding to the signature.
+    /// * `sig_version` - The signature version (e.g., `SigVersion::Taproot`).
+    /// * `exec_data` - Additional execution data for Taproot scripts.
+    ///
+    /// # Returns
+    /// - `Ok(true)` if the signature is valid.
+    /// - `Ok(false)` if the signature is invalid.
+    /// - `Err(SignatureError)` if an error occurs.
     fn check_schnorr_signature(
         &mut self,
         sig: &SchnorrSignature,
@@ -63,8 +107,12 @@ pub trait SignatureChecker {
         exec_data: &ScriptExecutionData,
     ) -> Result<bool, SignatureError>;
 
+    /// Checks whether the absolute time lock (specified by `nLockTime`)
+    /// in a transaction is satisfied.
     fn check_lock_time(&self, lock_time: ScriptNum) -> bool;
 
+    /// Checks whether the relative time lock (specified by `nSequence`)
+    /// for a specific input in a transaction is satisfied.
     fn check_sequence(&self, sequence: ScriptNum) -> bool;
 }
 
@@ -182,6 +230,24 @@ impl SignatureChecker for TransactionSignatureChecker {
         Ok(self.verify_schnorr_signature(sig, &msg, pk).is_ok())
     }
 
+    /// This function verifies that the transaction's `nLockTime` field meets the conditions specified
+    /// by the `lock_time` parameter. The `lock_time` can represent either a block height or a Unix timestamp,
+    /// depending on its value:
+    /// - If `lock_time < 500,000,000`, it is interpreted as a block height.
+    /// - If `lock_time >= 500,000,000`, it is interpreted as a Unix timestamp.
+    ///
+    /// The lock is satisfied if:
+    /// 1. The `lock_time` is of the same type (block height or timestamp) as the transaction's `nLockTime`.
+    /// 2. The `lock_time` is less than or equal to the transaction's `nLockTime`.
+    /// 3. The transaction's `nSequence` field for the input is not set to the maximum value (`0xFFFFFFFF`),
+    ///    which would disable the time lock.
+    ///
+    /// # Arguments
+    /// * `lock_time` - The absolute time lock to check, represented as a [`ScriptNum`].
+    ///
+    /// # Returns
+    /// - `true` if the absolute time lock is satisfied.
+    /// - `false` otherwise.
     fn check_lock_time(&self, lock_time: ScriptNum) -> bool {
         let Ok(lock_time) = u32::try_from(lock_time.value()).map(AbsoluteLockTime::from_consensus)
         else {
@@ -223,6 +289,17 @@ impl SignatureChecker for TransactionSignatureChecker {
         self.tx.input[self.input_index].sequence.is_final()
     }
 
+    /// The lock is satisfied if:
+    /// 1. The transaction's version is at least 2 (BIP 68).
+    /// 2. The `sequence` is of the same type (blocks or seconds) as the input's `nSequence`.
+    /// 3. The `sequence` is less than or equal to the input's `nSequence`.
+    ///
+    /// # Arguments
+    /// * `sequence` - The relative time lock to check, represented as a [`ScriptNum`].
+    ///
+    /// # Returns
+    /// - `true` if the relative time lock is satisfied.
+    /// - `false` otherwise.
     fn check_sequence(&self, sequence: ScriptNum) -> bool {
         // Fail if the transaction's version number is not set high
         // enough to trigger BIP 68 rules.

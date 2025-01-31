@@ -66,7 +66,7 @@ pub enum ScriptError {
     // Malleability
     #[error("sig hash type")]
     SigHashType,
-    #[error("Witness malleated")]
+    #[error("Native witness program cannot also have a signature script")]
     WitnessMalleated,
     #[error("witness unexpected")]
     WitnessUnexpected,

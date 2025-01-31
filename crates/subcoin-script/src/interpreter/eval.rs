@@ -434,7 +434,7 @@ pub fn eval_script<SC: SignatureChecker>(
                         stack.push_num(v);
                     }
 
-                    // Locktime
+                    // Locktime, CLTV
                     OP_CHECKLOCKTIMEVERIFY => {
                         // not enabled; treat as a NOP3
                         if !flags.intersects(VerifyFlags::CHECKLOCKTIMEVERIFY) {
@@ -468,6 +468,7 @@ pub fn eval_script<SC: SignatureChecker>(
                             return Err(ScriptError::UnsatisfiedLocktime);
                         }
                     }
+                    // CSV
                     OP_CHECKSEQUENCEVERIFY => {
                         // not enabled; treat as a NOP3
                         if !flags.intersects(VerifyFlags::CHECKSEQUENCEVERIFY) {
