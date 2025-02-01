@@ -1,4 +1,5 @@
 mod constants;
+mod error;
 mod interpreter;
 mod num;
 mod opcode;
@@ -11,7 +12,8 @@ use bitcoin::hashes::Hash;
 use bitcoin::TapLeafHash;
 use bitflags::bitflags;
 
-pub use self::interpreter::{eval_script, verify_script, Error, ScriptError};
+pub use self::error::Error;
+pub use self::interpreter::verify_script;
 pub use self::signature_checker::{
     NoSignatureCheck, SignatureChecker, SignatureError, TransactionSignatureChecker,
 };

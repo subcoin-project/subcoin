@@ -1,8 +1,9 @@
-use super::{eval_script, ScriptError};
 use crate::constants::{
     MAX_SCRIPT_ELEMENT_SIZE, MAX_STACK_SIZE, VALIDATION_WEIGHT_OFFSET, WITNESS_V0_KEYHASH_SIZE,
     WITNESS_V0_SCRIPTHASH_SIZE, WITNESS_V0_TAPROOT_SIZE,
 };
+use crate::error::Error;
+use crate::interpreter::eval_script;
 use crate::signature_checker::{SignatureChecker, SECP};
 use crate::stack::Stack;
 use crate::{SchnorrSignature, ScriptExecutionData, SigVersion, VerifyFlags};
@@ -29,9 +30,9 @@ pub fn verify_script<SC: SignatureChecker>(
     witness: &Witness,
     flags: VerifyFlags,
     checker: &mut SC,
-) -> Result<(), ScriptError> {
+) -> Result<(), Error> {
     if flags.intersects(VerifyFlags::SIGPUSHONLY) && !script_sig.is_push_only() {
-        return Err(ScriptError::SigPushOnly);
+        return Err(Error::SigPushOnly);
     }
 
     // scriptSig and scriptPubKey must be evaluated sequentially on the same stack rather
@@ -63,11 +64,11 @@ pub fn verify_script<SC: SignatureChecker>(
     )?;
 
     if stack.is_empty() {
-        return Err(ScriptError::EvalFalse);
+        return Err(Error::EvalFalse);
     }
 
     if !stack.peek_bool()? {
-        return Err(ScriptError::EvalFalse);
+        return Err(Error::EvalFalse);
     }
 
     let mut had_witness = false;
@@ -80,7 +81,7 @@ pub fn verify_script<SC: SignatureChecker>(
             // script_sig must be empty for all native witness programs, otherwise
             // we introduce malleability.
             if !script_sig.is_empty() {
-                return Err(ScriptError::WitnessMalleated);
+                return Err(Error::WitnessMalleated);
             }
 
             verify_witness_program(witness, witness_program, &flags, checker, false)?;
@@ -96,7 +97,7 @@ pub fn verify_script<SC: SignatureChecker>(
         Some(mut stack_copy) if script_pubkey.is_p2sh() => {
             // scriptSig must be literals-only or validation fails.
             if !script_sig.is_push_only() {
-                return Err(ScriptError::SigPushOnly);
+                return Err(Error::SigPushOnly);
             }
 
             // Restore stack.
@@ -120,11 +121,11 @@ pub fn verify_script<SC: SignatureChecker>(
             )?;
 
             if stack.is_empty() {
-                return Err(ScriptError::EvalFalse);
+                return Err(Error::EvalFalse);
             }
 
             if !stack.peek_bool()? {
-                return Err(ScriptError::EvalFalse);
+                return Err(Error::EvalFalse);
             }
 
             // P2SH witness program
@@ -140,7 +141,7 @@ pub fn verify_script<SC: SignatureChecker>(
                     if script_sig != &redeem_script {
                         // The scriptSig must be _exactly_ a single push of the redeemScript. Otherwise
                         // we reintroduce malleability.
-                        return Err(ScriptError::WitnessMalleatedP2SH);
+                        return Err(Error::WitnessMalleatedP2SH);
                     }
 
                     verify_witness_program(witness, witness_program, &flags, checker, true)?;
@@ -165,7 +166,7 @@ pub fn verify_script<SC: SignatureChecker>(
             "Disallow CLEANSTACK without P2SH"
         );
         if stack.len() != 1 {
-            return Err(ScriptError::CleanStack);
+            return Err(Error::CleanStack);
         }
     }
 
@@ -175,7 +176,7 @@ pub fn verify_script<SC: SignatureChecker>(
         // possible, which is not a softfork.
         assert!(flags.verify_p2sh());
         if !had_witness && !witness.is_empty() {
-            return Err(ScriptError::WitnessUnexpected);
+            return Err(Error::WitnessUnexpected);
         }
     }
 
@@ -189,7 +190,7 @@ fn verify_witness_program(
     flags: &VerifyFlags,
     checker: &mut impl SignatureChecker,
     is_p2sh: bool,
-) -> Result<(), ScriptError> {
+) -> Result<(), Error> {
     // TODO: since we clone the entire witness data, we use stack.pop() later instead of
     // SpanPopBack(stack) in Bitcoin Core. Perhaps avoid this allocation later.
     let mut stack = Stack::with_data(witness.to_vec());
@@ -203,7 +204,7 @@ fn verify_witness_program(
         if program_size == WITNESS_V0_SCRIPTHASH_SIZE {
             // BIP141 P2WSH: 32-byte witness v0 program (which encodes SHA256(script))
             if stack.is_empty() {
-                return Err(ScriptError::WitnessProgramWitnessEmpty);
+                return Err(Error::WitnessProgramWitnessEmpty);
             }
 
             let witness_script = stack.pop()?;
@@ -212,7 +213,7 @@ fn verify_witness_program(
             let exec_script_hash: [u8; 32] = exec_script.wscript_hash().to_byte_array();
 
             if exec_script_hash.as_slice() != program.as_bytes() {
-                return Err(ScriptError::WitnessProgramMismatch);
+                return Err(Error::WitnessProgramMismatch);
             }
 
             execute_witness_script(
@@ -230,7 +231,7 @@ fn verify_witness_program(
             // ScriptSig: (empty)
             // Witness: <Signature> <PublicKey>
             if stack.len() != 2 {
-                return Err(ScriptError::WitnessProgramMismatch);
+                return Err(Error::WitnessProgramMismatch);
             }
 
             let exec_script = Builder::default()
@@ -250,7 +251,7 @@ fn verify_witness_program(
                 &mut ScriptExecutionData::default(),
             )?;
         } else {
-            return Err(ScriptError::WitnessProgramWrongLength);
+            return Err(Error::WitnessProgramWrongLength);
         }
     } else if witness_version == WitnessVersion::V1
         && program.len() == WITNESS_V0_TAPROOT_SIZE
@@ -262,7 +263,7 @@ fn verify_witness_program(
         }
 
         if stack.is_empty() {
-            return Err(ScriptError::WitnessProgramWitnessEmpty);
+            return Err(Error::WitnessProgramWitnessEmpty);
         }
 
         let mut exec_data = if stack.len() >= 2
@@ -285,9 +286,9 @@ fn verify_witness_program(
         if stack.len() == 1 {
             // Key path spending (stack size is 1 after removing optional annex).
             let sig = stack.last()?;
-            let sig = SchnorrSignature::from_slice(&sig).map_err(ScriptError::SchnorrSignature)?;
+            let sig = SchnorrSignature::from_slice(&sig).map_err(Error::SchnorrSignature)?;
             let pubkey =
-                XOnlyPublicKey::from_slice(program.as_bytes()).map_err(ScriptError::Secp256k1)?;
+                XOnlyPublicKey::from_slice(program.as_bytes()).map_err(Error::Secp256k1)?;
             checker.check_schnorr_signature(&sig, &pubkey, SigVersion::Taproot, &exec_data)?;
         } else {
             // Script path spending (stack size is >1 after removing optional annex).
@@ -298,7 +299,7 @@ fn verify_witness_program(
                 || control.len() > TAPROOT_CONTROL_MAX_SIZE
                 || ((control.len() - TAPROOT_CONTROL_BASE_SIZE) % TAPROOT_CONTROL_NODE_SIZE != 0)
             {
-                return Err(ScriptError::TaprootWrongControlSize);
+                return Err(Error::TaprootWrongControlSize);
             }
 
             let script = Script::from_bytes(&script);
@@ -311,11 +312,11 @@ fn verify_witness_program(
             );
 
             // VerifyTaprootCommitment
-            let control_block = ControlBlock::decode(&control).map_err(ScriptError::Taproot)?;
+            let control_block = ControlBlock::decode(&control).map_err(Error::Taproot)?;
             let output_key =
-                XOnlyPublicKey::from_slice(program.as_bytes()).map_err(ScriptError::Secp256k1)?;
+                XOnlyPublicKey::from_slice(program.as_bytes()).map_err(Error::Secp256k1)?;
             if !control_block.verify_taproot_commitment(&SECP, output_key, script) {
-                return Err(ScriptError::WitnessProgramMismatch);
+                return Err(Error::WitnessProgramMismatch);
             }
             exec_data.tapleaf_hash_init = true;
 
@@ -335,11 +336,11 @@ fn verify_witness_program(
             }
 
             if flags.intersects(VerifyFlags::DISCOURAGE_UPGRADABLE_TAPROOT_VERSION) {
-                return Err(ScriptError::DiscourageUpgradableTaprootVersion);
+                return Err(Error::DiscourageUpgradableTaprootVersion);
             }
         }
     } else if flags.intersects(VerifyFlags::DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM) {
-        return Err(ScriptError::DiscourageUpgradableWitnessProgram);
+        return Err(Error::DiscourageUpgradableWitnessProgram);
     }
 
     // Other version/size/p2sh combinations returns true for future softfork compatibility.
@@ -354,29 +355,29 @@ fn execute_witness_script(
     sig_version: SigVersion,
     checker: &mut impl SignatureChecker,
     exec_data: &mut ScriptExecutionData,
-) -> Result<(), ScriptError> {
+) -> Result<(), Error> {
     let mut stack = Stack::new(stack_span.to_vec(), true);
 
     if sig_version == SigVersion::Tapscript {
         // OP_SUCCESSx processing overrides everything, including stack element size limits
         for instruction in exec_script.instructions() {
-            match instruction.map_err(ScriptError::ReadInstruction)? {
+            match instruction.map_err(Error::ReadInstruction)? {
                 Instruction::Op(opcode) => {
                     // New opcodes will be listed here. May use a different sigversion to modify existing opcodes.
                     if is_op_success(opcode.to_u8()) {
                         if flags.intersects(VerifyFlags::DISCOURAGE_OP_SUCCESS) {
-                            return Err(ScriptError::DiscourageOpSuccess);
+                            return Err(Error::DiscourageOpSuccess);
                         }
                         return Ok(());
                     }
                 }
-                Instruction::PushBytes(_) => return Err(ScriptError::BadOpcode),
+                Instruction::PushBytes(_) => return Err(Error::BadOpcode),
             }
         }
 
         // Tapscript enforces initial stack size limits (altstack is empty here)
         if stack.len() > MAX_STACK_SIZE {
-            return Err(ScriptError::StackSize);
+            return Err(Error::StackSize);
         }
     }
 
@@ -385,7 +386,7 @@ fn execute_witness_script(
         .iter()
         .any(|elem| elem.len() > MAX_SCRIPT_ELEMENT_SIZE)
     {
-        return Err(ScriptError::PushSize);
+        return Err(Error::PushSize);
     }
 
     // Run the script interpreter.
@@ -400,11 +401,11 @@ fn execute_witness_script(
 
     // Scripts inside witness implicitly require cleanstack behavior
     if stack.len() != 1 {
-        return Err(ScriptError::CleanStack);
+        return Err(Error::CleanStack);
     }
 
     if !stack.peek_bool()? {
-        return Err(ScriptError::EvalFalse);
+        return Err(Error::EvalFalse);
     }
 
     Ok(())

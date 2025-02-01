@@ -177,7 +177,7 @@ pub enum Error {
         block_hash: BlockHash,
         context: TransactionContext,
         input_index: usize,
-        error: subcoin_script::ScriptError,
+        error: subcoin_script::Error,
     },
     #[error(transparent)]
     Transaction(#[from] TxError),

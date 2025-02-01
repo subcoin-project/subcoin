@@ -1,10 +1,10 @@
 mod multisig;
 mod sig;
 
-use super::ScriptError;
 use crate::constants::{
     MAX_OPS_PER_SCRIPT, MAX_SCRIPT_ELEMENT_SIZE, MAX_STACK_SIZE, SEQUENCE_LOCKTIME_DISABLE_FLAG,
 };
+use crate::error::Error;
 use crate::num::ScriptNum;
 use crate::signature_checker::SignatureChecker;
 use crate::stack::{Stack, StackError};
@@ -24,11 +24,11 @@ pub fn eval_script<SC: SignatureChecker>(
     checker: &mut SC,
     sig_version: SigVersion,
     exec_data: &mut ScriptExecutionData,
-) -> Result<bool, ScriptError> {
+) -> Result<bool, Error> {
     use crate::opcode::Opcode::*;
 
     if matches!(sig_version, SigVersion::Taproot) {
-        return Err(ScriptError::NoScriptExecution);
+        return Err(Error::NoScriptExecution);
     }
 
     let mut alt_stack = Stack::default();
@@ -47,14 +47,14 @@ pub fn eval_script<SC: SignatureChecker>(
     };
 
     for instruction in instructions {
-        let (pc, instruction) = instruction.map_err(ScriptError::ReadInstruction)?;
+        let (pc, instruction) = instruction.map_err(Error::ReadInstruction)?;
 
         let executing = exec_stack.iter().all(|x| *x);
 
         match instruction {
             Instruction::PushBytes(p) => {
                 if p.len() > MAX_SCRIPT_ELEMENT_SIZE {
-                    return Err(ScriptError::PushSize);
+                    return Err(Error::PushSize);
                 }
                 // TODO: avoid allocation?
                 stack.push(p.as_bytes().to_vec());
@@ -66,13 +66,13 @@ pub fn eval_script<SC: SignatureChecker>(
                         op_count += 1;
 
                         if op_count > MAX_OPS_PER_SCRIPT {
-                            return Err(ScriptError::OpCount);
+                            return Err(Error::OpCount);
                         }
                     }
                 }
 
-                let opcode = crate::opcode::Opcode::from_u8(op.to_u8())
-                    .ok_or(ScriptError::UnknownOpcode(op))?;
+                let opcode =
+                    crate::opcode::Opcode::from_u8(op.to_u8()).ok_or(Error::UnknownOpcode(op))?;
 
                 match opcode {
                     OP_0 | OP_PUSHBYTES_1 | OP_PUSHBYTES_2 | OP_PUSHBYTES_3 | OP_PUSHBYTES_4
@@ -118,7 +118,7 @@ pub fn eval_script<SC: SignatureChecker>(
                                 // The input argument to the OP_IF and OP_NOTIF opcodes must be either
                                 // exactly 0 (the empty vector) or exactly 1 (the one-byte vector with value 1).
                                 if top.len() > 1 || (top.len() == 1 && top[0] != 1) {
-                                    return Err(ScriptError::TaprootMinimalif);
+                                    return Err(Error::TaprootMinimalif);
                                 }
                             }
 
@@ -127,7 +127,7 @@ pub fn eval_script<SC: SignatureChecker>(
                                 && flags.intersects(VerifyFlags::MINIMALIF)
                             {
                                 if top.len() > 1 || (top.len() == 1 && top[0] != 1) {
-                                    return Err(ScriptError::Minimalif);
+                                    return Err(Error::Minimalif);
                                 }
                             }
 
@@ -145,22 +145,22 @@ pub fn eval_script<SC: SignatureChecker>(
                         if let Some(last) = exec_stack.last_mut() {
                             *last = !*last;
                         } else {
-                            return Err(ScriptError::UnbalancedConditional);
+                            return Err(Error::UnbalancedConditional);
                         }
                     }
                     OP_ENDIF => {
                         if exec_stack.is_empty() {
-                            return Err(ScriptError::UnbalancedConditional);
+                            return Err(Error::UnbalancedConditional);
                         }
                         exec_stack.pop();
                     }
                     OP_VERIFY => {
                         let exec_value = stack.pop_bool()?;
                         if !exec_value {
-                            return Err(ScriptError::Verify(op));
+                            return Err(Error::Verify(op));
                         }
                     }
-                    OP_RETURN => return Err(ScriptError::OpReturn),
+                    OP_RETURN => return Err(Error::OpReturn),
 
                     // Stack
                     OP_TOALTSTACK => {
@@ -169,7 +169,7 @@ pub fn eval_script<SC: SignatureChecker>(
                     OP_FROMALTSTACK => {
                         let v = alt_stack
                             .pop()
-                            .map_err(|_| ScriptError::InvalidAltStackOperation)?;
+                            .map_err(|_| Error::InvalidAltStackOperation)?;
                         stack.push(v);
                     }
                     OP_2DROP => stack.drop(2)?,
@@ -212,16 +212,14 @@ pub fn eval_script<SC: SignatureChecker>(
 
                     // Splice
                     OP_CAT | OP_SUBSTR | OP_LEFT | OP_RIGHT => {
-                        return Err(ScriptError::DisabledOpcode(op))
+                        return Err(Error::DisabledOpcode(op))
                     }
                     OP_SIZE => {
                         stack.push_num(stack.last()?.len() as i64);
                     }
 
                     // Bitwise logic
-                    OP_INVERT | OP_AND | OP_OR | OP_XOR => {
-                        return Err(ScriptError::DisabledOpcode(op))
-                    }
+                    OP_INVERT | OP_AND | OP_OR | OP_XOR => return Err(Error::DisabledOpcode(op)),
                     OP_EQUAL => {
                         let equal = stack.pop()? == stack.pop()?;
                         stack.push_bool(equal);
@@ -229,13 +227,13 @@ pub fn eval_script<SC: SignatureChecker>(
                     OP_EQUALVERIFY => {
                         let equal = stack.pop()? == stack.pop()?;
                         if !equal {
-                            return Err(ScriptError::Verify(op));
+                            return Err(Error::Verify(op));
                         }
                     }
 
                     // Arithmetic
                     OP_2MUL | OP_2DIV | OP_MUL | OP_DIV | OP_MOD | OP_LSHIFT | OP_RSHIFT => {
-                        return Err(ScriptError::DisabledOpcode(op));
+                        return Err(Error::DisabledOpcode(op));
                     }
                     OP_1ADD => {
                         let n = stack.pop_num()?.add(1.into())?;
@@ -290,7 +288,7 @@ pub fn eval_script<SC: SignatureChecker>(
                         let v1 = stack.pop_num()?;
                         let v2 = stack.pop_num()?;
                         if v1 != v2 {
-                            return Err(ScriptError::Verify(op));
+                            return Err(Error::Verify(op));
                         }
                     }
                     OP_NUMNOTEQUAL => {
@@ -362,7 +360,7 @@ pub fn eval_script<SC: SignatureChecker>(
                         if matches!(sig_version, SigVersion::Base)
                             && flags.intersects(VerifyFlags::CONST_SCRIPTCODE)
                         {
-                            return Err(ScriptError::OpCodeSeparator);
+                            return Err(Error::OpCodeSeparator);
                         }
 
                         begincode = pc;
@@ -389,7 +387,7 @@ pub fn eval_script<SC: SignatureChecker>(
                                 stack.push_bool(success);
                             }
                             OP_CHECKSIGVERIFY if !success => {
-                                return Err(ScriptError::Verify(op));
+                                return Err(Error::Verify(op));
                             }
                             _ => {}
                         }
@@ -428,7 +426,7 @@ pub fn eval_script<SC: SignatureChecker>(
                             checker,
                             sig_version,
                         )
-                        .map_err(ScriptError::CheckSig)?;
+                        .map_err(Error::CheckSig)?;
 
                         let v = num.value() + if success { 1 } else { 0 };
                         stack.push_num(v);
@@ -461,11 +459,11 @@ pub fn eval_script<SC: SignatureChecker>(
                         // some arithmetic being done first, you can always use
                         // 0 MAX CHECKLOCKTIMEVERIFY.
                         if lock_time.is_negative() {
-                            return Err(ScriptError::NegativeLocktime);
+                            return Err(Error::NegativeLocktime);
                         }
 
                         if !checker.check_lock_time(lock_time) {
-                            return Err(ScriptError::UnsatisfiedLocktime);
+                            return Err(Error::UnsatisfiedLocktime);
                         }
                     }
                     // CSV
@@ -483,29 +481,29 @@ pub fn eval_script<SC: SignatureChecker>(
                         let sequence = stack.pop_num_with_max_size(5)?;
 
                         if sequence.is_negative() {
-                            return Err(ScriptError::NegativeLocktime);
+                            return Err(Error::NegativeLocktime);
                         }
 
                         if (sequence.value() & SEQUENCE_LOCKTIME_DISABLE_FLAG as i64) == 0
                             && !checker.check_sequence(sequence)
                         {
-                            return Err(ScriptError::UnsatisfiedLocktime);
+                            return Err(Error::UnsatisfiedLocktime);
                         }
                     }
 
                     // Reserved words
                     OP_RESERVED | OP_VER | OP_RESERVED1 | OP_RESERVED2 => {
                         if executing {
-                            return Err(ScriptError::DisabledOpcode(op));
+                            return Err(Error::DisabledOpcode(op));
                         }
                     }
                     OP_VERIF | OP_VERNOTIF => {
-                        return Err(ScriptError::DisabledOpcode(op));
+                        return Err(Error::DisabledOpcode(op));
                     }
                     OP_NOP1 | OP_NOP4 | OP_NOP5 | OP_NOP6 | OP_NOP7 | OP_NOP8 | OP_NOP9
                     | OP_NOP10 => {
                         if flags.intersects(VerifyFlags::DISCOURAGE_UPGRADABLE_NOPS) {
-                            return Err(ScriptError::DiscourageUpgradableNops);
+                            return Err(Error::DiscourageUpgradableNops);
                         }
                     }
                 }
@@ -515,12 +513,12 @@ pub fn eval_script<SC: SignatureChecker>(
         opcode_pos += 1;
 
         if stack.len() + alt_stack.len() > MAX_STACK_SIZE {
-            return Err(ScriptError::StackSize);
+            return Err(Error::StackSize);
         }
     }
 
     if !exec_stack.is_empty() {
-        return Err(ScriptError::UnbalancedConditional);
+        return Err(Error::UnbalancedConditional);
     }
 
     let success = !stack.is_empty() && stack.peek_bool()?;
