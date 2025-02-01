@@ -150,29 +150,30 @@ impl SignatureChecker for NoSignatureCheck {
 }
 
 /// A SignatureChecker implementation for transactions.
-pub struct TransactionSignatureChecker {
-    tx: Transaction,
+pub struct TransactionSignatureChecker<'a> {
+    tx: &'a Transaction,
     input_index: usize,
     input_amount: u64,
     prevouts: Vec<TxOut>,
-    sighash_cache: SighashCache<Transaction>,
+    sighash_cache: SighashCache<&'a Transaction>,
     taproot_annex_scriptleaf: Option<(TapLeafHash, Option<Vec<u8>>)>,
 }
 
-impl TransactionSignatureChecker {
-    pub fn new(input_index: usize, input_amount: u64, tx: Transaction) -> Self {
+impl<'a> TransactionSignatureChecker<'a> {
+    pub fn new(input_index: usize, input_amount: u64, tx: &'a Transaction) -> Self {
+        let sighash_cache = SighashCache::new(tx);
         Self {
-            tx: tx.clone(),
+            tx,
             input_index,
             input_amount,
             prevouts: Vec::new(),
-            sighash_cache: SighashCache::new(tx),
+            sighash_cache,
             taproot_annex_scriptleaf: None,
         }
     }
 }
 
-impl SignatureChecker for TransactionSignatureChecker {
+impl<'a> SignatureChecker for TransactionSignatureChecker<'a> {
     fn check_ecdsa_signature(
         &mut self,
         sig: &EcdsaSignature,
@@ -309,7 +310,7 @@ impl SignatureChecker for TransactionSignatureChecker {
 
         // Relative lock times are supported by comparing the passed
         // in operand to the sequence number of the input.
-        let Some(tx_lock_time) = self.tx.input[self.input_index]
+        let Some(input_lock_time) = self.tx.input[self.input_index]
             .sequence
             .to_relative_lock_time()
         else {
@@ -323,7 +324,7 @@ impl SignatureChecker for TransactionSignatureChecker {
             return false;
         };
 
-        match (lock_time, tx_lock_time) {
+        match (lock_time, input_lock_time) {
             (RelativeLockTime::Blocks(h1), RelativeLockTime::Blocks(h2)) if h1 > h2 => {
                 return false
             }

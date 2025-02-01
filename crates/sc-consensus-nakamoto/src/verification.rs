@@ -177,7 +177,7 @@ pub enum Error {
         block_hash: BlockHash,
         context: TransactionContext,
         input_index: usize,
-        error: subcoin_script::interpreter::ScriptError,
+        error: subcoin_script::ScriptError,
     },
     #[error(transparent)]
     Transaction(#[from] TxError),
@@ -402,7 +402,7 @@ where
         let block_hash = block.block_hash();
 
         let mut block_fee = 0;
-        let mut spent_utxos = HashSet::new();
+        let mut spent_coins_in_block = HashSet::new();
 
         let mut tx_data = Vec::<u8>::new();
 
@@ -467,7 +467,7 @@ where
             for (input_index, input) in tx.input.iter().enumerate() {
                 let coin = input.previous_output;
 
-                if spent_utxos.contains(&coin) {
+                if spent_coins_in_block.contains(&coin) {
                     return Err(Error::AlreadySpentInCurrentBlock {
                         block_hash,
                         block_number,
@@ -502,22 +502,19 @@ where
                         // Skip script verification.
                     }
                     ScriptEngine::Subcoin => {
-                        let mut checker =
-                            subcoin_script::signature_checker::TransactionSignatureChecker::new(
-                                input_index,
-                                spent_output.value.to_sat(),
-                                tx.clone(), // TODO: avoid clone entire TX for verifying every single input.
-                            );
-                        let sig_version = subcoin_script::SigVersion::Base;
+                        let mut checker = subcoin_script::TransactionSignatureChecker::new(
+                            input_index,
+                            spent_output.value.to_sat(),
+                            &tx,
+                        );
                         let verify_flags =
                             subcoin_script::VerifyFlags::from_bits(flags).expect("Invalid flags");
-                        subcoin_script::interpreter::verify_script(
+                        subcoin_script::verify_script(
                             &input.script_sig,
                             &spent_output.script_pubkey,
                             &input.witness,
                             verify_flags,
                             &mut checker,
-                            sig_version,
                         )
                         .map_err(|error| Error::BadScript {
                             block_hash,
@@ -528,7 +525,7 @@ where
                     }
                 }
 
-                spent_utxos.insert(coin);
+                spent_coins_in_block.insert(coin);
                 value_in += spent_output.value.to_sat();
             }
 

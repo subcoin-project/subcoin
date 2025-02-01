@@ -1,9 +1,12 @@
 macro_rules! opcode_enum {
     ($($name:ident = $value:expr),* $(,)?) => {
         /// Script opcodes.
+        // While rust-bitcoin provides the opcode type, it is not defined as an enum.
+        // By defining our own `Opcode` enum, we leverage the compiler to ensure
+        // exhaustive handling of all possible cases, improving code safety and maintainability.
         #[repr(u8)]
         #[allow(non_camel_case_types)]
-        #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
+        #[derive(Debug, PartialEq, Eq, Clone, Copy)]
         pub enum Opcode {
             $($name = $value),*
         }
@@ -231,32 +234,6 @@ opcode_enum! {
 impl std::fmt::Display for Opcode {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         std::fmt::Debug::fmt(self, f)
-    }
-}
-
-impl Opcode {
-    /// Returns true if opcode is countable
-    pub fn is_countable(&self) -> bool {
-        *self > Opcode::OP_16
-    }
-
-    pub fn is_simple_push(&self) -> bool {
-        *self < Opcode::OP_PUSHDATA1
-    }
-
-    pub fn is_push_value(&self) -> bool {
-        (Opcode::OP_1NEGATE..=Opcode::OP_16).contains(self)
-    }
-
-    pub fn is_within_op_n(&self) -> bool {
-        (Opcode::OP_1..=Opcode::OP_16).contains(self)
-    }
-
-    pub fn decode_op_n(&self) -> u8 {
-        assert!(self.is_within_op_n());
-        let value = *self as u8;
-        let op0 = Opcode::OP_1 as u8 - 1;
-        value - op0
     }
 }
 

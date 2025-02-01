@@ -1,11 +1,14 @@
-use crate::constants::{
-    COMPRESSED_PUBKEY_SIZE, HALF_ORDER, SIGHASH_ALL, SIGHASH_ANYONECANPAY, SIGHASH_SINGLE,
-    VALIDATION_WEIGHT_PER_SIGOP_PASSED,
-};
+use crate::constants::{COMPRESSED_PUBKEY_SIZE, HALF_ORDER, VALIDATION_WEIGHT_PER_SIGOP_PASSED};
 use crate::signature_checker::SignatureChecker;
 use crate::{EcdsaSignature, SchnorrSignature, ScriptExecutionData, SigVersion, VerifyFlags};
 use bitcoin::{PublicKey, Script, XOnlyPublicKey};
 use num_bigint::Sign;
+
+const SIGHASH_ALL: u8 = 0x01;
+#[allow(unused)]
+const SIGHASH_NONE: u8 = 0x02;
+const SIGHASH_SINGLE: u8 = 0x03;
+const SIGHASH_ANYONECANPAY: u8 = 0x80;
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum SignatureEncodingError {

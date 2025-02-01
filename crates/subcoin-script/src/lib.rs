@@ -1,15 +1,19 @@
-pub mod constants;
-pub mod interpreter;
-pub mod num;
-pub mod opcode;
-// pub mod sign;
-pub mod signature_checker;
-pub mod stack;
+mod constants;
+mod interpreter;
+mod num;
+mod opcode;
+mod signature_checker;
+mod stack;
 #[cfg(test)]
 mod tests;
 
 use bitflags::bitflags;
 use primitive_types::H256;
+
+pub use self::interpreter::{eval_script, verify_script, Error, ScriptError};
+pub use self::signature_checker::{
+    NoSignatureCheck, SignatureChecker, SignatureError, TransactionSignatureChecker,
+};
 
 pub type EcdsaSignature = bitcoin::ecdsa::Signature;
 pub type SchnorrSignature = bitcoin::taproot::Signature;

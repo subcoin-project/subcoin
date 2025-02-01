@@ -24,7 +24,6 @@ pub fn verify_script<SC: SignatureChecker>(
     witness: &Witness,
     flags: VerifyFlags,
     checker: &mut SC,
-    sig_version: SigVersion,
 ) -> Result<(), ScriptError> {
     if flags.intersects(VerifyFlags::SIGPUSHONLY) && !script_sig.is_push_only() {
         return Err(ScriptError::SigPushOnly);
