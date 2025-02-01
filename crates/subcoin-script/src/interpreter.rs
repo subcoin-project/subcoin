@@ -3,6 +3,7 @@ mod verify;
 
 use crate::constants::{MAX_OPS_PER_SCRIPT, MAX_SCRIPT_ELEMENT_SIZE, MAX_STACK_SIZE};
 use crate::num::NumError;
+use crate::signature_checker::SignatureError;
 use crate::stack::StackError;
 
 pub use self::eval::eval_script;
@@ -98,6 +99,8 @@ pub enum ScriptError {
     DiscourageUpgradableWitnessProgram,
     #[error("discourage upgradable taproot program")]
     DiscourageUpgradableTaprootProgram,
+    #[error("discourage upgradable taproot version")]
+    DiscourageUpgradableTaprootVersion,
     // ErrDiscourageOpSuccess is returned if
     // ScriptVerifyDiscourageOpSuccess is active, and a OP_SUCCESS op code
     // is encountered during tapscript validation.
@@ -149,6 +152,8 @@ pub enum ScriptError {
     ReadInstruction(bitcoin::script::Error),
     #[error(transparent)]
     Num(#[from] NumError),
+    #[error(transparent)]
+    Signature(#[from] SignatureError),
     #[error(transparent)]
     CheckSig(#[from] eval::CheckSigError),
     #[error(transparent)]

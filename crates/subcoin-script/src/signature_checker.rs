@@ -9,7 +9,7 @@ use bitcoin::transaction::Version;
 use bitcoin::{Amount, PublicKey, Script, Transaction, TxOut, XOnlyPublicKey};
 use std::sync::LazyLock;
 
-static SECP: LazyLock<Secp256k1<All>> = LazyLock::new(|| Secp256k1::new());
+pub(crate) static SECP: LazyLock<Secp256k1<All>> = LazyLock::new(|| Secp256k1::new());
 
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
 pub enum SignatureError {

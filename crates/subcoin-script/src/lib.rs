@@ -7,14 +7,16 @@ mod stack;
 #[cfg(test)]
 mod tests;
 
+use bitcoin::hashes::Hash;
+use bitcoin::TapLeafHash;
 use bitflags::bitflags;
-use primitive_types::H256;
 
 pub use self::interpreter::{eval_script, verify_script, Error, ScriptError};
 pub use self::signature_checker::{
     NoSignatureCheck, SignatureChecker, SignatureError, TransactionSignatureChecker,
 };
 
+pub type H256 = bitcoin::hashes::sha256::Hash;
 pub type EcdsaSignature = bitcoin::ecdsa::Signature;
 pub type SchnorrSignature = bitcoin::taproot::Signature;
 
@@ -157,12 +159,12 @@ pub enum SigVersion {
 }
 
 // https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/script/interpreter.h#L198
-#[derive(Default)]
+#[derive(Debug)]
 pub struct ScriptExecutionData {
     /// Whether m_tapleaf_hash is initialized
     pub tapleaf_hash_init: bool,
     /// The tapleaf hash
-    pub tapleaf_hash: H256,
+    pub tapleaf_hash: TapLeafHash,
 
     /// Whether m_codeseparator_pos is initialized
     pub codeseparator_pos_init: bool,
@@ -183,4 +185,22 @@ pub struct ScriptExecutionData {
 
     /// The hash of the corresponding output
     pub output_hash: Option<H256>,
+}
+
+impl Default for ScriptExecutionData {
+    fn default() -> Self {
+        Self {
+            tapleaf_hash_init: false,
+            tapleaf_hash: TapLeafHash::from_slice(H256::all_zeros().as_byte_array())
+                .expect("Static value must be correct; qed"),
+            codeseparator_pos_init: false,
+            codeseparator_pos: 0,
+            annex_init: false,
+            annex_present: false,
+            annex_hash: H256::all_zeros(),
+            validation_weight_left_init: false,
+            validation_weight_left: 0,
+            output_hash: None,
+        }
+    }
 }

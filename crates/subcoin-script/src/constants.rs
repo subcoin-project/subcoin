@@ -7,7 +7,6 @@ pub const COMPRESSED_PUBKEY_SIZE: usize = 33;
 
 pub const WITNESS_V0_SCRIPTHASH_SIZE: usize = 32;
 pub const WITNESS_V0_KEYHASH_SIZE: usize = 20;
-#[allow(unused)]
 pub const WITNESS_V0_TAPROOT_SIZE: usize = 32;
 
 /// The maximum combined height of stack and alt stack during script execution.

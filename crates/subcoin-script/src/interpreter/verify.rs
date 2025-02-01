@@ -1,14 +1,19 @@
 use super::{eval_script, ScriptError};
 use crate::constants::{
     MAX_SCRIPT_ELEMENT_SIZE, MAX_STACK_SIZE, WITNESS_V0_KEYHASH_SIZE, WITNESS_V0_SCRIPTHASH_SIZE,
+    WITNESS_V0_TAPROOT_SIZE,
 };
 use crate::signature_checker::SignatureChecker;
 use crate::stack::Stack;
-use crate::{ScriptExecutionData, SigVersion, VerifyFlags};
+use crate::{SchnorrSignature, ScriptExecutionData, SigVersion, VerifyFlags};
 use bitcoin::hashes::Hash;
 use bitcoin::opcodes::all::{OP_CHECKSIG, OP_DUP, OP_EQUALVERIFY, OP_HASH160};
 use bitcoin::script::{Builder, Instruction, PushBytesBuf};
-use bitcoin::{Script, Witness, WitnessProgram, WitnessVersion};
+use bitcoin::taproot::{
+    ControlBlock, LeafVersion, TAPROOT_ANNEX_PREFIX, TAPROOT_CONTROL_BASE_SIZE,
+    TAPROOT_CONTROL_MAX_SIZE, TAPROOT_LEAF_MASK, TAPROOT_LEAF_TAPSCRIPT,
+};
+use bitcoin::{Script, TapLeafHash, Witness, WitnessProgram, WitnessVersion, XOnlyPublicKey};
 
 fn parse_witness_program(script_pubkey: &Script) -> Option<WitnessProgram> {
     script_pubkey.witness_version().and_then(|witness_version| {
@@ -42,7 +47,7 @@ pub fn verify_script<SC: SignatureChecker>(
         &mut ScriptExecutionData::default(),
     )?;
 
-    let mut stack_copy = if flags.intersects(VerifyFlags::P2SH) {
+    let stack_copy_for_p2sh = if flags.intersects(VerifyFlags::P2SH) {
         Some(stack.clone())
     } else {
         None
@@ -67,16 +72,15 @@ pub fn verify_script<SC: SignatureChecker>(
 
     let mut had_witness = false;
 
-    // Verify witness program
+    // Bare witness program
     if flags.intersects(VerifyFlags::WITNESS) {
         if let Some(witness_program) = parse_witness_program(script_pubkey) {
+            had_witness = true;
             // script_sig must be empty for all native witness programs, otherwise
             // we introduce malleability.
             if !script_sig.is_empty() {
                 return Err(ScriptError::WitnessMalleated);
             }
-
-            had_witness = true;
 
             verify_witness_program(witness, witness_program, &flags, checker, false)?;
 
@@ -87,63 +91,66 @@ pub fn verify_script<SC: SignatureChecker>(
     }
 
     // Additional validation for spend-to-script-hash transactions:
-    if flags.verify_p2sh() && script_pubkey.is_p2sh() {
-        if !script_sig.is_push_only() {
-            return Err(ScriptError::SigPushOnly);
-        }
+    match stack_copy_for_p2sh {
+        Some(mut stack_copy) if script_pubkey.is_p2sh() => {
+            // scriptSig must be literals-only or validation fails.
+            if !script_sig.is_push_only() {
+                return Err(ScriptError::SigPushOnly);
+            }
 
-        // Restore stack.
-        std::mem::swap(&mut stack, &mut stack_copy.take().unwrap());
+            // Restore stack.
+            std::mem::swap(&mut stack, &mut stack_copy);
 
-        // stack cannot be empty here, because if it was the
-        // P2SH  HASH <> EQUAL  scriptPubKey would be evaluated with
-        // an empty stack and the EvalScript above would return false.
-        assert!(!stack.is_empty());
+            // stack cannot be empty here, because if it was the
+            // P2SH  HASH <> EQUAL  scriptPubKey would be evaluated with
+            // an empty stack and the EvalScript above would return false.
+            assert!(!stack.is_empty());
 
-        let elem = stack.pop()?;
-        let pubkey2 = Script::from_bytes(&elem);
+            let pubkey_serialized = stack.pop()?;
+            let pubkey2 = Script::from_bytes(&pubkey_serialized);
 
-        eval_script(
-            &mut stack,
-            &pubkey2,
-            &flags,
-            checker,
-            SigVersion::Base,
-            &mut ScriptExecutionData::default(),
-        )?;
+            eval_script(
+                &mut stack,
+                &pubkey2,
+                &flags,
+                checker,
+                SigVersion::Base,
+                &mut ScriptExecutionData::default(),
+            )?;
 
-        if stack.is_empty() {
-            return Err(ScriptError::EvalFalse);
-        }
+            if stack.is_empty() {
+                return Err(ScriptError::EvalFalse);
+            }
 
-        if !stack.peek_bool()? {
-            return Err(ScriptError::EvalFalse);
-        }
+            if !stack.peek_bool()? {
+                return Err(ScriptError::EvalFalse);
+            }
 
-        // P2SH witness program
-        if flags.intersects(VerifyFlags::WITNESS) {
-            if let Some(witness_program) = parse_witness_program(pubkey2) {
-                let mut push_bytes = PushBytesBuf::new();
-                push_bytes
-                    .extend_from_slice(pubkey2.as_bytes())
-                    .expect("Failed to convert pubkey to PushBytes");
-                let redeem_script = Builder::default().push_slice(push_bytes).into_script();
+            // P2SH witness program
+            if flags.intersects(VerifyFlags::WITNESS) {
+                if let Some(witness_program) = parse_witness_program(pubkey2) {
+                    had_witness = true;
+                    let mut push_bytes = PushBytesBuf::new();
+                    push_bytes
+                        .extend_from_slice(pubkey2.as_bytes())
+                        .expect("Failed to convert pubkey to PushBytes");
+                    let redeem_script = Builder::default().push_slice(push_bytes).into_script();
 
-                if script_sig != &redeem_script {
-                    // The scriptSig must be _exactly_ a single push of the redeemScript. Otherwise
-                    // we reintroduce malleability.
-                    return Err(ScriptError::WitnessMalleatedP2SH);
+                    if script_sig != &redeem_script {
+                        // The scriptSig must be _exactly_ a single push of the redeemScript. Otherwise
+                        // we reintroduce malleability.
+                        return Err(ScriptError::WitnessMalleatedP2SH);
+                    }
+
+                    verify_witness_program(witness, witness_program, &flags, checker, true)?;
+
+                    // Bypass the cleanstack check at the end. The actual stack is obviously not clean
+                    // for witness programs.
+                    stack.truncate(1);
                 }
-
-                had_witness = true;
-
-                verify_witness_program(witness, witness_program, &flags, checker, true)?;
-
-                // Bypass the cleanstack check at the end. The actual stack is obviously not clean
-                // for witness programs.
-                stack.truncate(1);
             }
         }
+        _ => {}
     }
 
     // The CLEANSTACK check is only performed after potential P2SH evaluation,
@@ -182,7 +189,7 @@ fn verify_witness_program(
     checker: &mut impl SignatureChecker,
     is_p2sh: bool,
 ) -> Result<(), ScriptError> {
-    let stack = Stack::with_data(witness.to_vec());
+    let mut stack = Stack::with_data(witness.to_vec());
 
     let witness_version = witness_program.version();
 
@@ -191,7 +198,7 @@ fn verify_witness_program(
 
         if program_size == WITNESS_V0_SCRIPTHASH_SIZE {
             // BIP141 P2WSH: 32-byte witness v0 program (which encodes SHA256(script))
-            if witness.is_empty() {
+            if stack.is_empty() {
                 return Err(ScriptError::WitnessProgramWitnessEmpty);
             }
 
@@ -238,7 +245,7 @@ fn verify_witness_program(
             return Err(ScriptError::WitnessProgramWrongLength);
         }
     } else if witness_version == WitnessVersion::V1
-        && witness_program.program().len() == WITNESS_V0_SCRIPTHASH_SIZE
+        && witness_program.program().len() == WITNESS_V0_TAPROOT_SIZE
         && !is_p2sh
     {
         // BIP 341 Taproot: 32-byte non-P2SH witness v1 program (which encodes a P2C-tweaked pubkey)
@@ -250,8 +257,83 @@ fn verify_witness_program(
             return Err(ScriptError::WitnessProgramWitnessEmpty);
         }
 
-        // Handle annex.
-        todo!("Taproot")
+        let mut exec_data = if stack.len() >= 2
+            && !stack.last()?.is_empty()
+            && stack.last()?[0] == TAPROOT_ANNEX_PREFIX
+        {
+            let annex = stack.pop()?;
+            ScriptExecutionData {
+                annex_hash: bitcoin::hashes::sha256::Hash::hash(&annex),
+                annex_present: true,
+                ..Default::default()
+            }
+        } else {
+            ScriptExecutionData {
+                annex_present: false,
+                ..Default::default()
+            }
+        };
+
+        exec_data.annex_init = true;
+
+        if stack.len() == 1 {
+            // Key path spending (stack size is 1 after removing optional annex).
+            let sig = stack.last()?;
+            let sig = SchnorrSignature::from_slice(&sig).unwrap();
+            let pubkey = XOnlyPublicKey::from_slice(witness_program.program().as_bytes()).unwrap();
+            checker.check_schnorr_signature(&sig, &pubkey, SigVersion::Taproot, &exec_data)?;
+        } else {
+            // Script path spending (stack size is >1 after removing optional annex).
+            let control = stack.pop()?;
+            let script = stack.pop()?;
+
+            if control.len() < TAPROOT_CONTROL_BASE_SIZE || control.len() > TAPROOT_CONTROL_MAX_SIZE
+            {
+                return Err(ScriptError::TaprootWrongControlSize);
+            }
+
+            let script = Script::from_bytes(&script);
+
+            // ComputeTapleafHash
+            exec_data.tapleaf_hash = TapLeafHash::from_script(
+                script,
+                LeafVersion::from_consensus(control[0] & TAPROOT_LEAF_MASK).unwrap(),
+            );
+
+            let control_block = ControlBlock::decode(&control).unwrap();
+
+            let output_key =
+                XOnlyPublicKey::from_slice(witness_program.program().as_bytes()).unwrap();
+            if !control_block.verify_taproot_commitment(
+                &crate::signature_checker::SECP,
+                output_key,
+                script,
+            ) {
+                return Err(ScriptError::WitnessProgramMismatch);
+            }
+            exec_data.tapleaf_hash_init = true;
+
+            // Validation weight per passing signature (Tapscript only, see BIP 342)
+            const VALIDATION_WEIGHT_OFFSET: i64 = 50;
+
+            if control[0] & TAPROOT_LEAF_MASK == TAPROOT_LEAF_TAPSCRIPT {
+                exec_data.validation_weight_left = witness.size() as i64 + VALIDATION_WEIGHT_OFFSET;
+                exec_data.validation_weight_left_init = true;
+                let exec_script = script;
+                return execute_witness_script(
+                    &stack,
+                    exec_script,
+                    flags,
+                    SigVersion::Tapscript,
+                    checker,
+                    &mut exec_data,
+                );
+            }
+
+            if flags.intersects(VerifyFlags::DISCOURAGE_UPGRADABLE_TAPROOT_VERSION) {
+                return Err(ScriptError::DiscourageUpgradableTaprootVersion);
+            }
+        }
     } else if flags.intersects(VerifyFlags::DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM) {
         return Err(ScriptError::DiscourageUpgradableWitnessProgram);
     }
