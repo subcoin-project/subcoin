@@ -152,6 +152,12 @@ pub enum ScriptError {
     ReadInstruction(bitcoin::script::Error),
     #[error(transparent)]
     Num(#[from] NumError),
+    #[error("schnorr signature error: {0:?}")]
+    SchnorrSignature(bitcoin::taproot::SigFromSliceError),
+    #[error("taproot error: {0:?}")]
+    Taproot(bitcoin::taproot::TaprootError),
+    #[error("secp256k1 error: {0:?}")]
+    Secp256k1(bitcoin::secp256k1::Error),
     #[error(transparent)]
     Signature(#[from] SignatureError),
     #[error(transparent)]

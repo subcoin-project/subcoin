@@ -25,6 +25,9 @@ pub const SEQUENCE_LOCKTIME_DISABLE_FLAG: u32 = 1u32 << 31;
 /// Validation weight per passsing signature (Tapscript only, see BIP 342).
 pub const VALIDATION_WEIGHT_PER_SIGOP_PASSED: i64 = 50;
 
+/// Validation weight per passing signature (Tapscript only, see BIP 342)
+pub const VALIDATION_WEIGHT_OFFSET: i64 = 50;
+
 pub static HALF_ORDER: LazyLock<num_bigint::BigInt> = LazyLock::new(|| {
     pub const N: &str = "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141";
     num_bigint::BigInt::from_str_radix(N, 16).expect("Static value must be valid")

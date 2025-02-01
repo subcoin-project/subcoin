@@ -8055,6 +8055,7 @@ dependencies = [
  "sp-runtime",
  "sp-state-machine",
  "subcoin-primitives",
+ "subcoin-script",
  "substrate-prometheus-endpoint",
  "thiserror 1.0.68",
  "tracing",
@@ -10600,7 +10601,6 @@ dependencies = [
  "hex",
  "num-bigint",
  "num-traits",
- "primitive-types",
  "thiserror 1.0.68",
 ]
 

@@ -1,9 +1,9 @@
 use super::{eval_script, ScriptError};
 use crate::constants::{
-    MAX_SCRIPT_ELEMENT_SIZE, MAX_STACK_SIZE, WITNESS_V0_KEYHASH_SIZE, WITNESS_V0_SCRIPTHASH_SIZE,
-    WITNESS_V0_TAPROOT_SIZE,
+    MAX_SCRIPT_ELEMENT_SIZE, MAX_STACK_SIZE, VALIDATION_WEIGHT_OFFSET, WITNESS_V0_KEYHASH_SIZE,
+    WITNESS_V0_SCRIPTHASH_SIZE, WITNESS_V0_TAPROOT_SIZE,
 };
-use crate::signature_checker::SignatureChecker;
+use crate::signature_checker::{SignatureChecker, SECP};
 use crate::stack::Stack;
 use crate::{SchnorrSignature, ScriptExecutionData, SigVersion, VerifyFlags};
 use bitcoin::hashes::Hash;
@@ -11,7 +11,7 @@ use bitcoin::opcodes::all::{OP_CHECKSIG, OP_DUP, OP_EQUALVERIFY, OP_HASH160};
 use bitcoin::script::{Builder, Instruction, PushBytesBuf};
 use bitcoin::taproot::{
     ControlBlock, LeafVersion, TAPROOT_ANNEX_PREFIX, TAPROOT_CONTROL_BASE_SIZE,
-    TAPROOT_CONTROL_MAX_SIZE, TAPROOT_LEAF_MASK, TAPROOT_LEAF_TAPSCRIPT,
+    TAPROOT_CONTROL_MAX_SIZE, TAPROOT_CONTROL_NODE_SIZE, TAPROOT_LEAF_MASK, TAPROOT_LEAF_TAPSCRIPT,
 };
 use bitcoin::{Script, TapLeafHash, Witness, WitnessProgram, WitnessVersion, XOnlyPublicKey};
 
@@ -76,6 +76,7 @@ pub fn verify_script<SC: SignatureChecker>(
     if flags.intersects(VerifyFlags::WITNESS) {
         if let Some(witness_program) = parse_witness_program(script_pubkey) {
             had_witness = true;
+
             // script_sig must be empty for all native witness programs, otherwise
             // we introduce malleability.
             if !script_sig.is_empty() {
@@ -189,12 +190,15 @@ fn verify_witness_program(
     checker: &mut impl SignatureChecker,
     is_p2sh: bool,
 ) -> Result<(), ScriptError> {
+    // TODO: since we clone the entire witness data, we use stack.pop() later instead of
+    // SpanPopBack(stack) in Bitcoin Core. Perhaps avoid this allocation later.
     let mut stack = Stack::with_data(witness.to_vec());
 
     let witness_version = witness_program.version();
+    let program = witness_program.program();
 
     if witness_version == WitnessVersion::V0 {
-        let program_size = witness_program.program().len();
+        let program_size = program.len();
 
         if program_size == WITNESS_V0_SCRIPTHASH_SIZE {
             // BIP141 P2WSH: 32-byte witness v0 program (which encodes SHA256(script))
@@ -202,12 +206,12 @@ fn verify_witness_program(
                 return Err(ScriptError::WitnessProgramWitnessEmpty);
             }
 
-            let script_bytes = stack.last()?;
-            let exec_script = Script::from_bytes(script_bytes);
+            let witness_script = stack.pop()?;
+            let exec_script = Script::from_bytes(&witness_script);
 
             let exec_script_hash: [u8; 32] = exec_script.wscript_hash().to_byte_array();
 
-            if exec_script_hash.as_slice() != witness_program.program().as_bytes() {
+            if exec_script_hash.as_slice() != program.as_bytes() {
                 return Err(ScriptError::WitnessProgramMismatch);
             }
 
@@ -221,6 +225,10 @@ fn verify_witness_program(
             )?;
         } else if program_size == WITNESS_V0_KEYHASH_SIZE {
             // BIP141 P2WPKH: 20-byte witness v0 program (which encodes Hash160(pubkey))
+            //
+            // ScriptPubKey: 0 <20-byte-PublicKeyHash>
+            // ScriptSig: (empty)
+            // Witness: <Signature> <PublicKey>
             if stack.len() != 2 {
                 return Err(ScriptError::WitnessProgramMismatch);
             }
@@ -228,7 +236,7 @@ fn verify_witness_program(
             let exec_script = Builder::default()
                 .push_opcode(OP_DUP)
                 .push_opcode(OP_HASH160)
-                .push_slice(witness_program.program())
+                .push_slice(program)
                 .push_opcode(OP_EQUALVERIFY)
                 .push_opcode(OP_CHECKSIG)
                 .into_script();
@@ -245,7 +253,7 @@ fn verify_witness_program(
             return Err(ScriptError::WitnessProgramWrongLength);
         }
     } else if witness_version == WitnessVersion::V1
-        && witness_program.program().len() == WITNESS_V0_TAPROOT_SIZE
+        && program.len() == WITNESS_V0_TAPROOT_SIZE
         && !is_p2sh
     {
         // BIP 341 Taproot: 32-byte non-P2SH witness v1 program (which encodes a P2C-tweaked pubkey)
@@ -261,6 +269,7 @@ fn verify_witness_program(
             && !stack.last()?.is_empty()
             && stack.last()?[0] == TAPROOT_ANNEX_PREFIX
         {
+            // Drop annex (this is non-standard; see IsWitnessStandard
             let annex = stack.pop()?;
             ScriptExecutionData {
                 annex_hash: bitcoin::hashes::sha256::Hash::hash(&annex),
@@ -268,10 +277,7 @@ fn verify_witness_program(
                 ..Default::default()
             }
         } else {
-            ScriptExecutionData {
-                annex_present: false,
-                ..Default::default()
-            }
+            ScriptExecutionData::default()
         };
 
         exec_data.annex_init = true;
@@ -279,15 +285,18 @@ fn verify_witness_program(
         if stack.len() == 1 {
             // Key path spending (stack size is 1 after removing optional annex).
             let sig = stack.last()?;
-            let sig = SchnorrSignature::from_slice(&sig).unwrap();
-            let pubkey = XOnlyPublicKey::from_slice(witness_program.program().as_bytes()).unwrap();
+            let sig = SchnorrSignature::from_slice(&sig).map_err(ScriptError::SchnorrSignature)?;
+            let pubkey =
+                XOnlyPublicKey::from_slice(program.as_bytes()).map_err(ScriptError::Secp256k1)?;
             checker.check_schnorr_signature(&sig, &pubkey, SigVersion::Taproot, &exec_data)?;
         } else {
             // Script path spending (stack size is >1 after removing optional annex).
             let control = stack.pop()?;
             let script = stack.pop()?;
 
-            if control.len() < TAPROOT_CONTROL_BASE_SIZE || control.len() > TAPROOT_CONTROL_MAX_SIZE
+            if control.len() < TAPROOT_CONTROL_BASE_SIZE
+                || control.len() > TAPROOT_CONTROL_MAX_SIZE
+                || ((control.len() - TAPROOT_CONTROL_BASE_SIZE) % TAPROOT_CONTROL_NODE_SIZE != 0)
             {
                 return Err(ScriptError::TaprootWrongControlSize);
             }
@@ -297,26 +306,21 @@ fn verify_witness_program(
             // ComputeTapleafHash
             exec_data.tapleaf_hash = TapLeafHash::from_script(
                 script,
-                LeafVersion::from_consensus(control[0] & TAPROOT_LEAF_MASK).unwrap(),
+                LeafVersion::from_consensus(control[0] & TAPROOT_LEAF_MASK)
+                    .expect("Failed to compute leaf version"),
             );
 
-            let control_block = ControlBlock::decode(&control).unwrap();
-
+            // VerifyTaprootCommitment
+            let control_block = ControlBlock::decode(&control).map_err(ScriptError::Taproot)?;
             let output_key =
-                XOnlyPublicKey::from_slice(witness_program.program().as_bytes()).unwrap();
-            if !control_block.verify_taproot_commitment(
-                &crate::signature_checker::SECP,
-                output_key,
-                script,
-            ) {
+                XOnlyPublicKey::from_slice(program.as_bytes()).map_err(ScriptError::Secp256k1)?;
+            if !control_block.verify_taproot_commitment(&SECP, output_key, script) {
                 return Err(ScriptError::WitnessProgramMismatch);
             }
             exec_data.tapleaf_hash_init = true;
 
-            // Validation weight per passing signature (Tapscript only, see BIP 342)
-            const VALIDATION_WEIGHT_OFFSET: i64 = 50;
-
             if control[0] & TAPROOT_LEAF_MASK == TAPROOT_LEAF_TAPSCRIPT {
+                // Tapscript (leaf version 0xc0)
                 exec_data.validation_weight_left = witness.size() as i64 + VALIDATION_WEIGHT_OFFSET;
                 exec_data.validation_weight_left_init = true;
                 let exec_script = script;
