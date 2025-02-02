@@ -73,7 +73,11 @@ pub struct Run {
 
     #[allow(missing_docs)]
     #[clap(flatten)]
-    pub rpc_params: RpcParams,
+    pub common_params: CommonParams,
+
+    #[allow(missing_docs)]
+    #[clap(flatten)]
+    pub network_params: NetworkParams,
 
     #[allow(missing_docs)]
     #[clap(flatten)]
@@ -81,11 +85,7 @@ pub struct Run {
 
     #[allow(missing_docs)]
     #[clap(flatten)]
-    pub common_params: CommonParams,
-
-    #[allow(missing_docs)]
-    #[clap(flatten)]
-    pub network_params: NetworkParams,
+    pub rpc_params: RpcParams,
 
     #[allow(missing_docs)]
     #[clap(flatten)]
