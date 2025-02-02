@@ -60,13 +60,6 @@ impl<T> GenericStack<T> {
         }
     }
 
-    pub fn with_verify_minimaldata(verify_minimaldata: bool) -> Self {
-        Self {
-            data: Vec::new(),
-            verify_minimaldata,
-        }
-    }
-
     /// Explicitly an empty stack, [].
     pub fn empty() -> Self
     where
@@ -92,12 +85,6 @@ impl<T> GenericStack<T> {
     #[inline]
     pub fn last(&self) -> Result<&T> {
         self.data.last().ok_or(StackError::InvalidOperation)
-    }
-
-    /// Returns the last element of the stack as mutable.
-    #[inline]
-    pub fn last_mut(&mut self) -> Result<&mut T> {
-        self.data.last_mut().ok_or(StackError::InvalidOperation)
     }
 
     /// Removes and returns the last element of the stack.

@@ -4,7 +4,6 @@ use bitcoin::locktime::absolute::LockTime as AbsoluteLockTime;
 use bitcoin::locktime::relative::LockTime as RelativeLockTime;
 use bitcoin::secp256k1::{self, All, Message, Secp256k1};
 use bitcoin::sighash::{Annex, Prevouts, SighashCache, TaprootError};
-use bitcoin::taproot::TapLeafHash;
 use bitcoin::transaction::Version;
 use bitcoin::{Amount, PublicKey, Script, Transaction, TxOut, XOnlyPublicKey};
 use std::sync::LazyLock;
@@ -15,8 +14,10 @@ pub(crate) static SECP: LazyLock<Secp256k1<All>> = LazyLock::new(|| Secp256k1::n
 pub enum SignatureError {
     #[error("Bad signature version")]
     BadSignatureVersion,
-    #[error("secp256k1 error: {0:?}")]
-    Secp256k1(secp256k1::Error),
+    #[error("ecdsa error: {0:?}")]
+    EcdsaSig(secp256k1::Error),
+    #[error("schnorr error: {0:?}")]
+    SchnorrSig(secp256k1::Error),
     #[error("Invalid ecdsa signature: {0:?}")]
     InputsIndex(bitcoin::blockdata::transaction::InputsIndexError),
     #[error("Invalid ecdsa signature: {0:?}")]
@@ -43,8 +44,7 @@ pub trait SignatureChecker {
         msg: &Message,
         pk: &PublicKey,
     ) -> Result<(), SignatureError> {
-        pk.verify(&SECP, msg, sig)
-            .map_err(SignatureError::Secp256k1)
+        pk.verify(&SECP, msg, sig).map_err(SignatureError::EcdsaSig)
     }
 
     /// Checks an ECDSA signature in the context of a Bitcoin transaction.
@@ -84,7 +84,7 @@ pub trait SignatureChecker {
         pk: &XOnlyPublicKey,
     ) -> Result<(), SignatureError> {
         pk.verify(&SECP, msg, &sig.signature)
-            .map_err(SignatureError::Secp256k1)
+            .map_err(SignatureError::SchnorrSig)
     }
 
     /// Checks a Schnorr signature in the context of a Bitcoin transaction.
@@ -156,7 +156,6 @@ pub struct TransactionSignatureChecker<'a> {
     input_amount: u64,
     prevouts: Vec<TxOut>,
     sighash_cache: SighashCache<&'a Transaction>,
-    taproot_annex_scriptleaf: Option<(TapLeafHash, Option<Vec<u8>>)>,
 }
 
 impl<'a> TransactionSignatureChecker<'a> {
@@ -168,7 +167,6 @@ impl<'a> TransactionSignatureChecker<'a> {
             input_amount,
             prevouts: Vec::new(),
             sighash_cache,
-            taproot_annex_scriptleaf: None,
         }
     }
 }
@@ -207,21 +205,31 @@ impl<'a> SignatureChecker for TransactionSignatureChecker<'a> {
         &mut self,
         sig: &SchnorrSignature,
         pk: &XOnlyPublicKey,
-        _sig_version: SigVersion,
-        _exec_data: &ScriptExecutionData,
+        sig_version: SigVersion,
+        exec_data: &ScriptExecutionData,
     ) -> Result<bool, SignatureError> {
-        // TODO:
-        let last_codeseparator_pos = None;
-        let (leaf_hash, annex) = self.taproot_annex_scriptleaf.as_ref().unwrap();
+        if !matches!(sig_version, SigVersion::Taproot | SigVersion::Tapscript) {
+            return Err(SignatureError::BadSignatureVersion);
+        }
+
+        let last_codeseparator_pos = if exec_data.codeseparator_pos_init {
+            Some(exec_data.codeseparator_pos)
+        } else {
+            None
+        };
+
+        let leaf_hash = exec_data.tapleaf_hash;
+        let annex = exec_data.annex.as_ref().map(|a| {
+            Annex::new(a).expect("Annex must be valid as it was checked on initialization; qed")
+        });
+
         let sighash = self
             .sighash_cache
             .taproot_signature_hash(
                 self.input_index,
                 &Prevouts::All(&self.prevouts),
-                annex
-                    .as_ref()
-                    .map(|a| Annex::new(a).expect("we checked annex prefix before")),
-                Some((*leaf_hash, last_codeseparator_pos.unwrap_or(u32::MAX))),
+                annex,
+                Some((leaf_hash, last_codeseparator_pos.unwrap_or(u32::MAX))),
                 sig.sighash_type,
             )
             .map_err(SignatureError::Taproot)?;

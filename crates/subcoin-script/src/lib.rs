@@ -179,6 +179,10 @@ pub struct ScriptExecutionData {
     pub annex_present: bool,
     /// Hash of the annex data
     pub annex_hash: H256,
+    /// Annex data.
+    ///
+    /// We store the annex data for signature_checker.
+    pub annex: Option<Vec<u8>>,
 
     /// Whether m_validation_weight_left is initialized
     pub validation_weight_left_init: bool,
@@ -200,6 +204,7 @@ impl Default for ScriptExecutionData {
             annex_init: false,
             annex_present: false,
             annex_hash: H256::all_zeros(),
+            annex: None,
             validation_weight_left_init: false,
             validation_weight_left: 0,
             output_hash: None,

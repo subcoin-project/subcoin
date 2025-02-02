@@ -115,7 +115,7 @@ pub enum Error {
     SchnorrSigHashType,
     #[error("schnorr sig")]
     SchnorrSig,
-    #[error("taproot wrong control size")]
+    #[error("Taproot control block has a bad length")]
     TaprootWrongControlSize,
     #[error("taproot validation weight")]
     TaprootValidationWeight,
