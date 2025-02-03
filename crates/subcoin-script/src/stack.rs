@@ -1,4 +1,5 @@
 use crate::num::ScriptNum;
+use crate::VerifyFlags;
 use std::ops::{Deref, DerefMut};
 
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
@@ -57,6 +58,13 @@ impl<T> GenericStack<T> {
         Self {
             data,
             verify_minimaldata: false,
+        }
+    }
+
+    pub fn with_flags(flags: &VerifyFlags) -> Self {
+        Self {
+            data: Vec::new(),
+            verify_minimaldata: flags.verify_minimaldata(),
         }
     }
 

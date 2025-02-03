@@ -37,7 +37,7 @@ pub fn verify_script<SC: SignatureChecker>(
 
     // scriptSig and scriptPubKey must be evaluated sequentially on the same stack rather
     // than being simply concatnated (see CVE-2010-5141).
-    let mut stack = Stack::default();
+    let mut stack = Stack::with_flags(&flags);
 
     eval_script(
         &mut stack,

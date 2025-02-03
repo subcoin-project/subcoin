@@ -31,7 +31,7 @@ pub fn eval_script<SC: SignatureChecker>(
         return Err(Error::NoScriptExecution);
     }
 
-    let mut alt_stack = Stack::default();
+    let mut alt_stack = Stack::with_flags(&flags);
 
     // Create a vector of conditional execution states
     let mut exec_stack: Vec<bool> = Vec::new();

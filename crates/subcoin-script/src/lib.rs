@@ -1,3 +1,5 @@
+//! # Bitcoin Script Interpreter.
+
 mod constants;
 mod error;
 mod interpreter;
@@ -26,6 +28,7 @@ bitflags! {
     /// Script verification flags.
     ///
     /// https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/script/interpreter.h#L45
+    #[derive(Debug, Clone)]
     pub struct VerifyFlags: u32 {
         const NONE = 0;
 

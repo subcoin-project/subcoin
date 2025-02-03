@@ -15,9 +15,9 @@ pub enum SignatureError {
     #[error("Bad signature version")]
     BadSignatureVersion,
     #[error("ecdsa error: {0:?}")]
-    EcdsaSig(secp256k1::Error),
+    Ecdsa(secp256k1::Error),
     #[error("schnorr error: {0:?}")]
-    SchnorrSig(secp256k1::Error),
+    Schnorr(secp256k1::Error),
     #[error("Invalid ecdsa signature: {0:?}")]
     InputsIndex(bitcoin::blockdata::transaction::InputsIndexError),
     #[error("Invalid ecdsa signature: {0:?}")]
@@ -44,7 +44,7 @@ pub trait SignatureChecker {
         msg: &Message,
         pk: &PublicKey,
     ) -> Result<(), SignatureError> {
-        pk.verify(&SECP, msg, sig).map_err(SignatureError::EcdsaSig)
+        pk.verify(&SECP, msg, sig).map_err(SignatureError::Ecdsa)
     }
 
     /// Checks an ECDSA signature in the context of a Bitcoin transaction.
@@ -84,7 +84,7 @@ pub trait SignatureChecker {
         pk: &XOnlyPublicKey,
     ) -> Result<(), SignatureError> {
         pk.verify(&SECP, msg, &sig.signature)
-            .map_err(SignatureError::SchnorrSig)
+            .map_err(SignatureError::Schnorr)
     }
 
     /// Checks a Schnorr signature in the context of a Bitcoin transaction.
