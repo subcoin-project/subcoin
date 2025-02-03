@@ -69,6 +69,7 @@ impl<T> GenericStack<T> {
     }
 
     /// Explicitly an empty stack, [].
+    #[allow(unused)]
     pub fn empty() -> Self
     where
         T: Default,

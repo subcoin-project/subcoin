@@ -94,6 +94,16 @@ pub struct TransactionContext {
     pub txid: Txid,
 }
 
+impl std::fmt::Display for TransactionContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Tx #{}:{}: {}",
+            self.block_number, self.tx_index, self.txid
+        )
+    }
+}
+
 /// Block verification error.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -101,19 +111,19 @@ pub enum Error {
     #[error("Invalid merkle root in block#{0}")]
     BadMerkleRoot(BlockHash),
     /// Block must contain at least one coinbase transaction.
-    #[error("Block {0} has an empty transaction list")]
+    #[error("Block#{0} has an empty transaction list")]
     EmptyTransactionList(BlockHash),
     /// Block size exceeds the limit.
-    #[error("Block {0} exceeds maximum allowed size")]
+    #[error("Block#{0} exceeds maximum allowed size")]
     BlockTooLarge(BlockHash),
     /// First transaction must be a coinbase.
-    #[error("First transaction in block {0} is not a coinbase")]
+    #[error("First transaction in block#{0} is not a coinbase")]
     FirstTransactionIsNotCoinbase(BlockHash),
     /// A block must contain only one coinbase transaction.
-    #[error("Block {0} contains multiple coinbase transactions")]
+    #[error("Block#{0} contains multiple coinbase transactions")]
     MultipleCoinbase(BlockHash),
     #[error(
-        "Block {block_hash} has incorrect coinbase height, (expected: {expected}, got: {got})"
+        "Block#{block_hash} has incorrect coinbase height, (expected: {expected}, got: {got})"
     )]
     BadCoinbaseBlockHeight {
         block_hash: BlockHash,
@@ -121,14 +131,14 @@ pub enum Error {
         expected: u32,
     },
     /// Coinbase transaction is prematurely spent.
-    #[error("Premature spend of coinbase transaction in block {0}")]
+    #[error("Premature spend of coinbase transaction in block#{0}")]
     PrematureSpendOfCoinbase(BlockHash),
 
     /// Block contains duplicate transactions.
-    #[error("Block {block_hash} contains duplicate transaction at index {index}")]
+    #[error("Block#{block_hash} contains duplicate transaction at index {index}")]
     DuplicateTransaction { block_hash: BlockHash, index: usize },
     /// A transaction is not finalized.
-    #[error("Transaction in block {0} is not finalized")]
+    #[error("Transaction in block#{0} is not finalized")]
     TransactionNotFinal(BlockHash),
     /// Transaction script contains too many signature operations.
     #[error("Transaction in block #{block_number},{block_hash} exceeds signature operation limit (max: {MAX_BLOCK_SIGOPS_COST})")]
@@ -137,12 +147,12 @@ pub enum Error {
         block_number: u32,
     },
     /// Witness commitment in the block is invalid.
-    #[error("Invalid witness commitment in block {0}")]
+    #[error("Invalid witness commitment in block#{0}")]
     BadWitnessCommitment(BlockHash),
 
     /// UTXO referenced by a transaction is missing
     #[error(
-        "Missing UTXO in state for transaction ({context:?}) in block {block_hash}. Missing UTXO: {missing_outpoint:?}"
+        "Missing UTXO in state for transaction ({context}) in block {block_hash}. Missing UTXO: {missing_outpoint:?}"
     )]
     MissingUtxoInState {
         block_hash: BlockHash,
@@ -160,39 +170,39 @@ pub enum Error {
         utxo: OutPoint,
     },
     /// Insufficient funds: total input amount is lower than the total output amount.
-    #[error("Block {block_hash} has an invalid transaction: total input {value_in} < total output {value_out}")]
+    #[error("Block#{block_hash} has an invalid transaction: total input {value_in} < total output {value_out}")]
     InsufficientFunds {
         block_hash: BlockHash,
         value_in: u64,
         value_out: u64,
     },
     /// Block reward (coinbase value) exceeds the allowed subsidy + transaction fees.
-    #[error("Block {0} reward exceeds allowed amount (subsidy + fees)")]
+    #[error("Block#{0} reward exceeds allowed amount (subsidy + fees)")]
     InvalidBlockReward(BlockHash),
     /// A transaction script failed verification.
     #[error(
-        "Script verification failure in block {block_hash}. Context: {context:?}, input_index: {input_index}: {error:?}"
+        "Script verification failure in block#{block_hash}. Context: {context}, input_index: {input_index}: {error:?}"
     )]
-    BadScript {
+    InvalidScript {
         block_hash: BlockHash,
         context: TransactionContext,
         input_index: usize,
         error: subcoin_script::Error,
     },
+    #[error("BIP34 error in block#{0}: {1:?}")]
+    Bip34(BlockHash, Bip34Error),
+    #[error("Bitcoin codec error: {0:?}")]
+    BitcoinCodec(bitcoin::io::Error),
+    #[error(transparent)]
+    BitcoinConsensus(#[from] bitcoinconsensus::Error),
+    /// An error occurred in the client.
+    #[error(transparent)]
+    Client(#[from] sp_blockchain::Error),
     #[error(transparent)]
     Transaction(#[from] TxError),
     /// Block header error.
     #[error(transparent)]
     Header(#[from] HeaderError),
-    #[error(transparent)]
-    BitcoinConsensus(#[from] bitcoinconsensus::Error),
-    #[error("BIP34 error in block {0}: {1:?}")]
-    Bip34(BlockHash, Bip34Error),
-    #[error("Bitcoin codec error: {0:?}")]
-    BitcoinCodec(bitcoin::io::Error),
-    /// An error occurred in the client.
-    #[error(transparent)]
-    Client(#[from] sp_blockchain::Error),
 }
 
 /// A struct responsible for verifying Bitcoin blocks.
@@ -464,6 +474,7 @@ where
             let mut value_in = 0;
             let mut sig_ops_cost = 0;
 
+            // TODO: Check input in parallel.
             for (input_index, input) in tx.input.iter().enumerate() {
                 let coin = input.previous_output;
 
@@ -516,7 +527,7 @@ where
                             verify_flags,
                             &mut checker,
                         )
-                        .map_err(|error| Error::BadScript {
+                        .map_err(|error| Error::InvalidScript {
                             block_hash,
                             context: tx_context(tx_index),
                             input_index,
