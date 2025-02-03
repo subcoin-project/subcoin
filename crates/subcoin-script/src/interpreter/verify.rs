@@ -28,7 +28,7 @@ pub fn verify_script<SC: SignatureChecker>(
     script_sig: &Script,
     script_pubkey: &Script,
     witness: &Witness,
-    flags: VerifyFlags,
+    flags: &VerifyFlags,
     checker: &mut SC,
 ) -> Result<(), Error> {
     if flags.intersects(VerifyFlags::SIGPUSHONLY) && !script_sig.is_push_only() {
@@ -37,7 +37,7 @@ pub fn verify_script<SC: SignatureChecker>(
 
     // scriptSig and scriptPubKey must be evaluated sequentially on the same stack rather
     // than being simply concatnated (see CVE-2010-5141).
-    let mut stack = Stack::with_flags(&flags);
+    let mut stack = Stack::with_flags(flags);
 
     eval_script(
         &mut stack,
@@ -57,7 +57,7 @@ pub fn verify_script<SC: SignatureChecker>(
     eval_script(
         &mut stack,
         script_pubkey,
-        &flags,
+        flags,
         checker,
         SigVersion::Base,
         &mut ScriptExecutionData::default(),
@@ -84,7 +84,7 @@ pub fn verify_script<SC: SignatureChecker>(
                 return Err(Error::WitnessMalleated);
             }
 
-            verify_witness_program(witness, witness_program, &flags, checker, false)?;
+            verify_witness_program(witness, witness_program, flags, checker, false)?;
 
             // Bypass the cleanstack check at the end. The actual stack is obviously not clean
             // for witness programs.
@@ -114,7 +114,7 @@ pub fn verify_script<SC: SignatureChecker>(
             eval_script(
                 &mut stack,
                 &pubkey2,
-                &flags,
+                flags,
                 checker,
                 SigVersion::Base,
                 &mut ScriptExecutionData::default(),

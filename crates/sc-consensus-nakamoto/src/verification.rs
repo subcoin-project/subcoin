@@ -518,21 +518,27 @@ where
                             spent_output.value.to_sat(),
                             &tx,
                         );
+
                         let verify_flags =
                             subcoin_script::VerifyFlags::from_bits(flags).expect("Invalid flags");
-                        subcoin_script::verify_script(
+
+                        let script_result = subcoin_script::verify_script(
                             &input.script_sig,
                             &spent_output.script_pubkey,
                             &input.witness,
-                            verify_flags,
+                            &verify_flags,
                             &mut checker,
-                        )
-                        .map_err(|error| Error::InvalidScript {
-                            block_hash,
-                            context: tx_context(tx_index),
-                            input_index,
-                            error,
-                        })?;
+                        );
+
+                        if let Err(script_err) = script_result {
+                            tracing::error!(?script_err, "Invalid script: input: {input:?}, prevout: {spent_output:?}, verify_flags: {verify_flags:?}");
+                            return Err(Error::InvalidScript {
+                                block_hash,
+                                context: tx_context(tx_index),
+                                input_index,
+                                error: script_err,
+                            });
+                        }
                     }
                 }
 
