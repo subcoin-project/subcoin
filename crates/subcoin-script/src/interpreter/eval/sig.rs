@@ -123,7 +123,7 @@ fn eval_checksig_pre_tapscript(
     check_signature_encoding(sig, flags)?;
     check_pubkey_encoding(pubkey, flags, sig_version)?;
 
-    let signature = EcdsaSignature::from_slice(sig).map_err(CheckSigError::Ecdsa)?;
+    let signature = EcdsaSignature::from_slice(sig, flags).map_err(CheckSigError::Ecdsa)?;
     let pubkey = PublicKey::from_slice(pubkey).map_err(CheckSigError::FromSlice)?;
 
     let script_code = Script::from_bytes(&subscript);

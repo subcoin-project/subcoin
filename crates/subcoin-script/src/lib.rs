@@ -37,8 +37,11 @@ pub struct EcdsaSignature {
 
 impl EcdsaSignature {
     /// Constructs a [`EcdsaSignature`] from the full sig bytes.
-    pub fn from_slice(full_sig_bytes: &[u8]) -> Result<Self, bitcoin::ecdsa::Error> {
-        let mut sig = Self::from_slice_consensus(full_sig_bytes)?;
+    pub fn from_slice(
+        full_sig_bytes: &[u8],
+        flags: &VerifyFlags,
+    ) -> Result<Self, bitcoin::ecdsa::Error> {
+        let mut sig = Self::from_slice_consensus(full_sig_bytes, flags)?;
         // normalize_s() must be invoked otherwise the signature verification fails.
         // https://github.com/bitcoin/bips/blob/master/bip-0146.mediawiki
         sig.signature.normalize_s();
@@ -46,16 +49,19 @@ impl EcdsaSignature {
     }
 
     /// Deserializes [`EcdsaSignature`] from slice following the consensus rules for `EcdsaSighashType`.
-    pub fn from_slice_consensus(sl: &[u8]) -> Result<Self, bitcoin::ecdsa::Error> {
+    fn from_slice_consensus(sl: &[u8], flags: &VerifyFlags) -> Result<Self, bitcoin::ecdsa::Error> {
         let (sighash_type, sig) = sl
             .split_last()
             .ok_or(bitcoin::ecdsa::Error::EmptySignature)?;
         let sighash_type = *sighash_type as u32;
         let signature = match secp256k1::ecdsa::Signature::from_der(sig) {
             Ok(sig) => sig,
-            // TODO: only attempt `from_der_lax()` for early blocks (before 2016)
-            Err(_) => secp256k1::ecdsa::Signature::from_der_lax(sig)
-                .map_err(bitcoin::ecdsa::Error::Secp256k1)?,
+            Err(err) if flags.intersects(VerifyFlags::DERSIG) => return Err(err.into()),
+            Err(_) => {
+                // Attempt `from_der_lax()` if DER is not enforced.
+                secp256k1::ecdsa::Signature::from_der_lax(sig)
+                    .map_err(bitcoin::ecdsa::Error::Secp256k1)?
+            }
         };
 
         Ok(Self {
