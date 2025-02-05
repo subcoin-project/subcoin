@@ -514,9 +514,9 @@ where
                     }
                     ScriptEngine::Subcoin => {
                         let mut checker = subcoin_script::TransactionSignatureChecker::new(
+                            &tx,
                             input_index,
                             spent_output.value.to_sat(),
-                            &tx,
                         );
 
                         let verify_flags =

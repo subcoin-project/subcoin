@@ -5,7 +5,7 @@ use bitcoin::locktime::relative::LockTime as RelativeLockTime;
 use bitcoin::secp256k1::{self, All, Message, Secp256k1};
 use bitcoin::sighash::{Annex, Prevouts, SighashCache, TaprootError};
 use bitcoin::transaction::Version;
-use bitcoin::{Amount, PublicKey, Script, Transaction, TxOut, XOnlyPublicKey};
+use bitcoin::{Amount, EcdsaSighashType, PublicKey, Script, Transaction, TxOut, XOnlyPublicKey};
 use std::sync::LazyLock;
 
 pub(crate) static SECP: LazyLock<Secp256k1<All>> = LazyLock::new(|| Secp256k1::new());
@@ -44,7 +44,8 @@ pub trait SignatureChecker {
         msg: &Message,
         pk: &PublicKey,
     ) -> Result<(), SignatureError> {
-        pk.verify(&SECP, msg, sig).map_err(SignatureError::Ecdsa)
+        SECP.verify_ecdsa(msg, &sig.signature, &pk.inner)
+            .map_err(SignatureError::Ecdsa)
     }
 
     /// Checks an ECDSA signature in the context of a Bitcoin transaction.
@@ -83,7 +84,7 @@ pub trait SignatureChecker {
         msg: &Message,
         pk: &XOnlyPublicKey,
     ) -> Result<(), SignatureError> {
-        pk.verify(&SECP, msg, &sig.signature)
+        SECP.verify_schnorr(&sig.signature, msg, pk)
             .map_err(SignatureError::Schnorr)
     }
 
@@ -159,7 +160,8 @@ pub struct TransactionSignatureChecker<'a> {
 }
 
 impl<'a> TransactionSignatureChecker<'a> {
-    pub fn new(input_index: usize, input_amount: u64, tx: &'a Transaction) -> Self {
+    /// Constructs a new instance of [`TransactionSignatureChecker`].
+    pub fn new(tx: &'a Transaction, input_index: usize, input_amount: u64) -> Self {
         let sighash_cache = SighashCache::new(tx);
         Self {
             tx,
@@ -182,7 +184,7 @@ impl<'a> SignatureChecker for TransactionSignatureChecker<'a> {
         let msg: Message = match sig_version {
             SigVersion::Base => self
                 .sighash_cache
-                .legacy_signature_hash(self.input_index, script_pubkey, sig.sighash_type.to_u32())
+                .legacy_signature_hash(self.input_index, script_pubkey, sig.sighash_type)
                 .map_err(SignatureError::InputsIndex)?
                 .into(),
             SigVersion::WitnessV0 => self
@@ -191,14 +193,16 @@ impl<'a> SignatureChecker for TransactionSignatureChecker<'a> {
                     self.input_index,
                     script_pubkey,
                     Amount::from_sat(self.input_amount),
-                    sig.sighash_type,
+                    EcdsaSighashType::from_consensus(sig.sighash_type),
                 )
                 .map_err(SignatureError::InputsIndex)?
                 .into(),
             _ => return Err(SignatureError::BadSignatureVersion),
         };
 
-        Ok(self.verify_ecdsa_signature(sig, &msg, pk).is_ok())
+        let res = self.verify_ecdsa_signature(sig, &msg, pk);
+
+        Ok(res.is_ok())
     }
 
     fn check_schnorr_signature(
@@ -240,8 +244,9 @@ impl<'a> SignatureChecker for TransactionSignatureChecker<'a> {
     }
 
     /// This function verifies that the transaction's `nLockTime` field meets the conditions specified
-    /// by the `lock_time` parameter. The `lock_time` can represent either a block height or a Unix timestamp,
-    /// depending on its value:
+    /// by the `lock_time` parameter.
+    ///
+    /// The `lock_time` can represent either a block height or a Unix timestamp, depending on its value:
     /// - If `lock_time < 500,000,000`, it is interpreted as a block height.
     /// - If `lock_time >= 500,000,000`, it is interpreted as a Unix timestamp.
     ///

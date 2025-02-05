@@ -69,7 +69,7 @@ pub enum CheckSigError {
     Signature(crate::signature_checker::SignatureError),
     #[error("secp256k1 error: {0:?}")]
     Secp256k1(bitcoin::secp256k1::Error),
-    #[error("ecdsa error: {0:?}")]
+    #[error("Failed to convert bytes to ECDSA signature: {0:?}")]
     Ecdsa(bitcoin::ecdsa::Error),
 }
 
@@ -123,11 +123,7 @@ fn eval_checksig_pre_tapscript(
     check_signature_encoding(sig, flags)?;
     check_pubkey_encoding(pubkey, flags, sig_version)?;
 
-    let mut signature = EcdsaSignature::from_slice(sig).map_err(CheckSigError::Ecdsa)?;
-
-    // normalize_s() must be invoked otherwise the signature verification fails.
-    signature.signature.normalize_s();
-
+    let signature = EcdsaSignature::from_slice(sig).map_err(CheckSigError::Ecdsa)?;
     let pubkey = PublicKey::from_slice(pubkey).map_err(CheckSigError::FromSlice)?;
 
     let script_code = Script::from_bytes(&subscript);
@@ -706,7 +702,6 @@ mod tests {
             is_valid,
         } in test_cases
         {
-            println!("============ Test {name}");
             // The argument `sig` in checkSignatureEncoding(sig []byte) in btcd is the signature
             // excluding the last sighash bit, but our `check_pubkey_encoding` is translated from
             // the cpp version which passes in the full sig, thus we push the SigHash::Base(0x01)
@@ -718,7 +713,6 @@ mod tests {
             };
             let full_sig = hex::decode(full_sig).expect("Invalid hex string");
             let check_result = check_signature_encoding(&full_sig, &flags);
-            println!("sig_result: {check_result:?}");
             assert_eq!(is_valid, check_result.is_ok());
         }
     }

@@ -11,7 +11,7 @@ mod stack;
 mod tests;
 
 use bitcoin::hashes::Hash;
-use bitcoin::TapLeafHash;
+use bitcoin::{secp256k1, TapLeafHash};
 use bitflags::bitflags;
 
 pub use self::error::Error;
@@ -21,8 +21,49 @@ pub use self::signature_checker::{
 };
 
 pub type H256 = bitcoin::hashes::sha256::Hash;
-pub type EcdsaSignature = bitcoin::ecdsa::Signature;
 pub type SchnorrSignature = bitcoin::taproot::Signature;
+
+/// Same semantic with [`bitcoin::ecdsa::Signature`] with the following differences:
+///
+/// - `sighash_type` uses u32 instead of [`bitcoin::EcdsaSighashType`].
+/// - Ensure lower S via `normalize_s()`.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct EcdsaSignature {
+    /// The underlying ECDSA Signature.
+    pub signature: secp256k1::ecdsa::Signature,
+    /// The corresponding hash type.
+    pub sighash_type: u32,
+}
+
+impl EcdsaSignature {
+    /// Constructs a [`EcdsaSignature`] from the full sig bytes.
+    pub fn from_slice(full_sig_bytes: &[u8]) -> Result<Self, bitcoin::ecdsa::Error> {
+        let mut sig = Self::from_slice_consensus(full_sig_bytes)?;
+        // normalize_s() must be invoked otherwise the signature verification fails.
+        // https://github.com/bitcoin/bips/blob/master/bip-0146.mediawiki
+        sig.signature.normalize_s();
+        Ok(sig)
+    }
+
+    /// Deserializes [`EcdsaSignature`] from slice following the consensus rules for `EcdsaSighashType`.
+    pub fn from_slice_consensus(sl: &[u8]) -> Result<Self, bitcoin::ecdsa::Error> {
+        let (sighash_type, sig) = sl
+            .split_last()
+            .ok_or(bitcoin::ecdsa::Error::EmptySignature)?;
+        let sighash_type = *sighash_type as u32;
+        let signature = match secp256k1::ecdsa::Signature::from_der(sig) {
+            Ok(sig) => sig,
+            // TODO: only attempt `from_der_lax()` for early blocks (before 2016)
+            Err(_) => secp256k1::ecdsa::Signature::from_der_lax(sig)
+                .map_err(bitcoin::ecdsa::Error::Secp256k1)?,
+        };
+
+        Ok(Self {
+            signature,
+            sighash_type,
+        })
+    }
+}
 
 bitflags! {
     /// Script verification flags.
