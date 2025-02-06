@@ -531,10 +531,10 @@ where
                         );
 
                         if let Err(script_err) = script_result {
-                            tracing::error!(?script_err, "Invalid script: input: {input:?}, prevout: {spent_output:?}, verify_flags: {verify_flags:?}");
+                            let context = tx_context(tx_index);
                             return Err(Error::InvalidScript {
                                 block_hash,
-                                context: tx_context(tx_index),
+                                context,
                                 input_index,
                                 error: script_err,
                             });

@@ -2,6 +2,7 @@ use crate::cli::subcoin_params::CommonParams;
 #[cfg(feature = "remote-import")]
 use crate::rpc_client::BlockstreamClient;
 use crate::utils::Yield;
+use bitcoin::consensus::Decodable;
 use bitcoin_explorer::BitcoinDB;
 use futures::FutureExt;
 use sc_cli::{ImportParams, NodeKeyParams, PrometheusParams, SharedParams};
@@ -18,6 +19,26 @@ use std::time::{Duration, Instant};
 use subcoin_primitives::BackendExt;
 use subcoin_runtime::interface::OpaqueBlock;
 use subcoin_service::FullClient;
+
+/// Custom value parser to handle both file paths and raw block data in hex format.
+fn parse_raw_block(input: &str) -> Result<String, String> {
+    // Try to treat the input as a file path
+    let path = PathBuf::from(input);
+
+    if path.exists() && path.is_file() {
+        // If the file exists, read it as raw block data in hex.
+        match std::fs::read_to_string(&path) {
+            Ok(data) => Ok(data.trim().to_string()),
+            Err(err) => Err(format!(
+                "Failed to read block data from {}: {err}",
+                path.display()
+            )),
+        }
+    } else {
+        // Otherwise, treat the input as a hex string
+        Ok(input.to_string())
+    }
+}
 
 /// Import Bitcoin blocks into the node.
 #[derive(clap::Parser, Debug, Clone)]
@@ -43,6 +64,12 @@ pub struct ImportBlocks {
     #[clap(long)]
     pub end_block: Option<usize>,
 
+    /// Imports a single block into the node.
+    ///
+    /// The value can be the raw block data in hex or a path containing the block data.
+    #[clap(long, value_parser = parse_raw_block, conflicts_with = "data_dir")]
+    pub raw_block: Option<String>,
+
     /// Whether to execute the transactions within the blocks.
     #[clap(long, default_value_t = true)]
     pub execute_transactions: bool,
@@ -66,6 +93,7 @@ pub struct ImportBlocksCmd {
     import_params: ImportParams,
     block_count: Option<usize>,
     to: Option<usize>,
+    raw_block: Option<String>,
 }
 
 impl ImportBlocksCmd {
@@ -78,11 +106,62 @@ impl ImportBlocksCmd {
             import_params,
             block_count: cmd.block_count,
             to: cmd.end_block,
+            raw_block: cmd.raw_block.clone(),
         }
     }
 
     /// Run the import-blocks command
     pub async fn run(
+        &self,
+        client: Arc<FullClient>,
+        maybe_data_dir: Option<PathBuf>,
+        import_config: ImportConfig,
+        spawn_handle: SpawnTaskHandle,
+        maybe_prometheus_config: Option<PrometheusConfig>,
+    ) -> sc_cli::Result<()> {
+        // Import single block.
+        if let Some(block_data) = &self.raw_block {
+            let raw_block =
+                hex::decode(block_data).map_err(|err| format!("Invalid hex data: {err}"))?;
+            let block = bitcoin::Block::consensus_decode(&mut raw_block.as_slice())
+                .expect("Bad block data");
+
+            let mut bitcoin_block_import =
+                BitcoinBlockImporter::<_, _, _, _, subcoin_service::TransactionAdapter>::new(
+                    client.clone(),
+                    client.clone(),
+                    import_config,
+                    Arc::new(subcoin_service::CoinStorageKey),
+                    maybe_prometheus_config
+                        .as_ref()
+                        .map(|config| config.registry.clone())
+                        .as_ref(),
+                );
+
+            let block_hash = block.block_hash();
+
+            bitcoin_block_import
+                .import_block(block, BlockOrigin::Own)
+                .await
+                .map_err(sp_blockchain::Error::Consensus)?;
+
+            tracing::info!("Imported block#{block_hash} successfully");
+
+            return Ok(());
+        }
+
+        self.import_blocks(
+            client,
+            maybe_data_dir,
+            import_config,
+            spawn_handle,
+            maybe_prometheus_config,
+        )
+        .await
+    }
+
+    /// Imports a range of blocks.
+    async fn import_blocks(
         &self,
         client: Arc<FullClient>,
         maybe_data_dir: Option<PathBuf>,
@@ -280,8 +359,6 @@ impl BitcoinBlockProvider {
     }
 
     async fn block_at(&self, height: usize) -> sc_cli::Result<bitcoin::Block> {
-        use bitcoin::consensus::Decodable;
-
         match self {
             Self::Local(db) => {
                 let raw_block = db.get_raw_block(height).map_err(|err| {
