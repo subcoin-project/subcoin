@@ -4,7 +4,7 @@ use crate::signature_checker::SECP;
 use crate::{verify_script, EcdsaSignature, TransactionSignatureChecker, VerifyFlags};
 use bitcoin::consensus::encode::deserialize;
 use bitcoin::secp256k1::Message;
-use bitcoin::{EcdsaSighashType, PublicKey, Script, ScriptBuf, Transaction};
+use bitcoin::{PublicKey, Script, ScriptBuf, Transaction};
 
 fn decode_raw_tx(tx_hex: &str) -> Transaction {
     let tx_data = hex::decode(tx_hex).unwrap();
@@ -53,7 +53,7 @@ fn test_ecdsa_signature_normalize_s() {
 
     let pk = PublicKey::from_slice(&hex::decode(pk).unwrap()).unwrap();
     let msg = Message::from_digest_slice(&hex::decode(msg).unwrap()).unwrap();
-    let sig = EcdsaSignature::from_slice(&hex::decode(full_sig).unwrap()).unwrap();
+    let sig = EcdsaSignature::parse_der_lax(&hex::decode(full_sig).unwrap()).unwrap();
     SECP.verify_ecdsa(&msg, &sig.signature, &pk.inner)
         .expect("Verify ECDSA signature");
 }
@@ -86,7 +86,7 @@ fn test_sig_with_sighash_type_0() {
 }
 
 #[test]
-fn test_signature_from_der_lax_for_early_blocks() {
+fn test_signature_from_der_lax() {
     let _ = sc_tracing::logging::LoggerBuilder::new("subcoin_script=debug").init();
 
     // Block 110300:16:0
@@ -100,6 +100,28 @@ fn test_signature_from_der_lax_for_early_blocks() {
     let input_index = 0;
     let input = tx.input[0].clone();
     let input_amount = 3000000u64;
+    let mut checker = TransactionSignatureChecker::new(&tx, input_index, input_amount);
+    let flags = VerifyFlags::P2SH | VerifyFlags::WITNESS;
+    verify_script(
+        &input.script_sig,
+        &script_pubkey,
+        &input.witness,
+        &flags,
+        &mut checker,
+    )
+    .expect("Verify script with sighash_type is 0");
+
+    // Block 140493:82:0
+    // https://www.blockchain.com/explorer/transactions/btc/70f7c15c6f62139cc41afa858894650344eda9975b46656d893ee59df8914a3d
+    let tx = "0100000001289eb02e8ddc1ee3486aadc1cd1335fba22a8e3e87e3f41b7c5bbe7fb4391d81010000008a47304402206b5c3b1c86748dcf328b9f3a65e10085afcf5d1af5b40970d8ce3a9355e06b5b0220cdbdc23e6d3618e47056fccc60c5f73d1a542186705197e5791e97f0e6582a32014104f25ec495fa21ad14d69f45bf277129488cfb1a339aba1fed3c5099bb6d8e9716491a14050fbc0b2fed2963dc1e56264b3adf52a81b953222a2180d48b54d1e18ffffffff0140420f00000000001976a914e6ba8cc407375ce1623ec17b2f1a59f2503afc6788ac00000000";
+    let tx = decode_raw_tx(tx);
+
+    let data = hex::decode("76a914c62301ef02dfeec757fb8dedb8a45eda5fb5ee4d88ac").unwrap();
+    let script_pubkey = Script::from_bytes(&data);
+
+    let input_index = 0;
+    let input = tx.input[0].clone();
+    let input_amount = 1000000u64;
     let mut checker = TransactionSignatureChecker::new(&tx, input_index, input_amount);
     let flags = VerifyFlags::P2SH | VerifyFlags::WITNESS;
     verify_script(

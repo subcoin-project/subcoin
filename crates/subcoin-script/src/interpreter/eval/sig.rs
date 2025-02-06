@@ -123,7 +123,7 @@ fn eval_checksig_pre_tapscript(
     check_signature_encoding(sig, flags)?;
     check_pubkey_encoding(pubkey, flags, sig_version)?;
 
-    let signature = EcdsaSignature::from_slice(sig, flags).map_err(CheckSigError::Ecdsa)?;
+    let signature = EcdsaSignature::parse_der_lax(sig).map_err(CheckSigError::Ecdsa)?;
     let pubkey = PublicKey::from_slice(pubkey).map_err(CheckSigError::FromSlice)?;
 
     let script_code = Script::from_bytes(&subscript);
@@ -702,6 +702,7 @@ mod tests {
             is_valid,
         } in test_cases
         {
+            println!("==== name: {name}");
             // The argument `sig` in checkSignatureEncoding(sig []byte) in btcd is the signature
             // excluding the last sighash bit, but our `check_pubkey_encoding` is translated from
             // the cpp version which passes in the full sig, thus we push the SigHash::Base(0x01)

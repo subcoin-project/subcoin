@@ -37,32 +37,20 @@ pub struct EcdsaSignature {
 
 impl EcdsaSignature {
     /// Constructs a [`EcdsaSignature`] from the full sig bytes.
-    pub fn from_slice(
-        full_sig_bytes: &[u8],
-        flags: &VerifyFlags,
-    ) -> Result<Self, bitcoin::ecdsa::Error> {
-        let mut sig = Self::from_slice_consensus(full_sig_bytes, flags)?;
-        // normalize_s() must be invoked otherwise the signature verification fails.
-        // https://github.com/bitcoin/bips/blob/master/bip-0146.mediawiki
-        sig.signature.normalize_s();
-        Ok(sig)
-    }
-
-    /// Deserializes [`EcdsaSignature`] from slice following the consensus rules for `EcdsaSighashType`.
-    fn from_slice_consensus(sl: &[u8], flags: &VerifyFlags) -> Result<Self, bitcoin::ecdsa::Error> {
-        let (sighash_type, sig) = sl
+    ///
+    /// https://github.com/bitcoin/bitcoin/blob/82ba50513425bf0568d4f9456282dc9713132490/src/pubkey.cpp#L285
+    /// https://github.com/bitcoin/bitcoin/blob/82ba50513425bf0568d4f9456282dc9713132490/src/pubkey.cpp#L290
+    pub fn parse_der_lax(full_sig_bytes: &[u8]) -> Result<Self, bitcoin::ecdsa::Error> {
+        let (sighash_type, sig) = full_sig_bytes
             .split_last()
             .ok_or(bitcoin::ecdsa::Error::EmptySignature)?;
         let sighash_type = *sighash_type as u32;
-        let signature = match secp256k1::ecdsa::Signature::from_der(sig) {
-            Ok(sig) => sig,
-            Err(err) if flags.intersects(VerifyFlags::DERSIG) => return Err(err.into()),
-            Err(_) => {
-                // Attempt `from_der_lax()` if DER is not enforced.
-                secp256k1::ecdsa::Signature::from_der_lax(sig)
-                    .map_err(bitcoin::ecdsa::Error::Secp256k1)?
-            }
-        };
+
+        let mut signature = secp256k1::ecdsa::Signature::from_der_lax(sig)?;
+
+        // libsecp256k1's ECDSA verification requires lower-S signatures, which have
+        // not historically been enforced in Bitcoin, so normalize them first.
+        signature.normalize_s();
 
         Ok(Self {
             signature,

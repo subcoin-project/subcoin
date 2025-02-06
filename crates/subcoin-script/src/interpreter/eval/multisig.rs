@@ -164,7 +164,7 @@ fn eval_checkmultisig(
         check_signature_encoding(sig, flags)?;
         check_pubkey_encoding(key, flags, sig_version)?;
 
-        let sig = EcdsaSignature::from_slice(&sig, flags).map_err(CheckMultiSigError::Ecdsa)?;
+        let sig = EcdsaSignature::parse_der_lax(&sig).map_err(CheckMultiSigError::Ecdsa)?;
         let key = PublicKey::from_slice(&key).map_err(CheckMultiSigError::FromSlice)?;
 
         if checker

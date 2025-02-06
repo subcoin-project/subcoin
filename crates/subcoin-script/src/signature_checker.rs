@@ -10,23 +10,22 @@ use std::sync::LazyLock;
 
 pub(crate) static SECP: LazyLock<Secp256k1<All>> = LazyLock::new(|| Secp256k1::new());
 
+/// Error types related to signature verification.
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
 pub enum SignatureError {
-    #[error("Bad signature version")]
-    BadSignatureVersion,
+    #[error("Invalid signature version")]
+    InvalidSignatureVersion,
     #[error("ecdsa error: {0:?}")]
     Ecdsa(secp256k1::Error),
     #[error("schnorr error: {0:?}")]
     Schnorr(secp256k1::Error),
-    #[error("Invalid ecdsa signature: {0:?}")]
-    InputsIndex(bitcoin::blockdata::transaction::InputsIndexError),
-    #[error("Invalid ecdsa signature: {0:?}")]
-    IndexOutOfBounds(bitcoin::blockdata::transaction::IndexOutOfBoundsError),
-    #[error("taproot error: {0:?}")]
-    Taproot(TaprootError),
+    #[error("Ecdsa sighash error: {0:?}")]
+    EcdsaSignatureHash(bitcoin::blockdata::transaction::InputsIndexError),
+    #[error("Taproot sighash error: {0:?}")]
+    TaprootSignatureHash(TaprootError),
 }
 
-/// Checks transaction signature.
+/// Trait for verifying Bitcoin transaction signatures.
 pub trait SignatureChecker {
     /// Verifies an ECDSA signature against a message and public key.
     ///
@@ -185,7 +184,7 @@ impl<'a> SignatureChecker for TransactionSignatureChecker<'a> {
             SigVersion::Base => self
                 .sighash_cache
                 .legacy_signature_hash(self.input_index, script_pubkey, sig.sighash_type)
-                .map_err(SignatureError::InputsIndex)?
+                .map_err(SignatureError::EcdsaSignatureHash)?
                 .into(),
             SigVersion::WitnessV0 => self
                 .sighash_cache
@@ -195,9 +194,9 @@ impl<'a> SignatureChecker for TransactionSignatureChecker<'a> {
                     Amount::from_sat(self.input_amount),
                     EcdsaSighashType::from_consensus(sig.sighash_type),
                 )
-                .map_err(SignatureError::InputsIndex)?
+                .map_err(SignatureError::EcdsaSignatureHash)?
                 .into(),
-            _ => return Err(SignatureError::BadSignatureVersion),
+            _ => return Err(SignatureError::InvalidSignatureVersion),
         };
 
         let res = self.verify_ecdsa_signature(sig, &msg, pk);
@@ -213,7 +212,7 @@ impl<'a> SignatureChecker for TransactionSignatureChecker<'a> {
         exec_data: &ScriptExecutionData,
     ) -> Result<bool, SignatureError> {
         if !matches!(sig_version, SigVersion::Taproot | SigVersion::Tapscript) {
-            return Err(SignatureError::BadSignatureVersion);
+            return Err(SignatureError::InvalidSignatureVersion);
         }
 
         let last_codeseparator_pos = if exec_data.codeseparator_pos_init {
@@ -236,7 +235,7 @@ impl<'a> SignatureChecker for TransactionSignatureChecker<'a> {
                 Some((leaf_hash, last_codeseparator_pos.unwrap_or(u32::MAX))),
                 sig.sighash_type,
             )
-            .map_err(SignatureError::Taproot)?;
+            .map_err(SignatureError::TaprootSignatureHash)?;
 
         let msg: Message = sighash.into();
 
