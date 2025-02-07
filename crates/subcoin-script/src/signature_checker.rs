@@ -201,6 +201,10 @@ impl<'a> SignatureChecker for TransactionSignatureChecker<'a> {
 
         let res = self.verify_ecdsa_signature(sig, &msg, pk);
 
+        if let Err(err) = &res {
+            tracing::debug!("[check_ecdsa_signature] Invalid ECDSA signature: {err:?}");
+        }
+
         Ok(res.is_ok())
     }
 

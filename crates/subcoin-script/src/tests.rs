@@ -1,7 +1,9 @@
 pub mod interpreter;
 
+use crate::num::NumError;
 use crate::signature_checker::SECP;
-use crate::{verify_script, EcdsaSignature, TransactionSignatureChecker, VerifyFlags};
+use crate::stack::StackError;
+use crate::{verify_script, EcdsaSignature, Error, TransactionSignatureChecker, VerifyFlags};
 use bitcoin::consensus::encode::deserialize;
 use bitcoin::secp256k1::Message;
 use bitcoin::{PublicKey, Script, ScriptBuf, Transaction};
@@ -71,7 +73,7 @@ fn test_sig_with_sighash_type_0() {
     let script_pubkey = Script::from_bytes(&data);
 
     let input_index = 0;
-    let input = tx.input[0].clone();
+    let input = &tx.input[input_index];
     let input_amount = 5000000u64;
     let mut checker = TransactionSignatureChecker::new(&tx, input_index, input_amount);
     let flags = VerifyFlags::P2SH | VerifyFlags::WITNESS;
@@ -98,7 +100,7 @@ fn test_signature_from_der_lax() {
     let script_pubkey = Script::from_bytes(&data);
 
     let input_index = 0;
-    let input = tx.input[0].clone();
+    let input = &tx.input[input_index];
     let input_amount = 3000000u64;
     let mut checker = TransactionSignatureChecker::new(&tx, input_index, input_amount);
     let flags = VerifyFlags::P2SH | VerifyFlags::WITNESS;
@@ -109,7 +111,7 @@ fn test_signature_from_der_lax() {
         &flags,
         &mut checker,
     )
-    .expect("Verify script with sighash_type is 0");
+    .expect("Verify script from 110300:16:0");
 
     // Block 140493:82:0
     // https://www.blockchain.com/explorer/transactions/btc/70f7c15c6f62139cc41afa858894650344eda9975b46656d893ee59df8914a3d
@@ -120,7 +122,7 @@ fn test_signature_from_der_lax() {
     let script_pubkey = Script::from_bytes(&data);
 
     let input_index = 0;
-    let input = tx.input[0].clone();
+    let input = &tx.input[input_index];
     let input_amount = 1000000u64;
     let mut checker = TransactionSignatureChecker::new(&tx, input_index, input_amount);
     let flags = VerifyFlags::P2SH | VerifyFlags::WITNESS;
@@ -131,11 +133,14 @@ fn test_signature_from_der_lax() {
         &flags,
         &mut checker,
     )
-    .expect("Verify script with sighash_type is 0");
+    .expect("Verify script from 140493:82:0");
 }
 
 #[test]
-fn test_eval_false() {
+fn test_transaction_bip65() {
+    let _ = sc_tracing::logging::LoggerBuilder::new("subcoin_script=debug").init();
+
+    // https://www.blockchain.com/explorer/transactions/btc/eb3b82c0884e3efa6d8b0be55b4915eb20be124c9766245bcc7f34fdac32bccb
     let tx = "01000000024de8b0c4c2582db95fa6b3567a989b664484c7ad6672c85a3da413773e63fdb8000000006b48304502205b282fbc9b064f3bc823a23edcc0048cbb174754e7aa742e3c9f483ebe02911c022100e4b0b3a117d36cab5a67404dddbf43db7bea3c1530e0fe128ebc15621bd69a3b0121035aa98d5f77cd9a2d88710e6fc66212aff820026f0dad8f32d1f7ce87457dde50ffffffff4de8b0c4c2582db95fa6b3567a989b664484c7ad6672c85a3da413773e63fdb8010000006f004730440220276d6dad3defa37b5f81add3992d510d2f44a317fd85e04f93a1e2daea64660202200f862a0da684249322ceb8ed842fb8c859c0cb94c81e1c5308b4868157a428ee01ab51210232abdc893e7f0631364d7fd01cb33d24da45329a00357b3a7886211ab414d55a51aeffffffff02e0fd1c00000000001976a914380cb3c594de4e7e9b8e18db182987bebb5a4f7088acc0c62d000000000017142a9bc5447d664c1d0141392a842d23dba45c4f13b17500000000";
     let tx = decode_raw_tx(tx);
 
@@ -143,16 +148,32 @@ fn test_eval_false() {
     let script_pubkey = Script::from_bytes(&data);
 
     let input_index = 1;
-    let input = tx.input[0].clone();
+    let input = &tx.input[input_index];
     let input_amount = 3000000u64;
     let mut checker = TransactionSignatureChecker::new(&tx, input_index, input_amount);
+
     let flags = VerifyFlags::P2SH | VerifyFlags::WITNESS;
-    verify_script(
-        &input.script_sig,
-        &script_pubkey,
-        &input.witness,
-        &flags,
-        &mut checker,
-    )
-    .expect("Verify script with sighash_type is 0");
+    assert_eq!(
+        verify_script(
+            &input.script_sig,
+            &script_pubkey,
+            &input.witness,
+            &flags,
+            &mut checker,
+        ),
+        Ok(())
+    );
+
+    let flags = VerifyFlags::P2SH | VerifyFlags::WITNESS | VerifyFlags::CHECKLOCKTIMEVERIFY;
+
+    assert_eq!(
+        verify_script(
+            &input.script_sig,
+            &script_pubkey,
+            &input.witness,
+            &flags,
+            &mut checker,
+        ),
+        Err(Error::Stack(StackError::Num(NumError::Overflow)))
+    );
 }

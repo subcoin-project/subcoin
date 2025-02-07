@@ -19,12 +19,8 @@ use bitcoin::taproot::{
 };
 use bitcoin::{Script, TapLeafHash, Witness, WitnessProgram, WitnessVersion, XOnlyPublicKey};
 
-fn parse_witness_program(script_pubkey: &Script) -> Option<WitnessProgram> {
-    script_pubkey.witness_version().and_then(|witness_version| {
-        WitnessProgram::new(witness_version, &script_pubkey.as_bytes()[2..]).ok()
-    })
-}
-
+/// Verifies the script validity.
+///
 /// - Ok(()): `return true` in C++.
 /// - Err(err): `return false` with `serror` set.
 pub fn verify_script<SC: SignatureChecker>(
@@ -187,6 +183,12 @@ pub fn verify_script<SC: SignatureChecker>(
 
     // Only return Ok(()) at the end after all checks pass.
     Ok(())
+}
+
+fn parse_witness_program(script_pubkey: &Script) -> Option<WitnessProgram> {
+    script_pubkey.witness_version().and_then(|witness_version| {
+        WitnessProgram::new(witness_version, &script_pubkey.as_bytes()[2..]).ok()
+    })
 }
 
 fn verify_witness_program(

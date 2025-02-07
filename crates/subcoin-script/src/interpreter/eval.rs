@@ -46,8 +46,19 @@ pub fn eval_script<SC: SignatureChecker>(
         script.instruction_indices()
     };
 
+    let step = |instruction: &Instruction| match instruction {
+        Instruction::PushBytes(b) => b.as_bytes().len() + 1,
+        Instruction::Op(_) => 1,
+    };
+
+    let mut pc = 0;
+
     for instruction in instructions {
-        let (pc, instruction) = instruction.map_err(Error::ReadInstruction)?;
+        let (pos, instruction) = instruction.map_err(Error::ReadInstruction)?;
+
+        pc += step(&instruction);
+
+        println!("pc: {pc}, pos: {pos}");
 
         let executing = exec_stack.iter().all(|x| *x);
 

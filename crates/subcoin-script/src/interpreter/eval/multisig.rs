@@ -1,4 +1,4 @@
-use super::sig::{check_pubkey_encoding, check_signature_encoding, CheckSigError};
+use super::sig::{check_pubkey_encoding, check_signature_encoding, find_and_delete, CheckSigError};
 use crate::constants::{MAX_OPS_PER_SCRIPT, MAX_PUBKEYS_PER_MULTISIG};
 use crate::signature_checker::{SignatureChecker, SignatureError};
 use crate::stack::{Stack, StackError};
@@ -144,7 +144,7 @@ fn eval_checkmultisig(
             let sig_script = bitcoin::script::Builder::default()
                 .push_slice(push_buf)
                 .into_script();
-            let found = super::sig::find_and_delete(&mut subscript, sig_script.as_bytes());
+            let found = find_and_delete(&mut subscript, sig_script.as_bytes());
             if found > 0 && flags.intersects(VerifyFlags::CONST_SCRIPTCODE) {
                 return Err(CheckSigError::FindAndDelete.into());
             }

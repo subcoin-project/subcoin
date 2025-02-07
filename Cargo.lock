@@ -10601,7 +10601,9 @@ dependencies = [
  "hex",
  "num-bigint",
  "num-traits",
+ "sc-tracing",
  "thiserror 1.0.68",
+ "tracing",
 ]
 
 [[package]]
