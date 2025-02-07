@@ -42,6 +42,7 @@ pub enum MultiSigOp {
 /// Handles the OP_CHECKMULTISIG opcode.
 ///
 /// This opcode validates a multi-signature script against the provided public keys and signatures.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn handle_checkmultisig(
     stack: &mut Stack,
     flags: &VerifyFlags,
@@ -139,7 +140,7 @@ fn eval_checkmultisig(
         if matches!(sig_version, SigVersion::Base) {
             let mut push_buf = PushBytesBuf::new();
             push_buf
-                .extend_from_slice(&signature)
+                .extend_from_slice(signature)
                 .expect("Signature within length limits");
             let sig_script = bitcoin::script::Builder::default()
                 .push_slice(push_buf)
@@ -164,11 +165,11 @@ fn eval_checkmultisig(
         check_signature_encoding(sig, flags)?;
         check_pubkey_encoding(key, flags, sig_version)?;
 
-        let sig = EcdsaSignature::parse_der_lax(&sig).map_err(CheckMultiSigError::Ecdsa)?;
-        let key = PublicKey::from_slice(&key).map_err(CheckMultiSigError::FromSlice)?;
+        let sig = EcdsaSignature::parse_der_lax(sig).map_err(CheckMultiSigError::Ecdsa)?;
+        let key = PublicKey::from_slice(key).map_err(CheckMultiSigError::FromSlice)?;
 
         if checker
-            .check_ecdsa_signature(&sig, &key, &subscript, sig_version)
+            .check_ecdsa_signature(&sig, &key, subscript, sig_version)
             .map_err(CheckMultiSigError::Signature)?
         {
             sig_idx += 1;

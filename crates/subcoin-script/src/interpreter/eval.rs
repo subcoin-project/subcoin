@@ -31,7 +31,7 @@ pub fn eval_script<SC: SignatureChecker>(
         return Err(Error::NoScriptExecution);
     }
 
-    let mut alt_stack = Stack::with_flags(&flags);
+    let mut alt_stack = Stack::with_flags(flags);
 
     // Create a vector of conditional execution states
     let mut exec_stack: Vec<bool> = Vec::new();
@@ -54,11 +54,9 @@ pub fn eval_script<SC: SignatureChecker>(
     let mut pc = 0;
 
     for instruction in instructions {
-        let (pos, instruction) = instruction.map_err(Error::ReadInstruction)?;
+        let (_pos, instruction) = instruction.map_err(Error::ReadInstruction)?;
 
         pc += step(&instruction);
-
-        println!("pc: {pc}, pos: {pos}");
 
         let executing = exec_stack.iter().all(|x| *x);
 
@@ -137,6 +135,7 @@ pub fn eval_script<SC: SignatureChecker>(
                             if matches!(sig_version, SigVersion::WitnessV0)
                                 && flags.intersects(VerifyFlags::MINIMALIF)
                             {
+                                #[allow(clippy::collapsible_if)]
                                 if top.len() > 1 || (top.len() == 1 && top[0] != 1) {
                                     return Err(Error::Minimalif);
                                 }
@@ -388,7 +387,7 @@ pub fn eval_script<SC: SignatureChecker>(
                             script,
                             begincode,
                             exec_data,
-                            &flags,
+                            flags,
                             checker,
                             sig_version,
                         )?;
@@ -412,7 +411,7 @@ pub fn eval_script<SC: SignatureChecker>(
 
                         multisig::handle_checkmultisig(
                             stack,
-                            &flags,
+                            flags,
                             begincode,
                             script,
                             sig_version,
@@ -433,7 +432,7 @@ pub fn eval_script<SC: SignatureChecker>(
                             script,
                             begincode,
                             exec_data,
-                            &flags,
+                            flags,
                             checker,
                             sig_version,
                         )

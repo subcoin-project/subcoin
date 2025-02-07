@@ -276,7 +276,7 @@ impl<T> GenericStack<T> {
 impl Stack {
     #[inline]
     pub fn push_num(&mut self, num: impl Into<ScriptNum>) -> &mut Self {
-        self.push(num.into().to_bytes());
+        self.push(num.into().as_bytes());
         self
     }
 

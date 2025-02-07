@@ -8,7 +8,7 @@ use bitcoin::transaction::Version;
 use bitcoin::{Amount, EcdsaSighashType, PublicKey, Script, Transaction, TxOut, XOnlyPublicKey};
 use std::sync::LazyLock;
 
-pub(crate) static SECP: LazyLock<Secp256k1<All>> = LazyLock::new(|| Secp256k1::new());
+pub(crate) static SECP: LazyLock<Secp256k1<All>> = LazyLock::new(Secp256k1::new);
 
 /// Error types related to signature verification.
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
@@ -172,7 +172,7 @@ impl<'a> TransactionSignatureChecker<'a> {
     }
 }
 
-impl<'a> SignatureChecker for TransactionSignatureChecker<'a> {
+impl SignatureChecker for TransactionSignatureChecker<'_> {
     fn check_ecdsa_signature(
         &mut self,
         sig: &EcdsaSignature,

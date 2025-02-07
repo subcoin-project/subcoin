@@ -187,7 +187,7 @@ pub enum Error {
         block_hash: BlockHash,
         context: TransactionContext,
         input_index: usize,
-        error: subcoin_script::Error,
+        error: Box<subcoin_script::Error>,
     },
     #[error("BIP34 error in block#{0}: {1:?}")]
     Bip34(BlockHash, Bip34Error),
@@ -514,7 +514,7 @@ where
                     }
                     ScriptEngine::Subcoin => {
                         let mut checker = subcoin_script::TransactionSignatureChecker::new(
-                            &tx,
+                            tx,
                             input_index,
                             spent_output.value.to_sat(),
                         );
@@ -536,7 +536,7 @@ where
                                 block_hash,
                                 context,
                                 input_index,
-                                error: script_err,
+                                error: Box::new(script_err),
                             });
                         }
                     }

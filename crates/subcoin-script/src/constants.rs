@@ -6,11 +6,11 @@ use std::sync::LazyLock;
 /// Size of the compressed public key.
 pub const COMPRESSED_PUBKEY_SIZE: usize = 33;
 
-///
+/// Size of script hash.
 pub const WITNESS_V0_SCRIPTHASH_SIZE: usize = 32;
-///
+/// Size of key hash.
 pub const WITNESS_V0_KEYHASH_SIZE: usize = 20;
-///
+/// Size of taproot.
 pub const WITNESS_V0_TAPROOT_SIZE: usize = 32;
 
 /// The maximum combined height of stack and alt stack during script execution.

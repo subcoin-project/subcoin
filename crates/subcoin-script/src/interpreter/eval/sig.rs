@@ -73,6 +73,7 @@ pub enum CheckSigError {
     Ecdsa(bitcoin::ecdsa::Error),
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn handle_checksig(
     sig: &[u8],
     pubkey: &[u8],
@@ -298,7 +299,7 @@ fn is_low_der_signature(sig: &[u8]) -> Result<(), CheckSigError> {
     // transaction with the complement while still being a valid signature that
     // verifies.  This would result in changing the transaction hash and thus is
     // a source of malleability.
-    let s_value = num_bigint::BigInt::from_bytes_be(Sign::Plus, &s_bytes);
+    let s_value = num_bigint::BigInt::from_bytes_be(Sign::Plus, s_bytes);
 
     if s_value > *HALF_ORDER {
         // signature is not canonical due to unnecessarily high S value
@@ -317,7 +318,7 @@ fn is_defined_hashtype_signature(sig: &[u8]) -> bool {
     let n_hash_type = last_bit & !SIGHASH_ANYONECANPAY;
 
     // Check if the hash type is within the valid range
-    n_hash_type >= SIGHASH_ALL && n_hash_type <= SIGHASH_SINGLE
+    (SIGHASH_ALL..=SIGHASH_SINGLE).contains(&n_hash_type)
 }
 
 // Checks whether or not the passed public key adheres to

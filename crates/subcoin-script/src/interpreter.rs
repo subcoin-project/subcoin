@@ -41,7 +41,7 @@ pub fn verify_script<SC: SignatureChecker>(
     eval_script(
         &mut stack,
         script_sig,
-        &flags,
+        flags,
         checker,
         SigVersion::Base,
         &mut ScriptExecutionData::default(),
@@ -114,7 +114,7 @@ pub fn verify_script<SC: SignatureChecker>(
 
             eval_script(
                 &mut stack,
-                &pubkey2,
+                pubkey2,
                 flags,
                 checker,
                 SigVersion::Base,
@@ -145,7 +145,7 @@ pub fn verify_script<SC: SignatureChecker>(
                         return Err(Error::WitnessMalleatedP2SH);
                     }
 
-                    verify_witness_program(witness, witness_program, &flags, checker, true)?;
+                    verify_witness_program(witness, witness_program, flags, checker, true)?;
 
                     // Bypass the cleanstack check at the end. The actual stack is obviously not clean
                     // for witness programs.
@@ -225,7 +225,7 @@ fn verify_witness_program(
 
             execute_witness_script(
                 &witness_stack,
-                &exec_script,
+                exec_script,
                 flags,
                 SigVersion::WitnessV0,
                 checker,
@@ -295,7 +295,7 @@ fn verify_witness_program(
         if witness_stack.len() == 1 {
             // Key path spending (stack size is 1 after removing optional annex).
             let sig = witness_stack.last()?;
-            let sig = SchnorrSignature::from_slice(&sig).map_err(Error::SchnorrSignature)?;
+            let sig = SchnorrSignature::from_slice(sig).map_err(Error::SchnorrSignature)?;
             let pubkey =
                 XOnlyPublicKey::from_slice(program.as_bytes()).map_err(Error::Secp256k1)?;
             checker.check_schnorr_signature(&sig, &pubkey, SigVersion::Taproot, &exec_data)?;
@@ -422,5 +422,5 @@ fn execute_witness_script(
 }
 
 fn is_op_success(opcode: u8) -> bool {
-    (opcode == 0x50) || (opcode >= 0x7b && opcode <= 0xb9)
+    (opcode == 0x50) || (0x7b..=0xb9).contains(&opcode)
 }

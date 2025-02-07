@@ -72,7 +72,7 @@ impl ScriptNum {
     }
 
     /// Convert the number to a minimally encoded byte vector.
-    pub fn to_bytes(&self) -> Vec<u8> {
+    pub fn as_bytes(&self) -> Vec<u8> {
         if self.value == 0 {
             return vec![];
         }
@@ -106,10 +106,10 @@ impl ScriptNum {
         }
 
         // Check leading zeros.
-        if data[data.len() - 1] & 0x7f == 0 {
-            if data.len() <= 1 || (data[data.len() - 2] & 0x80) == 0 {
-                return false;
-            }
+        if data[data.len() - 1] & 0x7f == 0
+            && (data.len() <= 1 || (data[data.len() - 2] & 0x80) == 0)
+        {
+            return false;
         }
 
         true
@@ -231,7 +231,7 @@ mod tests {
         ];
 
         for (num, expected) in tests {
-            let got_bytes = ScriptNum::from(num).to_bytes();
+            let got_bytes = ScriptNum::from(num).as_bytes();
             assert_eq!(
                 got_bytes, expected,
                 "Did not get expected bytes for {num}, got {got_bytes:?}, want {expected:?}",

@@ -229,7 +229,7 @@ fn test_1add() {
         .push_int(5)
         .push_opcode(OP_1ADD)
         .into_script();
-    let stack = vec![ScriptNum::from(6).to_bytes()].into();
+    let stack = vec![ScriptNum::from(6).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -247,7 +247,7 @@ fn test_1sub() {
         .push_int(5)
         .push_opcode(OP_1SUB)
         .into_script();
-    let stack = vec![ScriptNum::from(4).to_bytes()].into();
+    let stack = vec![ScriptNum::from(4).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -265,7 +265,7 @@ fn test_negate() {
         .push_int(5)
         .push_opcode(OP_NEGATE)
         .into_script();
-    let stack = vec![ScriptNum::from(-5).to_bytes()].into();
+    let stack = vec![ScriptNum::from(-5).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -276,7 +276,7 @@ fn test_negate_negative() {
         .push_int(-5)
         .push_opcode(OP_NEGATE)
         .into_script();
-    let stack = vec![ScriptNum::from(5).to_bytes()].into();
+    let stack = vec![ScriptNum::from(5).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -294,7 +294,7 @@ fn test_abs() {
         .push_int(5)
         .push_opcode(OP_ABS)
         .into_script();
-    let stack = vec![ScriptNum::from(5).to_bytes()].into();
+    let stack = vec![ScriptNum::from(5).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -305,7 +305,7 @@ fn test_abs_negative() {
         .push_int(-5)
         .push_opcode(OP_ABS)
         .into_script();
-    let stack = vec![ScriptNum::from(5).to_bytes()].into();
+    let stack = vec![ScriptNum::from(5).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -323,7 +323,7 @@ fn test_not() {
         .push_int(4)
         .push_opcode(OP_NOT)
         .into_script();
-    let stack = vec![ScriptNum::from(0).to_bytes()].into();
+    let stack = vec![ScriptNum::from(0).as_bytes()].into();
     let result = EvalResult::ok(false, stack);
     basic_test(&script, result);
 }
@@ -334,7 +334,7 @@ fn test_not_zero() {
         .push_int(0.into())
         .push_opcode(OP_NOT)
         .into_script();
-    let stack = vec![ScriptNum::from(1).to_bytes()].into();
+    let stack = vec![ScriptNum::from(1).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -352,7 +352,7 @@ fn test_0notequal() {
         .push_int(4)
         .push_opcode(OP_0NOTEQUAL)
         .into_script();
-    let stack = vec![ScriptNum::from(1).to_bytes()].into();
+    let stack = vec![ScriptNum::from(1).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -363,7 +363,7 @@ fn test_0notequal_zero() {
         .push_int(0)
         .push_opcode(OP_0NOTEQUAL)
         .into_script();
-    let stack = vec![ScriptNum::from(0).to_bytes()].into();
+    let stack = vec![ScriptNum::from(0).as_bytes()].into();
     let result = EvalResult::ok(false, stack);
     basic_test(&script, result);
 }
@@ -382,7 +382,7 @@ fn test_add() {
         .push_int(3)
         .push_opcode(OP_ADD)
         .into_script();
-    let stack = vec![ScriptNum::from(5).to_bytes()].into();
+    let stack = vec![ScriptNum::from(5).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -404,7 +404,7 @@ fn test_sub() {
         .push_int(2)
         .push_opcode(OP_SUB)
         .into_script();
-    let stack = vec![ScriptNum::from(1).to_bytes()].into();
+    let stack = vec![ScriptNum::from(1).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -426,7 +426,7 @@ fn test_booland() {
         .push_int(2)
         .push_opcode(OP_BOOLAND)
         .into_script();
-    let stack = vec![ScriptNum::from(1).to_bytes()].into();
+    let stack = vec![ScriptNum::from(1).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -438,7 +438,7 @@ fn test_booland_first() {
         .push_int(0)
         .push_opcode(OP_BOOLAND)
         .into_script();
-    let stack = vec![ScriptNum::from(0).to_bytes()].into();
+    let stack = vec![ScriptNum::from(0).as_bytes()].into();
     let result = EvalResult::ok(false, stack);
     basic_test(&script, result);
 }
@@ -450,7 +450,7 @@ fn test_booland_second() {
         .push_int(3)
         .push_opcode(OP_BOOLAND)
         .into_script();
-    let stack = vec![ScriptNum::from(0).to_bytes()].into();
+    let stack = vec![ScriptNum::from(0).as_bytes()].into();
     let result = EvalResult::ok(false, stack);
     basic_test(&script, result);
 }
@@ -462,7 +462,7 @@ fn test_booland_none() {
         .push_int(0)
         .push_opcode(OP_BOOLAND)
         .into_script();
-    let stack = vec![ScriptNum::from(0).to_bytes()].into();
+    let stack = vec![ScriptNum::from(0).as_bytes()].into();
     let result = EvalResult::ok(false, stack);
     basic_test(&script, result);
 }
@@ -484,7 +484,7 @@ fn test_boolor() {
         .push_int(2)
         .push_opcode(OP_BOOLOR)
         .into_script();
-    let stack = vec![ScriptNum::from(1).to_bytes()].into();
+    let stack = vec![ScriptNum::from(1).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -496,7 +496,7 @@ fn test_boolor_first() {
         .push_int(0)
         .push_opcode(OP_BOOLOR)
         .into_script();
-    let stack = vec![ScriptNum::from(1).to_bytes()].into();
+    let stack = vec![ScriptNum::from(1).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -508,7 +508,7 @@ fn test_boolor_second() {
         .push_int(3)
         .push_opcode(OP_BOOLOR)
         .into_script();
-    let stack = vec![ScriptNum::from(1).to_bytes()].into();
+    let stack = vec![ScriptNum::from(1).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -520,7 +520,7 @@ fn test_boolor_none() {
         .push_int(0)
         .push_opcode(OP_BOOLOR)
         .into_script();
-    let stack = vec![ScriptNum::from(0).to_bytes()].into();
+    let stack = vec![ScriptNum::from(0).as_bytes()].into();
     let result = EvalResult::ok(false, stack);
     basic_test(&script, result);
 }
@@ -542,7 +542,7 @@ fn test_numequal() {
         .push_int(2.into())
         .push_opcode(OP_NUMEQUAL)
         .into_script();
-    let stack = vec![ScriptNum::from(1).to_bytes()].into();
+    let stack = vec![ScriptNum::from(1).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -554,7 +554,7 @@ fn test_numequal_not() {
         .push_int(3)
         .push_opcode(OP_NUMEQUAL)
         .into_script();
-    let stack = vec![ScriptNum::from(0).to_bytes()].into();
+    let stack = vec![ScriptNum::from(0).as_bytes()].into();
     let result = EvalResult::ok(false, stack);
     basic_test(&script, result);
 }
@@ -608,7 +608,7 @@ fn test_numnotequal() {
         .push_int(3)
         .push_opcode(OP_NUMNOTEQUAL)
         .into_script();
-    let stack = vec![ScriptNum::from(1).to_bytes()].into();
+    let stack = vec![ScriptNum::from(1).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -620,7 +620,7 @@ fn test_numnotequal_not() {
         .push_int(2)
         .push_opcode(OP_NUMNOTEQUAL)
         .into_script();
-    let stack = vec![ScriptNum::from(0).to_bytes()].into();
+    let stack = vec![ScriptNum::from(0).as_bytes()].into();
     let result = EvalResult::ok(false, stack);
     basic_test(&script, result);
 }
@@ -642,7 +642,7 @@ fn test_lessthan() {
         .push_int(3)
         .push_opcode(OP_LESSTHAN)
         .into_script();
-    let stack = vec![ScriptNum::from(1).to_bytes()].into();
+    let stack = vec![ScriptNum::from(1).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -654,7 +654,7 @@ fn test_lessthan_not() {
         .push_int(2)
         .push_opcode(OP_LESSTHAN)
         .into_script();
-    let stack = vec![ScriptNum::from(0).to_bytes()].into();
+    let stack = vec![ScriptNum::from(0).as_bytes()].into();
     let result = EvalResult::ok(false, stack);
     basic_test(&script, result);
 }
@@ -676,7 +676,7 @@ fn test_greaterthan() {
         .push_int(2)
         .push_opcode(OP_GREATERTHAN)
         .into_script();
-    let stack = vec![ScriptNum::from(1).to_bytes()].into();
+    let stack = vec![ScriptNum::from(1).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -688,7 +688,7 @@ fn test_greaterthan_not() {
         .push_int(2)
         .push_opcode(OP_GREATERTHAN)
         .into_script();
-    let stack = vec![ScriptNum::from(0).to_bytes()].into();
+    let stack = vec![ScriptNum::from(0).as_bytes()].into();
     let result = EvalResult::ok(false, stack);
     basic_test(&script, result);
 }
@@ -710,7 +710,7 @@ fn test_lessthanorequal() {
         .push_int(3)
         .push_opcode(OP_LESSTHANOREQUAL)
         .into_script();
-    let stack = vec![ScriptNum::from(1).to_bytes()].into();
+    let stack = vec![ScriptNum::from(1).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -722,7 +722,7 @@ fn test_lessthanorequal_equal() {
         .push_int(2)
         .push_opcode(OP_LESSTHANOREQUAL)
         .into_script();
-    let stack = vec![ScriptNum::from(1).to_bytes()].into();
+    let stack = vec![ScriptNum::from(1).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -734,7 +734,7 @@ fn test_lessthanorequal_not() {
         .push_int(1)
         .push_opcode(OP_LESSTHANOREQUAL)
         .into_script();
-    let stack = vec![ScriptNum::from(0).to_bytes()].into();
+    let stack = vec![ScriptNum::from(0).as_bytes()].into();
     let result = EvalResult::ok(false, stack);
     basic_test(&script, result);
 }
@@ -756,7 +756,7 @@ fn test_greaterthanorequal() {
         .push_int(2)
         .push_opcode(OP_GREATERTHANOREQUAL)
         .into_script();
-    let stack = vec![ScriptNum::from(1).to_bytes()].into();
+    let stack = vec![ScriptNum::from(1).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -768,7 +768,7 @@ fn test_greaterthanorequal_equal() {
         .push_int(2)
         .push_opcode(OP_GREATERTHANOREQUAL)
         .into_script();
-    let stack = vec![ScriptNum::from(1).to_bytes()].into();
+    let stack = vec![ScriptNum::from(1).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -780,7 +780,7 @@ fn test_greaterthanorequal_not() {
         .push_int(2)
         .push_opcode(OP_GREATERTHANOREQUAL)
         .into_script();
-    let stack = vec![ScriptNum::from(0).to_bytes()].into();
+    let stack = vec![ScriptNum::from(0).as_bytes()].into();
     let result = EvalResult::ok(false, stack);
     basic_test(&script, result);
 }
@@ -802,7 +802,7 @@ fn test_min() {
         .push_int(3)
         .push_opcode(OP_MIN)
         .into_script();
-    let stack = vec![ScriptNum::from(2).to_bytes()].into();
+    let stack = vec![ScriptNum::from(2).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -814,7 +814,7 @@ fn test_min_second() {
         .push_int(3)
         .push_opcode(OP_MIN)
         .into_script();
-    let stack = vec![ScriptNum::from(3).to_bytes()].into();
+    let stack = vec![ScriptNum::from(3).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -836,7 +836,7 @@ fn test_max() {
         .push_int(3)
         .push_opcode(OP_MAX)
         .into_script();
-    let stack = vec![ScriptNum::from(3).to_bytes()].into();
+    let stack = vec![ScriptNum::from(3).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -848,7 +848,7 @@ fn test_max_second() {
         .push_int(3)
         .push_opcode(OP_MAX)
         .into_script();
-    let stack = vec![ScriptNum::from(4).to_bytes()].into();
+    let stack = vec![ScriptNum::from(4).as_bytes()].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
