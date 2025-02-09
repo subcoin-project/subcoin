@@ -152,14 +152,14 @@ pub enum Error {
 
     /// UTXO referenced by a transaction is missing
     #[error(
-        "Missing UTXO in state for transaction ({context}) in block {block_hash}. Missing UTXO: {missing_outpoint:?}"
+        "Missing UTXO in state for transaction ({context}) in block {block_hash}. Missing UTXO: {missing_utxo:?}"
     )]
     MissingUtxoInState {
         block_hash: BlockHash,
         /// Context of the transaction being processed.
         context: TransactionContext,
         /// UTXO missing from the UTXO set.
-        missing_outpoint: OutPoint,
+        missing_utxo: OutPoint,
     },
     /// UTXO has already been spent within the same block.
     #[error("UTXO already spent in current block (#{block_number},{block_hash}:{txid}: {utxo:?})")]
@@ -414,7 +414,12 @@ where
         let mut block_fee = 0;
         let mut spent_coins_in_block = HashSet::new();
 
-        let mut tx_data = Vec::<u8>::new();
+        // Preallocated buffer for serializing tx when using the Core scripg engine.
+        let mut tx_buffer = if matches!(self.script_engine, ScriptEngine::Core) {
+            Vec::<u8>::with_capacity(4096)
+        } else {
+            Vec::new()
+        };
 
         // TODO: verify transactions in parallel.
         // https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L2611
@@ -442,14 +447,14 @@ where
                 return Err(Error::TransactionNotFinal(block_hash));
             }
 
-            tx_data.clear();
-            tx.consensus_encode(&mut tx_data)
+            tx_buffer.clear();
+            tx.consensus_encode(&mut tx_buffer)
                 .map_err(Error::BitcoinCodec)?;
 
-            let spending_transaction = tx_data.as_slice();
+            let spending_transaction = tx_buffer.as_slice();
 
-            let access_coin = |out_point: OutPoint| -> Option<(TxOut, bool, u32)> {
-                match self.find_utxo_in_state(parent_hash, out_point) {
+            let access_coin = |out_point: OutPoint| -> Result<(TxOut, bool, u32), Error> {
+                let maybe_coin = match self.find_utxo_in_state(parent_hash, out_point) {
                     Some(coin) => {
                         let Coin {
                             is_coinbase,
@@ -467,7 +472,13 @@ where
                     }
                     None => find_utxo_in_current_block(block, out_point, tx_index, get_txid)
                         .map(|(txout, is_coinbase)| (txout, is_coinbase, block_number)),
-                }
+                };
+
+                maybe_coin.ok_or_else(|| Error::MissingUtxoInState {
+                    block_hash,
+                    context: tx_context(tx_index),
+                    missing_utxo: out_point,
+                })
             };
 
             // CheckTxInputs.
@@ -488,18 +499,20 @@ where
                 }
 
                 // Access coin.
-                let (spent_output, is_coinbase, coin_height) =
-                    access_coin(coin).ok_or_else(|| Error::MissingUtxoInState {
-                        block_hash,
-                        context: tx_context(tx_index),
-                        missing_outpoint: coin,
-                    })?;
+                let (spent_output, is_coinbase, coin_height) = access_coin(coin)?;
 
                 // If coin is coinbase, check that it's matured.
                 if is_coinbase && block_number - coin_height < COINBASE_MATURITY {
                     return Err(Error::PrematureSpendOfCoinbase(block_hash));
                 }
 
+                tracing::debug!(
+                    block_number,
+                    tx_index,
+                    txid = ?get_txid(tx_index),
+                    input_index,
+                    "Verifying input script"
+                );
                 match self.script_engine {
                     ScriptEngine::Core => {
                         script_verify::verify_input_script(
