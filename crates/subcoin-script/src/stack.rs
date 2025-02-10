@@ -2,6 +2,7 @@ use crate::num::ScriptNum;
 use crate::VerifyFlags;
 use std::ops::{Deref, DerefMut};
 
+/// Stack error type.
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
 pub enum StackError {
     #[error("invalid stack operation")]
@@ -10,6 +11,7 @@ pub enum StackError {
     Num(#[from] crate::num::NumError),
 }
 
+/// Stack for the script execution.
 pub type Stack = GenericStack<Vec<u8>>;
 
 type Result<T> = std::result::Result<T, StackError>;
@@ -170,6 +172,7 @@ impl<T> GenericStack<T> {
     }
 
     /// Removes the top `n` stack items.
+    #[inline]
     pub fn drop(&mut self, n: usize) -> Result<()> {
         self.require(n)?;
         for _ in 0..n {
@@ -182,6 +185,7 @@ impl<T> GenericStack<T> {
     ///
     /// dup(1): [x1 x2] -> [x1 x2 x2]
     /// dup(2): [x1 x2] -> [x1 x2 x1 x2]
+    #[inline]
     pub fn dup(&mut self, n: usize) -> Result<()>
     where
         T: Clone,
@@ -197,6 +201,7 @@ impl<T> GenericStack<T> {
     ///
     /// over(1): [... x1 x2 x3] -> [... x1 x2 x3 x2]
     /// over(2): [... x1 x2 x3 x4] -> [... x1 x2 x3 x4 x1 x2]
+    #[inline]
     pub fn over(&mut self, n: usize) -> Result<()>
     where
         T: Clone,
@@ -216,6 +221,7 @@ impl<T> GenericStack<T> {
     ///
     /// - rot(1): [x1 x2 x3] -> [x2 x3 x1]
     /// - rot(2): [x1 x2 x3 x4 x5 x6] -> [x3 x4 x5 x6 x1 x2]
+    #[inline]
     pub fn rot(&mut self, n: usize) -> Result<()>
     where
         T: Clone,
@@ -237,6 +243,7 @@ impl<T> GenericStack<T> {
     // GenericStack transformation:
     // - swap(1): [x1 x2] -> [x2 x1]
     // - swap(2): [x1 x2 x3 x4] -> [x3 x4 x1 x2]
+    #[inline]
     pub fn swap(&mut self, n: usize) -> Result<()> {
         let count = n * 2;
         self.require(count)?;
@@ -250,6 +257,7 @@ impl<T> GenericStack<T> {
     /// Removes the second-to-top stack item.
     ///
     /// nip: [x1 x2 x3] -> [x1 x3]
+    #[inline]
     pub fn nip(&mut self) -> Result<()> {
         self.require(2)?;
         let len = self.data.len();
@@ -261,13 +269,14 @@ impl<T> GenericStack<T> {
     // to top item.
     //
     // [... x1 x2] -> [... x2 x1 x2]
+    #[inline]
     pub fn tuck(&mut self) -> Result<()>
     where
         T: Clone,
     {
         self.require(2)?;
         let len = self.data.len();
-        let v = self.data[len - 1].clone();
+        let v = self.last().expect("Stack must be non-empty; qed").clone();
         self.data.insert(len - 2, v);
         Ok(())
     }

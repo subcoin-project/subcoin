@@ -146,18 +146,20 @@ pub enum Error {
     UnknownOpcode(bitcoin::opcodes::Opcode),
     #[error("Failed to read instruction: {0:?}")]
     ReadInstruction(bitcoin::script::Error),
+
+    #[error(transparent)]
+    CheckSig(#[from] CheckSigError),
+    #[error(transparent)]
+    CheckMultiSig(#[from] CheckMultiSigError),
     #[error(transparent)]
     Num(#[from] NumError),
+    #[error(transparent)]
+    Signature(#[from] SignatureError),
+
     #[error("schnorr signature error: {0:?}")]
     SchnorrSignature(bitcoin::taproot::SigFromSliceError),
     #[error("taproot error: {0:?}")]
     Taproot(bitcoin::taproot::TaprootError),
     #[error("secp256k1 error: {0:?}")]
     Secp256k1(bitcoin::secp256k1::Error),
-    #[error(transparent)]
-    Signature(#[from] SignatureError),
-    #[error(transparent)]
-    CheckSig(#[from] CheckSigError),
-    #[error(transparent)]
-    CheckMultiSig(#[from] CheckMultiSigError),
 }

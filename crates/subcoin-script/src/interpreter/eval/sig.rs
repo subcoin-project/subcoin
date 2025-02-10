@@ -4,10 +4,14 @@ use crate::{EcdsaSignature, SchnorrSignature, ScriptExecutionData, SigVersion, V
 use bitcoin::{PublicKey, Script, XOnlyPublicKey};
 use num_bigint::Sign;
 
+/// Signs all inputs and outputs, preventing any modification.
 const SIGHASH_ALL: u8 = 0x01;
+/// Signs all inputs but none of the outputs, allowing outputs to be changed.
 #[allow(unused)]
 const SIGHASH_NONE: u8 = 0x02;
+/// Signs all inputs and only the output corresponding to the input index, permitting changes to other outputs.
 const SIGHASH_SINGLE: u8 = 0x03;
+/// Modifies the above types to sign only the current input, allowing other inputs to be altered.
 const SIGHASH_ANYONECANPAY: u8 = 0x80;
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]

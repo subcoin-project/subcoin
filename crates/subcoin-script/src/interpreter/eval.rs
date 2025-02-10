@@ -40,15 +40,15 @@ pub fn eval_script<SC: SignatureChecker>(
     let mut op_count = 0;
     let mut opcode_pos = 0;
 
+    let step = |instruction: &Instruction| match instruction {
+        Instruction::PushBytes(b) => b.as_bytes().len() + 1,
+        Instruction::Op(_) => 1,
+    };
+
     let instructions = if flags.intersects(VerifyFlags::MINIMALDATA) {
         script.instruction_indices_minimal()
     } else {
         script.instruction_indices()
-    };
-
-    let step = |instruction: &Instruction| match instruction {
-        Instruction::PushBytes(b) => b.as_bytes().len() + 1,
-        Instruction::Op(_) => 1,
     };
 
     let mut pc = 0;

@@ -564,7 +564,7 @@ where
             // > * p2sh (when P2SH enabled in flags and excludes coinbase)
             // > * witness (when witness enabled in flags and excludes coinbase)
             sig_ops_cost += tx.total_sigop_cost(|out_point: &OutPoint| {
-                access_coin(*out_point).map(|(txout, _, _)| txout)
+                access_coin(*out_point).map(|(txout, _, _)| txout).ok()
             });
 
             if sig_ops_cost > MAX_BLOCK_SIGOPS_COST as usize {

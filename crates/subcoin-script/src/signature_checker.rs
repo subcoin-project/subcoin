@@ -53,7 +53,7 @@ pub trait SignatureChecker {
     /// * `sig` - The ECDSA signature to check.
     /// * `pk` - The public key corresponding to the signature.
     /// * `script_code` - The script code for the transaction input.
-    /// * `sig_version` - The signature version (e.g., `SigVersion::Base` or `SigVersion::WitnessV0`).
+    /// * `sig_version` - The signature version (e.g., [`SigVersion::Base`] or [`SigVersion::WitnessV0`]).
     ///
     /// # Returns
     /// - `Ok(true)` if the signature is valid.
@@ -107,16 +107,15 @@ pub trait SignatureChecker {
         exec_data: &ScriptExecutionData,
     ) -> Result<bool, SignatureError>;
 
-    /// Checks whether the absolute time lock (specified by `nLockTime`)
-    /// in a transaction is satisfied.
+    /// Checks whether the absolute time lock (`lock_time`) in a transaction is satisfied.
     fn check_lock_time(&self, lock_time: ScriptNum) -> bool;
 
-    /// Checks whether the relative time lock (specified by `nSequence`)
-    /// for a specific input in a transaction is satisfied.
+    /// Checks whether the relative time lock (`sequence`) for a specific input
+    /// in a transaction is satisfied.
     fn check_sequence(&self, sequence: ScriptNum) -> bool;
 }
 
-/// A SignatureChecker implementation that skips all signature checks.
+/// A [`SignatureChecker`] implementation that skips all signature checks.
 pub struct NoSignatureCheck;
 
 impl SignatureChecker for NoSignatureCheck {
@@ -149,12 +148,12 @@ impl SignatureChecker for NoSignatureCheck {
     }
 }
 
-/// A SignatureChecker implementation for transactions.
+/// A [`SignatureChecker`] implementation for transactions.
 pub struct TransactionSignatureChecker<'a> {
     tx: &'a Transaction,
     input_index: usize,
     input_amount: u64,
-    prevouts: Vec<TxOut>,
+    prev_outs: Vec<TxOut>,
     sighash_cache: SighashCache<&'a Transaction>,
 }
 
@@ -166,7 +165,7 @@ impl<'a> TransactionSignatureChecker<'a> {
             tx,
             input_index,
             input_amount,
-            prevouts: Vec::new(),
+            prev_outs: Vec::new(),
             sighash_cache,
         }
     }
@@ -205,6 +204,8 @@ impl SignatureChecker for TransactionSignatureChecker<'_> {
             tracing::debug!("[check_ecdsa_signature] Invalid ECDSA signature: {err:?}");
         }
 
+        assert_eq!(res, Ok(()), "ECDSA signature must be valid");
+
         Ok(res.is_ok())
     }
 
@@ -234,7 +235,7 @@ impl SignatureChecker for TransactionSignatureChecker<'_> {
             .sighash_cache
             .taproot_signature_hash(
                 self.input_index,
-                &Prevouts::All(&self.prevouts),
+                &Prevouts::All(&self.prev_outs),
                 annex,
                 Some((leaf_hash, last_codeseparator_pos.unwrap_or(u32::MAX))),
                 sig.sighash_type,
