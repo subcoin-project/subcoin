@@ -91,7 +91,7 @@ pub fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
     })?;
 
     // Check for duplicate inputs.
-    let mut seen_inputs = HashSet::new();
+    let mut seen_inputs = HashSet::with_capacity(tx.input.len());
     for (index, txin) in tx.input.iter().enumerate() {
         if !seen_inputs.insert(txin.previous_output) {
             return Err(Error::DuplicateTxInput(index));
