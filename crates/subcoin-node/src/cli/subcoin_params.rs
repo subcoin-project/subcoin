@@ -1,7 +1,7 @@
 use clap::Parser;
-use sc_consensus_nakamoto::{BlockVerification, ImportConfig};
+use sc_consensus_nakamoto::{BlockVerification, ImportConfig, ScriptEngine};
 use std::path::PathBuf;
-use subcoin_network::PeerId;
+use subcoin_network::{PeerId, SyncStrategy};
 
 /// Chain.
 ///
@@ -27,6 +27,35 @@ impl Chain {
             Self::BitcoinMainnet => "bitcoin-mainnet",
             Self::BitcoinTestnet => "bitcoin-testnet",
             Self::BitcoinSignet => "bitcoin-signet",
+        }
+    }
+}
+
+/// Provides the default values for optional parameters.
+pub(crate) struct Defaults;
+
+impl Defaults {
+    pub(crate) fn min_sync_peer_threshold(is_dev: bool) -> usize {
+        if is_dev {
+            0
+        } else {
+            3
+        }
+    }
+
+    pub(crate) fn sync_strategy(is_dev: bool) -> SyncStrategy {
+        if is_dev {
+            SyncStrategy::BlocksFirst
+        } else {
+            SyncStrategy::HeadersFirst
+        }
+    }
+
+    pub(crate) fn script_engine(is_dev: bool) -> ScriptEngine {
+        if is_dev {
+            ScriptEngine::Subcoin
+        } else {
+            ScriptEngine::Core
         }
     }
 }
@@ -71,13 +100,22 @@ pub struct NetworkParams {
     /// Minimum peer threshold required to start block sync.
     ///
     /// The chain sync won't be started until the number of sync peers reaches this threshold.
-    /// Set to `0` to disable the peer threshold limit. Default: 3
-    #[arg(long, default_value = "3")]
-    pub min_sync_peer_threshold: usize,
+    /// Providing `0` disables the peer threshold limit.
+    ///
+    /// If not provided, defaults to 0 in development mode and 3 otherwise.
+    #[arg(long)]
+    pub min_sync_peer_threshold: Option<usize>,
 }
 
 #[derive(Debug, Clone, Parser)]
 pub struct CommonParams {
+    /// Specify the development chain.
+    ///
+    /// This flag sets `--min-sync-peer-threshold=0`, `--sync-strategy=blocks-first` and `--script-engine=subcoin`
+    /// flags, unless explicitly overridden.
+    #[arg(long)]
+    pub dev: bool,
+
     /// Specify the chain.
     #[arg(long, value_name = "CHAIN", default_value = "bitcoin-mainnet")]
     pub chain: Chain,
@@ -86,9 +124,12 @@ pub struct CommonParams {
     #[clap(long, default_value = "full")]
     pub block_verification: BlockVerification,
 
-    /// Whether to verify the TxIn scripts during the block verification.
-    #[clap(long, default_value_t = true)]
-    pub verify_script: bool,
+    /// Specifies the backend for Bitcoin script verification.
+    ///
+    /// If not provided, defaults to `ScriptEngine::Subcoin` in development mode
+    /// and `ScriptEngine::Core` otherwise.
+    #[clap(long)]
+    pub script_engine: Option<ScriptEngine>,
 
     /// Specify custom base path.
     #[arg(long, short = 'd', value_name = "PATH")]
@@ -120,7 +161,7 @@ impl CommonParams {
         // TODO: expose more flags?
         sc_cli::SharedParams {
             chain: Some(self.chain.chain_spec_id().to_string()),
-            dev: false,
+            dev: false, // TODO: align with is_dev?
             base_path: self.base_path.clone(),
             log: self.log.clone(),
             detailed_log_output: false,
@@ -140,12 +181,14 @@ impl CommonParams {
         }
     }
 
-    pub fn import_config(&self) -> ImportConfig {
+    pub fn import_config(&self, is_dev: bool) -> ImportConfig {
         ImportConfig {
             network: self.bitcoin_network(),
             block_verification: self.block_verification,
             execute_block: true,
-            verify_script: self.verify_script,
+            script_engine: self
+                .script_engine
+                .unwrap_or_else(|| Defaults::script_engine(is_dev)),
         }
     }
 }

@@ -1,4 +1,4 @@
-use crate::cli::subcoin_params::{CommonParams, NetworkParams};
+use crate::cli::subcoin_params::{CommonParams, Defaults, NetworkParams};
 use clap::Parser;
 use sc_cli::{
     ImportParams, NetworkParams as SubstrateNetworkParams, NodeKeyParams, PrometheusParams, Role,
@@ -38,8 +38,11 @@ impl SubcoinNetworkOption {
 #[derive(Debug, Clone, Parser)]
 pub struct Run {
     /// Specify the Bitcoin major sync strategy.
-    #[clap(long, default_value = "headers-first")]
-    pub sync_strategy: SyncStrategy,
+    ///
+    /// If not provided, defaults to `SyncStrategy::BlocksFirst` in development mode and
+    /// `SyncStrategy::HeadersFirst` otherwise.
+    #[clap(long)]
+    pub sync_strategy: Option<SyncStrategy>,
 
     /// Specify the target block height for the initial block download.
     ///
@@ -73,7 +76,11 @@ pub struct Run {
 
     #[allow(missing_docs)]
     #[clap(flatten)]
-    pub rpc_params: RpcParams,
+    pub common_params: CommonParams,
+
+    #[allow(missing_docs)]
+    #[clap(flatten)]
+    pub network_params: NetworkParams,
 
     #[allow(missing_docs)]
     #[clap(flatten)]
@@ -81,11 +88,7 @@ pub struct Run {
 
     #[allow(missing_docs)]
     #[clap(flatten)]
-    pub common_params: CommonParams,
-
-    #[allow(missing_docs)]
-    #[clap(flatten)]
-    pub network_params: NetworkParams,
+    pub rpc_params: RpcParams,
 
     #[allow(missing_docs)]
     #[clap(flatten)]
@@ -102,6 +105,8 @@ fn base_path_or_default(base_path: Option<BasePath>, executable_name: &str) -> B
 
 impl Run {
     fn subcoin_network_config(&self, network: bitcoin::Network) -> subcoin_network::Config {
+        let is_dev = self.common_params.dev;
+
         subcoin_network::Config {
             network,
             listen_on: self.network_params.listen,
@@ -111,11 +116,16 @@ impl Run {
             sync_target: self.sync_target,
             max_outbound_peers: self.network_params.max_outbound_peers,
             max_inbound_peers: self.network_params.max_inbound_peers,
-            min_sync_peer_threshold: self.network_params.min_sync_peer_threshold,
+            min_sync_peer_threshold: self
+                .network_params
+                .min_sync_peer_threshold
+                .unwrap_or_else(|| Defaults::min_sync_peer_threshold(is_dev)),
             persistent_peer_latency_threshold: self
                 .network_params
                 .persistent_peer_latency_threshold,
-            sync_strategy: self.sync_strategy,
+            sync_strategy: self
+                .sync_strategy
+                .unwrap_or_else(|| Defaults::sync_strategy(is_dev)),
             block_sync: self.block_sync_option(),
             base_path: base_path_or_default(
                 self.common_params.base_path.clone().map(Into::into),
@@ -172,7 +182,7 @@ impl RunCmd {
         }
 
         let bitcoin_network = run.common_params.bitcoin_network();
-        let import_config = run.common_params.import_config();
+        let import_config = run.common_params.import_config(run.common_params.dev);
         let no_finalizer = run.no_finalizer;
 
         let subcoin_service::NodeComponents {

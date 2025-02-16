@@ -106,7 +106,7 @@ impl<'a> SubcoinConfiguration<'a> {
     }
 }
 
-impl<'a> Deref for SubcoinConfiguration<'a> {
+impl Deref for SubcoinConfiguration<'_> {
     type Target = Configuration;
 
     fn deref(&self) -> &Self::Target {

@@ -35,7 +35,7 @@ pub enum Error {
 }
 
 /// Checks whether the transaction is final at the given height and block time.
-pub fn is_final(tx: &Transaction, height: u32, block_time: u32) -> bool {
+pub fn is_final_tx(tx: &Transaction, height: u32, block_time: u32) -> bool {
     if tx.lock_time == LockTime::ZERO {
         return true;
     }
@@ -50,6 +50,14 @@ pub fn is_final(tx: &Transaction, height: u32, block_time: u32) -> bool {
         return true;
     }
 
+    // Even if tx.nLockTime isn't satisfied by nBlockHeight/nBlockTime, a
+    // transaction is still considered final if all inputs' nSequence ==
+    // SEQUENCE_FINAL (0xffffffff), in which case nLockTime is ignored.
+    //
+    // Because of this behavior OP_CHECKLOCKTIMEVERIFY/CheckLockTime() will
+    // also check that the spending input's nSequence != SEQUENCE_FINAL,
+    // ensuring that an unsatisfied nLockTime value will actually cause
+    // IsFinalTx() to return false here:
     tx.input.iter().all(|txin| txin.sequence.is_final())
 }
 
@@ -83,7 +91,7 @@ pub fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
     })?;
 
     // Check for duplicate inputs.
-    let mut seen_inputs = HashSet::new();
+    let mut seen_inputs = HashSet::with_capacity(tx.input.len());
     for (index, txin) in tx.input.iter().enumerate() {
         if !seen_inputs.insert(txin.previous_output) {
             return Err(Error::DuplicateTxInput(index));

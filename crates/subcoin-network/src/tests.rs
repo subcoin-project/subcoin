@@ -268,7 +268,7 @@ impl TestNode {
                 network: bitcoin::Network::Bitcoin,
                 block_verification: sc_consensus_nakamoto::BlockVerification::Full,
                 execute_block: true,
-                verify_script: true,
+                script_engine: sc_consensus_nakamoto::ScriptEngine::Core,
             },
             Arc::new(subcoin_service::CoinStorageKey),
             None,

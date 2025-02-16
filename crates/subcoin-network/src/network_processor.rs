@@ -527,7 +527,7 @@ where
         if self
             .requested_block_announce
             .get(&from)
-            .map_or(false, |annoucements| annoucements.contains(&block_hash))
+            .is_some_and(|annoucements| annoucements.contains(&block_hash))
         {
             tracing::debug!("Recv announced block {block_hash} from {from:?}");
 

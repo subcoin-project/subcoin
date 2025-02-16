@@ -89,7 +89,7 @@ pub fn run() -> sc_cli::Result<()> {
             let bitcoin_network = cmd.common_params.bitcoin_network();
             let import_config = ImportConfig {
                 execute_block: cmd.execute_transactions,
-                ..cmd.common_params.import_config()
+                ..cmd.common_params.import_config(true)
             };
             let chain_spec_id = cmd.common_params.chain.chain_spec_id();
             let maybe_prometheus_config = cmd

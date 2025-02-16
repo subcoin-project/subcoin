@@ -11,7 +11,9 @@ pub use chain_params::ChainParams;
 pub use import_queue::{
     bitcoin_import_queue, BlockImportQueue, ImportBlocks, ImportManyBlocksResult,
 };
-pub use verification::{BlockVerification, BlockVerifier, HeaderError, HeaderVerifier};
+pub use verification::{
+    BlockVerification, BlockVerifier, HeaderError, HeaderVerifier, ScriptEngine,
+};
 pub use verifier::SubstrateImportQueueVerifier;
 
 /// Consensus error type.
