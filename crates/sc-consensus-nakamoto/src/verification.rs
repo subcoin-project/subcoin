@@ -507,6 +507,7 @@ where
                 }
 
                 tracing::debug!(
+                    target: "subcoin_script",
                     block_number,
                     tx_index,
                     txid = ?get_txid(tx_index),

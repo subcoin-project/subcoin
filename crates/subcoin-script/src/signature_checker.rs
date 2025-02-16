@@ -59,6 +59,10 @@ pub trait SignatureChecker {
     /// - `Ok(true)` if the signature is valid.
     /// - `Ok(false)` if the signature is invalid.
     /// - `Err(SignatureError)` if an error occurs.
+    ///
+    /// # Notes
+    /// In the context of multisignature transactions, it is expected that not all signatures may be valid.
+    /// An invalid signature may be considered legitimate as long as the multisig conditions are met.
     fn check_ecdsa_signature(
         &mut self,
         sig: &EcdsaSignature,
@@ -201,12 +205,16 @@ impl SignatureChecker for TransactionSignatureChecker<'_> {
         let res = self.verify_ecdsa_signature(sig, &msg, pk);
 
         if let Err(err) = &res {
-            tracing::debug!("[check_ecdsa_signature] sig: {sig:?}, pk: {pk:?}, script_pubkey: {script_pubkey:?}, sig_version: {sig_version:?}");
-            tracing::debug!("[check_ecdsa_signature] msg: {msg:?}");
-            tracing::debug!("[check_ecdsa_signature] Invalid ECDSA signature: {err:?}");
+            tracing::debug!(
+                ?err,
+                ?sig,
+                ?pk,
+                ?script_pubkey,
+                ?sig_version,
+                ?msg,
+                "[check_ecdsa_signature] Invalid ECDSA signature"
+            );
         }
-
-        assert_eq!(res, Ok(()), "ECDSA signature must be valid");
 
         Ok(res.is_ok())
     }
