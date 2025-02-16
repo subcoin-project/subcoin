@@ -76,15 +76,15 @@ pub struct ImportBlocks {
 
     #[allow(missing_docs)]
     #[clap(flatten)]
+    pub common_params: CommonParams,
+
+    #[allow(missing_docs)]
+    #[clap(flatten)]
     pub prometheus_params: PrometheusParams,
 
     #[allow(missing_docs)]
     #[clap(flatten)]
     pub import_params: ImportParams,
-
-    #[allow(missing_docs)]
-    #[clap(flatten)]
-    pub common_params: CommonParams,
 }
 
 /// Custom version of [`sc_cli::ImportBlocksCmd`].

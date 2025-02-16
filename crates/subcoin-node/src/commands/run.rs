@@ -37,13 +37,6 @@ impl SubcoinNetworkOption {
 /// The `run` command used to start a Subcoin node.
 #[derive(Debug, Clone, Parser)]
 pub struct Run {
-    /// Specify the development chain.
-    ///
-    /// This flag sets `--min-sync-peer-threshold=0`, `--sync-strategy=blocks-first` and `--script-engine=subcoin`
-    /// flags, unless explicitly overridden.
-    #[arg(long)]
-    pub dev: bool,
-
     /// Specify the Bitcoin major sync strategy.
     ///
     /// If not provided, defaults to `SyncStrategy::BlocksFirst` in development mode and
@@ -112,7 +105,7 @@ fn base_path_or_default(base_path: Option<BasePath>, executable_name: &str) -> B
 
 impl Run {
     fn subcoin_network_config(&self, network: bitcoin::Network) -> subcoin_network::Config {
-        let is_dev = self.dev;
+        let is_dev = self.common_params.dev;
 
         subcoin_network::Config {
             network,
@@ -189,7 +182,7 @@ impl RunCmd {
         }
 
         let bitcoin_network = run.common_params.bitcoin_network();
-        let import_config = run.common_params.import_config(run.dev);
+        let import_config = run.common_params.import_config(run.common_params.dev);
         let no_finalizer = run.no_finalizer;
 
         let subcoin_service::NodeComponents {

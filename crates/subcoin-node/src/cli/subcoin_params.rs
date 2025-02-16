@@ -109,6 +109,13 @@ pub struct NetworkParams {
 
 #[derive(Debug, Clone, Parser)]
 pub struct CommonParams {
+    /// Specify the development chain.
+    ///
+    /// This flag sets `--min-sync-peer-threshold=0`, `--sync-strategy=blocks-first` and `--script-engine=subcoin`
+    /// flags, unless explicitly overridden.
+    #[arg(long)]
+    pub dev: bool,
+
     /// Specify the chain.
     #[arg(long, value_name = "CHAIN", default_value = "bitcoin-mainnet")]
     pub chain: Chain,
