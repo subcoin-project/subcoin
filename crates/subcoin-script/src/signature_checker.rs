@@ -201,6 +201,8 @@ impl SignatureChecker for TransactionSignatureChecker<'_> {
         let res = self.verify_ecdsa_signature(sig, &msg, pk);
 
         if let Err(err) = &res {
+            tracing::debug!("[check_ecdsa_signature] sig: {sig:?}, pk: {pk:?}, script_pubkey: {script_pubkey:?}, sig_version: {sig_version:?}");
+            tracing::debug!("[check_ecdsa_signature] msg: {msg:?}");
             tracing::debug!("[check_ecdsa_signature] Invalid ECDSA signature: {err:?}");
         }
 
