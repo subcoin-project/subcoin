@@ -8055,7 +8055,6 @@ dependencies = [
  "sp-runtime",
  "sp-state-machine",
  "subcoin-primitives",
- "subcoin-script",
  "substrate-prometheus-endpoint",
  "thiserror 1.0.68",
  "tracing",
@@ -10590,20 +10589,6 @@ dependencies = [
  "sp-api",
  "sp-runtime",
  "sp-std 14.0.0 (git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v5)",
-]
-
-[[package]]
-name = "subcoin-script"
-version = "0.1.0"
-dependencies = [
- "bitcoin 0.32.2",
- "bitflags 2.6.0",
- "hex",
- "num-bigint",
- "num-traits",
- "sc-tracing",
- "thiserror 1.0.68",
- "tracing",
 ]
 
 [[package]]
