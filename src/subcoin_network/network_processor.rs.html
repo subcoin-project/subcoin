@@ -1255,7 +1255,7 @@
         <span class="kw">if </span><span class="self">self
             </span>.requested_block_announce
             .get(<span class="kw-2">&amp;</span>from)
-            .map_or(<span class="bool-val">false</span>, |annoucements| annoucements.contains(<span class="kw-2">&amp;</span>block_hash))
+            .is_some_and(|annoucements| annoucements.contains(<span class="kw-2">&amp;</span>block_hash))
         {
             <span class="macro">tracing::debug!</span>(<span class="string">"Recv announced block {block_hash} from {from:?}"</span>);
 

@@ -167,11 +167,13 @@
 <a href="#167" id="167">167</a>
 <a href="#168" id="168">168</a>
 <a href="#169" id="169">169</a>
+<a href="#170" id="170">170</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>bitcoin::consensus::Decodable;
 <span class="kw">use </span>bitcoin::hex::FromHex;
 <span class="kw">use </span>bitcoin::Block;
 <span class="kw">use </span>sc_consensus_nakamoto::{
     BitcoinBlockImport, BitcoinBlockImporter, BlockVerification, ImportConfig, ImportStatus,
+    ScriptEngine,
 };
 <span class="kw">use </span>sc_service::config::{
     BlocksPruning, DatabaseSource, ExecutorConfiguration, KeystoreConfig, NetworkConfiguration,
@@ -310,7 +312,7 @@
                 network: bitcoin::Network::Bitcoin,
                 block_verification: BlockVerification::None,
                 execute_block: <span class="bool-val">true</span>,
-                verify_script: <span class="bool-val">true</span>,
+                script_engine: ScriptEngine::Core,
             },
             Arc::new(subcoin_service::CoinStorageKey),
             <span class="prelude-val">None</span>,

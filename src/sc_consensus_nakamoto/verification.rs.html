@@ -629,6 +629,65 @@
 <a href="#629" id="629">629</a>
 <a href="#630" id="630">630</a>
 <a href="#631" id="631">631</a>
+<a href="#632" id="632">632</a>
+<a href="#633" id="633">633</a>
+<a href="#634" id="634">634</a>
+<a href="#635" id="635">635</a>
+<a href="#636" id="636">636</a>
+<a href="#637" id="637">637</a>
+<a href="#638" id="638">638</a>
+<a href="#639" id="639">639</a>
+<a href="#640" id="640">640</a>
+<a href="#641" id="641">641</a>
+<a href="#642" id="642">642</a>
+<a href="#643" id="643">643</a>
+<a href="#644" id="644">644</a>
+<a href="#645" id="645">645</a>
+<a href="#646" id="646">646</a>
+<a href="#647" id="647">647</a>
+<a href="#648" id="648">648</a>
+<a href="#649" id="649">649</a>
+<a href="#650" id="650">650</a>
+<a href="#651" id="651">651</a>
+<a href="#652" id="652">652</a>
+<a href="#653" id="653">653</a>
+<a href="#654" id="654">654</a>
+<a href="#655" id="655">655</a>
+<a href="#656" id="656">656</a>
+<a href="#657" id="657">657</a>
+<a href="#658" id="658">658</a>
+<a href="#659" id="659">659</a>
+<a href="#660" id="660">660</a>
+<a href="#661" id="661">661</a>
+<a href="#662" id="662">662</a>
+<a href="#663" id="663">663</a>
+<a href="#664" id="664">664</a>
+<a href="#665" id="665">665</a>
+<a href="#666" id="666">666</a>
+<a href="#667" id="667">667</a>
+<a href="#668" id="668">668</a>
+<a href="#669" id="669">669</a>
+<a href="#670" id="670">670</a>
+<a href="#671" id="671">671</a>
+<a href="#672" id="672">672</a>
+<a href="#673" id="673">673</a>
+<a href="#674" id="674">674</a>
+<a href="#675" id="675">675</a>
+<a href="#676" id="676">676</a>
+<a href="#677" id="677">677</a>
+<a href="#678" id="678">678</a>
+<a href="#679" id="679">679</a>
+<a href="#680" id="680">680</a>
+<a href="#681" id="681">681</a>
+<a href="#682" id="682">682</a>
+<a href="#683" id="683">683</a>
+<a href="#684" id="684">684</a>
+<a href="#685" id="685">685</a>
+<a href="#686" id="686">686</a>
+<a href="#687" id="687">687</a>
+<a href="#688" id="688">688</a>
+<a href="#689" id="689">689</a>
+<a href="#690" id="690">690</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! This module provides block verification functionalities based on Bitcoin's consensus rules.
 //! The primary code reference for these consensus rules is Bitcoin Core.
 //!
@@ -658,6 +717,7 @@
 //! - [`BlockVerification`]: Represents the level of block verification (None, Full, HeaderOnly).
 
 </span><span class="kw">mod </span>header_verify;
+<span class="kw">mod </span>script_verify;
 <span class="kw">mod </span>tx_verify;
 
 <span class="kw">use </span><span class="kw">crate</span>::chain_params::ChainParams;
@@ -674,12 +734,11 @@
 <span class="kw">use </span>sp_blockchain::HeaderBackend;
 <span class="kw">use </span>sp_runtime::traits::Block <span class="kw">as </span>BlockT;
 <span class="kw">use </span>std::collections::{HashMap, HashSet};
-<span class="kw">use </span>std::ffi::c_uint;
 <span class="kw">use </span>std::marker::PhantomData;
 <span class="kw">use </span>std::sync::Arc;
 <span class="kw">use </span>subcoin_primitives::runtime::{bitcoin_block_subsidy, Coin};
 <span class="kw">use </span>subcoin_primitives::CoinStorageKey;
-<span class="kw">use </span>tx_verify::{check_transaction_sanity, get_legacy_sig_op_count, is_final};
+<span class="kw">use </span>tx_verify::{check_transaction_sanity, get_legacy_sig_op_count, is_final_tx};
 
 <span class="kw">pub use </span>header_verify::{Error <span class="kw">as </span>HeaderError, HeaderVerifier};
 <span class="kw">pub use </span>tx_verify::Error <span class="kw">as </span>TxError;
@@ -687,13 +746,28 @@
 <span class="doccomment">/// The maximum allowed weight for a block, see BIP 141 (network rule).
 </span><span class="kw">pub const </span>MAX_BLOCK_WEIGHT: Weight = Weight::MAX_BLOCK;
 
+<span class="doccomment">/// Represents the Bitcoin script backend.
+</span><span class="attr">#[derive(Copy, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[cfg_attr(feature = <span class="string">"cli"</span>, derive(clap::ValueEnum))]
+</span><span class="kw">pub enum </span>ScriptEngine {
+    <span class="doccomment">/// Uses the Bitcoin Core bindings for script verification.
+    </span><span class="attr">#[default]
+    </span>Core,
+    <span class="doccomment">/// No script verification.
+    </span><span class="prelude-val">None</span>,
+    <span class="doccomment">/// Uses the Rust-based Bitcoin script interpreter (Subcoin) for script verification.
+    /// This is an experimental feature, not yet fully validated for production use.
+    </span>Subcoin,
+}
+
 <span class="doccomment">/// Represents the level of block verification.
-</span><span class="attr">#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+</span><span class="attr">#[derive(Copy, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 #[cfg_attr(feature = <span class="string">"cli"</span>, derive(clap::ValueEnum))]
 </span><span class="kw">pub enum </span>BlockVerification {
     <span class="doccomment">/// No verification performed.
     </span><span class="prelude-val">None</span>,
     <span class="doccomment">/// Full verification, including verifying the transactions.
+    </span><span class="attr">#[default]
     </span>Full,
     <span class="doccomment">/// Verify the block header only, without the transaction veification.
     </span>HeaderOnly,
@@ -710,69 +784,115 @@
     </span><span class="kw">pub </span>txid: Txid,
 }
 
+<span class="kw">impl </span>std::fmt::Display <span class="kw">for </span>TransactionContext {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>std::fmt::Formatter&lt;<span class="lifetime">'_</span>&gt;) -&gt; std::fmt::Result {
+        <span class="macro">write!</span>(
+            f,
+            <span class="string">"Tx #{}:{}: {}"</span>,
+            <span class="self">self</span>.block_number, <span class="self">self</span>.tx_index, <span class="self">self</span>.txid
+        )
+    }
+}
+
 <span class="doccomment">/// Block verification error.
 </span><span class="attr">#[derive(Debug, thiserror::Error)]
 </span><span class="kw">pub enum </span>Error {
     <span class="doccomment">/// The merkle root of the block is invalid.
-    </span><span class="attr">#[error(<span class="string">"Invalid merkle root"</span>)]
-    </span>BadMerkleRoot,
+    </span><span class="attr">#[error(<span class="string">"Invalid merkle root in block#{0}"</span>)]
+    </span>BadMerkleRoot(BlockHash),
     <span class="doccomment">/// Block must contain at least one coinbase transaction.
-    </span><span class="attr">#[error(<span class="string">"Transaction list is empty"</span>)]
-    </span>EmptyTransactionList,
-    <span class="attr">#[error(<span class="string">"Block is too large"</span>)]
-    </span>BadBlockLength,
-    <span class="attr">#[error(<span class="string">"First transaction is not coinbase"</span>)]
-    </span>FirstTransactionIsNotCoinbase,
-    <span class="attr">#[error(<span class="string">"Block contains more than one coinbase"</span>)]
-    </span>MultipleCoinbase,
-    <span class="attr">#[error(<span class="string">"Transaction input script contains too many sigops (max: {MAX_BLOCK_SIGOPS_COST})"</span>)]
-    </span>TooManySigOps { block_number: u32 },
-    <span class="attr">#[error(<span class="string">"Invalid witness commitment"</span>)]
-    </span>BadWitnessCommitment,
-    <span class="attr">#[error(<span class="string">"Transaction is not finalized"</span>)]
-    </span>TransactionNotFinal,
-    <span class="attr">#[error(<span class="string">"Block contains duplicate transaction at index {0}"</span>)]
-    </span>DuplicateTransaction(usize),
-    <span class="attr">#[error(<span class="string">"Block height mismatches in coinbase (got: {got}, expected: {expected})"</span>)]
-    </span>BadCoinbaseBlockHeight { got: u32, expected: u32 },
-    <span class="doccomment">/// Referenced output does not exist or was spent before.
+    </span><span class="attr">#[error(<span class="string">"Block#{0} has an empty transaction list"</span>)]
+    </span>EmptyTransactionList(BlockHash),
+    <span class="doccomment">/// Block size exceeds the limit.
+    </span><span class="attr">#[error(<span class="string">"Block#{0} exceeds maximum allowed size"</span>)]
+    </span>BlockTooLarge(BlockHash),
+    <span class="doccomment">/// First transaction must be a coinbase.
+    </span><span class="attr">#[error(<span class="string">"First transaction in block#{0} is not a coinbase"</span>)]
+    </span>FirstTransactionIsNotCoinbase(BlockHash),
+    <span class="doccomment">/// A block must contain only one coinbase transaction.
+    </span><span class="attr">#[error(<span class="string">"Block#{0} contains multiple coinbase transactions"</span>)]
+    </span>MultipleCoinbase(BlockHash),
+    <span class="attr">#[error(
+        <span class="string">"Block#{block_hash} has incorrect coinbase height, (expected: {expected}, got: {got})"
+    </span>)]
+    </span>BadCoinbaseBlockHeight {
+        block_hash: BlockHash,
+        got: u32,
+        expected: u32,
+    },
+    <span class="doccomment">/// Coinbase transaction is prematurely spent.
+    </span><span class="attr">#[error(<span class="string">"Premature spend of coinbase transaction in block#{0}"</span>)]
+    </span>PrematureSpendOfCoinbase(BlockHash),
+
+    <span class="doccomment">/// Block contains duplicate transactions.
+    </span><span class="attr">#[error(<span class="string">"Block#{block_hash} contains duplicate transaction at index {index}"</span>)]
+    </span>DuplicateTransaction { block_hash: BlockHash, index: usize },
+    <span class="doccomment">/// A transaction is not finalized.
+    </span><span class="attr">#[error(<span class="string">"Transaction in block#{0} is not finalized"</span>)]
+    </span>TransactionNotFinal(BlockHash),
+    <span class="doccomment">/// Transaction script contains too many signature operations.
+    </span><span class="attr">#[error(<span class="string">"Transaction in block #{block_number},{block_hash} exceeds signature operation limit (max: {MAX_BLOCK_SIGOPS_COST})"</span>)]
+    </span>TooManySigOps {
+        block_hash: BlockHash,
+        block_number: u32,
+    },
+    <span class="doccomment">/// Witness commitment in the block is invalid.
+    </span><span class="attr">#[error(<span class="string">"Invalid witness commitment in block#{0}"</span>)]
+    </span>BadWitnessCommitment(BlockHash),
+
+    <span class="doccomment">/// UTXO referenced by a transaction is missing
     </span><span class="attr">#[error(
-        <span class="string">"Missing UTXO in state for transaction ({context:?}). Missing UTXO: {missing_outpoint:?}"
+        <span class="string">"Missing UTXO in state for transaction ({context}) in block {block_hash}. Missing UTXO: {missing_utxo:?}"
     </span>)]
     </span>MissingUtxoInState {
+        block_hash: BlockHash,
         <span class="doccomment">/// Context of the transaction being processed.
         </span>context: TransactionContext,
         <span class="doccomment">/// UTXO missing from the UTXO set.
-        </span>missing_outpoint: OutPoint,
+        </span>missing_utxo: OutPoint,
     },
-    <span class="doccomment">/// Referenced output has already been spent in this block.
-    </span><span class="attr">#[error(<span class="string">"UTXO already spent in current block (#{block_number}:{txid}: {utxo:?})"</span>)]
+    <span class="doccomment">/// UTXO has already been spent within the same block.
+    </span><span class="attr">#[error(<span class="string">"UTXO already spent in current block (#{block_number},{block_hash}:{txid}: {utxo:?})"</span>)]
     </span>AlreadySpentInCurrentBlock {
+        block_hash: BlockHash,
         block_number: u32,
         txid: Txid,
         utxo: OutPoint,
     },
-    <span class="attr">#[error(<span class="string">"Premature spend of coinbase"</span>)]
-    </span>PrematureSpendOfCoinbase,
-    <span class="attr">#[error(<span class="string">"Total input amount is below total output amount ({value_in} &lt; {value_out})"</span>)]
-    </span>InsufficientFunds { value_in: u64, value_out: u64 },
-    <span class="comment">// Invalid coinbase value.
-    </span><span class="attr">#[error(<span class="string">"Block reward is larger than the sum of block fee and subsidy"</span>)]
-    </span>InvalidBlockReward,
+    <span class="doccomment">/// Insufficient funds: total input amount is lower than the total output amount.
+    </span><span class="attr">#[error(<span class="string">"Block#{block_hash} has an invalid transaction: total input {value_in} &lt; total output {value_out}"</span>)]
+    </span>InsufficientFunds {
+        block_hash: BlockHash,
+        value_in: u64,
+        value_out: u64,
+    },
+    <span class="doccomment">/// Block reward (coinbase value) exceeds the allowed subsidy + transaction fees.
+    </span><span class="attr">#[error(<span class="string">"Block#{0} reward exceeds allowed amount (subsidy + fees)"</span>)]
+    </span>InvalidBlockReward(BlockHash),
+    <span class="doccomment">/// A transaction script failed verification.
+    </span><span class="comment">// #[error(
+    // "Script verification failure in block#{block_hash}. Context: {context}, input_index: {input_index}: {error:?}"
+    // )]
+    // InvalidScript {
+    // block_hash: BlockHash,
+    // context: TransactionContext,
+    // input_index: usize,
+    // error: Box&lt;subcoin_script::Error&gt;,
+    // },
+    </span><span class="attr">#[error(<span class="string">"BIP34 error in block#{0}: {1:?}"</span>)]
+    </span>Bip34(BlockHash, Bip34Error),
+    <span class="attr">#[error(<span class="string">"Bitcoin codec error: {0:?}"</span>)]
+    </span>BitcoinCodec(bitcoin::io::Error),
+    <span class="attr">#[error(transparent)]
+    </span>BitcoinConsensus(<span class="attr">#[from] </span>bitcoinconsensus::Error),
+    <span class="doccomment">/// An error occurred in the client.
+    </span><span class="attr">#[error(transparent)]
+    </span>Client(<span class="attr">#[from] </span>sp_blockchain::Error),
     <span class="attr">#[error(transparent)]
     </span>Transaction(<span class="attr">#[from] </span>TxError),
     <span class="doccomment">/// Block header error.
     </span><span class="attr">#[error(transparent)]
     </span>Header(<span class="attr">#[from] </span>HeaderError),
-    <span class="attr">#[error(transparent)]
-    </span>BitcoinConsensus(<span class="attr">#[from] </span>bitcoinconsensus::Error),
-    <span class="attr">#[error(<span class="string">"Bip34 error: {0:?}"</span>)]
-    </span>Bip34(Bip34Error),
-    <span class="attr">#[error(<span class="string">"Bitcoin codec: {0:?}"</span>)]
-    </span>BitcoinCodec(bitcoin::io::Error),
-    <span class="doccomment">/// An error occurred in the client.
-    </span><span class="attr">#[error(transparent)]
-    </span>Client(<span class="attr">#[from] </span>sp_blockchain::Error),
 }
 
 <span class="doccomment">/// A struct responsible for verifying Bitcoin blocks.
@@ -783,7 +903,7 @@
     header_verifier: HeaderVerifier&lt;Block, Client&gt;,
     block_verification: BlockVerification,
     coin_storage_key: Arc&lt;<span class="kw">dyn </span>CoinStorageKey&gt;,
-    verify_script: bool,
+    script_engine: ScriptEngine,
     _phantom: PhantomData&lt;(Block, BE)&gt;,
 }
 
@@ -794,7 +914,7 @@
         network: bitcoin::Network,
         block_verification: BlockVerification,
         coin_storage_key: Arc&lt;<span class="kw">dyn </span>CoinStorageKey&gt;,
-        verify_script: bool,
+        script_engine: ScriptEngine,
     ) -&gt; <span class="self">Self </span>{
         <span class="kw">let </span>chain_params = ChainParams::new(network);
         <span class="kw">let </span>header_verifier = HeaderVerifier::new(client.clone(), chain_params.clone());
@@ -804,7 +924,7 @@
             header_verifier,
             block_verification,
             coin_storage_key,
-            verify_script,
+            script_engine,
             _phantom: Default::default(),
         }
     }
@@ -823,12 +943,13 @@
     </span><span class="kw">pub fn </span>verify_block(<span class="kw-2">&amp;</span><span class="self">self</span>, block_number: u32, block: <span class="kw-2">&amp;</span>BitcoinBlock) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
         <span class="kw">let </span>txids = <span class="self">self</span>.check_block_sanity(block_number, block)<span class="question-mark">?</span>;
 
-        <span class="self">self</span>.contextual_check_block(block_number, block, txids)
+        <span class="self">self</span>.contextual_check_block(block_number, block.block_hash(), block, txids)
     }
 
     <span class="kw">fn </span>contextual_check_block(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         block_number: u32,
+        block_hash: BlockHash,
         block: <span class="kw-2">&amp;</span>BitcoinBlock,
         txids: HashMap&lt;usize, Txid&gt;,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
@@ -839,12 +960,12 @@
                 <span class="kw">if </span>block_number &gt;= <span class="self">self</span>.chain_params.segwit_height
                     &amp;&amp; !block.check_witness_commitment()
                 {
-                    <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadWitnessCommitment);
+                    <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadWitnessCommitment(block_hash));
                 }
 
                 <span class="comment">// Check the block weight with witness data.
                 </span><span class="kw">if </span>block.weight() &gt; MAX_BLOCK_WEIGHT {
-                    <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadBlockLength);
+                    <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BlockTooLarge(block_hash));
                 }
 
                 <span class="self">self</span>.verify_transactions(block_number, block, txids, lock_time_cutoff)<span class="question-mark">?</span>;
@@ -873,8 +994,10 @@
         block_number: u32,
         block: <span class="kw-2">&amp;</span>BitcoinBlock,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;HashMap&lt;usize, Txid&gt;, Error&gt; {
+        <span class="kw">let </span>block_hash = block.block_hash();
+
         <span class="kw">if </span>block.txdata.is_empty() {
-            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::EmptyTransactionList);
+            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::EmptyTransactionList(block_hash));
         }
 
         <span class="comment">// Size limits, without tx witness data.
@@ -882,11 +1005,11 @@
             || Weight::from_wu((block_base_size(block) * WITNESS_SCALE_FACTOR) <span class="kw">as </span>u64)
                 &gt; MAX_BLOCK_WEIGHT
         {
-            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadBlockLength);
+            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BlockTooLarge(block_hash));
         }
 
         <span class="kw">if </span>!block.txdata[<span class="number">0</span>].is_coinbase() {
-            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::FirstTransactionIsNotCoinbase);
+            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::FirstTransactionIsNotCoinbase(block_hash));
         }
 
         <span class="comment">// Check duplicate transactions
@@ -899,13 +1022,13 @@
 
         <span class="kw">for </span>(index, tx) <span class="kw">in </span>block.txdata.iter().enumerate() {
             <span class="kw">if </span>index &gt; <span class="number">0 </span>&amp;&amp; tx.is_coinbase() {
-                <span class="kw">return </span><span class="prelude-val">Err</span>(Error::MultipleCoinbase);
+                <span class="kw">return </span><span class="prelude-val">Err</span>(Error::MultipleCoinbase(block_hash));
             }
 
             <span class="kw">let </span>txid = tx.compute_txid();
             <span class="kw">if </span>!seen_transactions.insert(txid) {
                 <span class="comment">// If txid is already in the set, we've found a duplicate.
-                </span><span class="kw">return </span><span class="prelude-val">Err</span>(Error::DuplicateTransaction(index));
+                </span><span class="kw">return </span><span class="prelude-val">Err</span>(Error::DuplicateTransaction { block_hash, index });
             }
 
             check_transaction_sanity(tx)<span class="question-mark">?</span>;
@@ -916,7 +1039,10 @@
         }
 
         <span class="kw">if </span>sig_ops * WITNESS_SCALE_FACTOR &gt; MAX_BLOCK_SIGOPS_COST <span class="kw">as </span>usize {
-            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::TooManySigOps { block_number });
+            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::TooManySigOps {
+                block_hash,
+                block_number,
+            });
         }
 
         <span class="comment">// Inline `Block::check_merkle_root()` to avoid redundantly computing txid.
@@ -933,7 +1059,7 @@
             .map(|merkle_root| block.header.merkle_root == merkle_root)
             .unwrap_or(<span class="bool-val">false</span>)
         {
-            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadMerkleRoot);
+            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadMerkleRoot(block_hash));
         }
 
         <span class="prelude-val">Ok</span>(txids)
@@ -961,12 +1087,29 @@
                 .expect(<span class="string">"Txid must exist as initialized in `check_block_sanity()`; qed"</span>)
         };
 
-        <span class="kw">let </span>flags = get_block_script_flags(block_number, block.block_hash(), <span class="kw-2">&amp;</span><span class="self">self</span>.chain_params);
+        <span class="kw">let </span>tx_context = |tx_index| TransactionContext {
+            block_number,
+            tx_index,
+            txid: get_txid(tx_index),
+        };
+
+        <span class="kw">let </span>flags = script_verify::get_block_script_flags(
+            block_number,
+            block.block_hash(),
+            <span class="kw-2">&amp;</span><span class="self">self</span>.chain_params,
+        );
+
+        <span class="kw">let </span>block_hash = block.block_hash();
 
         <span class="kw">let </span><span class="kw-2">mut </span>block_fee = <span class="number">0</span>;
-        <span class="kw">let </span><span class="kw-2">mut </span>spent_utxos = HashSet::new();
+        <span class="kw">let </span><span class="kw-2">mut </span>spent_coins_in_block = HashSet::new();
 
-        <span class="kw">let </span><span class="kw-2">mut </span>tx_data = Vec::&lt;u8&gt;::new();
+        <span class="comment">// Preallocated buffer for serializing tx when using the Core scripg engine.
+        </span><span class="kw">let </span><span class="kw-2">mut </span>tx_buffer = <span class="kw">if </span><span class="macro">matches!</span>(<span class="self">self</span>.script_engine, ScriptEngine::Core) {
+            Vec::&lt;u8&gt;::with_capacity(<span class="number">4096</span>)
+        } <span class="kw">else </span>{
+            Vec::new()
+        };
 
         <span class="comment">// TODO: verify transactions in parallel.
         // https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L2611
@@ -974,12 +1117,15 @@
             <span class="kw">if </span>tx_index == <span class="number">0 </span>{
                 <span class="comment">// Enforce rule that the coinbase starts with serialized block height.
                 </span><span class="kw">if </span>block_number &gt;= <span class="self">self</span>.chain_params.params.bip34_height {
-                    <span class="kw">let </span>block_height_in_coinbase =
-                        block.bip34_block_height().map_err(Error::Bip34)<span class="question-mark">? </span><span class="kw">as </span>u32;
+                    <span class="kw">let </span>block_height_in_coinbase = block
+                        .bip34_block_height()
+                        .map_err(|err| Error::Bip34(block_hash, err))<span class="question-mark">?
+                        </span><span class="kw">as </span>u32;
                     <span class="kw">if </span>block_height_in_coinbase != block_number {
                         <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadCoinbaseBlockHeight {
-                            got: block_height_in_coinbase,
+                            block_hash,
                             expected: block_number,
+                            got: block_height_in_coinbase,
                         });
                     }
                 }
@@ -987,18 +1133,18 @@
                 <span class="kw">continue</span>;
             }
 
-            <span class="kw">if </span>!is_final(tx, block_number, lock_time_cutoff) {
-                <span class="kw">return </span><span class="prelude-val">Err</span>(Error::TransactionNotFinal);
+            <span class="kw">if </span>!is_final_tx(tx, block_number, lock_time_cutoff) {
+                <span class="kw">return </span><span class="prelude-val">Err</span>(Error::TransactionNotFinal(block_hash));
             }
 
-            tx_data.clear();
-            tx.consensus_encode(<span class="kw-2">&amp;mut </span>tx_data)
+            tx_buffer.clear();
+            tx.consensus_encode(<span class="kw-2">&amp;mut </span>tx_buffer)
                 .map_err(Error::BitcoinCodec)<span class="question-mark">?</span>;
 
-            <span class="kw">let </span>spending_transaction = tx_data.as_slice();
+            <span class="kw">let </span>spending_transaction = tx_buffer.as_slice();
 
-            <span class="kw">let </span>access_coin = |out_point: OutPoint| -&gt; <span class="prelude-ty">Option</span>&lt;(TxOut, bool, u32)&gt; {
-                <span class="kw">match </span><span class="self">self</span>.find_utxo_in_state(parent_hash, out_point) {
+            <span class="kw">let </span>access_coin = |out_point: OutPoint| -&gt; <span class="prelude-ty">Result</span>&lt;(TxOut, bool, u32), Error&gt; {
+                <span class="kw">let </span>maybe_coin = <span class="kw">match </span><span class="self">self</span>.find_utxo_in_state(parent_hash, out_point) {
                     <span class="prelude-val">Some</span>(coin) =&gt; {
                         <span class="kw">let </span>Coin {
                             is_coinbase,
@@ -1016,18 +1162,26 @@
                     }
                     <span class="prelude-val">None </span>=&gt; find_utxo_in_current_block(block, out_point, tx_index, get_txid)
                         .map(|(txout, is_coinbase)| (txout, is_coinbase, block_number)),
-                }
+                };
+
+                maybe_coin.ok_or_else(|| Error::MissingUtxoInState {
+                    block_hash,
+                    context: tx_context(tx_index),
+                    missing_utxo: out_point,
+                })
             };
 
             <span class="comment">// CheckTxInputs.
             </span><span class="kw">let </span><span class="kw-2">mut </span>value_in = <span class="number">0</span>;
             <span class="kw">let </span><span class="kw-2">mut </span>sig_ops_cost = <span class="number">0</span>;
 
-            <span class="kw">for </span>(input_index, input) <span class="kw">in </span>tx.input.iter().enumerate() {
+            <span class="comment">// TODO: Check input in parallel.
+            </span><span class="kw">for </span>(input_index, input) <span class="kw">in </span>tx.input.iter().enumerate() {
                 <span class="kw">let </span>coin = input.previous_output;
 
-                <span class="kw">if </span>spent_utxos.contains(<span class="kw-2">&amp;</span>coin) {
+                <span class="kw">if </span>spent_coins_in_block.contains(<span class="kw-2">&amp;</span>coin) {
                     <span class="kw">return </span><span class="prelude-val">Err</span>(Error::AlreadySpentInCurrentBlock {
+                        block_hash,
                         block_number,
                         txid: get_txid(tx_index),
                         utxo: coin,
@@ -1035,37 +1189,38 @@
                 }
 
                 <span class="comment">// Access coin.
-                </span><span class="kw">let </span>(spent_output, is_coinbase, coin_height) =
-                    access_coin(coin).ok_or_else(|| Error::MissingUtxoInState {
-                        context: TransactionContext {
-                            block_number,
-                            tx_index,
-                            txid: get_txid(tx_index),
-                        },
-                        missing_outpoint: coin,
-                    })<span class="question-mark">?</span>;
+                </span><span class="kw">let </span>(spent_output, is_coinbase, coin_height) = access_coin(coin)<span class="question-mark">?</span>;
 
                 <span class="comment">// If coin is coinbase, check that it's matured.
                 </span><span class="kw">if </span>is_coinbase &amp;&amp; block_number - coin_height &lt; COINBASE_MATURITY {
-                    <span class="kw">return </span><span class="prelude-val">Err</span>(Error::PrematureSpendOfCoinbase);
+                    <span class="kw">return </span><span class="prelude-val">Err</span>(Error::PrematureSpendOfCoinbase(block_hash));
                 }
 
-                <span class="kw">if </span><span class="self">self</span>.verify_script {
-                    <span class="kw">let </span>script_verify_result = bitcoinconsensus::verify_with_flags(
-                        spent_output.script_pubkey.as_bytes(),
-                        spent_output.value.to_sat(),
-                        spending_transaction,
-                        input_index,
-                        flags,
-                    );
-
-                    <span class="kw">match </span>script_verify_result {
-                        <span class="prelude-val">Ok</span>(()) | <span class="prelude-val">Err</span>(bitcoinconsensus::Error::ERR_SCRIPT) =&gt; {}
-                        <span class="prelude-val">Err</span>(script_error) =&gt; <span class="kw">return </span><span class="prelude-val">Err</span>(script_error.into()),
+                <span class="macro">tracing::debug!</span>(
+                    block_number,
+                    tx_index,
+                    txid = <span class="question-mark">?</span>get_txid(tx_index),
+                    input_index,
+                    <span class="string">"Verifying input script"
+                </span>);
+                <span class="kw">match </span><span class="self">self</span>.script_engine {
+                    ScriptEngine::Core =&gt; {
+                        script_verify::verify_input_script(
+                            <span class="kw-2">&amp;</span>spent_output,
+                            spending_transaction,
+                            input_index,
+                            flags,
+                        )<span class="question-mark">?</span>;
+                    }
+                    ScriptEngine::None =&gt; {
+                        <span class="comment">// Skip script verification.
+                    </span>}
+                    ScriptEngine::Subcoin =&gt; {
+                        <span class="macro">unimplemented!</span>(<span class="string">"Subcoin Bitcoin Script Interpreter"</span>);
                     }
                 }
 
-                spent_utxos.insert(coin);
+                spent_coins_in_block.insert(coin);
                 value_in += spent_output.value.to_sat();
             }
 
@@ -1074,11 +1229,14 @@
             // &gt; * p2sh (when P2SH enabled in flags and excludes coinbase)
             // &gt; * witness (when witness enabled in flags and excludes coinbase)
             </span>sig_ops_cost += tx.total_sigop_cost(|out_point: <span class="kw-2">&amp;</span>OutPoint| {
-                access_coin(<span class="kw-2">*</span>out_point).map(|(txout, <span class="kw">_</span>, <span class="kw">_</span>)| txout)
+                access_coin(<span class="kw-2">*</span>out_point).map(|(txout, <span class="kw">_</span>, <span class="kw">_</span>)| txout).ok()
             });
 
             <span class="kw">if </span>sig_ops_cost &gt; MAX_BLOCK_SIGOPS_COST <span class="kw">as </span>usize {
-                <span class="kw">return </span><span class="prelude-val">Err</span>(Error::TooManySigOps { block_number });
+                <span class="kw">return </span><span class="prelude-val">Err</span>(Error::TooManySigOps {
+                    block_hash,
+                    block_number,
+                });
             }
 
             <span class="kw">let </span>value_out = tx
@@ -1092,6 +1250,7 @@
             </span><span class="kw">let </span>tx_fee = value_in
                 .checked_sub(value_out)
                 .ok_or(Error::InsufficientFunds {
+                    block_hash,
                     value_in,
                     value_out,
                 })<span class="question-mark">?</span>;
@@ -1109,7 +1268,7 @@
 
         <span class="comment">// Ensures no inflation.
         </span><span class="kw">if </span>coinbase_value &gt; block_fee + subsidy {
-            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::InvalidBlockReward);
+            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::InvalidBlockReward(block_hash));
         }
 
         <span class="prelude-val">Ok</span>(())
@@ -1157,47 +1316,6 @@
                 .cloned()
                 .map(|txout| (txout, is_coinbase))
         })
-}
-
-<span class="doccomment">/// Returns the script validation flags for the specified block.
-///
-/// &lt;https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L2360&gt;
-</span><span class="kw">fn </span>get_block_script_flags(
-    height: u32,
-    block_hash: BlockHash,
-    chain_params: <span class="kw-2">&amp;</span>ChainParams,
-) -&gt; c_uint {
-    <span class="kw">if let </span><span class="prelude-val">Some</span>(flag) = chain_params
-        .script_flag_exceptions
-        .get(<span class="kw-2">&amp;</span>block_hash)
-        .copied()
-    {
-        <span class="kw">return </span>flag;
-    }
-
-    <span class="kw">let </span><span class="kw-2">mut </span>flags = bitcoinconsensus::VERIFY_P2SH | bitcoinconsensus::VERIFY_WITNESS;
-
-    <span class="comment">// Enforce the DERSIG (BIP66) rule
-    </span><span class="kw">if </span>height &gt;= chain_params.params.bip66_height {
-        flags |= bitcoinconsensus::VERIFY_DERSIG;
-    }
-
-    <span class="comment">// Enforce CHECKLOCKTIMEVERIFY (BIP65)
-    </span><span class="kw">if </span>height &gt;= chain_params.params.bip65_height {
-        flags |= bitcoinconsensus::VERIFY_CHECKLOCKTIMEVERIFY;
-    }
-
-    <span class="comment">// Enforce CHECKSEQUENCEVERIFY (BIP112)
-    </span><span class="kw">if </span>height &gt;= chain_params.csv_height {
-        flags |= bitcoinconsensus::VERIFY_CHECKSEQUENCEVERIFY;
-    }
-
-    <span class="comment">// Enforce BIP147 NULLDUMMY (activated simultaneously with segwit)
-    </span><span class="kw">if </span>height &gt;= chain_params.segwit_height {
-        flags |= bitcoinconsensus::VERIFY_NULLDUMMY;
-    }
-
-    flags
 }
 
 <span class="doccomment">/// Returns the base block size.

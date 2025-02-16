@@ -149,10 +149,53 @@
 <a href="#149" id="149">149</a>
 <a href="#150" id="150">150</a>
 <a href="#151" id="151">151</a>
+<a href="#152" id="152">152</a>
+<a href="#153" id="153">153</a>
+<a href="#154" id="154">154</a>
+<a href="#155" id="155">155</a>
+<a href="#156" id="156">156</a>
+<a href="#157" id="157">157</a>
+<a href="#158" id="158">158</a>
+<a href="#159" id="159">159</a>
+<a href="#160" id="160">160</a>
+<a href="#161" id="161">161</a>
+<a href="#162" id="162">162</a>
+<a href="#163" id="163">163</a>
+<a href="#164" id="164">164</a>
+<a href="#165" id="165">165</a>
+<a href="#166" id="166">166</a>
+<a href="#167" id="167">167</a>
+<a href="#168" id="168">168</a>
+<a href="#169" id="169">169</a>
+<a href="#170" id="170">170</a>
+<a href="#171" id="171">171</a>
+<a href="#172" id="172">172</a>
+<a href="#173" id="173">173</a>
+<a href="#174" id="174">174</a>
+<a href="#175" id="175">175</a>
+<a href="#176" id="176">176</a>
+<a href="#177" id="177">177</a>
+<a href="#178" id="178">178</a>
+<a href="#179" id="179">179</a>
+<a href="#180" id="180">180</a>
+<a href="#181" id="181">181</a>
+<a href="#182" id="182">182</a>
+<a href="#183" id="183">183</a>
+<a href="#184" id="184">184</a>
+<a href="#185" id="185">185</a>
+<a href="#186" id="186">186</a>
+<a href="#187" id="187">187</a>
+<a href="#188" id="188">188</a>
+<a href="#189" id="189">189</a>
+<a href="#190" id="190">190</a>
+<a href="#191" id="191">191</a>
+<a href="#192" id="192">192</a>
+<a href="#193" id="193">193</a>
+<a href="#194" id="194">194</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>clap::Parser;
-<span class="kw">use </span>sc_consensus_nakamoto::{BlockVerification, ImportConfig};
+<span class="kw">use </span>sc_consensus_nakamoto::{BlockVerification, ImportConfig, ScriptEngine};
 <span class="kw">use </span>std::path::PathBuf;
-<span class="kw">use </span>subcoin_network::PeerId;
+<span class="kw">use </span>subcoin_network::{PeerId, SyncStrategy};
 
 <span class="doccomment">/// Chain.
 ///
@@ -178,6 +221,35 @@
             <span class="self">Self</span>::BitcoinMainnet =&gt; <span class="string">"bitcoin-mainnet"</span>,
             <span class="self">Self</span>::BitcoinTestnet =&gt; <span class="string">"bitcoin-testnet"</span>,
             <span class="self">Self</span>::BitcoinSignet =&gt; <span class="string">"bitcoin-signet"</span>,
+        }
+    }
+}
+
+<span class="doccomment">/// Provides the default values for optional parameters.
+</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">struct </span>Defaults;
+
+<span class="kw">impl </span>Defaults {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>min_sync_peer_threshold(is_dev: bool) -&gt; usize {
+        <span class="kw">if </span>is_dev {
+            <span class="number">0
+        </span>} <span class="kw">else </span>{
+            <span class="number">3
+        </span>}
+    }
+
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>sync_strategy(is_dev: bool) -&gt; SyncStrategy {
+        <span class="kw">if </span>is_dev {
+            SyncStrategy::BlocksFirst
+        } <span class="kw">else </span>{
+            SyncStrategy::HeadersFirst
+        }
+    }
+
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>script_engine(is_dev: bool) -&gt; ScriptEngine {
+        <span class="kw">if </span>is_dev {
+            ScriptEngine::Subcoin
+        } <span class="kw">else </span>{
+            ScriptEngine::Core
         }
     }
 }
@@ -222,13 +294,22 @@
     <span class="doccomment">/// Minimum peer threshold required to start block sync.
     ///
     /// The chain sync won't be started until the number of sync peers reaches this threshold.
-    /// Set to `0` to disable the peer threshold limit. Default: 3
-    </span><span class="attr">#[arg(long, default_value = <span class="string">"3"</span>)]
-    </span><span class="kw">pub </span>min_sync_peer_threshold: usize,
+    /// Providing `0` disables the peer threshold limit.
+    ///
+    /// If not provided, defaults to 0 in development mode and 3 otherwise.
+    </span><span class="attr">#[arg(long)]
+    </span><span class="kw">pub </span>min_sync_peer_threshold: <span class="prelude-ty">Option</span>&lt;usize&gt;,
 }
 
 <span class="attr">#[derive(Debug, Clone, Parser)]
 </span><span class="kw">pub struct </span>CommonParams {
+    <span class="doccomment">/// Specify the development chain.
+    ///
+    /// This flag sets `--min-sync-peer-threshold=0`, `--sync-strategy=blocks-first` and `--script-engine=subcoin`
+    /// flags, unless explicitly overridden.
+    </span><span class="attr">#[arg(long)]
+    </span><span class="kw">pub </span>dev: bool,
+
     <span class="doccomment">/// Specify the chain.
     </span><span class="attr">#[arg(long, value_name = <span class="string">"CHAIN"</span>, default_value = <span class="string">"bitcoin-mainnet"</span>)]
     </span><span class="kw">pub </span>chain: Chain,
@@ -237,9 +318,12 @@
     </span><span class="attr">#[clap(long, default_value = <span class="string">"full"</span>)]
     </span><span class="kw">pub </span>block_verification: BlockVerification,
 
-    <span class="doccomment">/// Whether to verify the TxIn scripts during the block verification.
-    </span><span class="attr">#[clap(long, default_value_t = <span class="bool-val">true</span>)]
-    </span><span class="kw">pub </span>verify_script: bool,
+    <span class="doccomment">/// Specifies the backend for Bitcoin script verification.
+    ///
+    /// If not provided, defaults to `ScriptEngine::Subcoin` in development mode
+    /// and `ScriptEngine::Core` otherwise.
+    </span><span class="attr">#[clap(long)]
+    </span><span class="kw">pub </span>script_engine: <span class="prelude-ty">Option</span>&lt;ScriptEngine&gt;,
 
     <span class="doccomment">/// Specify custom base path.
     </span><span class="attr">#[arg(long, short = <span class="string">'d'</span>, value_name = <span class="string">"PATH"</span>)]
@@ -271,8 +355,8 @@
         <span class="comment">// TODO: expose more flags?
         </span>sc_cli::SharedParams {
             chain: <span class="prelude-val">Some</span>(<span class="self">self</span>.chain.chain_spec_id().to_string()),
-            dev: <span class="bool-val">false</span>,
-            base_path: <span class="self">self</span>.base_path.clone(),
+            dev: <span class="bool-val">false</span>, <span class="comment">// TODO: align with is_dev?
+            </span>base_path: <span class="self">self</span>.base_path.clone(),
             log: <span class="self">self</span>.log.clone(),
             detailed_log_output: <span class="bool-val">false</span>,
             disable_log_color: <span class="bool-val">false</span>,
@@ -291,12 +375,14 @@
         }
     }
 
-    <span class="kw">pub fn </span>import_config(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; ImportConfig {
+    <span class="kw">pub fn </span>import_config(<span class="kw-2">&amp;</span><span class="self">self</span>, is_dev: bool) -&gt; ImportConfig {
         ImportConfig {
             network: <span class="self">self</span>.bitcoin_network(),
             block_verification: <span class="self">self</span>.block_verification,
             execute_block: <span class="bool-val">true</span>,
-            verify_script: <span class="self">self</span>.verify_script,
+            script_engine: <span class="self">self
+                </span>.script_engine
+                .unwrap_or_else(|| Defaults::script_engine(is_dev)),
         }
     }
 }

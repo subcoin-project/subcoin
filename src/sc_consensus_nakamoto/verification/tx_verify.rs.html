@@ -119,6 +119,14 @@
 <a href="#119" id="119">119</a>
 <a href="#120" id="120">120</a>
 <a href="#121" id="121">121</a>
+<a href="#122" id="122">122</a>
+<a href="#123" id="123">123</a>
+<a href="#124" id="124">124</a>
+<a href="#125" id="125">125</a>
+<a href="#126" id="126">126</a>
+<a href="#127" id="127">127</a>
+<a href="#128" id="128">128</a>
+<a href="#129" id="129">129</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">super</span>::MAX_BLOCK_WEIGHT;
 <span class="kw">use </span>bitcoin::absolute::{LockTime, LOCK_TIME_THRESHOLD};
 <span class="kw">use </span>bitcoin::blockdata::weight::WITNESS_SCALE_FACTOR;
@@ -156,7 +164,7 @@
 }
 
 <span class="doccomment">/// Checks whether the transaction is final at the given height and block time.
-</span><span class="kw">pub fn </span>is_final(tx: <span class="kw-2">&amp;</span>Transaction, height: u32, block_time: u32) -&gt; bool {
+</span><span class="kw">pub fn </span>is_final_tx(tx: <span class="kw-2">&amp;</span>Transaction, height: u32, block_time: u32) -&gt; bool {
     <span class="kw">if </span>tx.lock_time == LockTime::ZERO {
         <span class="kw">return </span><span class="bool-val">true</span>;
     }
@@ -171,7 +179,15 @@
         <span class="kw">return </span><span class="bool-val">true</span>;
     }
 
-    tx.input.iter().all(|txin| txin.sequence.is_final())
+    <span class="comment">// Even if tx.nLockTime isn't satisfied by nBlockHeight/nBlockTime, a
+    // transaction is still considered final if all inputs' nSequence ==
+    // SEQUENCE_FINAL (0xffffffff), in which case nLockTime is ignored.
+    //
+    // Because of this behavior OP_CHECKLOCKTIMEVERIFY/CheckLockTime() will
+    // also check that the spending input's nSequence != SEQUENCE_FINAL,
+    // ensuring that an unsatisfied nLockTime value will actually cause
+    // IsFinalTx() to return false here:
+    </span>tx.input.iter().all(|txin| txin.sequence.is_final())
 }
 
 <span class="comment">// &lt;https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/consensus/tx_check.cpp#L11&gt;
@@ -204,7 +220,7 @@
     })<span class="question-mark">?</span>;
 
     <span class="comment">// Check for duplicate inputs.
-    </span><span class="kw">let </span><span class="kw-2">mut </span>seen_inputs = HashSet::new();
+    </span><span class="kw">let </span><span class="kw-2">mut </span>seen_inputs = HashSet::with_capacity(tx.input.len());
     <span class="kw">for </span>(index, txin) <span class="kw">in </span>tx.input.iter().enumerate() {
         <span class="kw">if </span>!seen_inputs.insert(txin.previous_output) {
             <span class="kw">return </span><span class="prelude-val">Err</span>(Error::DuplicateTxInput(index));

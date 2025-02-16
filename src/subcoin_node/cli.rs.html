@@ -362,7 +362,7 @@
             <span class="kw">let </span>bitcoin_network = cmd.common_params.bitcoin_network();
             <span class="kw">let </span>import_config = ImportConfig {
                 execute_block: cmd.execute_transactions,
-                ..cmd.common_params.import_config()
+                ..cmd.common_params.import_config(<span class="bool-val">true</span>)
             };
             <span class="kw">let </span>chain_spec_id = cmd.common_params.chain.chain_spec_id();
             <span class="kw">let </span>maybe_prometheus_config = cmd

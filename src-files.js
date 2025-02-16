@@ -1,7 +1,7 @@
 var srcIndex = new Map(JSON.parse('[\
 ["pallet_bitcoin",["",[],["lib.rs","types.rs"]]],\
 ["pallet_executive",["",[],["lib.rs"]]],\
-["sc_consensus_nakamoto",["",[["verification",[],["header_verify.rs","tx_verify.rs"]]],["aux_schema.rs","block_import.rs","chain_params.rs","import_queue.rs","lib.rs","metrics.rs","verification.rs","verifier.rs"]]],\
+["sc_consensus_nakamoto",["",[["verification",[],["header_verify.rs","script_verify.rs","tx_verify.rs"]]],["aux_schema.rs","block_import.rs","chain_params.rs","import_queue.rs","lib.rs","metrics.rs","verification.rs","verifier.rs"]]],\
 ["subcoin_crypto",["",[],["lib.rs","muhash.rs"]]],\
 ["subcoin_indexer",["",[],["lib.rs","transaction_indexer.rs"]]],\
 ["subcoin_informant",["",[],["display.rs","lib.rs"]]],\

@@ -314,10 +314,88 @@
 <a href="#314" id="314">314</a>
 <a href="#315" id="315">315</a>
 <a href="#316" id="316">316</a>
+<a href="#317" id="317">317</a>
+<a href="#318" id="318">318</a>
+<a href="#319" id="319">319</a>
+<a href="#320" id="320">320</a>
+<a href="#321" id="321">321</a>
+<a href="#322" id="322">322</a>
+<a href="#323" id="323">323</a>
+<a href="#324" id="324">324</a>
+<a href="#325" id="325">325</a>
+<a href="#326" id="326">326</a>
+<a href="#327" id="327">327</a>
+<a href="#328" id="328">328</a>
+<a href="#329" id="329">329</a>
+<a href="#330" id="330">330</a>
+<a href="#331" id="331">331</a>
+<a href="#332" id="332">332</a>
+<a href="#333" id="333">333</a>
+<a href="#334" id="334">334</a>
+<a href="#335" id="335">335</a>
+<a href="#336" id="336">336</a>
+<a href="#337" id="337">337</a>
+<a href="#338" id="338">338</a>
+<a href="#339" id="339">339</a>
+<a href="#340" id="340">340</a>
+<a href="#341" id="341">341</a>
+<a href="#342" id="342">342</a>
+<a href="#343" id="343">343</a>
+<a href="#344" id="344">344</a>
+<a href="#345" id="345">345</a>
+<a href="#346" id="346">346</a>
+<a href="#347" id="347">347</a>
+<a href="#348" id="348">348</a>
+<a href="#349" id="349">349</a>
+<a href="#350" id="350">350</a>
+<a href="#351" id="351">351</a>
+<a href="#352" id="352">352</a>
+<a href="#353" id="353">353</a>
+<a href="#354" id="354">354</a>
+<a href="#355" id="355">355</a>
+<a href="#356" id="356">356</a>
+<a href="#357" id="357">357</a>
+<a href="#358" id="358">358</a>
+<a href="#359" id="359">359</a>
+<a href="#360" id="360">360</a>
+<a href="#361" id="361">361</a>
+<a href="#362" id="362">362</a>
+<a href="#363" id="363">363</a>
+<a href="#364" id="364">364</a>
+<a href="#365" id="365">365</a>
+<a href="#366" id="366">366</a>
+<a href="#367" id="367">367</a>
+<a href="#368" id="368">368</a>
+<a href="#369" id="369">369</a>
+<a href="#370" id="370">370</a>
+<a href="#371" id="371">371</a>
+<a href="#372" id="372">372</a>
+<a href="#373" id="373">373</a>
+<a href="#374" id="374">374</a>
+<a href="#375" id="375">375</a>
+<a href="#376" id="376">376</a>
+<a href="#377" id="377">377</a>
+<a href="#378" id="378">378</a>
+<a href="#379" id="379">379</a>
+<a href="#380" id="380">380</a>
+<a href="#381" id="381">381</a>
+<a href="#382" id="382">382</a>
+<a href="#383" id="383">383</a>
+<a href="#384" id="384">384</a>
+<a href="#385" id="385">385</a>
+<a href="#386" id="386">386</a>
+<a href="#387" id="387">387</a>
+<a href="#388" id="388">388</a>
+<a href="#389" id="389">389</a>
+<a href="#390" id="390">390</a>
+<a href="#391" id="391">391</a>
+<a href="#392" id="392">392</a>
+<a href="#393" id="393">393</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::subcoin_params::CommonParams;
 <span class="attr">#[cfg(feature = <span class="string">"remote-import"</span>)]
 </span><span class="kw">use </span><span class="kw">crate</span>::rpc_client::BlockstreamClient;
 <span class="kw">use </span><span class="kw">crate</span>::utils::Yield;
+<span class="kw">use </span>bitcoin::consensus::Decodable;
 <span class="kw">use </span>bitcoin_explorer::BitcoinDB;
 <span class="kw">use </span>futures::FutureExt;
 <span class="kw">use </span>sc_cli::{ImportParams, NodeKeyParams, PrometheusParams, SharedParams};
@@ -334,6 +412,26 @@
 <span class="kw">use </span>subcoin_primitives::BackendExt;
 <span class="kw">use </span>subcoin_runtime::interface::OpaqueBlock;
 <span class="kw">use </span>subcoin_service::FullClient;
+
+<span class="doccomment">/// Custom value parser to handle both file paths and raw block data in hex format.
+</span><span class="kw">fn </span>parse_raw_block(input: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;String, String&gt; {
+    <span class="comment">// Try to treat the input as a file path
+    </span><span class="kw">let </span>path = PathBuf::from(input);
+
+    <span class="kw">if </span>path.exists() &amp;&amp; path.is_file() {
+        <span class="comment">// If the file exists, read it as raw block data in hex.
+        </span><span class="kw">match </span>std::fs::read_to_string(<span class="kw-2">&amp;</span>path) {
+            <span class="prelude-val">Ok</span>(data) =&gt; <span class="prelude-val">Ok</span>(data.trim().to_string()),
+            <span class="prelude-val">Err</span>(err) =&gt; <span class="prelude-val">Err</span>(<span class="macro">format!</span>(
+                <span class="string">"Failed to read block data from {}: {err}"</span>,
+                path.display()
+            )),
+        }
+    } <span class="kw">else </span>{
+        <span class="comment">// Otherwise, treat the input as a hex string
+        </span><span class="prelude-val">Ok</span>(input.to_string())
+    }
+}
 
 <span class="doccomment">/// Import Bitcoin blocks into the node.
 </span><span class="attr">#[derive(clap::Parser, Debug, Clone)]
@@ -359,9 +457,19 @@
     </span><span class="attr">#[clap(long)]
     </span><span class="kw">pub </span>end_block: <span class="prelude-ty">Option</span>&lt;usize&gt;,
 
+    <span class="doccomment">/// Imports a single block into the node.
+    ///
+    /// The value can be the raw block data in hex or a path containing the block data.
+    </span><span class="attr">#[clap(long, value_parser = parse_raw_block, conflicts_with = <span class="string">"data_dir"</span>)]
+    </span><span class="kw">pub </span>raw_block: <span class="prelude-ty">Option</span>&lt;String&gt;,
+
     <span class="doccomment">/// Whether to execute the transactions within the blocks.
     </span><span class="attr">#[clap(long, default_value_t = <span class="bool-val">true</span>)]
     </span><span class="kw">pub </span>execute_transactions: bool,
+
+    <span class="attr">#[allow(missing_docs)]
+    #[clap(flatten)]
+    </span><span class="kw">pub </span>common_params: CommonParams,
 
     <span class="attr">#[allow(missing_docs)]
     #[clap(flatten)]
@@ -370,10 +478,6 @@
     <span class="attr">#[allow(missing_docs)]
     #[clap(flatten)]
     </span><span class="kw">pub </span>import_params: ImportParams,
-
-    <span class="attr">#[allow(missing_docs)]
-    #[clap(flatten)]
-    </span><span class="kw">pub </span>common_params: CommonParams,
 }
 
 <span class="doccomment">/// Custom version of [`sc_cli::ImportBlocksCmd`].
@@ -382,6 +486,7 @@
     import_params: ImportParams,
     block_count: <span class="prelude-ty">Option</span>&lt;usize&gt;,
     to: <span class="prelude-ty">Option</span>&lt;usize&gt;,
+    raw_block: <span class="prelude-ty">Option</span>&lt;String&gt;,
 }
 
 <span class="kw">impl </span>ImportBlocksCmd {
@@ -394,11 +499,62 @@
             import_params,
             block_count: cmd.block_count,
             to: cmd.end_block,
+            raw_block: cmd.raw_block.clone(),
         }
     }
 
     <span class="doccomment">/// Run the import-blocks command
-    </span><span class="kw">pub async fn </span>run&lt;<span class="lifetime">'a</span>&gt;(
+    </span><span class="kw">pub async fn </span>run(
+        <span class="kw-2">&amp;</span><span class="self">self</span>,
+        client: Arc&lt;FullClient&gt;,
+        maybe_data_dir: <span class="prelude-ty">Option</span>&lt;PathBuf&gt;,
+        import_config: ImportConfig,
+        spawn_handle: SpawnTaskHandle,
+        maybe_prometheus_config: <span class="prelude-ty">Option</span>&lt;PrometheusConfig&gt;,
+    ) -&gt; sc_cli::Result&lt;()&gt; {
+        <span class="comment">// Import single block.
+        </span><span class="kw">if let </span><span class="prelude-val">Some</span>(block_data) = <span class="kw-2">&amp;</span><span class="self">self</span>.raw_block {
+            <span class="kw">let </span>raw_block =
+                hex::decode(block_data).map_err(|err| <span class="macro">format!</span>(<span class="string">"Invalid hex data: {err}"</span>))<span class="question-mark">?</span>;
+            <span class="kw">let </span>block = bitcoin::Block::consensus_decode(<span class="kw-2">&amp;mut </span>raw_block.as_slice())
+                .expect(<span class="string">"Bad block data"</span>);
+
+            <span class="kw">let </span><span class="kw-2">mut </span>bitcoin_block_import =
+                BitcoinBlockImporter::&lt;<span class="kw">_</span>, <span class="kw">_</span>, <span class="kw">_</span>, <span class="kw">_</span>, subcoin_service::TransactionAdapter&gt;::new(
+                    client.clone(),
+                    client.clone(),
+                    import_config,
+                    Arc::new(subcoin_service::CoinStorageKey),
+                    maybe_prometheus_config
+                        .as_ref()
+                        .map(|config| config.registry.clone())
+                        .as_ref(),
+                );
+
+            <span class="kw">let </span>block_hash = block.block_hash();
+
+            bitcoin_block_import
+                .import_block(block, BlockOrigin::Own)
+                .<span class="kw">await
+                </span>.map_err(sp_blockchain::Error::Consensus)<span class="question-mark">?</span>;
+
+            <span class="macro">tracing::info!</span>(<span class="string">"Imported block#{block_hash} successfully"</span>);
+
+            <span class="kw">return </span><span class="prelude-val">Ok</span>(());
+        }
+
+        <span class="self">self</span>.import_blocks(
+            client,
+            maybe_data_dir,
+            import_config,
+            spawn_handle,
+            maybe_prometheus_config,
+        )
+        .<span class="kw">await
+    </span>}
+
+    <span class="doccomment">/// Imports a range of blocks.
+    </span><span class="kw">async fn </span>import_blocks(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         client: Arc&lt;FullClient&gt;,
         maybe_data_dir: <span class="prelude-ty">Option</span>&lt;PathBuf&gt;,
@@ -596,8 +752,6 @@
     }
 
     <span class="kw">async fn </span>block_at(<span class="kw-2">&amp;</span><span class="self">self</span>, height: usize) -&gt; sc_cli::Result&lt;bitcoin::Block&gt; {
-        <span class="kw">use </span>bitcoin::consensus::Decodable;
-
         <span class="kw">match </span><span class="self">self </span>{
             <span class="self">Self</span>::Local(db) =&gt; {
                 <span class="kw">let </span>raw_block = db.get_raw_block(height).map_err(|err| {

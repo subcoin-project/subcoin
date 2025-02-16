@@ -418,7 +418,17 @@
 <a href="#418" id="418">418</a>
 <a href="#419" id="419">419</a>
 <a href="#420" id="420">420</a>
-</pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::subcoin_params::{CommonParams, NetworkParams};
+<a href="#421" id="421">421</a>
+<a href="#422" id="422">422</a>
+<a href="#423" id="423">423</a>
+<a href="#424" id="424">424</a>
+<a href="#425" id="425">425</a>
+<a href="#426" id="426">426</a>
+<a href="#427" id="427">427</a>
+<a href="#428" id="428">428</a>
+<a href="#429" id="429">429</a>
+<a href="#430" id="430">430</a>
+</pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::cli::subcoin_params::{CommonParams, Defaults, NetworkParams};
 <span class="kw">use </span>clap::Parser;
 <span class="kw">use </span>sc_cli::{
     ImportParams, NetworkParams <span class="kw">as </span>SubstrateNetworkParams, NodeKeyParams, PrometheusParams, Role,
@@ -458,8 +468,11 @@
 </span><span class="attr">#[derive(Debug, Clone, Parser)]
 </span><span class="kw">pub struct </span>Run {
     <span class="doccomment">/// Specify the Bitcoin major sync strategy.
-    </span><span class="attr">#[clap(long, default_value = <span class="string">"headers-first"</span>)]
-    </span><span class="kw">pub </span>sync_strategy: SyncStrategy,
+    ///
+    /// If not provided, defaults to `SyncStrategy::BlocksFirst` in development mode and
+    /// `SyncStrategy::HeadersFirst` otherwise.
+    </span><span class="attr">#[clap(long)]
+    </span><span class="kw">pub </span>sync_strategy: <span class="prelude-ty">Option</span>&lt;SyncStrategy&gt;,
 
     <span class="doccomment">/// Specify the target block height for the initial block download.
     ///
@@ -493,7 +506,11 @@
 
     <span class="attr">#[allow(missing_docs)]
     #[clap(flatten)]
-    </span><span class="kw">pub </span>rpc_params: RpcParams,
+    </span><span class="kw">pub </span>common_params: CommonParams,
+
+    <span class="attr">#[allow(missing_docs)]
+    #[clap(flatten)]
+    </span><span class="kw">pub </span>network_params: NetworkParams,
 
     <span class="attr">#[allow(missing_docs)]
     #[clap(flatten)]
@@ -501,11 +518,7 @@
 
     <span class="attr">#[allow(missing_docs)]
     #[clap(flatten)]
-    </span><span class="kw">pub </span>common_params: CommonParams,
-
-    <span class="attr">#[allow(missing_docs)]
-    #[clap(flatten)]
-    </span><span class="kw">pub </span>network_params: NetworkParams,
+    </span><span class="kw">pub </span>rpc_params: RpcParams,
 
     <span class="attr">#[allow(missing_docs)]
     #[clap(flatten)]
@@ -522,6 +535,8 @@
 
 <span class="kw">impl </span>Run {
     <span class="kw">fn </span>subcoin_network_config(<span class="kw-2">&amp;</span><span class="self">self</span>, network: bitcoin::Network) -&gt; subcoin_network::Config {
+        <span class="kw">let </span>is_dev = <span class="self">self</span>.common_params.dev;
+
         subcoin_network::Config {
             network,
             listen_on: <span class="self">self</span>.network_params.listen,
@@ -531,11 +546,16 @@
             sync_target: <span class="self">self</span>.sync_target,
             max_outbound_peers: <span class="self">self</span>.network_params.max_outbound_peers,
             max_inbound_peers: <span class="self">self</span>.network_params.max_inbound_peers,
-            min_sync_peer_threshold: <span class="self">self</span>.network_params.min_sync_peer_threshold,
+            min_sync_peer_threshold: <span class="self">self
+                </span>.network_params
+                .min_sync_peer_threshold
+                .unwrap_or_else(|| Defaults::min_sync_peer_threshold(is_dev)),
             persistent_peer_latency_threshold: <span class="self">self
                 </span>.network_params
                 .persistent_peer_latency_threshold,
-            sync_strategy: <span class="self">self</span>.sync_strategy,
+            sync_strategy: <span class="self">self
+                </span>.sync_strategy
+                .unwrap_or_else(|| Defaults::sync_strategy(is_dev)),
             block_sync: <span class="self">self</span>.block_sync_option(),
             base_path: base_path_or_default(
                 <span class="self">self</span>.common_params.base_path.clone().map(Into::into),
@@ -592,7 +612,7 @@
         }
 
         <span class="kw">let </span>bitcoin_network = run.common_params.bitcoin_network();
-        <span class="kw">let </span>import_config = run.common_params.import_config();
+        <span class="kw">let </span>import_config = run.common_params.import_config(run.common_params.dev);
         <span class="kw">let </span>no_finalizer = run.no_finalizer;
 
         <span class="kw">let </span>subcoin_service::NodeComponents {

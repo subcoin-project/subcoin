@@ -759,7 +759,7 @@
                     <span class="string">"Corrupted state, number for {block_hash} not found in `queued_blocks`"</span>,
                 );
 
-                <span class="kw">if </span>max_block_number.map_or(<span class="bool-val">false</span>, |target_block| block_number &gt; target_block) {
+                <span class="kw">if </span>max_block_number.is_some_and(|target_block| block_number &gt; target_block) {
                     <span class="prelude-val">None
                 </span>} <span class="kw">else </span>{
                     <span class="self">self</span>.blocks_in_queue.insert(block_hash, block_number);

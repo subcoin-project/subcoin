@@ -521,6 +521,7 @@
 <a href="#521" id="521">521</a>
 <a href="#522" id="522">522</a>
 <a href="#523" id="523">523</a>
+<a href="#524" id="524">524</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! This module provides the implementation for importing Bitcoin blocks into Subcoin.
 //!
 //! Each Bitcoin block is converted into a Substrate block and imported into the database.
@@ -543,6 +544,7 @@
 
 </span><span class="kw">use </span><span class="kw">crate</span>::metrics::Metrics;
 <span class="kw">use </span><span class="kw">crate</span>::verification::{BlockVerification, BlockVerifier};
+<span class="kw">use </span><span class="kw">crate</span>::ScriptEngine;
 <span class="kw">use </span>bitcoin::blockdata::block::Header <span class="kw">as </span>BitcoinHeader;
 <span class="kw">use </span>bitcoin::hashes::Hash;
 <span class="kw">use </span>bitcoin::{Block <span class="kw">as </span>BitcoinBlock, BlockHash, Network, Work};
@@ -577,8 +579,8 @@
     </span><span class="kw">pub </span>block_verification: BlockVerification,
     <span class="doccomment">/// Whether to execute the transactions in the block.
     </span><span class="kw">pub </span>execute_block: bool,
-    <span class="doccomment">/// Whether to verify the Bitcoin script.
-    </span><span class="kw">pub </span>verify_script: bool,
+    <span class="doccomment">/// Bitcoin script interpreter.
+    </span><span class="kw">pub </span>script_engine: ScriptEngine,
 }
 
 <span class="attr">#[derive(Debug, Default)]
@@ -662,7 +664,7 @@
             config.network,
             config.block_verification,
             coin_storage_key,
-            config.verify_script,
+            config.script_engine,
         );
         <span class="kw">let </span>metrics = <span class="kw">match </span>registry {
             <span class="prelude-val">Some</span>(registry) =&gt; Metrics::register(registry)
