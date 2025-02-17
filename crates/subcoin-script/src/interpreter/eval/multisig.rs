@@ -1,10 +1,13 @@
-use super::sig::{check_pubkey_encoding, check_signature_encoding, find_and_delete, CheckSigError};
+use super::sig::{
+    check_ecdsa_signature, check_pubkey_encoding, check_signature_encoding, find_and_delete,
+    CheckSigError,
+};
 use crate::constants::{MAX_OPS_PER_SCRIPT, MAX_PUBKEYS_PER_MULTISIG};
 use crate::signature_checker::{SignatureChecker, SignatureError};
 use crate::stack::{Stack, StackError};
-use crate::{EcdsaSignature, SigVersion, VerifyFlags};
+use crate::{SigVersion, VerifyFlags};
 use bitcoin::script::PushBytesBuf;
-use bitcoin::{PublicKey, Script};
+use bitcoin::Script;
 
 /// Multisig error type.
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
@@ -167,18 +170,8 @@ fn eval_checkmultisig(
         check_signature_encoding(sig, flags)?;
         check_pubkey_encoding(key, flags, sig_version)?;
 
-        let sig = EcdsaSignature::parse_der_lax(sig).map_err(CheckMultiSigError::Ecdsa)?;
-
-        // Verify the signature against the public key.
-        let signature_is_correct = match PublicKey::from_slice(key) {
-            Ok(key) => checker
-                .check_ecdsa_signature(&sig, &key, subscript, sig_version)
-                .map_err(CheckMultiSigError::InvalidSignature)?,
-            Err(_) => {
-                // Public key is invalid, skip this key.
-                false
-            }
-        };
+        let signature_is_correct =
+            check_ecdsa_signature(sig, key, checker, subscript, sig_version)?;
 
         if signature_is_correct {
             satisfied_sigs_count += 1;

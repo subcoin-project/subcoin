@@ -1,5 +1,5 @@
 use crate::constants::{COMPRESSED_PUBKEY_SIZE, HALF_ORDER, VALIDATION_WEIGHT_PER_SIGOP_PASSED};
-use crate::signature_checker::SignatureChecker;
+use crate::signature_checker::{SignatureChecker, SignatureError};
 use crate::{EcdsaSignature, SchnorrSignature, ScriptExecutionData, SigVersion, VerifyFlags};
 use bitcoin::{PublicKey, Script, XOnlyPublicKey};
 use num_bigint::Sign;
@@ -70,11 +70,36 @@ pub enum CheckSigError {
     #[error("schnorr signature error: {0:?}")]
     SigFromSlice(bitcoin::taproot::SigFromSliceError),
     #[error("invalid signature: {0:?}")]
-    Signature(crate::signature_checker::SignatureError),
+    InvalidSignature(SignatureError),
     #[error("secp256k1 error: {0:?}")]
     Secp256k1(bitcoin::secp256k1::Error),
     #[error("Failed to convert bytes to ECDSA signature: {0:?}")]
     Ecdsa(bitcoin::ecdsa::Error),
+}
+
+/// Verify the signature against the public key.
+pub(super) fn check_ecdsa_signature(
+    sig: &[u8],
+    public_key: &[u8],
+    checker: &mut impl SignatureChecker,
+    subscript: &Script,
+    sig_version: SigVersion,
+) -> Result<bool, CheckSigError> {
+    let sig = match EcdsaSignature::parse_der_lax(sig) {
+        Ok(sig) => sig,
+        Err(bitcoin::ecdsa::Error::EmptySignature) => {
+            // Do not error out.
+            return Ok(false);
+        }
+        Err(err) => return Err(CheckSigError::Ecdsa(err)),
+    };
+
+    match PublicKey::from_slice(public_key) {
+        Ok(key) => checker
+            .check_ecdsa_signature(&sig, &key, subscript, sig_version)
+            .map_err(CheckSigError::InvalidSignature),
+        Err(_) => Ok(false),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -128,14 +153,9 @@ fn eval_checksig_pre_tapscript(
     check_signature_encoding(sig, flags)?;
     check_pubkey_encoding(pubkey, flags, sig_version)?;
 
-    let signature = EcdsaSignature::parse_der_lax(sig).map_err(CheckSigError::Ecdsa)?;
-    let pubkey = PublicKey::from_slice(pubkey).map_err(CheckSigError::FromSlice)?;
-
     let script_code = Script::from_bytes(&subscript);
 
-    let success = checker
-        .check_ecdsa_signature(&signature, &pubkey, script_code, sig_version)
-        .map_err(CheckSigError::Signature)?;
+    let success = check_ecdsa_signature(sig, pubkey, checker, script_code, sig_version)?;
 
     if !success && flags.intersects(VerifyFlags::NULLFAIL) && !sig.is_empty() {
         return Err(CheckSigError::NullFail);
@@ -398,7 +418,7 @@ fn eval_checksig_tapscript(
 
                 if !checker
                     .check_schnorr_signature(&sig, &pubkey, sig_version, exec_data)
-                    .map_err(CheckSigError::Signature)?
+                    .map_err(CheckSigError::InvalidSignature)?
                 {
                     return Ok(false);
                 }

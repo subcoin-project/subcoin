@@ -72,6 +72,7 @@ pub fn eval_script<SC: SignatureChecker>(
                 .unwrap_or(false);
 
         if !should_handle_instruction {
+            tracing::debug!("Ignoring instruction: {instruction:?}");
             continue;
         }
 
