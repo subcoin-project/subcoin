@@ -364,3 +364,33 @@ fn test_arithemetic_correct_arguments_order() {
         Ok(())
     );
 }
+
+#[test]
+fn test_opreturn() {
+    let _ = sc_tracing::logging::LoggerBuilder::new("subcoin_script=debug").init();
+
+    // https://www.blockchain.com/explorer/transactions/btc/da47bd83967d81f3cf6520f4ff81b3b6c4797bfe7ac2b5969aedbf01a840cda6
+    let tx = "0100000003fe1a25c8774c1e827f9ebdae731fe609ff159d6f7c15094e1d467a99a01e03100000000002012affffffff53a080075d834402e916390940782236b29d23db6f52dfc940a12b3eff99159c0000000000ffffffff61e4ed95239756bbb98d11dcf973146be0c17cc1cc94340deb8bc4d44cd88e92000000000a516352676a675168948cffffffff0220aa4400000000001976a9149bc0bbdd3024da4d0c38ed1aecf5c68dd1d3fa1288ac20aa4400000000001976a914169ff4804fd6596deb974f360c21584aa1e19c9788ac00000000";
+    let tx = decode_raw_tx(tx);
+
+    let pkscript = hex::decode("63516751676a68").unwrap();
+    let script_pubkey = Script::from_bytes(&pkscript);
+
+    let input_index = 2;
+    let input_amount = 9000000;
+
+    let input = &tx.input[input_index];
+    let flags = VerifyFlags::P2SH | VerifyFlags::WITNESS;
+    let mut checker = TransactionSignatureChecker::new(&tx, input_index, input_amount);
+
+    assert_eq!(
+        verify_script(
+            &input.script_sig,
+            &script_pubkey,
+            &input.witness,
+            &flags,
+            &mut checker,
+        ),
+        Ok(())
+    );
+}

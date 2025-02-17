@@ -10,6 +10,9 @@ use crate::signature_checker::SignatureChecker;
 use crate::stack::{Stack, StackError};
 use crate::{ScriptExecutionData, SigVersion, VerifyFlags};
 use bitcoin::hashes::{hash160, ripemd160, sha1, sha256, sha256d, Hash};
+use bitcoin::opcodes::all::{
+    OP_ENDIF as CONST_OP_ENDIF, OP_IF as CONST_OP_IF, OP_PUSHNUM_16 as CONST_OP_PUSHNUM_16,
+};
 use bitcoin::script::Instruction;
 use bitcoin::Script;
 use std::ops::{Add, Neg, Sub};
@@ -60,6 +63,18 @@ pub fn eval_script<SC: SignatureChecker>(
 
         let executing = exec_stack.iter().all(|x| *x);
 
+        let should_handle_instruction = executing
+            || instruction
+                .opcode()
+                .map(|opcode| {
+                    (CONST_OP_IF.to_u8()..=CONST_OP_ENDIF.to_u8()).contains(&opcode.to_u8())
+                })
+                .unwrap_or(false);
+
+        if !should_handle_instruction {
+            continue;
+        }
+
         match instruction {
             Instruction::PushBytes(p) => {
                 if p.len() > MAX_SCRIPT_ELEMENT_SIZE {
@@ -71,7 +86,7 @@ pub fn eval_script<SC: SignatureChecker>(
             Instruction::Op(op) => {
                 if matches!(sig_version, SigVersion::Base | SigVersion::WitnessV0) {
                     // Note how OP_RESERVED does not count towards the opcode limit.
-                    if op.to_u8() > bitcoin::opcodes::all::OP_PUSHNUM_16.to_u8() {
+                    if op.to_u8() > CONST_OP_PUSHNUM_16.to_u8() {
                         op_count += 1;
 
                         if op_count > MAX_OPS_PER_SCRIPT {
