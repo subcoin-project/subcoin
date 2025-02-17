@@ -507,12 +507,12 @@ where
                 }
 
                 // tracing::debug!(
-                    // target: "subcoin_script",
-                    // block_number,
-                    // tx_index,
-                    // txid = ?get_txid(tx_index),
-                    // input_index,
-                    // "Verifying input script"
+                // target: "subcoin_script",
+                // block_number,
+                // tx_index,
+                // txid = ?get_txid(tx_index),
+                // input_index,
+                // "Verifying input script"
                 // );
                 match self.script_engine {
                     ScriptEngine::Core => {
