@@ -42,9 +42,8 @@ pub trait SignatureChecker {
         sig: &EcdsaSignature,
         msg: &Message,
         pk: &PublicKey,
-    ) -> Result<(), SignatureError> {
+    ) -> Result<(), secp256k1::Error> {
         SECP.verify_ecdsa(msg, &sig.signature, &pk.inner)
-            .map_err(SignatureError::Ecdsa)
     }
 
     /// Checks an ECDSA signature in the context of a Bitcoin transaction.
@@ -86,9 +85,8 @@ pub trait SignatureChecker {
         sig: &SchnorrSignature,
         msg: &Message,
         pk: &XOnlyPublicKey,
-    ) -> Result<(), SignatureError> {
+    ) -> Result<(), secp256k1::Error> {
         SECP.verify_schnorr(&sig.signature, msg, pk)
-            .map_err(SignatureError::Schnorr)
     }
 
     /// Checks a Schnorr signature in the context of a Bitcoin transaction.

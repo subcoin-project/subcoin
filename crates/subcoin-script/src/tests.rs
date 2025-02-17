@@ -18,6 +18,20 @@ fn decode_pubkey(pubkey_hex: &str) -> PublicKey {
 }
 
 #[test]
+fn test_ecdsa_signature_normalize_s() {
+    // msg is collected from Block 183, tx_index=1, input_index=0
+    let msg = "1be470440ffae5a7f2bc59862007402e32f7d04b43311543006200e470f0d606";
+    let pk = "0411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3";
+    let full_sig = "3045022052ffc1929a2d8bd365c6a2a4e3421711b4b1e1b8781698ca9075807b4227abcb0221009984107ddb9e3813782b095d0d84361ed4c76e5edaf6561d252ae162c2341cfb01";
+
+    let pk = PublicKey::from_slice(&hex::decode(pk).unwrap()).unwrap();
+    let msg = Message::from_digest_slice(&hex::decode(msg).unwrap()).unwrap();
+    let sig = EcdsaSignature::parse_der_lax(&hex::decode(full_sig).unwrap()).unwrap();
+    SECP.verify_ecdsa(&msg, &sig.signature, &pk.inner)
+        .expect("Verify ECDSA signature");
+}
+
+#[test]
 fn test_basic_p2pk() {
     let _ = sc_tracing::logging::LoggerBuilder::new("subcoin_script=debug").init();
 
@@ -44,20 +58,6 @@ fn test_basic_p2pk() {
         )
         .expect("Verify p2pk");
     }
-}
-
-#[test]
-fn test_ecdsa_signature_normalize_s() {
-    // msg is collected from Block 183, tx_index=1, input_index=0
-    let msg = "1be470440ffae5a7f2bc59862007402e32f7d04b43311543006200e470f0d606";
-    let pk = "0411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3";
-    let full_sig = "3045022052ffc1929a2d8bd365c6a2a4e3421711b4b1e1b8781698ca9075807b4227abcb0221009984107ddb9e3813782b095d0d84361ed4c76e5edaf6561d252ae162c2341cfb01";
-
-    let pk = PublicKey::from_slice(&hex::decode(pk).unwrap()).unwrap();
-    let msg = Message::from_digest_slice(&hex::decode(msg).unwrap()).unwrap();
-    let sig = EcdsaSignature::parse_der_lax(&hex::decode(full_sig).unwrap()).unwrap();
-    SECP.verify_ecdsa(&msg, &sig.signature, &pk.inner)
-        .expect("Verify ECDSA signature");
 }
 
 #[test]
@@ -192,6 +192,36 @@ fn test_invalid_signature_may_be_expected() {
     let input_index = 0;
     let input = &tx.input[input_index];
     let input_amount = 1000000u64;
+    let mut checker = TransactionSignatureChecker::new(&tx, input_index, input_amount);
+
+    let flags = VerifyFlags::P2SH | VerifyFlags::WITNESS;
+
+    assert_eq!(
+        verify_script(
+            &input.script_sig,
+            &script_pubkey,
+            &input.witness,
+            &flags,
+            &mut checker,
+        ),
+        Ok(())
+    );
+}
+
+#[test]
+fn test_check_transaction_multisig() {
+    let _ = sc_tracing::logging::LoggerBuilder::new("subcoin_script=debug").init();
+
+    // https://www.blockchain.com/explorer/transactions/btc/70c4e749f2b8b907875d1483ae43e8a6790b0c8397bbb33682e3602617f9a77a
+    let tx = "01000000025718fb915fb8b3a802bb699ddf04dd91261ef6715f5f2820a2b1b9b7e38b4f27000000004a004830450221008c2107ed4e026ab4319a591e8d9ec37719cdea053951c660566e3a3399428af502202ecd823d5f74a77cc2159d8af2d3ea5d36a702fef9a7edaaf562aef22ac35da401ffffffff038f52231b994efb980382e4d804efeadaee13cfe01abe0d969038ccb45ec17000000000490047304402200487cd787fde9b337ab87f9fe54b9fd46d5d1692aa58e97147a4fe757f6f944202203cbcfb9c0fc4e3c453938bbea9e5ae64030cf7a97fafaf460ea2cb54ed5651b501ffffffff0100093d00000000001976a9144dc39248253538b93d3a0eb122d16882b998145888ac00000000";
+    let tx = decode_raw_tx(tx);
+
+    let data = hex::decode("51210351efb6e91a31221652105d032a2508275f374cea63939ad72f1b1e02f477da782100f2b7816db49d55d24df7bdffdbc1e203b424e8cd39f5651ab938e5e4a193569e52ae").unwrap();
+    let script_pubkey = Script::from_bytes(&data);
+
+    let input_index = 0;
+    let input = &tx.input[input_index];
+    let input_amount = 2u64;
     let mut checker = TransactionSignatureChecker::new(&tx, input_index, input_amount);
 
     let flags = VerifyFlags::P2SH | VerifyFlags::WITNESS;

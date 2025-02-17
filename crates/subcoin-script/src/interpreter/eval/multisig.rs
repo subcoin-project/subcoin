@@ -6,6 +6,7 @@ use crate::{EcdsaSignature, SigVersion, VerifyFlags};
 use bitcoin::script::PushBytesBuf;
 use bitcoin::{PublicKey, Script};
 
+/// Multisig error type.
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
 pub enum CheckMultiSigError {
     #[error("Invalid number of pubkeys, expected in the range of [0, {MAX_PUBKEYS_PER_MULTISIG}]")]
@@ -22,14 +23,14 @@ pub enum CheckMultiSigError {
     CheckMultiSigVerify,
     #[error("ECDSA error: {0:?}")]
     Ecdsa(bitcoin::ecdsa::Error),
-    #[error("Generating key from slice: {0:?}")]
-    FromSlice(bitcoin::key::FromSliceError),
+    #[error("Failed to parse public key from slice: {0:?}")]
+    PublicKey(bitcoin::key::FromSliceError),
     #[error("Secp256k1 error: {0:?}")]
     Secp256k1(bitcoin::secp256k1::Error),
     #[error(transparent)]
     CheckSig(#[from] CheckSigError),
     #[error(transparent)]
-    Signature(#[from] SignatureError),
+    InvalidSignature(#[from] SignatureError),
     #[error(transparent)]
     Stack(#[from] StackError),
 }
@@ -157,27 +158,33 @@ fn eval_checkmultisig(
     // Verify signatures against public keys.
     let mut success = true;
     let mut key_idx = 0;
-    let mut sig_idx = 0;
-    while sig_idx < sigs.len() && success {
+    let mut satisfied_sigs = 0;
+    while satisfied_sigs < sigs.len() && success {
         let key = &keys[key_idx];
-        let sig = &sigs[sig_idx];
+        let sig = &sigs[satisfied_sigs];
 
+        println!("sig: {}", hex::encode(sig));
+        println!("key: {}", hex::encode(key));
         check_signature_encoding(sig, flags)?;
         check_pubkey_encoding(key, flags, sig_version)?;
 
         let sig = EcdsaSignature::parse_der_lax(sig).map_err(CheckMultiSigError::Ecdsa)?;
-        let key = PublicKey::from_slice(key).map_err(CheckMultiSigError::FromSlice)?;
 
-        if checker
-            .check_ecdsa_signature(&sig, &key, subscript, sig_version)
-            .map_err(CheckMultiSigError::Signature)?
-        {
-            sig_idx += 1;
+        let signature_is_correct = match PublicKey::from_slice(key) {
+            Ok(key) => checker
+                .check_ecdsa_signature(&sig, &key, subscript, sig_version)
+                .map_err(CheckMultiSigError::InvalidSignature)?,
+            Err(_) => false,
+        };
+
+        if signature_is_correct {
+            satisfied_sigs += 1;
         }
+
         key_idx += 1;
 
         // Early exit if remaining keys can't satisfy remaining signatures.
-        success = sigs.len() - sig_idx <= keys.len() - key_idx;
+        success = sigs.len() - satisfied_sigs <= keys.len() - key_idx;
     }
 
     Ok(success)
