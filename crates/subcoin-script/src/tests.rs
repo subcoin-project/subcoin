@@ -179,7 +179,7 @@ fn test_transaction_bip65() {
 }
 
 #[test]
-fn test_invalid_signature_may_be_expected() {
+fn test_multisig_may_contain_invalid_signature() {
     let _ = sc_tracing::logging::LoggerBuilder::new("subcoin_script=debug").init();
 
     // https://www.blockchain.com/explorer/transactions/btc/bc179baab547b7d7c1d5d8d6f8b0cc6318eaa4b0dd0a093ad6ac7f5a1cb6b3ba
@@ -209,7 +209,7 @@ fn test_invalid_signature_may_be_expected() {
 }
 
 #[test]
-fn test_check_transaction_multisig() {
+fn test_multisig_may_contain_invalid_pubkey() {
     let _ = sc_tracing::logging::LoggerBuilder::new("subcoin_script=debug").init();
 
     // https://www.blockchain.com/explorer/transactions/btc/70c4e749f2b8b907875d1483ae43e8a6790b0c8397bbb33682e3602617f9a77a
@@ -222,6 +222,37 @@ fn test_check_transaction_multisig() {
     let input_index = 0;
     let input = &tx.input[input_index];
     let input_amount = 2u64;
+    let mut checker = TransactionSignatureChecker::new(&tx, input_index, input_amount);
+
+    let flags = VerifyFlags::P2SH | VerifyFlags::WITNESS;
+
+    assert_eq!(
+        verify_script(
+            &input.script_sig,
+            &script_pubkey,
+            &input.witness,
+            &flags,
+            &mut checker,
+        ),
+        Ok(())
+    );
+}
+
+#[test]
+fn test_check_transaction_multisig() {
+    let _ = sc_tracing::logging::LoggerBuilder::new("subcoin_script=debug").init();
+
+    // https://www.blockchain.com/explorer/transactions/btc/02b082113e35d5386285094c2829e7e2963fa0b5369fb7f4b79c4c90877dcd3d
+    let tx = "01000000013dcd7d87904c9cb7f4b79f36b5a03f96e2e729284c09856238d5353e1182b00200000000fd5e0100483045022100deeb1f13b5927b5e32d877f3c42a4b028e2e0ce5010fdb4e7f7b5e2921c1dcd2022068631cb285e8c1be9f061d2968a18c3163b780656f30a049effee640e80d9bff01483045022100ee80e164622c64507d243bd949217d666d8b16486e153ac6a1f8e04c351b71a502203691bef46236ca2b4f5e60a82a853a33d6712d6a1e7bf9a65e575aeb7328db8c014cc9524104a882d414e478039cd5b52a92ffb13dd5e6bd4515497439dffd691a0f12af9575fa349b5694ed3155b136f09e63975a1700c9f4d4df849323dac06cf3bd6458cd41046ce31db9bdd543e72fe3039a1f1c047dab87037c36a669ff90e28da1848f640de68c2fe913d363a51154a0c62d7adea1b822d05035077418267b1a1379790187410411ffd36c70776538d079fbae117dc38effafb33304af83ce4894589747aee1ef992f63280567f52f5ba870678b4ab4ff6c8ea600bd217870a8b4f1f09f3a8e8353aeffffffff0130d90000000000001976a914569076ba39fc4ff6a2291d9ea9196d8c08f9c7ab88ac00000000";
+    let tx = decode_raw_tx(tx);
+
+    let data = hex::decode("a9141a8b0026343166625c7475f01e48b5ede8c0252e87").unwrap();
+
+    let script_pubkey = Script::from_bytes(&data);
+
+    let input_index = 0;
+    let input = &tx.input[input_index];
+    let input_amount = 75600u64;
     let mut checker = TransactionSignatureChecker::new(&tx, input_index, input_amount);
 
     let flags = VerifyFlags::P2SH | VerifyFlags::WITNESS;

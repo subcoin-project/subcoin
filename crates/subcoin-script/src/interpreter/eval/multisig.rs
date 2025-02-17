@@ -157,34 +157,37 @@ fn eval_checkmultisig(
 
     // Verify signatures against public keys.
     let mut success = true;
-    let mut key_idx = 0;
-    let mut satisfied_sigs = 0;
-    while satisfied_sigs < sigs.len() && success {
-        let key = &keys[key_idx];
-        let sig = &sigs[satisfied_sigs];
+    let mut checked_keys_count = 0;
+    let mut satisfied_sigs_count = 0;
 
-        println!("sig: {}", hex::encode(sig));
-        println!("key: {}", hex::encode(key));
+    while satisfied_sigs_count < sigs.len() && success {
+        let key = &keys[checked_keys_count];
+        let sig = &sigs[satisfied_sigs_count];
+
         check_signature_encoding(sig, flags)?;
         check_pubkey_encoding(key, flags, sig_version)?;
 
         let sig = EcdsaSignature::parse_der_lax(sig).map_err(CheckMultiSigError::Ecdsa)?;
 
+        // Verify the signature against the public key.
         let signature_is_correct = match PublicKey::from_slice(key) {
             Ok(key) => checker
                 .check_ecdsa_signature(&sig, &key, subscript, sig_version)
                 .map_err(CheckMultiSigError::InvalidSignature)?,
-            Err(_) => false,
+            Err(_) => {
+                // Public key is invalid, skip this key.
+                false
+            }
         };
 
         if signature_is_correct {
-            satisfied_sigs += 1;
+            satisfied_sigs_count += 1;
         }
 
-        key_idx += 1;
+        checked_keys_count += 1;
 
         // Early exit if remaining keys can't satisfy remaining signatures.
-        success = sigs.len() - satisfied_sigs <= keys.len() - key_idx;
+        success = keys.len() - checked_keys_count >= sigs.len() - satisfied_sigs_count;
     }
 
     Ok(success)
