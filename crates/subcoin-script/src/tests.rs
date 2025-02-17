@@ -1,4 +1,4 @@
-pub mod interpreter;
+pub mod opcode;
 
 use crate::num::NumError;
 use crate::signature_checker::SECP;

@@ -506,14 +506,14 @@ where
                     return Err(Error::PrematureSpendOfCoinbase(block_hash));
                 }
 
-                tracing::debug!(
-                    target: "subcoin_script",
-                    block_number,
-                    tx_index,
-                    txid = ?get_txid(tx_index),
-                    input_index,
-                    "Verifying input script"
-                );
+                // tracing::debug!(
+                    // target: "subcoin_script",
+                    // block_number,
+                    // tx_index,
+                    // txid = ?get_txid(tx_index),
+                    // input_index,
+                    // "Verifying input script"
+                // );
                 match self.script_engine {
                     ScriptEngine::Core => {
                         script_verify::verify_input_script(
