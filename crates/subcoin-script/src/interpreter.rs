@@ -76,7 +76,7 @@ pub fn verify_script<SC: SignatureChecker>(
 
     // Bare witness program
     if flags.intersects(VerifyFlags::WITNESS) {
-        if let Some(witness_program) = parse_witness_program(script_pubkey) {
+        if let Some(witness_program) = parse_witness_program(script_pubkey)? {
             had_witness = true;
 
             // script_sig must be empty for all native witness programs, otherwise
@@ -131,7 +131,7 @@ pub fn verify_script<SC: SignatureChecker>(
 
             // P2SH witness program
             if flags.intersects(VerifyFlags::WITNESS) {
-                if let Some(witness_program) = parse_witness_program(pubkey2) {
+                if let Some(witness_program) = parse_witness_program(pubkey2)? {
                     had_witness = true;
                     let mut push_bytes = PushBytesBuf::new();
                     push_bytes
@@ -185,10 +185,20 @@ pub fn verify_script<SC: SignatureChecker>(
     Ok(())
 }
 
-fn parse_witness_program(script_pubkey: &Script) -> Option<WitnessProgram> {
-    script_pubkey.witness_version().and_then(|witness_version| {
-        WitnessProgram::new(witness_version, &script_pubkey.as_bytes()[2..]).ok()
-    })
+fn parse_witness_program(script_pubkey: &Script) -> Result<Option<WitnessProgram>, Error> {
+    use bitcoin::script::witness_program::Error as WitnessProgramError;
+
+    match script_pubkey.witness_version() {
+        Some(version) => match WitnessProgram::new(version, &script_pubkey.as_bytes()[2..]) {
+            Ok(witness_program) => Ok(Some(witness_program)),
+            Err(
+                WitnessProgramError::InvalidLength(_)
+                | WitnessProgramError::InvalidSegwitV0Length(_),
+            ) => Err(Error::WitnessProgramWrongLength),
+            Err(err) => unreachable!("Unknown witness program error: {err:?}"),
+        },
+        None => Ok(None),
+    }
 }
 
 fn verify_witness_program(
@@ -258,7 +268,9 @@ fn verify_witness_program(
                 &mut ScriptExecutionData::default(),
             )?;
         } else {
-            return Err(Error::WitnessProgramWrongLength);
+            unreachable!(
+                "Witness program length must be correct as checked in WitnessProgram::new(); qed"
+            )
         }
     } else if witness_version == WitnessVersion::V1
         && program.len() == WITNESS_V0_TAPROOT_SIZE

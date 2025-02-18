@@ -1,5 +1,5 @@
 pub mod opcode;
-// mod witness_tests;
+mod witness_tests;
 
 use crate::num::NumError;
 use crate::signature_checker::SECP;
@@ -9,7 +9,7 @@ use bitcoin::consensus::encode::deserialize;
 use bitcoin::secp256k1::Message;
 use bitcoin::{PublicKey, Script, ScriptBuf, Transaction};
 
-fn decode_raw_tx(tx_hex: &str) -> Transaction {
+pub(crate) fn decode_raw_tx(tx_hex: &str) -> Transaction {
     let tx_data = hex::decode(tx_hex).unwrap();
     deserialize(&tx_data).unwrap()
 }
