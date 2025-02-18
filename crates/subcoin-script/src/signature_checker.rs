@@ -252,7 +252,7 @@ impl SignatureChecker for TransactionSignatureChecker<'_> {
             tracing::debug!(
                 ?sig,
                 ?pk,
-                ?script_pubkey,
+                script_pubkey = hex::encode(script_pubkey.as_bytes()),
                 ?sig_version,
                 ?msg,
                 "[check_ecdsa_signature] Invalid ECDSA signature"
