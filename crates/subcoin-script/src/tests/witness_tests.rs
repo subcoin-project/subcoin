@@ -1,6 +1,5 @@
 use crate::tests::decode_raw_tx;
-use crate::{verify_script, TransactionSignatureChecker};
-use crate::{Error, VerifyFlags};
+use crate::{verify_script, Error, TransactionSignatureChecker, VerifyFlags};
 use bitcoin::hashes::Hash;
 use bitcoin::script::{Builder, Script};
 use bitcoin::transaction::Version;

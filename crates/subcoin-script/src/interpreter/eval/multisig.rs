@@ -1,9 +1,6 @@
-use super::sig::{
-    check_ecdsa_signature, check_pubkey_encoding, check_signature_encoding, find_and_delete,
-    CheckSigError,
-};
+use super::sig::{check_pubkey_encoding, check_signature_encoding, find_and_delete, CheckSigError};
 use crate::constants::{MAX_OPS_PER_SCRIPT, MAX_PUBKEYS_PER_MULTISIG};
-use crate::signature_checker::{SignatureChecker, SignatureError};
+use crate::signature_checker::{check_ecdsa_signature, SignatureChecker, SignatureError};
 use crate::stack::{Stack, StackError};
 use crate::{SigVersion, VerifyFlags};
 use bitcoin::script::PushBytesBuf;
@@ -170,8 +167,7 @@ fn eval_checkmultisig(
         check_signature_encoding(sig, flags)?;
         check_pubkey_encoding(key, flags, sig_version)?;
 
-        let signature_is_correct =
-            check_ecdsa_signature(sig, key, checker, subscript, sig_version)?;
+        let signature_is_correct = check_ecdsa_signature(sig, key, checker, subscript, sig_version);
 
         if signature_is_correct {
             satisfied_sigs_count += 1;

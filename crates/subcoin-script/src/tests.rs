@@ -49,7 +49,10 @@ fn test_verify_script_full(
     let input = &tx.input[input_index];
     let mut checker = TransactionSignatureChecker::new(&tx, input_index, input_amount);
 
-    tracing::debug!("script_sig: {}", hex::encode(input.script_sig.as_bytes()));
+    tracing::debug!(
+        "[test_verify_script_full] script_sig: {}",
+        hex::encode(input.script_sig.as_bytes())
+    );
 
     assert_eq!(
         verify_script(
@@ -245,6 +248,17 @@ fn test_sigscript_may_contain_empty_signature() {
     let pkscript = "2102085c6600657566acc2d6382a47bc3f324008d2aa10940dd7705a48aa2a5a5e33ac7c2103f5d0fb955f95dd6be6115ce85661db412ec6a08abcbfce7da0ba8297c6cc0ec4ac7c5379a820d68df9e32a147cffa36193c6f7c43a1c8c69cda530e1c6db354bfabdcfefaf3c875379a820f531f3041d3136701ea09067c53e7159c8f9b2746a56c3d82966c54bbc553226879a5479827701200122a59a5379827701200122a59a6353798277537982778779679a68";
     let input_index = 0;
     let input_amount = 170000;
+
+    test_verify_script(tx, pkscript, input_index, input_amount);
+}
+
+#[test]
+fn multisig_may_contain_invalid_signature_that_can_not_be_parsed_by_from_der_lax() {
+    // https://www.blockchain.com/explorer/transactions/btc/fd9b541d23f6e9bddb34ede15c7684eeec36231118796b691ae525f95578acf1
+    let tx = "01000000011f60b3d94284e3c321eb8290c2d883812be5d3d3fb9b0611fd6c04df80e254350000000008515151515102ae91ffffffff01a0bb0d000000000017a914827fe37ec405346ad4e995323cea83559537b89e8700000000";
+    let pkscript = "a91438430c4d1c214bf11d2c0c3dea8e5e9a5d11aab087";
+    let input_index = 0;
+    let input_amount = 1000000;
 
     test_verify_script(tx, pkscript, input_index, input_amount);
 }

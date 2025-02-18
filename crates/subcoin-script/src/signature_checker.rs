@@ -17,6 +17,8 @@ pub enum SignatureError {
     InvalidSignatureVersion,
     #[error("ecdsa error: {0:?}")]
     Ecdsa(secp256k1::Error),
+    #[error("Failed to parse ECDSA signature: {0:?}")]
+    ParseEcdsaSignature(bitcoin::ecdsa::Error),
     #[error("schnorr error: {0:?}")]
     Schnorr(secp256k1::Error),
     #[error("Ecdsa sighash error: {0:?}")]
@@ -35,15 +37,17 @@ pub trait SignatureChecker {
     /// * `pk` - The public key corresponding to the signature.
     ///
     /// # Returns
-    /// - `Ok(())` if the signature is valid.
-    /// - `Err(SignatureError)` if the signature is invalid or an error occurs.
-    fn verify_ecdsa_signature(
-        &self,
-        sig: &EcdsaSignature,
-        msg: &Message,
-        pk: &PublicKey,
-    ) -> Result<(), secp256k1::Error> {
+    /// - `true` if the signature is valid.
+    /// - `false` if the signature is invalid or an error occurs.
+    fn verify_ecdsa_signature(&self, sig: &EcdsaSignature, msg: &Message, pk: &PublicKey) -> bool {
         SECP.verify_ecdsa(msg, &sig.signature, &pk.inner)
+            .inspect_err(|err| {
+                tracing::trace!(
+                    ?err,
+                    "[verify_ecdsa_signature] Failed to verify ecdsa signature"
+                );
+            })
+            .is_ok()
     }
 
     /// Checks an ECDSA signature in the context of a Bitcoin transaction.
@@ -78,15 +82,22 @@ pub trait SignatureChecker {
     /// * `pk` - The public key corresponding to the signature.
     ///
     /// # Returns
-    /// - `Ok(())` if the signature is valid.
-    /// - `Err(SignatureError)` if the signature is invalid or an error occurs.
+    /// - `true` if the signature is valid.
+    /// - `false` if the signature is invalid or an error occurs.
     fn verify_schnorr_signature(
         &self,
         sig: &SchnorrSignature,
         msg: &Message,
         pk: &XOnlyPublicKey,
-    ) -> Result<(), secp256k1::Error> {
+    ) -> bool {
         SECP.verify_schnorr(&sig.signature, msg, pk)
+            .inspect_err(|err| {
+                tracing::trace!(
+                    ?err,
+                    "[verify_schnorr_signature] Failed to verify schnorr signature"
+                );
+            })
+            .is_ok()
     }
 
     /// Checks a Schnorr signature in the context of a Bitcoin transaction.
@@ -115,6 +126,41 @@ pub trait SignatureChecker {
     /// Checks whether the relative time lock (`sequence`) for a specific input
     /// in a transaction is satisfied.
     fn check_sequence(&self, sequence: ScriptNum) -> bool;
+}
+
+/// Verify the signature against the public key.
+pub fn check_ecdsa_signature(
+    sig: &[u8],
+    public_key: &[u8],
+    checker: &mut impl SignatureChecker,
+    subscript: &Script,
+    sig_version: SigVersion,
+) -> bool {
+    tracing::trace!(
+        "[check_ecdsa_signature] sig: {}, public_key: {}, subscript: {}",
+        hex::encode(sig),
+        hex::encode(public_key),
+        hex::encode(subscript.as_bytes())
+    );
+
+    let sig = match EcdsaSignature::parse_der_lax(sig) {
+        Ok(sig) => sig,
+        Err(err) => {
+            tracing::trace!(
+                ?err,
+                "Failed to parse ecdsa signature from {}",
+                hex::encode(sig)
+            );
+            return false;
+        }
+    };
+
+    match PublicKey::from_slice(public_key) {
+        Ok(key) => checker
+            .check_ecdsa_signature(&sig, &key, subscript, sig_version)
+            .unwrap_or(false),
+        Err(_) => false,
+    }
 }
 
 /// A [`SignatureChecker`] implementation that skips all signature checks.
@@ -200,11 +246,10 @@ impl SignatureChecker for TransactionSignatureChecker<'_> {
             _ => return Err(SignatureError::InvalidSignatureVersion),
         };
 
-        let res = self.verify_ecdsa_signature(sig, &msg, pk);
+        let is_valid_signature = self.verify_ecdsa_signature(sig, &msg, pk);
 
-        if let Err(err) = &res {
+        if !is_valid_signature {
             tracing::debug!(
-                ?err,
                 ?sig,
                 ?pk,
                 ?script_pubkey,
@@ -214,7 +259,7 @@ impl SignatureChecker for TransactionSignatureChecker<'_> {
             );
         }
 
-        Ok(res.is_ok())
+        Ok(is_valid_signature)
     }
 
     fn check_schnorr_signature(
@@ -252,7 +297,7 @@ impl SignatureChecker for TransactionSignatureChecker<'_> {
 
         let msg: Message = sighash.into();
 
-        Ok(self.verify_schnorr_signature(sig, &msg, pk).is_ok())
+        Ok(self.verify_schnorr_signature(sig, &msg, pk))
     }
 
     /// This function verifies that the transaction's `nLockTime` field meets the conditions specified
