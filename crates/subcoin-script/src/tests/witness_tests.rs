@@ -62,7 +62,7 @@ fn run_witness_test(
 
     let mut checker = TransactionSignatureChecker::new(&tx2, input_index, amount);
 
-    verify_script(&script_sig, &script_pubkey, &witness, &flags, &mut checker)
+    verify_script(script_sig, script_pubkey, &witness, &flags, &mut checker)
 }
 
 // https://github.com/bitcoin/bitcoin/blob/7ee6c434ce8df9441abcf1718555cc7728a4c575/src/test/data/script_tests.json#L1257
@@ -116,9 +116,9 @@ fn witness_script_hash_mismatch_check_skipped() {
     assert_eq!(
         Ok(()),
         run_witness_test(
-            "".into(),
-            "00206e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d".into(),
-            vec!["51".into()],
+            "",
+            "00206e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+            vec!["51"],
             VerifyFlags::NONE,
             0,
         )
@@ -641,7 +641,7 @@ fn run_witness_test_tx_test(
 
     verify_script(
         &tx.input[input_index].script_sig,
-        &script_pubkey,
+        script_pubkey,
         &tx.input[input_index].witness,
         flags,
         &mut checker,

@@ -57,7 +57,7 @@ fn test_verify_script_full(
     assert_eq!(
         verify_script(
             &input.script_sig,
-            &script_pubkey,
+            script_pubkey,
             &input.witness,
             &flags,
             &mut checker,

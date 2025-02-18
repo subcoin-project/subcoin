@@ -59,8 +59,8 @@ fn basic_test(script: &Script, eval_result: EvalResult) {
 #[test]
 fn test_equal() {
     let script = Builder::new()
-        .push_slice(&[0x4])
-        .push_slice(&[0x4])
+        .push_slice([0x4])
+        .push_slice([0x4])
         .push_opcode(OP_EQUAL)
         .into_script();
     let result = EvalResult::ok(true, Stack::from(vec![vec![1]]));
@@ -70,8 +70,8 @@ fn test_equal() {
 #[test]
 fn test_equal_false() {
     let script = Builder::default()
-        .push_slice(&[0x4])
-        .push_slice(&[0x3])
+        .push_slice([0x4])
+        .push_slice([0x3])
         .push_opcode(OP_EQUAL)
         .into_script();
     let result = EvalResult::ok(false, Stack::from(vec![vec![]]));
@@ -81,7 +81,7 @@ fn test_equal_false() {
 #[test]
 fn test_equal_invalid_stack() {
     let script = Builder::default()
-        .push_slice(&[0x4])
+        .push_slice([0x4])
         .push_opcode(OP_EQUAL)
         .into_script();
     let result = EvalResult::err(StackError::InvalidOperation);
@@ -91,8 +91,8 @@ fn test_equal_invalid_stack() {
 #[test]
 fn test_equal_verify() {
     let script = Builder::default()
-        .push_slice(&[0x4])
-        .push_slice(&[0x4])
+        .push_slice([0x4])
+        .push_slice([0x4])
         .push_opcode(OP_EQUALVERIFY)
         .into_script();
     let result = EvalResult::ok(false, Stack::empty());
@@ -102,8 +102,8 @@ fn test_equal_verify() {
 #[test]
 fn test_equal_verify_failed() {
     let script = Builder::default()
-        .push_slice(&[0x4])
-        .push_slice(&[0x3])
+        .push_slice([0x4])
+        .push_slice([0x3])
         .push_opcode(OP_EQUALVERIFY)
         .into_script();
     let result = EvalResult::err(Error::Verify(OP_EQUALVERIFY));
@@ -113,7 +113,7 @@ fn test_equal_verify_failed() {
 #[test]
 fn test_size() {
     let script = Builder::default()
-        .push_slice(&[0x12, 0x34])
+        .push_slice([0x12, 0x34])
         .push_opcode(OP_SIZE)
         .into_script();
     let mut stack = Stack::default();
@@ -125,7 +125,7 @@ fn test_size() {
 #[test]
 fn test_size_false() {
     let script = Builder::default()
-        .push_slice(&[])
+        .push_slice([])
         .push_opcode(OP_SIZE)
         .into_script();
     let mut stack = Stack::default();
@@ -871,7 +871,7 @@ fn test_within() {
         .push_int(4)
         .push_opcode(OP_WITHIN)
         .into_script();
-    let stack = vec![vec![1].into()].into();
+    let stack = vec![vec![1]].into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
