@@ -21,12 +21,6 @@ pub enum CheckMultiSigError {
     TapscriptCheckMultiSig,
     #[error("CHECK_MULTISIGVERIFY failed")]
     CheckMultiSigVerify,
-    #[error("ECDSA error: {0:?}")]
-    Ecdsa(bitcoin::ecdsa::Error),
-    #[error("Failed to parse public key from slice: {0:?}")]
-    PublicKey(bitcoin::key::FromSliceError),
-    #[error("Secp256k1 error: {0:?}")]
-    Secp256k1(bitcoin::secp256k1::Error),
     #[error(transparent)]
     CheckSig(#[from] CheckSigError),
     #[error(transparent)]
@@ -142,7 +136,7 @@ fn eval_checkmultisig(
             let mut push_buf = PushBytesBuf::new();
             push_buf
                 .extend_from_slice(signature)
-                .expect("Signature within length limits");
+                .expect("Signature length must be within length limits; qed");
             let sig_script = bitcoin::script::Builder::default()
                 .push_slice(push_buf)
                 .into_script();

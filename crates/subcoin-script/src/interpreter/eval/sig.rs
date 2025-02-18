@@ -73,8 +73,6 @@ pub enum CheckSigError {
     InvalidSignature(#[from] SignatureError),
     #[error("secp256k1 error: {0:?}")]
     Secp256k1(bitcoin::secp256k1::Error),
-    #[error("Failed to convert bytes to ECDSA signature: {0:?}")]
-    Ecdsa(bitcoin::ecdsa::Error),
 }
 
 #[allow(clippy::too_many_arguments)]

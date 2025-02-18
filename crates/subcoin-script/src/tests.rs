@@ -1,5 +1,5 @@
-pub mod opcode;
-mod witness_tests;
+mod opcode;
+mod witness;
 
 use crate::num::NumError;
 use crate::signature_checker::SECP;

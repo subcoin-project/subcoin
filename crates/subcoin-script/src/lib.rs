@@ -1,4 +1,31 @@
-//! # Bitcoin Script Interpreter.
+//! # Bitcoin Script Interpreter
+//!
+//! This crate implements a Bitcoin Script interpreter in Rust. It provides functionality to
+//! interpret and evaluate Bitcoin scripts, similar to the Bitcoin Core implementation, but with a
+//! focus on readability and compatibility with Rust. Performance optimizations will be pursued
+//! in future updates.
+//!
+//! ## Key Points
+//!
+//! - Some functions are directly ported from Bitcoin Core and may not follow typical Rust idioms.
+//!   They are intentionally written in a way that is closer to the original C++ code to preserve
+//!   functionality and logic.
+//!
+//! - Several components, including tests prior to the Taproot upgrade, are ported from the
+//!   Parity-Bitcoin project to reuse their valuable work for Bitcoin's older features and standards.
+//!
+//! ## Features
+//!
+//! This crate aims to provide:
+//!
+//! - Support for interpreting Bitcoin's standard script types (P2PKH, P2SH, P2WPKH, etc.).
+//! - Efficient validation of Bitcoin script execution, including signature verification.
+//! - Compatibility with Bitcoin Core's opcodes and evaluation logic, with Rust-specific optimizations.
+//!
+//! ## Caveats
+//!
+//! This library is **not widely used** and **lacks comprehensive tests**. As a result, it is **never use it for production use**!
+//! Please use it with caution, and only in non-critical applications or for experimentation purposes.
 
 mod constants;
 mod error;

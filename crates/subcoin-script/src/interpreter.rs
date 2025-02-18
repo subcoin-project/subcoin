@@ -1,7 +1,5 @@
 mod eval;
 
-pub use self::eval::{eval_script, CheckMultiSigError, CheckSigError};
-
 use crate::constants::{
     MAX_SCRIPT_ELEMENT_SIZE, MAX_STACK_SIZE, VALIDATION_WEIGHT_OFFSET, WITNESS_V0_KEYHASH_SIZE,
     WITNESS_V0_SCRIPTHASH_SIZE, WITNESS_V0_TAPROOT_SIZE,
@@ -19,10 +17,12 @@ use bitcoin::taproot::{
 };
 use bitcoin::{Script, TapLeafHash, Witness, WitnessProgram, WitnessVersion, XOnlyPublicKey};
 
+pub use self::eval::{eval_script, CheckMultiSigError, CheckSigError};
+
 /// Verifies the script validity.
 ///
-/// - Ok(()): `return true` in C++.
-/// - Err(err): `return false` with `serror` set.
+/// - `Ok(())`: `return true` in C++.
+/// - `Err(err)`: `return false` with `serror` set.
 pub fn verify_script<SC: SignatureChecker>(
     script_sig: &Script,
     script_pubkey: &Script,

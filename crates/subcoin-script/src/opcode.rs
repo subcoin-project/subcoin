@@ -12,6 +12,7 @@ macro_rules! opcode_enum {
         }
 
         impl Opcode {
+            /// Converts a `u8` to [`Opcode`].
             pub fn from_u8(value: u8) -> Option<Self> {
                 match value {
                     $($value => Some(Opcode::$name),)*

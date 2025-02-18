@@ -1,3 +1,5 @@
+//! Witness related script tests ported from https://github.com/paritytech/parity-bitcoin/blob/master/script/src/interpreter.rs#L2416-L3245
+
 use crate::tests::decode_raw_tx;
 use crate::{verify_script, Error, TransactionSignatureChecker, VerifyFlags};
 use bitcoin::hashes::Hash;
