@@ -180,15 +180,15 @@ pub enum Error {
     #[error("Block#{0} reward exceeds allowed amount (subsidy + fees)")]
     InvalidBlockReward(BlockHash),
     /// A transaction script failed verification.
-    // #[error(
-    // "Script verification failure in block#{block_hash}. Context: {context}, input_index: {input_index}: {error:?}"
-    // )]
-    // InvalidScript {
-    // block_hash: BlockHash,
-    // context: TransactionContext,
-    // input_index: usize,
-    // error: Box<subcoin_script::Error>,
-    // },
+    #[error(
+        "Script verification failure in block#{block_hash}. Context: {context}, input_index: {input_index}: {error:?}"
+    )]
+    InvalidScript {
+        block_hash: BlockHash,
+        context: TransactionContext,
+        input_index: usize,
+        error: Box<subcoin_script::Error>,
+    },
     #[error("BIP34 error in block#{0}: {1:?}")]
     Bip34(BlockHash, Bip34Error),
     #[error("Bitcoin codec error: {0:?}")]
@@ -506,13 +506,14 @@ where
                     return Err(Error::PrematureSpendOfCoinbase(block_hash));
                 }
 
-                tracing::debug!(
-                    block_number,
-                    tx_index,
-                    txid = ?get_txid(tx_index),
-                    input_index,
-                    "Verifying input script"
-                );
+                // tracing::debug!(
+                // target: "subcoin_script",
+                // block_number,
+                // tx_index,
+                // txid = ?get_txid(tx_index),
+                // input_index,
+                // "Verifying input script"
+                // );
                 match self.script_engine {
                     ScriptEngine::Core => {
                         script_verify::verify_input_script(
@@ -526,7 +527,32 @@ where
                         // Skip script verification.
                     }
                     ScriptEngine::Subcoin => {
-                        unimplemented!("Subcoin Bitcoin Script Interpreter");
+                        let mut checker = subcoin_script::TransactionSignatureChecker::new(
+                            tx,
+                            input_index,
+                            spent_output.value.to_sat(),
+                        );
+
+                        let verify_flags =
+                            subcoin_script::VerifyFlags::from_bits(flags).expect("Invalid flags");
+
+                        let script_result = subcoin_script::verify_script(
+                            &input.script_sig,
+                            &spent_output.script_pubkey,
+                            &input.witness,
+                            &verify_flags,
+                            &mut checker,
+                        );
+
+                        if let Err(script_err) = script_result {
+                            let context = tx_context(tx_index);
+                            return Err(Error::InvalidScript {
+                                block_hash,
+                                context,
+                                input_index,
+                                error: Box::new(script_err),
+                            });
+                        }
                     }
                 }
 

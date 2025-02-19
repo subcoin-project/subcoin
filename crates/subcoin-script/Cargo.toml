@@ -1,0 +1,19 @@
+[package]
+name = "subcoin-script"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+bitcoin = { workspace = true }
+bitflags = { workspace = true }
+hex = { workspace = true }
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+sc-tracing = { workspace = true }
