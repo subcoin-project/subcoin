@@ -688,6 +688,32 @@
 <a href="#688" id="688">688</a>
 <a href="#689" id="689">689</a>
 <a href="#690" id="690">690</a>
+<a href="#691" id="691">691</a>
+<a href="#692" id="692">692</a>
+<a href="#693" id="693">693</a>
+<a href="#694" id="694">694</a>
+<a href="#695" id="695">695</a>
+<a href="#696" id="696">696</a>
+<a href="#697" id="697">697</a>
+<a href="#698" id="698">698</a>
+<a href="#699" id="699">699</a>
+<a href="#700" id="700">700</a>
+<a href="#701" id="701">701</a>
+<a href="#702" id="702">702</a>
+<a href="#703" id="703">703</a>
+<a href="#704" id="704">704</a>
+<a href="#705" id="705">705</a>
+<a href="#706" id="706">706</a>
+<a href="#707" id="707">707</a>
+<a href="#708" id="708">708</a>
+<a href="#709" id="709">709</a>
+<a href="#710" id="710">710</a>
+<a href="#711" id="711">711</a>
+<a href="#712" id="712">712</a>
+<a href="#713" id="713">713</a>
+<a href="#714" id="714">714</a>
+<a href="#715" id="715">715</a>
+<a href="#716" id="716">716</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! This module provides block verification functionalities based on Bitcoin's consensus rules.
 //! The primary code reference for these consensus rules is Bitcoin Core.
 //!
@@ -870,16 +896,16 @@
     </span><span class="attr">#[error(<span class="string">"Block#{0} reward exceeds allowed amount (subsidy + fees)"</span>)]
     </span>InvalidBlockReward(BlockHash),
     <span class="doccomment">/// A transaction script failed verification.
-    </span><span class="comment">// #[error(
-    // "Script verification failure in block#{block_hash}. Context: {context}, input_index: {input_index}: {error:?}"
-    // )]
-    // InvalidScript {
-    // block_hash: BlockHash,
-    // context: TransactionContext,
-    // input_index: usize,
-    // error: Box&lt;subcoin_script::Error&gt;,
-    // },
-    </span><span class="attr">#[error(<span class="string">"BIP34 error in block#{0}: {1:?}"</span>)]
+    </span><span class="attr">#[error(
+        <span class="string">"Script verification failure in block#{block_hash}. Context: {context}, input_index: {input_index}: {error:?}"
+    </span>)]
+    </span>InvalidScript {
+        block_hash: BlockHash,
+        context: TransactionContext,
+        input_index: usize,
+        error: Box&lt;subcoin_script::Error&gt;,
+    },
+    <span class="attr">#[error(<span class="string">"BIP34 error in block#{0}: {1:?}"</span>)]
     </span>Bip34(BlockHash, Bip34Error),
     <span class="attr">#[error(<span class="string">"Bitcoin codec error: {0:?}"</span>)]
     </span>BitcoinCodec(bitcoin::io::Error),
@@ -1196,14 +1222,15 @@
                     <span class="kw">return </span><span class="prelude-val">Err</span>(Error::PrematureSpendOfCoinbase(block_hash));
                 }
 
-                <span class="macro">tracing::debug!</span>(
-                    block_number,
-                    tx_index,
-                    txid = <span class="question-mark">?</span>get_txid(tx_index),
-                    input_index,
-                    <span class="string">"Verifying input script"
-                </span>);
-                <span class="kw">match </span><span class="self">self</span>.script_engine {
+                <span class="comment">// tracing::debug!(
+                // target: "subcoin_script",
+                // block_number,
+                // tx_index,
+                // txid = ?get_txid(tx_index),
+                // input_index,
+                // "Verifying input script"
+                // );
+                </span><span class="kw">match </span><span class="self">self</span>.script_engine {
                     ScriptEngine::Core =&gt; {
                         script_verify::verify_input_script(
                             <span class="kw-2">&amp;</span>spent_output,
@@ -1216,7 +1243,32 @@
                         <span class="comment">// Skip script verification.
                     </span>}
                     ScriptEngine::Subcoin =&gt; {
-                        <span class="macro">unimplemented!</span>(<span class="string">"Subcoin Bitcoin Script Interpreter"</span>);
+                        <span class="kw">let </span><span class="kw-2">mut </span>checker = subcoin_script::TransactionSignatureChecker::new(
+                            tx,
+                            input_index,
+                            spent_output.value.to_sat(),
+                        );
+
+                        <span class="kw">let </span>verify_flags =
+                            subcoin_script::VerifyFlags::from_bits(flags).expect(<span class="string">"Invalid flags"</span>);
+
+                        <span class="kw">let </span>script_result = subcoin_script::verify_script(
+                            <span class="kw-2">&amp;</span>input.script_sig,
+                            <span class="kw-2">&amp;</span>spent_output.script_pubkey,
+                            <span class="kw-2">&amp;</span>input.witness,
+                            <span class="kw-2">&amp;</span>verify_flags,
+                            <span class="kw-2">&amp;mut </span>checker,
+                        );
+
+                        <span class="kw">if let </span><span class="prelude-val">Err</span>(script_err) = script_result {
+                            <span class="kw">let </span>context = tx_context(tx_index);
+                            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::InvalidScript {
+                                block_hash,
+                                context,
+                                input_index,
+                                error: Box::new(script_err),
+                            });
+                        }
                     }
                 }
 

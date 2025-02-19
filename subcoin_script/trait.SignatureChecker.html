@@ -1,0 +1,114 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Trait for verifying Bitcoin transaction signatures."><title>SignatureChecker in subcoin_script - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-46f98efaafac5295.ttf.woff2,FiraSans-Regular-018c141bf0843ffd.woff2,FiraSans-Medium-8f9a781e4970d388.woff2,SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2,SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../static.files/rustdoc-970bf1bf55bd1c15.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="subcoin_script" data-themes="" data-resource-suffix="" data-rustdoc-version="1.82.0-nightly (28a58f2fa 2024-07-31)" data-channel="nightly" data-search-js="search-ef54e092fea9c776.js" data-settings-js="settings-4313503d2e1961c2.js" ><script src="../static.files/storage-118b08c4c78b968e.js"></script><script defer src="sidebar-items.js"></script><script defer src="../static.files/main-f9142fe437216fc3.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-df360f571f6edeae.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc trait"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../subcoin_script/index.html">subcoin_<wbr>script</a><span class="version">0.1.0</span></h2></div><h2 class="location"><a href="#">Signature<wbr>Checker</a></h2><div class="sidebar-elems"><section><h3><a href="#required-methods">Required Methods</a></h3><ul class="block"><li><a href="#tymethod.check_ecdsa_signature">check_ecdsa_signature</a></li><li><a href="#tymethod.check_lock_time">check_lock_time</a></li><li><a href="#tymethod.check_schnorr_signature">check_schnorr_signature</a></li><li><a href="#tymethod.check_sequence">check_sequence</a></li></ul><h3><a href="#provided-methods">Provided Methods</a></h3><ul class="block"><li><a href="#method.verify_ecdsa_signature">verify_ecdsa_signature</a></li><li><a href="#method.verify_schnorr_signature">verify_schnorr_signature</a></li></ul><h3><a href="#implementors">Implementors</a></h3></section><h2><a href="index.html">In crate subcoin_<wbr>script</a></h2></div></nav><div class="sidebar-resizer"></div><main><div class="width-limiter"><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1>Trait <a href="index.html">subcoin_script</a>::<wbr><a class="trait" href="#">SignatureChecker</a><button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><span class="out-of-band"><a class="src" href="../src/subcoin_script/signature_checker.rs.html#33-131">source</a> · <button id="toggle-all-docs" title="collapse all docs">[<span>&#x2212;</span>]</button></span></div><pre class="rust item-decl"><code>pub trait SignatureChecker {
+    // Required methods
+    fn <a href="#tymethod.check_ecdsa_signature" class="fn">check_ecdsa_signature</a>(
+        &amp;mut self,
+        sig: &amp;<a class="struct" href="struct.EcdsaSignature.html" title="struct subcoin_script::EcdsaSignature">EcdsaSignature</a>,
+        pk: &amp;PublicKey,
+        script_code: &amp;Script,
+        sig_version: <a class="enum" href="enum.SigVersion.html" title="enum subcoin_script::SigVersion">SigVersion</a>,
+    ) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>, <a class="enum" href="enum.SignatureError.html" title="enum subcoin_script::SignatureError">SignatureError</a>&gt;;
+<span class="item-spacer"></span>    fn <a href="#tymethod.check_schnorr_signature" class="fn">check_schnorr_signature</a>(
+        &amp;mut self,
+        sig: &amp;<a class="type" href="type.SchnorrSignature.html" title="type subcoin_script::SchnorrSignature">SchnorrSignature</a>,
+        pk: &amp;XOnlyPublicKey,
+        sig_version: <a class="enum" href="enum.SigVersion.html" title="enum subcoin_script::SigVersion">SigVersion</a>,
+        exec_data: &amp;<a class="struct" href="struct.ScriptExecutionData.html" title="struct subcoin_script::ScriptExecutionData">ScriptExecutionData</a>,
+    ) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>, <a class="enum" href="enum.SignatureError.html" title="enum subcoin_script::SignatureError">SignatureError</a>&gt;;
+<span class="item-spacer"></span>    fn <a href="#tymethod.check_lock_time" class="fn">check_lock_time</a>(&amp;self, lock_time: ScriptNum) -&gt; <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.check_sequence" class="fn">check_sequence</a>(&amp;self, sequence: ScriptNum) -&gt; <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>;
+
+    // Provided methods
+    fn <a href="#method.verify_ecdsa_signature" class="fn">verify_ecdsa_signature</a>(
+        &amp;self,
+        sig: &amp;<a class="struct" href="struct.EcdsaSignature.html" title="struct subcoin_script::EcdsaSignature">EcdsaSignature</a>,
+        msg: &amp;Message,
+        pk: &amp;PublicKey,
+    ) -&gt; <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a> { ... }
+<span class="item-spacer"></span>    fn <a href="#method.verify_schnorr_signature" class="fn">verify_schnorr_signature</a>(
+        &amp;self,
+        sig: &amp;<a class="type" href="type.SchnorrSignature.html" title="type subcoin_script::SchnorrSignature">SchnorrSignature</a>,
+        msg: &amp;Message,
+        pk: &amp;XOnlyPublicKey,
+    ) -&gt; <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a> { ... }
+}</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Trait for verifying Bitcoin transaction signatures.</p>
+</div></details><h2 id="required-methods" class="section-header">Required Methods<a href="#required-methods" class="anchor">§</a></h2><div class="methods"><details class="toggle method-toggle" open><summary><section id="tymethod.check_ecdsa_signature" class="method"><a class="src rightside" href="../src/subcoin_script/signature_checker.rs.html#71-77">source</a><h4 class="code-header">fn <a href="#tymethod.check_ecdsa_signature" class="fn">check_ecdsa_signature</a>(
+    &amp;mut self,
+    sig: &amp;<a class="struct" href="struct.EcdsaSignature.html" title="struct subcoin_script::EcdsaSignature">EcdsaSignature</a>,
+    pk: &amp;PublicKey,
+    script_code: &amp;Script,
+    sig_version: <a class="enum" href="enum.SigVersion.html" title="enum subcoin_script::SigVersion">SigVersion</a>,
+) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>, <a class="enum" href="enum.SignatureError.html" title="enum subcoin_script::SignatureError">SignatureError</a>&gt;</h4></section></summary><div class="docblock"><p>Checks an ECDSA signature in the context of a Bitcoin transaction.</p>
+<h5 id="arguments"><a class="doc-anchor" href="#arguments">§</a>Arguments</h5>
+<ul>
+<li><code>sig</code> - The ECDSA signature to check.</li>
+<li><code>pk</code> - The public key corresponding to the signature.</li>
+<li><code>script_code</code> - The script code for the transaction input.</li>
+<li><code>sig_version</code> - The signature version (e.g., <a href="enum.SigVersion.html#variant.Base" title="variant subcoin_script::SigVersion::Base"><code>SigVersion::Base</code></a> or <a href="enum.SigVersion.html#variant.WitnessV0" title="variant subcoin_script::SigVersion::WitnessV0"><code>SigVersion::WitnessV0</code></a>).</li>
+</ul>
+<h5 id="returns"><a class="doc-anchor" href="#returns">§</a>Returns</h5>
+<ul>
+<li><code>Ok(true)</code> if the signature is valid.</li>
+<li><code>Ok(false)</code> if the signature is invalid.</li>
+<li><code>Err(SignatureError)</code> if an error occurs.</li>
+</ul>
+<h5 id="notes"><a class="doc-anchor" href="#notes">§</a>Notes</h5>
+<p>In the context of multisignature transactions, it is expected that not all signatures may be valid.
+An invalid signature may be considered legitimate as long as the multisig conditions are met.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.check_schnorr_signature" class="method"><a class="src rightside" href="../src/subcoin_script/signature_checker.rs.html#117-123">source</a><h4 class="code-header">fn <a href="#tymethod.check_schnorr_signature" class="fn">check_schnorr_signature</a>(
+    &amp;mut self,
+    sig: &amp;<a class="type" href="type.SchnorrSignature.html" title="type subcoin_script::SchnorrSignature">SchnorrSignature</a>,
+    pk: &amp;XOnlyPublicKey,
+    sig_version: <a class="enum" href="enum.SigVersion.html" title="enum subcoin_script::SigVersion">SigVersion</a>,
+    exec_data: &amp;<a class="struct" href="struct.ScriptExecutionData.html" title="struct subcoin_script::ScriptExecutionData">ScriptExecutionData</a>,
+) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>, <a class="enum" href="enum.SignatureError.html" title="enum subcoin_script::SignatureError">SignatureError</a>&gt;</h4></section></summary><div class="docblock"><p>Checks a Schnorr signature in the context of a Bitcoin transaction.</p>
+<h5 id="arguments-1"><a class="doc-anchor" href="#arguments-1">§</a>Arguments</h5>
+<ul>
+<li><code>sig</code> - The Schnorr signature to check.</li>
+<li><code>pk</code> - The public key corresponding to the signature.</li>
+<li><code>sig_version</code> - The signature version (e.g., <code>SigVersion::Taproot</code>).</li>
+<li><code>exec_data</code> - Additional execution data for Taproot scripts.</li>
+</ul>
+<h5 id="returns-1"><a class="doc-anchor" href="#returns-1">§</a>Returns</h5>
+<ul>
+<li><code>Ok(true)</code> if the signature is valid.</li>
+<li><code>Ok(false)</code> if the signature is invalid.</li>
+<li><code>Err(SignatureError)</code> if an error occurs.</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.check_lock_time" class="method"><a class="src rightside" href="../src/subcoin_script/signature_checker.rs.html#126">source</a><h4 class="code-header">fn <a href="#tymethod.check_lock_time" class="fn">check_lock_time</a>(&amp;self, lock_time: ScriptNum) -&gt; <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a></h4></section></summary><div class="docblock"><p>Checks whether the absolute time lock (<code>lock_time</code>) in a transaction is satisfied.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.check_sequence" class="method"><a class="src rightside" href="../src/subcoin_script/signature_checker.rs.html#130">source</a><h4 class="code-header">fn <a href="#tymethod.check_sequence" class="fn">check_sequence</a>(&amp;self, sequence: ScriptNum) -&gt; <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a></h4></section></summary><div class="docblock"><p>Checks whether the relative time lock (<code>sequence</code>) for a specific input
+in a transaction is satisfied.</p>
+</div></details></div><h2 id="provided-methods" class="section-header">Provided Methods<a href="#provided-methods" class="anchor">§</a></h2><div class="methods"><details class="toggle method-toggle" open><summary><section id="method.verify_ecdsa_signature" class="method"><a class="src rightside" href="../src/subcoin_script/signature_checker.rs.html#44-53">source</a><h4 class="code-header">fn <a href="#method.verify_ecdsa_signature" class="fn">verify_ecdsa_signature</a>(
+    &amp;self,
+    sig: &amp;<a class="struct" href="struct.EcdsaSignature.html" title="struct subcoin_script::EcdsaSignature">EcdsaSignature</a>,
+    msg: &amp;Message,
+    pk: &amp;PublicKey,
+) -&gt; <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a></h4></section></summary><div class="docblock"><p>Verifies an ECDSA signature against a message and public key.</p>
+<h5 id="arguments-2"><a class="doc-anchor" href="#arguments-2">§</a>Arguments</h5>
+<ul>
+<li><code>sig</code> - The ECDSA signature to verify.</li>
+<li><code>msg</code> - The message that was signed.</li>
+<li><code>pk</code> - The public key corresponding to the signature.</li>
+</ul>
+<h5 id="returns-2"><a class="doc-anchor" href="#returns-2">§</a>Returns</h5>
+<ul>
+<li><code>true</code> if the signature is valid.</li>
+<li><code>false</code> if the signature is invalid or an error occurs.</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="method.verify_schnorr_signature" class="method"><a class="src rightside" href="../src/subcoin_script/signature_checker.rs.html#89-103">source</a><h4 class="code-header">fn <a href="#method.verify_schnorr_signature" class="fn">verify_schnorr_signature</a>(
+    &amp;self,
+    sig: &amp;<a class="type" href="type.SchnorrSignature.html" title="type subcoin_script::SchnorrSignature">SchnorrSignature</a>,
+    msg: &amp;Message,
+    pk: &amp;XOnlyPublicKey,
+) -&gt; <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a></h4></section></summary><div class="docblock"><p>Verifies a Schnorr signature against a message and public key.</p>
+<h5 id="arguments-3"><a class="doc-anchor" href="#arguments-3">§</a>Arguments</h5>
+<ul>
+<li><code>sig</code> - The Schnorr signature to verify.</li>
+<li><code>msg</code> - The message that was signed.</li>
+<li><code>pk</code> - The public key corresponding to the signature.</li>
+</ul>
+<h5 id="returns-3"><a class="doc-anchor" href="#returns-3">§</a>Returns</h5>
+<ul>
+<li><code>true</code> if the signature is valid.</li>
+<li><code>false</code> if the signature is invalid or an error occurs.</li>
+</ul>
+</div></details></div><h2 id="implementors" class="section-header">Implementors<a href="#implementors" class="anchor">§</a></h2><div id="implementors-list"><section id="impl-SignatureChecker-for-NoSignatureCheck" class="impl"><a class="src rightside" href="../src/subcoin_script/signature_checker.rs.html#171-199">source</a><a href="#impl-SignatureChecker-for-NoSignatureCheck" class="anchor">§</a><h3 class="code-header">impl <a class="trait" href="trait.SignatureChecker.html" title="trait subcoin_script::SignatureChecker">SignatureChecker</a> for <a class="struct" href="struct.NoSignatureCheck.html" title="struct subcoin_script::NoSignatureCheck">NoSignatureCheck</a></h3></section><section id="impl-SignatureChecker-for-TransactionSignatureChecker%3C'_%3E" class="impl"><a class="src rightside" href="../src/subcoin_script/signature_checker.rs.html#224-413">source</a><a href="#impl-SignatureChecker-for-TransactionSignatureChecker%3C'_%3E" class="anchor">§</a><h3 class="code-header">impl <a class="trait" href="trait.SignatureChecker.html" title="trait subcoin_script::SignatureChecker">SignatureChecker</a> for <a class="struct" href="struct.TransactionSignatureChecker.html" title="struct subcoin_script::TransactionSignatureChecker">TransactionSignatureChecker</a>&lt;'_&gt;</h3></section></div><script src="../trait.impl/subcoin_script/signature_checker/trait.SignatureChecker.js" async></script></section></div></main></body></html>
