@@ -46,15 +46,12 @@ use sp_runtime::traits::Block as BlockT;
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subcoin_primitives::CoinStorageKey;
+use subcoin_primitives::consensus::check_transaction_sanity;
 use subcoin_primitives::runtime::{Coin, bitcoin_block_subsidy};
-use tx_verify::{check_transaction_sanity, get_legacy_sig_op_count, is_final_tx};
+use subcoin_primitives::{CoinStorageKey, MAX_BLOCK_WEIGHT};
+use tx_verify::{get_legacy_sig_op_count, is_final_tx};
 
 pub use header_verify::{Error as HeaderError, HeaderVerifier};
-pub use tx_verify::Error as TxError;
-
-/// The maximum allowed weight for a block, see BIP 141 (network rule).
-pub const MAX_BLOCK_WEIGHT: Weight = Weight::MAX_BLOCK;
 
 /// Represents the Bitcoin script backend.
 #[derive(Copy, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]

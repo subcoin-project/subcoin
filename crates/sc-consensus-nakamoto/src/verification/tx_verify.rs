@@ -61,61 +61,6 @@ pub fn is_final_tx(tx: &Transaction, height: u32, block_time: u32) -> bool {
     tx.input.iter().all(|txin| txin.sequence.is_final())
 }
 
-// <https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/consensus/tx_check.cpp#L11>
-pub fn check_transaction_sanity(tx: &Transaction) -> Result<(), Error> {
-    if tx.input.is_empty() {
-        return Err(Error::EmptyInput);
-    }
-
-    if tx.output.is_empty() {
-        return Err(Error::EmptyOutput);
-    }
-
-    if Weight::from_wu((tx.base_size() * WITNESS_SCALE_FACTOR) as u64) > MAX_BLOCK_WEIGHT {
-        return Err(Error::TransactionOversize);
-    }
-
-    let mut value_out = Amount::ZERO;
-    tx.output.iter().try_for_each(|txout| {
-        if txout.value > Amount::MAX_MONEY {
-            return Err(Error::OutputValueTooLarge(txout.value));
-        }
-
-        value_out += txout.value;
-
-        if value_out > Amount::MAX_MONEY {
-            return Err(Error::TotalOutputValueTooLarge(value_out));
-        }
-
-        Ok(())
-    })?;
-
-    // Check for duplicate inputs.
-    let mut seen_inputs = HashSet::with_capacity(tx.input.len());
-    for (index, txin) in tx.input.iter().enumerate() {
-        if !seen_inputs.insert(txin.previous_output) {
-            return Err(Error::DuplicateTxInput(index));
-        }
-    }
-
-    // Coinbase script length must be between min and max length.
-    if tx.is_coinbase() {
-        let script_sig_len = tx.input[0].script_sig.len();
-
-        if !(MIN_COINBASE_SCRIPT_LEN..=MAX_COINBASE_SCRIPT_LEN).contains(&script_sig_len) {
-            return Err(Error::BadCoinbaseLength(script_sig_len));
-        }
-    } else {
-        // Previous transaction outputs referenced by the inputs to this
-        // transaction must not be null.
-        if tx.input.iter().any(|txin| txin.previous_output.is_null()) {
-            return Err(Error::PreviousOutputNull);
-        }
-    }
-
-    Ok(())
-}
-
 /// Counts the sigops for this transaction using legacy counting.
 pub fn get_legacy_sig_op_count(tx: &Transaction) -> usize {
     tx.input

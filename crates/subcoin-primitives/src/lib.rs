@@ -1,10 +1,12 @@
 //! Primitives for the client.
 
+pub mod consensus;
+
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::consensus::{Decodable, Encodable};
 use bitcoin::constants::genesis_block;
 use bitcoin::hashes::Hash;
-use bitcoin::{Block as BitcoinBlock, BlockHash, Transaction, Txid};
+use bitcoin::{Block as BitcoinBlock, BlockHash, Transaction, Txid, Weight};
 use codec::{Decode, Encode};
 use sc_client_api::AuxStore;
 use sp_blockchain::HeaderBackend;
@@ -19,6 +21,9 @@ type Height = u32;
 
 /// 6 blocks is the standard confirmation period in the Bitcoin community.
 pub const CONFIRMATION_DEPTH: u32 = 6u32;
+
+/// The maximum allowed weight for a block, see BIP 141 (network rule).
+pub const MAX_BLOCK_WEIGHT: Weight = Weight::MAX_BLOCK;
 
 /// Returns the encoded Bitcoin genesis block.
 ///
