@@ -1,5 +1,6 @@
 use crate::num::ScriptNum;
 use crate::VerifyFlags;
+use std::fmt::Display;
 use std::ops::{Deref, DerefMut};
 
 /// Stack error type.
@@ -13,6 +14,26 @@ pub enum StackError {
 
 /// Stack for the script execution.
 pub type Stack = GenericStack<Vec<u8>>;
+
+impl Display for Stack {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Stack {{ data: [")?;
+
+        // Iterate over each Vec<u8> in `data` and display it as hex
+        for (i, vec_item) in self.data.iter().enumerate() {
+            for item in vec_item {
+                write!(f, "{:02x?}", item)?;
+            }
+
+            // If this is not the last item, add a comma and a space
+            if i != self.data.len() - 1 {
+                write!(f, ", ")?;
+            }
+        }
+
+        write!(f, "], verify_minimaldata: {} }}", self.verify_minimaldata)
+    }
+}
 
 type Result<T> = std::result::Result<T, StackError>;
 

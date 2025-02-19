@@ -5,7 +5,9 @@ use bitcoin::locktime::relative::LockTime as RelativeLockTime;
 use bitcoin::secp256k1::{self, All, Message, Secp256k1};
 use bitcoin::sighash::{Annex, Prevouts, SighashCache, TaprootError};
 use bitcoin::transaction::Version;
-use bitcoin::{Amount, EcdsaSighashType, PublicKey, Script, Transaction, TxOut, XOnlyPublicKey};
+use bitcoin::{
+    Amount, EcdsaSighashType, PublicKey, Script, Sequence, Transaction, TxOut, XOnlyPublicKey,
+};
 use std::sync::LazyLock;
 
 pub(crate) static SECP: LazyLock<Secp256k1<All>> = LazyLock::new(Secp256k1::new);
@@ -347,6 +349,8 @@ impl SignatureChecker for TransactionSignatureChecker<'_> {
             _ => {}
         }
 
+        const SEQUENCE_FINAL: Sequence = Sequence::MAX;
+
         // Finally the nLockTime feature can be disabled and thus
         // CHECKLOCKTIMEVERIFY bypassed if every txin has been
         // finalized by setting nSequence to maxint. The
@@ -357,7 +361,7 @@ impl SignatureChecker for TransactionSignatureChecker<'_> {
         // prevent this condition. Alternatively we could test all
         // inputs, but testing just this input minimizes the data
         // required to prove correct CHECKLOCKTIMEVERIFY execution.
-        self.tx.input[self.input_index].sequence.is_final()
+        self.tx.input[self.input_index].sequence != SEQUENCE_FINAL
     }
 
     /// The lock is satisfied if:

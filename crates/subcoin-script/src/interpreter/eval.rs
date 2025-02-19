@@ -479,7 +479,11 @@ pub fn eval_script<SC: SignatureChecker>(
                         // Thus as a special case we tell CScriptNum to accept up
                         // to 5-byte bignums, which are good until 2**39-1, well
                         // beyond the 2**32-1 limit of the nLockTime field itself.
-                        let lock_time = stack.pop_num_with_max_size(5)?;
+                        let lock_time = ScriptNum::from_bytes(
+                            stack.last()?,
+                            flags.intersects(VerifyFlags::MINIMALDATA),
+                            Some(5),
+                        )?;
 
                         // In the rare event that the argument may be < 0 due to
                         // some arithmetic being done first, you can always use

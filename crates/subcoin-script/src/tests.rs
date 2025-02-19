@@ -31,6 +31,24 @@ fn test_verify_script(tx: &str, pkscript: &str, input_index: usize, input_amount
     );
 }
 
+fn test_verify_script_with_flags(
+    tx: &str,
+    pkscript: &str,
+    input_index: usize,
+    input_amount: u64,
+    flags: VerifyFlags,
+) {
+    let verify_result = Ok(());
+    test_verify_script_full(
+        tx,
+        pkscript,
+        input_index,
+        input_amount,
+        flags,
+        verify_result,
+    );
+}
+
 fn test_verify_script_full(
     tx: &str,
     pkscript: &str,
@@ -261,4 +279,16 @@ fn multisig_may_contain_invalid_signature_that_can_not_be_parsed_by_from_der_lax
     let input_amount = 1000000;
 
     test_verify_script(tx, pkscript, input_index, input_amount);
+}
+
+#[test]
+fn test_locktime() {
+    // https://www.blockchain.com/explorer/transactions/btc/7eac45ade99281c1458aca234f2ea260fee9075065d260b0d3118df8bd2fedf3
+    let tx = "010000000168317ec8ecaee38c03a21939dde22622b37c0fb6d135fa3c3f9d2da71374ab3d0100000073483045022100b2e827d892be74e00a7d499244e6fc2ec392ba2c6dc7c72bbd99f31865d346450220612182f6bb99b7aec87e82945243b86f327411c3d1f3a6a2abf6bd1317c584af0129034ded05b17521038cd6db60cb937555dcd30d6f927a3e4ee0f631e8eaf1c61c76c40804ffa3edd4ac000000000194bb00000000000017a914f1f4fb78c04fe29032192919b3d90c6a5ccaddab874ded0500";
+    let pkscript = "a914f1f4fb78c04fe29032192919b3d90c6a5ccaddab87";
+    let input_index = 0;
+    let input_amount = 50000;
+
+    let flags = VerifyFlags::P2SH | VerifyFlags::WITNESS | VerifyFlags::CHECKLOCKTIMEVERIFY;
+    test_verify_script_with_flags(tx, pkscript, input_index, input_amount, flags);
 }
