@@ -14,14 +14,6 @@
 //! - Several components, including tests prior to the Taproot upgrade, are ported from the
 //!   Parity-Bitcoin project to reuse their valuable work for Bitcoin's older features and standards.
 //!
-//! ## Features
-//!
-//! This crate aims to provide:
-//!
-//! - Support for interpreting Bitcoin's standard script types (P2PKH, P2SH, P2WPKH, etc.).
-//! - Efficient validation of Bitcoin script execution, including signature verification.
-//! - Compatibility with Bitcoin Core's opcodes and evaluation logic, with Rust-specific optimizations.
-//!
 //! ## Caveats
 //!
 //! This library is **not widely used** and **lacks comprehensive tests**. As a result, it is **never use it for production use**!

@@ -3,7 +3,6 @@ mod witness;
 
 use crate::num::NumError;
 use crate::signature_checker::SECP;
-use crate::stack::StackError;
 use crate::{verify_script, EcdsaSignature, Error, TransactionSignatureChecker, VerifyFlags};
 use bitcoin::consensus::encode::deserialize;
 use bitcoin::secp256k1::Message;
@@ -233,7 +232,7 @@ fn test_transaction_bip65() {
         input_index,
         input_amount,
         flags,
-        Err(Error::Stack(StackError::Num(NumError::Overflow))),
+        Err(Error::Num(NumError::Overflow)),
     );
 }
 

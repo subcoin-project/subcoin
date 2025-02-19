@@ -3,7 +3,7 @@ use crate::constants::{MAX_OPS_PER_SCRIPT, MAX_PUBKEYS_PER_MULTISIG};
 use crate::signature_checker::{check_ecdsa_signature, SignatureChecker, SignatureError};
 use crate::stack::{Stack, StackError};
 use crate::{SigVersion, VerifyFlags};
-use bitcoin::script::PushBytesBuf;
+use bitcoin::script::{Builder, PushBytesBuf};
 use bitcoin::Script;
 
 /// Multisig error type.
@@ -133,13 +133,11 @@ fn eval_checkmultisig(
 
     for signature in &sigs {
         if matches!(sig_version, SigVersion::Base) {
-            let mut push_buf = PushBytesBuf::new();
+            let mut push_buf = PushBytesBuf::with_capacity(signature.len());
             push_buf
                 .extend_from_slice(signature)
                 .expect("Signature length must be within length limits; qed");
-            let sig_script = bitcoin::script::Builder::default()
-                .push_slice(push_buf)
-                .into_script();
+            let sig_script = Builder::default().push_slice(push_buf).into_script();
             let found = find_and_delete(&mut subscript, sig_script.as_bytes());
             if found > 0 && flags.intersects(VerifyFlags::CONST_SCRIPTCODE) {
                 return Err(CheckSigError::FindAndDelete.into());

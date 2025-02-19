@@ -6,14 +6,18 @@ use num_bigint::Sign;
 
 /// Signs all inputs and outputs, preventing any modification.
 const SIGHASH_ALL: u8 = 0x01;
+
 /// Signs all inputs but none of the outputs, allowing outputs to be changed.
 #[allow(unused)]
 const SIGHASH_NONE: u8 = 0x02;
+
 /// Signs all inputs and only the output corresponding to the input index, permitting changes to other outputs.
 const SIGHASH_SINGLE: u8 = 0x03;
+
 /// Modifies the above types to sign only the current input, allowing other inputs to be altered.
 const SIGHASH_ANYONECANPAY: u8 = 0x80;
 
+/// DER signature encoding error type.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum SignatureEncodingError {
     #[error("DER encoded signature is too short")]
@@ -42,6 +46,7 @@ pub enum SignatureEncodingError {
     TooMuchPaddingS,
 }
 
+/// Checksig error type.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum CheckSigError {
     #[error("Signature found during find_and_delete in CONST_SCRIPTCODE mode")]
@@ -52,7 +57,7 @@ pub enum CheckSigError {
     DiscourageUpgradablePubkeyType,
     #[error("Unsupported public key type")]
     BadPubKey,
-    #[error("public key type")]
+    #[error("Invalid public key type")]
     PubKeyType,
     #[error("ScriptVerifyWitness is set and the public key used in checksig/checkmultisig isn't serialized in a compressed format.")]
     WitnessPubKeyType,
@@ -65,10 +70,8 @@ pub enum CheckSigError {
     TapscriptValidationWeight,
     #[error("invalid signature encoding: {0:?}")]
     Der(#[from] SignatureEncodingError),
-    #[error("generating key from slice: {0:?}")]
-    FromSlice(bitcoin::key::FromSliceError),
     #[error("schnorr signature error: {0:?}")]
-    SigFromSlice(bitcoin::taproot::SigFromSliceError),
+    Schnorr(bitcoin::taproot::SigFromSliceError),
     #[error("invalid signature: {0:?}")]
     InvalidSignature(#[from] SignatureError),
     #[error("secp256k1 error: {0:?}")]
@@ -385,7 +388,7 @@ fn eval_checksig_tapscript(
         0 => return Err(CheckSigError::PubKeyType),
         32 => {
             if success {
-                let sig = SchnorrSignature::from_slice(sig).map_err(CheckSigError::SigFromSlice)?;
+                let sig = SchnorrSignature::from_slice(sig).map_err(CheckSigError::Schnorr)?;
                 let pubkey =
                     XOnlyPublicKey::from_slice(pubkey).map_err(CheckSigError::Secp256k1)?;
 

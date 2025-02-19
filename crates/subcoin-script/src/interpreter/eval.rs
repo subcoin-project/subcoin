@@ -508,7 +508,11 @@ pub fn eval_script<SC: SignatureChecker>(
                         // validating if the transaction outputs are spendable yet.  If flag
                         // ScriptVerifyCheckSequenceVerify is not set, the code continues as if OP_NOP3
                         // were executed.
-                        let sequence = stack.pop_num_with_max_size(5)?;
+                        let sequence = ScriptNum::from_bytes(
+                            stack.last()?,
+                            flags.intersects(VerifyFlags::MINIMALDATA),
+                            Some(5),
+                        )?;
 
                         if sequence.is_negative() {
                             return Err(Error::NegativeLocktime);
