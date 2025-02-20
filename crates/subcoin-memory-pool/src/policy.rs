@@ -1,4 +1,5 @@
-use bitcoin::{transaction::Version, Amount, Transaction, TxOut, Weight};
+use bitcoin::transaction::Version;
+use bitcoin::{Amount, Transaction, TxOut, Weight};
 use std::collections::HashSet;
 
 const TX_MAX_STANDARD_VERSION: Version = Version(3);
@@ -21,29 +22,10 @@ const MAX_STANDARD_P2WSH_STACK_ITEM_SIZE: usize = 80;
 /// Maximum number of sigops in a standard P2WSH transaction
 const MAX_STANDARD_P2WSH_SIGOPS: usize = 15;
 
-/// Transaction output types
-#[derive(Debug, PartialEq, Eq)]
-pub enum TxoutType {
-    Nonstandard,
-    // anyone can spend script.
-    Anchor,
-    PubKey,
-    PubKeyHash,
-    ScriptHash,
-    Multisig,
-    // unspendable OP_RETURN script that carries data.
-    NullData,
-    WitnessV0ScriptHash,
-    WitnessV0KeyHash,
-    WitnessV1Taproot,
-    // Only for Witness versions not already defined above.
-    WitnessUnknown,
-}
-
 #[derive(Debug)]
 pub enum StandardTxError {
     Version,
-    TxSize,
+    TxSizeTooLarge,
     TxSizeTooSmall,
     ScriptsigSize,
     Dust,
@@ -65,7 +47,11 @@ pub fn is_standard_tx(
     }
 
     if tx.weight() > MAX_STANDARD_TX_WEIGHT {
-        return Err(StandardTxError::TxSize);
+        return Err(StandardTxError::TxSizeTooLarge);
+    }
+
+    if tx.base_size() < MIN_STANDARD_TX_NONWITNESS_SIZE {
+        return Err(StandardTxError::TxSizeTooSmall);
     }
 
     // Check for standard input scripts
