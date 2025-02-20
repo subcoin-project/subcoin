@@ -1,0 +1,14 @@
+[package]
+name = "subcoin-memory-pool"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+bitcoin = { workspace = true }
+sc-client-api = { workspace = true }
+sp-runtime = { workspace = true }
+subcoin-primitives = { workspace = true }
+thiserror = { workspace = true }

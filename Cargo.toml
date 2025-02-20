@@ -25,6 +25,7 @@ members = [
     "crates/subcoin-service",
     "crates/subcoin-snapcake",
     "crates/subcoin-test-service",
+    "crates/subcoin-memory-pool",
     "crates/subcoin-utxo-snapshot",
 ]
 
@@ -141,6 +142,7 @@ subcoin-runtime-primitives = { path = "crates/subcoin-runtime-primitives", defau
 subcoin-script = { path = "crates/subcoin-script" }
 subcoin-service = { path = "crates/subcoin-service" }
 subcoin-test-service = { path = "crates/subcoin-test-service" }
+subcoin-memory-pool = { path = "crates/subcoin-memory-pool" }
 subcoin-utxo-snapshot = { path = "crates/subcoin-utxo-snapshot" }
 
 [profile.release]
