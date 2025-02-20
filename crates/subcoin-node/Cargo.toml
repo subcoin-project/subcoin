@@ -16,7 +16,7 @@ bitcoin = { workspace = true }
 bitcoin-explorer = { workspace = true, default-features = false }
 clap = { workspace = true, features = ["derive"] }
 codec = { workspace = true }
-frame-benchmarking-cli = { workspace = true, optional = true }
+# frame-benchmarking-cli = { workspace = true, optional = true }
 futures = { workspace = true }
 hex = { workspace = true }
 indicatif = { workspace = true }
@@ -74,4 +74,4 @@ runtime-benchmarks = [
 ]
 rocksdb = ["sc-cli/rocksdb"]
 remote-import = ["reqwest"]
-benchmark = ["frame-benchmarking-cli"]
+# benchmark = ["frame-benchmarking-cli"]

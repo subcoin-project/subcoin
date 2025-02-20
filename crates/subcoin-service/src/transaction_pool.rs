@@ -1,6 +1,6 @@
 use sc_transaction_pool_api::{
     ImportNotificationStream, PoolStatus, ReadyTransactions, TransactionFor, TransactionSource,
-    TransactionStatusStreamFor, TxHash,
+    TransactionStatusStreamFor, TxHash, TxInvalidityReportMap,
 };
 use sp_runtime::OpaqueExtrinsic;
 use std::collections::HashMap;
@@ -124,8 +124,12 @@ impl sc_transaction_pool_api::TransactionPool for Transactions {
         Box::new(std::iter::empty::<Arc<Self::InPoolTransaction>>())
     }
 
-    fn remove_invalid(&self, _hashes: &[TxHash<Self>]) -> Vec<Arc<Self::InPoolTransaction>> {
-        Default::default()
+    fn report_invalid(
+        &self,
+        _at: Option<Self::Hash>,
+        _invalid_tx_errors: TxInvalidityReportMap<TxHash<Self>>,
+    ) -> Vec<Arc<Self::InPoolTransaction>> {
+        unimplemented!()
     }
 
     fn futures(&self) -> Vec<Self::InPoolTransaction> {

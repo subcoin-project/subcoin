@@ -6,8 +6,8 @@ use crate::commands::run::{Run, RunCmd};
 use crate::commands::tools::Tools;
 use crate::substrate_cli::SubstrateCli;
 use clap::Parser;
-#[cfg(feature = "benchmark")]
-use frame_benchmarking_cli::{BenchmarkCmd, SUBSTRATE_REFERENCE_HARDWARE};
+// #[cfg(feature = "benchmark")]
+// use frame_benchmarking_cli::{BenchmarkCmd, SUBSTRATE_REFERENCE_HARDWARE};
 use sc_cli::SubstrateCli as SubstrateCliT;
 use sc_client_api::UsageProvider;
 use sc_consensus_nakamoto::ImportConfig;
@@ -49,11 +49,10 @@ pub enum Command {
     /// Revert the chain to a previous state.
     Revert(sc_cli::RevertCmd),
 
-    /// Sub-commands concerned with benchmarking.
-    #[cfg(feature = "benchmark")]
-    #[command(subcommand)]
-    Benchmark(Box<frame_benchmarking_cli::BenchmarkCmd>),
-
+    // Sub-commands concerned with benchmarking.
+    // #[cfg(feature = "benchmark")]
+    // #[command(subcommand)]
+    // Benchmark(Box<frame_benchmarking_cli::BenchmarkCmd>),
     /// Db meta columns information.
     ChainInfo(sc_cli::ChainInfoCmd),
 }
@@ -222,49 +221,49 @@ pub fn run() -> sc_cli::Result<()> {
                 Ok((cmd.run(client, backend, None), task_manager))
             })
         }
-        #[cfg(feature = "benchmark")]
-        Command::Benchmark(cmd) => {
-            let runner = SubstrateCli.create_runner(&*cmd)?;
+        // #[cfg(feature = "benchmark")]
+        // Command::Benchmark(cmd) => {
+        // let runner = SubstrateCli.create_runner(&*cmd)?;
 
-            runner.sync_run(|config| {
-                // This switch needs to be in the client, since the client decides
-                // which sub-commands it wants to support.
-                match *cmd {
-                    BenchmarkCmd::Pallet(_cmd) => {
-                        unimplemented!("")
-                    }
-                    BenchmarkCmd::Block(cmd) => {
-                        let PartialComponents { client, .. } =
-                            subcoin_service::new_partial(&config, bitcoin::Network::Bitcoin)?;
-                        cmd.run(client)
-                    }
-                    #[cfg(not(feature = "runtime-benchmarks"))]
-                    BenchmarkCmd::Storage(_) => Err(
-                        "Storage benchmarking can be enabled with `--features runtime-benchmarks`."
-                            .into(),
-                    ),
-                    #[cfg(feature = "runtime-benchmarks")]
-                    BenchmarkCmd::Storage(cmd) => {
-                        let PartialComponents {
-                            client, backend, ..
-                        } = subcoin_service::new_partial(&config, bitcoin::Network::Bitcoin)?;
-                        let db = backend.expose_db();
-                        let storage = backend.expose_storage();
+        // runner.sync_run(|config| {
+        // // This switch needs to be in the client, since the client decides
+        // // which sub-commands it wants to support.
+        // match *cmd {
+        // BenchmarkCmd::Pallet(_cmd) => {
+        // unimplemented!("")
+        // }
+        // BenchmarkCmd::Block(cmd) => {
+        // let PartialComponents { client, .. } =
+        // subcoin_service::new_partial(&config, bitcoin::Network::Bitcoin)?;
+        // cmd.run(client)
+        // }
+        // #[cfg(not(feature = "runtime-benchmarks"))]
+        // BenchmarkCmd::Storage(_) => Err(
+        // "Storage benchmarking can be enabled with `--features runtime-benchmarks`."
+        // .into(),
+        // ),
+        // #[cfg(feature = "runtime-benchmarks")]
+        // BenchmarkCmd::Storage(cmd) => {
+        // let PartialComponents {
+        // client, backend, ..
+        // } = subcoin_service::new_partial(&config, bitcoin::Network::Bitcoin)?;
+        // let db = backend.expose_db();
+        // let storage = backend.expose_storage();
 
-                        cmd.run(config, client, db, storage)
-                    }
-                    BenchmarkCmd::Overhead(_cmd) => {
-                        unimplemented!("")
-                    }
-                    BenchmarkCmd::Extrinsic(_cmd) => {
-                        unimplemented!("")
-                    }
-                    BenchmarkCmd::Machine(cmd) => {
-                        cmd.run(&config, SUBSTRATE_REFERENCE_HARDWARE.clone())
-                    }
-                }
-            })
-        }
+        // cmd.run(config, client, db, storage)
+        // }
+        // BenchmarkCmd::Overhead(_cmd) => {
+        // unimplemented!("")
+        // }
+        // BenchmarkCmd::Extrinsic(_cmd) => {
+        // unimplemented!("")
+        // }
+        // BenchmarkCmd::Machine(cmd) => {
+        // cmd.run(&config, SUBSTRATE_REFERENCE_HARDWARE.clone())
+        // }
+        // }
+        // })
+        // }
         Command::ChainInfo(cmd) => {
             let runner = SubstrateCli.create_runner(&cmd)?;
             runner.sync_run(|config| cmd.run::<subcoin_runtime::interface::OpaqueBlock>(&config))
