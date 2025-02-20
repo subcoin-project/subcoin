@@ -6,7 +6,8 @@ use self::policy::{is_standard_tx, StandardTxError};
 use bitcoin::Transaction;
 use sc_client_api::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
-use std::{marker::PhantomData, sync::Arc};
+use std::marker::PhantomData;
+use std::sync::Arc;
 use subcoin_primitives::consensus::check_transaction_sanity;
 
 #[derive(Debug, thiserror::Error)]
@@ -47,10 +48,6 @@ where
                 self.options.dust_relay_fee,
             )
             .map_err(Error::NotStandard)?;
-        }
-
-        if tx.base_size() < policy::MIN_STANDARD_TX_NONWITNESS_SIZE {
-            return Err(Error::NotStandard(StandardTxError::TxSizeTooSmall));
         }
 
         // TODO: CheckFinalTxAtTip
