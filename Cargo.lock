@@ -9022,6 +9022,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "subcoin-memory-pool"
+version = "0.1.0"
+dependencies = [
+ "bitcoin 0.32.2",
+ "sc-client-api",
+ "sp-runtime",
+ "subcoin-primitives",
+ "thiserror 1.0.68",
+]
+
+[[package]]
 name = "subcoin-network"
 version = "0.1.0"
 dependencies = [
@@ -9124,6 +9135,7 @@ dependencies = [
  "sp-blockchain",
  "sp-runtime",
  "subcoin-runtime-primitives",
+ "thiserror 1.0.68",
  "tracing",
 ]
 
