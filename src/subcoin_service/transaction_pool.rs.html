@@ -160,9 +160,13 @@
 <a href="#160" id="160">160</a>
 <a href="#161" id="161">161</a>
 <a href="#162" id="162">162</a>
+<a href="#163" id="163">163</a>
+<a href="#164" id="164">164</a>
+<a href="#165" id="165">165</a>
+<a href="#166" id="166">166</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>sc_transaction_pool_api::{
     ImportNotificationStream, PoolStatus, ReadyTransactions, TransactionFor, TransactionSource,
-    TransactionStatusStreamFor, TxHash,
+    TransactionStatusStreamFor, TxHash, TxInvalidityReportMap,
 };
 <span class="kw">use </span>sp_runtime::OpaqueExtrinsic;
 <span class="kw">use </span>std::collections::HashMap;
@@ -286,8 +290,12 @@
         Box::new(std::iter::empty::&lt;Arc&lt;<span class="self">Self</span>::InPoolTransaction&gt;&gt;())
     }
 
-    <span class="kw">fn </span>remove_invalid(<span class="kw-2">&amp;</span><span class="self">self</span>, _hashes: <span class="kw-2">&amp;</span>[TxHash&lt;<span class="self">Self</span>&gt;]) -&gt; Vec&lt;Arc&lt;<span class="self">Self</span>::InPoolTransaction&gt;&gt; {
-        Default::default()
+    <span class="kw">fn </span>report_invalid(
+        <span class="kw-2">&amp;</span><span class="self">self</span>,
+        _at: <span class="prelude-ty">Option</span>&lt;<span class="self">Self</span>::Hash&gt;,
+        _invalid_tx_errors: TxInvalidityReportMap&lt;TxHash&lt;<span class="self">Self</span>&gt;&gt;,
+    ) -&gt; Vec&lt;Arc&lt;<span class="self">Self</span>::InPoolTransaction&gt;&gt; {
+        <span class="macro">unimplemented!</span>()
     }
 
     <span class="kw">fn </span>futures(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Vec&lt;<span class="self">Self</span>::InPoolTransaction&gt; {
