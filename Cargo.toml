@@ -70,7 +70,7 @@ tokio = "1.41.1"
 tracing = "0.1"
 
 # Disable the default `rocksdb` feature
-frame-benchmarking-cli = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v6", default-features = false }
+# frame-benchmarking-cli = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v6", default-features = false }
 frame-support = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v6", default-features = false }
 frame-system = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v6", default-features = false }
 frame-system-rpc-runtime-api = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v6", default-features = false }
