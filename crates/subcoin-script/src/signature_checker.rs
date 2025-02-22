@@ -2,11 +2,14 @@ use crate::num::ScriptNum;
 use crate::{EcdsaSignature, SchnorrSignature, ScriptExecutionData, SigVersion};
 use bitcoin::locktime::absolute::LockTime as AbsoluteLockTime;
 use bitcoin::locktime::relative::LockTime as RelativeLockTime;
+use bitcoin::opcodes::all::OP_CODESEPARATOR;
+use bitcoin::script::Instruction;
 use bitcoin::secp256k1::{self, All, Message, Secp256k1};
 use bitcoin::sighash::{Annex, Prevouts, SighashCache, TaprootError};
 use bitcoin::transaction::Version;
 use bitcoin::{
-    Amount, EcdsaSighashType, PublicKey, Script, Sequence, Transaction, TxOut, XOnlyPublicKey,
+    Amount, EcdsaSighashType, PublicKey, Script, ScriptBuf, Sequence, Transaction, TxOut,
+    XOnlyPublicKey,
 };
 use std::sync::LazyLock;
 
@@ -221,6 +224,73 @@ impl<'a> TransactionSignatureChecker<'a> {
     }
 }
 
+/// Represents a script processed for base signature hash calculation,
+/// which may either be the original unmodified script or a sanitized version
+/// with all OP_CODESEPARATOR opcodes removed.
+#[derive(Debug)]
+enum ProcessedBaseSighashScript<'a> {
+    /// The original script contains no OP_CODESEPARATOR opcodes.
+    Original(&'a Script),
+    /// A modified version of the script with all OP_CODESEPARATOR opcodes removed.
+    Sanitized(ScriptBuf),
+}
+
+impl ProcessedBaseSighashScript<'_> {
+    /// Returns a reference to the processed script suitable for sighash computation
+    fn as_script(&self) -> &Script {
+        match self {
+            Self::Original(script) => script,
+            Self::Sanitized(script) => script,
+        }
+    }
+}
+
+fn remove_op_codeseparator(script: &Script) -> ProcessedBaseSighashScript<'_> {
+    let has_code_separators = script.instructions().any(|instruction| {
+        instruction
+            .expect("Parse instruction can not fail")
+            .opcode()
+            .map(|op| op == OP_CODESEPARATOR)
+            .unwrap_or(false)
+    });
+
+    if !has_code_separators {
+        return ProcessedBaseSighashScript::Original(script);
+    }
+
+    let original_bytes = script.as_bytes();
+
+    let mut cleaned = Vec::with_capacity(original_bytes.len());
+    let mut last_pos = 0;
+
+    for instruction in script.instruction_indices() {
+        let (pos, instruction) = instruction.expect("Parse instruction can not failed");
+
+        match instruction {
+            Instruction::Op(OP_CODESEPARATOR) => {
+                // Skip the OP_CODESEPARATOR byte
+                last_pos = pos + 1;
+            }
+            Instruction::Op(_) => {
+                // Copy single-byte opcode
+                cleaned.push(original_bytes[pos]);
+                last_pos = pos + 1;
+            }
+            Instruction::PushBytes(data) => {
+                // Copy push opcode and its data
+                let data_end = pos + 1 + data.len();
+                cleaned.extend_from_slice(&original_bytes[pos..data_end]);
+                last_pos = data_end;
+            }
+        }
+    }
+
+    // Copy any remaining bytes after last parsed instruction
+    cleaned.extend_from_slice(&original_bytes[last_pos..]);
+
+    ProcessedBaseSighashScript::Sanitized(ScriptBuf::from(cleaned))
+}
+
 impl SignatureChecker for TransactionSignatureChecker<'_> {
     fn check_ecdsa_signature(
         &mut self,
@@ -230,11 +300,17 @@ impl SignatureChecker for TransactionSignatureChecker<'_> {
         sig_version: SigVersion,
     ) -> Result<bool, SignatureError> {
         let msg: Message = match sig_version {
-            SigVersion::Base => self
-                .sighash_cache
-                .legacy_signature_hash(self.input_index, script_pubkey, sig.sighash_type)
-                .map_err(SignatureError::EcdsaSignatureHash)?
-                .into(),
+            SigVersion::Base => {
+                let base_sighash_script = remove_op_codeseparator(script_pubkey);
+                self.sighash_cache
+                    .legacy_signature_hash(
+                        self.input_index,
+                        base_sighash_script.as_script(),
+                        sig.sighash_type,
+                    )
+                    .map_err(SignatureError::EcdsaSignatureHash)?
+                    .into()
+            }
             SigVersion::WitnessV0 => self
                 .sighash_cache
                 .p2wsh_signature_hash(
@@ -256,7 +332,7 @@ impl SignatureChecker for TransactionSignatureChecker<'_> {
                 ?pk,
                 script_pubkey = hex::encode(script_pubkey.as_bytes()),
                 ?sig_version,
-                ?msg,
+                %msg,
                 "[check_ecdsa_signature] Invalid ECDSA signature"
             );
         }
@@ -409,5 +485,39 @@ impl SignatureChecker for TransactionSignatureChecker<'_> {
         }
 
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bitcoin::consensus::encode::deserialize_hex;
+    use bitcoin::sighash::SighashCache;
+    use bitcoin::{Script, Transaction};
+
+    #[test]
+    fn test_remove_op_codeseparator() {
+        // https://www.blockchain.com/explorer/transactions/btc/5fec539b26083b26d9d77014402e5942566a3c8c6e1b2b0c9cd245d51a0a5c61
+        let tx = "01000000016aaa18f4ab91fab80ecda666c4def68b8b75cc6bb1169ecd81716eab03ff14d007000000fd8701483045022100ac4319cf798ab10d864ad5f206cd405b7a15957eef2b0094ab24ffcf2c28fbfb022012053c8142d9e4f832d85c6ce7dba82d44d011c7713fb584771fb8770da97c0c012102c8662aaa171b5c98fef66c02138165f600c7c5743380686958e395edf8eb36bf47304402202feedc3b54cd87868406e93ee650742b61ce39162d70b6fde5a805fd40a56c900220015970a2fc874c32edfcd6341981d35e5b019a14b17662e00f49e363db72b93c014cd22102fb6827937707bf432d85b094bc180ab93394ee013b3ecaafa04b9135e3ab6e50ad74926404162c5658b15167762103db22e387923ad0552e1c4a4355324313af85926d4266c0eaa86f02eb1e01b2d28763ac67762102c8662aaa171b5c98fef66c02138165f600c7c5743380686958e395edf8eb36bf886e6b6b0064ab05636f6e643175ac687664756c6c6e6b6bab05636f6e643275ac687664756c6c6e6b6bab05636f6e643375ac687664756c6c6e6b6bab05636f6e643475ac687664756c6c6e6b6bab05636f6e643575ac686868ffffffff01204e0000000000001976a914648a4310b84426f426398ef27e3388a4d2c05a2888ac342c5658";
+        let tx: Transaction = deserialize_hex(tx).unwrap();
+
+        let input_index = 0;
+        let sighash_type = 1;
+        let pkscript = hex::decode("2102fb6827937707bf432d85b094bc180ab93394ee013b3ecaafa04b9135e3ab6e50ad74926404162c5658b15167762103db22e387923ad0552e1c4a4355324313af85926d4266c0eaa86f02eb1e01b2d28763ac67762102c8662aaa171b5c98fef66c02138165f600c7c5743380686958e395edf8eb36bf886e6b6b0064ab05636f6e643175ac687664756c6c6e6b6bab05636f6e643275ac687664756c6c6e6b6bab05636f6e643375ac687664756c6c6e6b6bab05636f6e643475ac687664756c6c6e6b6bab05636f6e643575ac686868").unwrap();
+        let script_pubkey = Script::from_bytes(&pkscript);
+
+        let sighash_cache = SighashCache::new(&tx);
+        // legacy_signature_hash() does not take care of the removal of OP_CODESEPARATOR, we must
+        // remove all OP_CODESEPARATOR first.
+        let cleaned_script = remove_op_codeseparator(script_pubkey);
+        let sighash = sighash_cache
+            .legacy_signature_hash(input_index, cleaned_script.as_script(), sighash_type)
+            .unwrap();
+
+        let data = hex::decode("1d893b45c5d005bf6a20a0ab1ad19c16e92da602e9984180d947e2798aef1e41")
+            .unwrap();
+        let expected_sighash = Message::from_digest_slice(&data).unwrap();
+
+        assert_eq!(expected_sighash, sighash.into());
     }
 }

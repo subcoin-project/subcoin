@@ -21,8 +21,12 @@ impl Display for Stack {
 
         // Iterate over each Vec<u8> in `data` and display it as hex
         for (i, vec_item) in self.data.iter().enumerate() {
-            for item in vec_item {
-                write!(f, "{:02x?}", item)?;
+            if vec_item.is_empty() {
+                write!(f, "00000000 <empty>")?;
+            } else {
+                for item in vec_item {
+                    write!(f, "{:02x?}", item)?;
+                }
             }
 
             // If this is not the last item, add a comma and a space
