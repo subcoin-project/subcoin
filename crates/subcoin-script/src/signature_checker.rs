@@ -248,7 +248,7 @@ impl ProcessedBaseSighashScript<'_> {
 fn remove_op_codeseparator(script: &Script) -> ProcessedBaseSighashScript<'_> {
     let has_code_separators = script.instructions().any(|instruction| {
         instruction
-            .expect("Parse instruction can not fail")
+            .expect("Parsing script must not fail in signature verification")
             .opcode()
             .map(|op| op == OP_CODESEPARATOR)
             .unwrap_or(false)
@@ -260,11 +260,12 @@ fn remove_op_codeseparator(script: &Script) -> ProcessedBaseSighashScript<'_> {
 
     let original_bytes = script.as_bytes();
 
-    let mut cleaned = Vec::with_capacity(original_bytes.len());
+    let mut sanitized_script = Vec::with_capacity(original_bytes.len());
     let mut last_pos = 0;
 
     for instruction in script.instruction_indices() {
-        let (pos, instruction) = instruction.expect("Parse instruction can not failed");
+        let (pos, instruction) =
+            instruction.expect("Parsing script must not fail in signature verification");
 
         match instruction {
             Instruction::Op(OP_CODESEPARATOR) => {
@@ -273,22 +274,22 @@ fn remove_op_codeseparator(script: &Script) -> ProcessedBaseSighashScript<'_> {
             }
             Instruction::Op(_) => {
                 // Copy single-byte opcode
-                cleaned.push(original_bytes[pos]);
+                sanitized_script.push(original_bytes[pos]);
                 last_pos = pos + 1;
             }
             Instruction::PushBytes(data) => {
                 // Copy push opcode and its data
                 let data_end = pos + 1 + data.len();
-                cleaned.extend_from_slice(&original_bytes[pos..data_end]);
+                sanitized_script.extend_from_slice(&original_bytes[pos..data_end]);
                 last_pos = data_end;
             }
         }
     }
 
     // Copy any remaining bytes after last parsed instruction
-    cleaned.extend_from_slice(&original_bytes[last_pos..]);
+    sanitized_script.extend_from_slice(&original_bytes[last_pos..]);
 
-    ProcessedBaseSighashScript::Sanitized(ScriptBuf::from(cleaned))
+    ProcessedBaseSighashScript::Sanitized(ScriptBuf::from(sanitized_script))
 }
 
 impl SignatureChecker for TransactionSignatureChecker<'_> {
@@ -492,8 +493,9 @@ impl SignatureChecker for TransactionSignatureChecker<'_> {
 mod tests {
     use super::*;
     use bitcoin::consensus::encode::deserialize_hex;
+    use bitcoin::hashes::Hash;
     use bitcoin::sighash::SighashCache;
-    use bitcoin::{Script, Transaction};
+    use bitcoin::{LegacySighash, Script, Transaction};
 
     #[test]
     fn test_remove_op_codeseparator() {
@@ -516,8 +518,8 @@ mod tests {
 
         let data = hex::decode("1d893b45c5d005bf6a20a0ab1ad19c16e92da602e9984180d947e2798aef1e41")
             .unwrap();
-        let expected_sighash = Message::from_digest_slice(&data).unwrap();
+        let expected_sighash = LegacySighash::from_slice(&data).unwrap();
 
-        assert_eq!(expected_sighash, sighash.into());
+        assert_eq!(expected_sighash, sighash);
     }
 }

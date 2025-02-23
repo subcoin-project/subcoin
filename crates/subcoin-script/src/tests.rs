@@ -4,14 +4,9 @@ mod witness;
 use crate::num::NumError;
 use crate::signature_checker::SECP;
 use crate::{verify_script, EcdsaSignature, Error, TransactionSignatureChecker, VerifyFlags};
-use bitcoin::consensus::encode::deserialize;
+use bitcoin::consensus::encode::deserialize_hex;
 use bitcoin::secp256k1::Message;
 use bitcoin::{PublicKey, Script, ScriptBuf, Transaction};
-
-pub(crate) fn decode_raw_tx(tx_hex: &str) -> Transaction {
-    let tx_data = hex::decode(tx_hex).unwrap();
-    deserialize(&tx_data).unwrap()
-}
 
 fn decode_pubkey(pubkey_hex: &str) -> PublicKey {
     PublicKey::from_slice(&hex::decode(pubkey_hex).unwrap()).unwrap()
@@ -58,7 +53,7 @@ fn test_verify_script_full(
 ) {
     let _ = sc_tracing::logging::LoggerBuilder::new("subcoin_script=debug").init();
 
-    let tx = decode_raw_tx(tx);
+    let tx: Transaction = deserialize_hex(tx).unwrap();
 
     let pkscript = hex::decode(pkscript).unwrap();
     let script_pubkey = Script::from_bytes(&pkscript);
@@ -103,7 +98,7 @@ fn test_basic_p2pk() {
 
     // https://www.blockchain.com/explorer/transactions/btc/12b5633bad1f9c167d523ad1aa1947b2732a865bf5414eab2f9e5ae5d5c191ba
     let tx = "010000000173805864da01f15093f7837607ab8be7c3705e29a9d4a12c9116d709f8911e590100000049483045022052ffc1929a2d8bd365c6a2a4e3421711b4b1e1b8781698ca9075807b4227abcb0221009984107ddb9e3813782b095d0d84361ed4c76e5edaf6561d252ae162c2341cfb01ffffffff0200e1f50500000000434104baa9d36653155627c740b3409a734d4eaf5dcca9fb4f736622ee18efcf0aec2b758b2ec40db18fbae708f691edb2d4a2a3775eb413d16e2e3c0f8d4c69119fd1ac009ce4a60000000043410411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3ac00000000";
-    let tx = decode_raw_tx(tx);
+    let tx: Transaction = deserialize_hex(tx).unwrap();
 
     let pubkey = "0411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3";
     let pubkey = decode_pubkey(pubkey);
