@@ -1,5 +1,6 @@
 use crate::num::ScriptNum;
 use crate::{EcdsaSignature, SchnorrSignature, ScriptExecutionData, SigVersion};
+use bitcoin::hashes::Hash;
 use bitcoin::locktime::absolute::LockTime as AbsoluteLockTime;
 use bitcoin::locktime::relative::LockTime as RelativeLockTime;
 use bitcoin::opcodes::all::OP_CODESEPARATOR;
@@ -8,12 +9,21 @@ use bitcoin::secp256k1::{self, All, Message, Secp256k1};
 use bitcoin::sighash::{Annex, Prevouts, SighashCache, TaprootError};
 use bitcoin::transaction::Version;
 use bitcoin::{
-    Amount, EcdsaSighashType, PublicKey, Script, ScriptBuf, Sequence, Transaction, TxOut,
-    XOnlyPublicKey,
+    Amount, EcdsaSighashType, LegacySighash, PublicKey, Script, ScriptBuf, Sequence, Transaction,
+    TxOut, XOnlyPublicKey,
 };
 use std::sync::LazyLock;
 
 pub(crate) static SECP: LazyLock<Secp256k1<All>> = LazyLock::new(Secp256k1::new);
+
+/// Used for signature hash for invalid use of SIGHASH_SINGLE.
+#[rustfmt::skip]
+const UINT256_ONE: [u8; 32] = [
+    1, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0
+];
 
 /// Error types related to signature verification.
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
@@ -303,14 +313,30 @@ impl SignatureChecker for TransactionSignatureChecker<'_> {
         let msg: Message = match sig_version {
             SigVersion::Base => {
                 let base_sighash_script = remove_op_codeseparator(script_pubkey);
-                self.sighash_cache
-                    .legacy_signature_hash(
-                        self.input_index,
-                        base_sighash_script.as_script(),
-                        sig.sighash_type,
-                    )
-                    .map_err(SignatureError::EcdsaSignatureHash)?
-                    .into()
+
+                // SIGHASH_MASK defines the number of bits of the hash type which is used to
+                // identify which outpus are signed.
+                const SIGHASH_MASK: u32 = 0x1f;
+
+                // TODO: legacy_signature_hash() does not handle the sighash_single_bug properly.
+                //
+                // https://github.com/rust-bitcoin/rust-bitcoin/issues/4112
+                let is_sighash_single_bug = sig.sighash_type & SIGHASH_MASK
+                    == EcdsaSighashType::Single as u32
+                    && self.input_index >= self.tx.output.len();
+
+                if is_sighash_single_bug {
+                    LegacySighash::from_byte_array(UINT256_ONE).into()
+                } else {
+                    self.sighash_cache
+                        .legacy_signature_hash(
+                            self.input_index,
+                            base_sighash_script.as_script(),
+                            sig.sighash_type,
+                        )
+                        .map_err(SignatureError::EcdsaSignatureHash)?
+                        .into()
+                }
             }
             SigVersion::WitnessV0 => self
                 .sighash_cache
