@@ -238,14 +238,14 @@ impl<'a> TransactionSignatureChecker<'a> {
 /// which may either be the original unmodified script or a sanitized version
 /// with all OP_CODESEPARATOR opcodes removed.
 #[derive(Debug)]
-enum ProcessedBaseSighashScript<'a> {
+enum BaseSighashScript<'a> {
     /// The original script contains no OP_CODESEPARATOR opcodes.
     Original(&'a Script),
     /// A modified version of the script with all OP_CODESEPARATOR opcodes removed.
     Sanitized(ScriptBuf),
 }
 
-impl ProcessedBaseSighashScript<'_> {
+impl BaseSighashScript<'_> {
     /// Returns a reference to the processed script suitable for sighash computation
     fn as_script(&self) -> &Script {
         match self {
@@ -255,7 +255,7 @@ impl ProcessedBaseSighashScript<'_> {
     }
 }
 
-fn remove_op_codeseparator(script: &Script) -> ProcessedBaseSighashScript<'_> {
+fn remove_op_codeseparator(script: &Script) -> BaseSighashScript<'_> {
     let has_code_separators = script.instructions().any(|instruction| {
         instruction
             .expect("Parsing script must not fail in signature verification")
@@ -265,7 +265,7 @@ fn remove_op_codeseparator(script: &Script) -> ProcessedBaseSighashScript<'_> {
     });
 
     if !has_code_separators {
-        return ProcessedBaseSighashScript::Original(script);
+        return BaseSighashScript::Original(script);
     }
 
     let original_bytes = script.as_bytes();
@@ -299,7 +299,7 @@ fn remove_op_codeseparator(script: &Script) -> ProcessedBaseSighashScript<'_> {
     // Copy any remaining bytes after last parsed instruction
     sanitized_script.extend_from_slice(&original_bytes[last_pos..]);
 
-    ProcessedBaseSighashScript::Sanitized(ScriptBuf::from(sanitized_script))
+    BaseSighashScript::Sanitized(ScriptBuf::from(sanitized_script))
 }
 
 impl SignatureChecker for TransactionSignatureChecker<'_> {
