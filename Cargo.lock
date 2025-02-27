@@ -794,23 +794,7 @@ dependencies = [
 [[package]]
 name = "bitcoin"
 version = "0.32.2"
-source = "git+https://github.com/liuchengxu/rust-bitcoin?branch=0.32.x-subcoin#3415d99a9e9fab7b214152c6900b6b745d5d6125"
-dependencies = [
- "base58ck 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "bech32",
- "bitcoin-internals 0.3.0",
- "bitcoin-io 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "bitcoin-units 0.1.2",
- "bitcoin_hashes 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "hex-conservative 0.2.1",
- "hex_lit",
- "secp256k1 0.29.0",
-]
-
-[[package]]
-name = "bitcoin"
-version = "0.32.2"
-source = "git+https://github.com/liuchengxu/rust-bitcoin?rev=19b363299d2ed02c612ae50b24d20ad35c93cd21#19b363299d2ed02c612ae50b24d20ad35c93cd21"
+source = "git+https://github.com/liuchengxu/rust-bitcoin?rev=1a24197c4ad4065963a006ef553cb1eec993720e#1a24197c4ad4065963a006ef553cb1eec993720e"
 dependencies = [
  "base58ck 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "bech32",
@@ -828,7 +812,7 @@ dependencies = [
 [[package]]
 name = "bitcoin-explorer"
 version = "1.2.20"
-source = "git+https://github.com/liuchengxu/Rusty-Bitcoin-Explorer?branch=main#7e679918020de55be3619ae5825036b062ea1fd1"
+source = "git+https://github.com/liuchengxu/Rusty-Bitcoin-Explorer?branch=main#a9fbe3e07f20edb7970ff04954cb9ce9a70507d1"
 dependencies = [
  "bitcoin 0.31.0",
  "byteorder",
@@ -5384,7 +5368,7 @@ dependencies = [
 name = "pallet-bitcoin"
 version = "0.1.0"
 dependencies = [
- "bitcoin 0.32.2 (git+https://github.com/liuchengxu/rust-bitcoin?rev=19b363299d2ed02c612ae50b24d20ad35c93cd21)",
+ "bitcoin 0.32.2",
  "frame-support",
  "frame-system",
  "hex-conservative 0.2.1",
@@ -7022,7 +7006,7 @@ name = "sc-consensus-nakamoto"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "bitcoin 0.32.2 (git+https://github.com/liuchengxu/rust-bitcoin?rev=19b363299d2ed02c612ae50b24d20ad35c93cd21)",
+ "bitcoin 0.32.2",
  "bitcoinconsensus",
  "clap",
  "futures",
@@ -7785,7 +7769,7 @@ version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e0cc0f1cf93f4969faf3ea1c7d8a9faed25918d96affa959720823dfe86d4f3"
 dependencies = [
- "bitcoin_hashes 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bitcoin_hashes 0.13.0",
  "secp256k1-sys 0.10.0",
  "serde",
 ]
@@ -9009,7 +8993,7 @@ dependencies = [
 name = "subcoin-indexer"
 version = "0.1.0"
 dependencies = [
- "bitcoin 0.32.2 (git+https://github.com/liuchengxu/rust-bitcoin?rev=19b363299d2ed02c612ae50b24d20ad35c93cd21)",
+ "bitcoin 0.32.2",
  "futures",
  "parity-scale-codec",
  "sc-client-api",
@@ -9025,7 +9009,7 @@ dependencies = [
 name = "subcoin-informant"
 version = "0.1.0"
 dependencies = [
- "bitcoin 0.32.2 (git+https://github.com/liuchengxu/rust-bitcoin?rev=19b363299d2ed02c612ae50b24d20ad35c93cd21)",
+ "bitcoin 0.32.2",
  "console",
  "futures",
  "futures-timer",
@@ -9042,7 +9026,7 @@ name = "subcoin-network"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "bitcoin 0.32.2 (git+https://github.com/liuchengxu/rust-bitcoin?rev=19b363299d2ed02c612ae50b24d20ad35c93cd21)",
+ "bitcoin 0.32.2",
  "chrono",
  "clap",
  "fastrand",
@@ -9078,7 +9062,7 @@ name = "subcoin-node"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "bitcoin 0.32.2 (git+https://github.com/liuchengxu/rust-bitcoin?rev=19b363299d2ed02c612ae50b24d20ad35c93cd21)",
+ "bitcoin 0.32.2",
  "bitcoin-explorer",
  "clap",
  "futures",
@@ -9134,7 +9118,7 @@ dependencies = [
 name = "subcoin-primitives"
 version = "0.1.0"
 dependencies = [
- "bitcoin 0.32.2 (git+https://github.com/liuchengxu/rust-bitcoin?rev=19b363299d2ed02c612ae50b24d20ad35c93cd21)",
+ "bitcoin 0.32.2",
  "parity-scale-codec",
  "sc-client-api",
  "sp-blockchain",
@@ -9148,7 +9132,7 @@ name = "subcoin-rpc"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "bitcoin 0.32.2 (git+https://github.com/liuchengxu/rust-bitcoin?rev=19b363299d2ed02c612ae50b24d20ad35c93cd21)",
+ "bitcoin 0.32.2",
  "hex",
  "jsonrpsee",
  "sc-client-api",
@@ -9204,7 +9188,7 @@ dependencies = [
 name = "subcoin-script"
 version = "0.1.0"
 dependencies = [
- "bitcoin 0.32.2 (git+https://github.com/liuchengxu/rust-bitcoin?rev=19b363299d2ed02c612ae50b24d20ad35c93cd21)",
+ "bitcoin 0.32.2",
  "bitflags 2.6.0",
  "hex",
  "num-bigint",
@@ -9223,7 +9207,7 @@ dependencies = [
  "array-bytes",
  "async-channel",
  "async-trait",
- "bitcoin 0.32.2 (git+https://github.com/liuchengxu/rust-bitcoin?rev=19b363299d2ed02c612ae50b24d20ad35c93cd21)",
+ "bitcoin 0.32.2",
  "frame-system",
  "futures",
  "jsonrpsee",
@@ -9275,7 +9259,7 @@ name = "subcoin-snapcake"
 version = "0.1.0"
 dependencies = [
  "bincode",
- "bitcoin 0.32.2 (git+https://github.com/liuchengxu/rust-bitcoin?rev=19b363299d2ed02c612ae50b24d20ad35c93cd21)",
+ "bitcoin 0.32.2",
  "clap",
  "csv",
  "futures",
@@ -9315,7 +9299,7 @@ dependencies = [
 name = "subcoin-test-service"
 version = "0.1.0"
 dependencies = [
- "bitcoin 0.32.2 (git+https://github.com/liuchengxu/rust-bitcoin?rev=19b363299d2ed02c612ae50b24d20ad35c93cd21)",
+ "bitcoin 0.32.2",
  "sc-consensus-nakamoto",
  "sc-service",
  "serde_json",
@@ -9331,7 +9315,7 @@ dependencies = [
 name = "subcoin-utxo-snapshot"
 version = "0.1.0"
 dependencies = [
- "bitcoin 0.32.2 (git+https://github.com/liuchengxu/rust-bitcoin?rev=19b363299d2ed02c612ae50b24d20ad35c93cd21)",
+ "bitcoin 0.32.2",
  "fastrand",
  "hex",
  "serde",
@@ -10030,9 +10014,9 @@ dependencies = [
 [[package]]
 name = "txoutset"
 version = "0.3.0"
-source = "git+https://github.com/liuchengxu/txoutset?branch=subcoin#58adcafa42f3184c6d030a116f137d1713637af7"
+source = "git+https://github.com/liuchengxu/txoutset?branch=subcoin#a36f204308816f6f7444cd7a5b5f248561d6135d"
 dependencies = [
- "bitcoin 0.32.2 (git+https://github.com/liuchengxu/rust-bitcoin?branch=0.32.x-subcoin)",
+ "bitcoin 0.32.2",
  "log",
 ]
 
