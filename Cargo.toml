@@ -38,7 +38,7 @@ array-bytes = "6.2.2"
 async-channel = "1.8.0"
 async-trait = "0.1"
 bincode = "1.3.3"
-bitcoin = { git = "https://github.com/liuchengxu/rust-bitcoin", branch = "0.32.x-subcoin", default-features = false }
+bitcoin = { git = "https://github.com/liuchengxu/rust-bitcoin", rev = "19b363299d2ed02c612ae50b24d20ad35c93cd21", default-features = false }
 bitcoinconsensus = "0.105.0+25.1"
 bitcoin-explorer = { git = "https://github.com/liuchengxu/Rusty-Bitcoin-Explorer", branch = "main", default-features = false }
 bitflags = "2.6.0"

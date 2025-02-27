@@ -68,7 +68,7 @@ pub fn verify_script<SC: SignatureChecker>(
     }
 
     if !stack.peek_bool()? {
-        tracing::debug!("[verify_script] Invalid script: false stack element");
+        tracing::debug!(%stack, "[verify_script] Invalid script: false stack element");
         return Err(Error::EvalFalse);
     }
 

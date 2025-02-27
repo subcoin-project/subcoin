@@ -311,3 +311,16 @@ fn test_sighash_single_bug_should_be_handled_properly() {
     let flags = VerifyFlags::P2SH | VerifyFlags::WITNESS;
     test_verify_script_with_flags(tx, pkscript, input_index, input_amount, flags);
 }
+
+// https://github.com/rust-bitcoin/rust-bitcoin/issues/4133
+#[test]
+fn test_non_standard_sighash_type_should_be_encoded_correctly() {
+    // https://www.blockchain.com/explorer/transactions/btc/1395dde8ec0152f4cb090f4d4e8dcb14cc0d8bbba780e686c44934370cd316ec
+    let tx = "01000000000101447e208868dbc8e930fc6eba4fe0d0abfe0d9dc2db4ba70542e02467f00205c90100000017160014e20c60563894174c253ae937ba59ace46ab9ffb1ffffffff010845f305000000001976a91414ac7fc2a782bde1555b753d75ff4ed146683cae88ac024730440220120003c32cca7eabf07bad5c31125accc09d13c39546fa93833b8b69a2c72ed7022057083dc2ed348156874b8af859ac7a9c16e5ce39353f3f1ac2226b49c2b319af652103f73386ac6e567581f8d0611ad7a8536c3cd0253e535f6fc4707514b2ab54198700000000";
+    let pkscript = "a914e93f9e95f6d5cb1736a94de992d0d18819072fa587";
+    let input_index = 0;
+    let input_amount = 99830000;
+
+    let flags = VerifyFlags::P2SH | VerifyFlags::WITNESS;
+    test_verify_script_with_flags(tx, pkscript, input_index, input_amount, flags);
+}

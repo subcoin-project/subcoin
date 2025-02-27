@@ -6,7 +6,7 @@ use bitcoin::locktime::relative::LockTime as RelativeLockTime;
 use bitcoin::opcodes::all::OP_CODESEPARATOR;
 use bitcoin::script::Instruction;
 use bitcoin::secp256k1::{self, All, Message, Secp256k1};
-use bitcoin::sighash::{Annex, Prevouts, SighashCache, TaprootError};
+use bitcoin::sighash::{Annex, Prevouts, SegwitV0Sighash, SighashCache, TaprootError};
 use bitcoin::transaction::Version;
 use bitcoin::{
     Amount, EcdsaSighashType, LegacySighash, PublicKey, Script, ScriptBuf, Sequence, Transaction,
@@ -338,16 +338,25 @@ impl SignatureChecker for TransactionSignatureChecker<'_> {
                         .into()
                 }
             }
-            SigVersion::WitnessV0 => self
-                .sighash_cache
-                .p2wsh_signature_hash(
-                    self.input_index,
-                    script_pubkey,
-                    Amount::from_sat(self.input_amount),
-                    EcdsaSighashType::from_consensus(sig.sighash_type),
-                )
-                .map_err(SignatureError::EcdsaSignatureHash)?
-                .into(),
+            SigVersion::WitnessV0 => {
+                let p2wsh_signature_hash = {
+                    // TODO: https://github.com/rust-bitcoin/rust-bitcoin/issues/4133
+                    let mut enc = SegwitV0Sighash::engine();
+                    self.sighash_cache
+                        .segwit_v0_encode_signing_data_to(
+                            &mut enc,
+                            self.input_index,
+                            script_pubkey,
+                            Amount::from_sat(self.input_amount),
+                            EcdsaSighashType::from_consensus(sig.sighash_type),
+                            sig.sighash_type,
+                        )
+                        .unwrap();
+                    SegwitV0Sighash::from_engine(enc)
+                };
+
+                p2wsh_signature_hash.into()
+            }
             _ => return Err(SignatureError::InvalidSignatureVersion),
         };
 
@@ -356,10 +365,11 @@ impl SignatureChecker for TransactionSignatureChecker<'_> {
         if !is_valid_signature {
             tracing::debug!(
                 ?sig,
-                ?pk,
-                script_pubkey = hex::encode(script_pubkey.as_bytes()),
+                %pk,
+                input_amount = self.input_amount,
+                script_pubkey = %hex::encode(script_pubkey.as_bytes()),
                 ?sig_version,
-                %msg,
+                signed_msg = %msg,
                 "[check_ecdsa_signature] Invalid ECDSA signature"
             );
         }
