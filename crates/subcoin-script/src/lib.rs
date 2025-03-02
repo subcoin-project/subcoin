@@ -16,7 +16,7 @@
 //!
 //! ## Caveats
 //!
-//! This library is **not widely used** and **lacks comprehensive tests**. As a result, it is **never use it for production use**!
+//! This library is **not widely used** and **lacks comprehensive tests**. As a result, **never use it for production use**!
 //! Please use it with caution, and only in non-critical applications or for experimentation purposes.
 
 mod constants;
