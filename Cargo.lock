@@ -9194,7 +9194,6 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "sc-tracing",
- "serde",
  "serde_json",
  "thiserror 1.0.68",
  "tracing",
