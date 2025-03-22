@@ -259,6 +259,8 @@ fn calculate_next_work_required(
     let pow_target_timespan = params.pow_target_timespan;
 
     // Limit adjustment step.
+    //
+    // Note: The new difficulty is in [Difficulty_old * 1/4, Difficulty_old * 4].
     if actual_timespan < pow_target_timespan / 4 {
         actual_timespan = pow_target_timespan / 4;
     }
