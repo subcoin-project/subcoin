@@ -4,14 +4,9 @@ mod witness;
 use crate::num::NumError;
 use crate::signature_checker::SECP;
 use crate::{verify_script, EcdsaSignature, Error, TransactionSignatureChecker, VerifyFlags};
-use bitcoin::consensus::encode::deserialize;
+use bitcoin::consensus::encode::deserialize_hex;
 use bitcoin::secp256k1::Message;
 use bitcoin::{PublicKey, Script, ScriptBuf, Transaction};
-
-pub(crate) fn decode_raw_tx(tx_hex: &str) -> Transaction {
-    let tx_data = hex::decode(tx_hex).unwrap();
-    deserialize(&tx_data).unwrap()
-}
 
 fn decode_pubkey(pubkey_hex: &str) -> PublicKey {
     PublicKey::from_slice(&hex::decode(pubkey_hex).unwrap()).unwrap()
@@ -58,7 +53,7 @@ fn test_verify_script_full(
 ) {
     let _ = sc_tracing::logging::LoggerBuilder::new("subcoin_script=debug").init();
 
-    let tx = decode_raw_tx(tx);
+    let tx: Transaction = deserialize_hex(tx).unwrap();
 
     let pkscript = hex::decode(pkscript).unwrap();
     let script_pubkey = Script::from_bytes(&pkscript);
@@ -103,7 +98,7 @@ fn test_basic_p2pk() {
 
     // https://www.blockchain.com/explorer/transactions/btc/12b5633bad1f9c167d523ad1aa1947b2732a865bf5414eab2f9e5ae5d5c191ba
     let tx = "010000000173805864da01f15093f7837607ab8be7c3705e29a9d4a12c9116d709f8911e590100000049483045022052ffc1929a2d8bd365c6a2a4e3421711b4b1e1b8781698ca9075807b4227abcb0221009984107ddb9e3813782b095d0d84361ed4c76e5edaf6561d252ae162c2341cfb01ffffffff0200e1f50500000000434104baa9d36653155627c740b3409a734d4eaf5dcca9fb4f736622ee18efcf0aec2b758b2ec40db18fbae708f691edb2d4a2a3775eb413d16e2e3c0f8d4c69119fd1ac009ce4a60000000043410411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3ac00000000";
-    let tx = decode_raw_tx(tx);
+    let tx: Transaction = deserialize_hex(tx).unwrap();
 
     let pubkey = "0411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3";
     let pubkey = decode_pubkey(pubkey);
@@ -281,7 +276,7 @@ fn multisig_may_contain_invalid_signature_that_can_not_be_parsed_by_from_der_lax
 }
 
 #[test]
-fn test_locktime() {
+fn test_cltv_should_work() {
     // https://www.blockchain.com/explorer/transactions/btc/7eac45ade99281c1458aca234f2ea260fee9075065d260b0d3118df8bd2fedf3
     let tx = "010000000168317ec8ecaee38c03a21939dde22622b37c0fb6d135fa3c3f9d2da71374ab3d0100000073483045022100b2e827d892be74e00a7d499244e6fc2ec392ba2c6dc7c72bbd99f31865d346450220612182f6bb99b7aec87e82945243b86f327411c3d1f3a6a2abf6bd1317c584af0129034ded05b17521038cd6db60cb937555dcd30d6f927a3e4ee0f631e8eaf1c61c76c40804ffa3edd4ac000000000194bb00000000000017a914f1f4fb78c04fe29032192919b3d90c6a5ccaddab874ded0500";
     let pkscript = "a914f1f4fb78c04fe29032192919b3d90c6a5ccaddab87";
@@ -289,5 +284,43 @@ fn test_locktime() {
     let input_amount = 50000;
 
     let flags = VerifyFlags::P2SH | VerifyFlags::WITNESS | VerifyFlags::CHECKLOCKTIMEVERIFY;
+    test_verify_script_with_flags(tx, pkscript, input_index, input_amount, flags);
+}
+
+#[test]
+fn test_code_separators_should_be_removed_for_base_signature_verification() {
+    // https://www.blockchain.com/explorer/transactions/btc/7eac45ade99281c1458aca234f2ea260fee9075065d260b0d3118df8bd2fedf3
+    let tx = "01000000016aaa18f4ab91fab80ecda666c4def68b8b75cc6bb1169ecd81716eab03ff14d007000000fd8701483045022100ac4319cf798ab10d864ad5f206cd405b7a15957eef2b0094ab24ffcf2c28fbfb022012053c8142d9e4f832d85c6ce7dba82d44d011c7713fb584771fb8770da97c0c012102c8662aaa171b5c98fef66c02138165f600c7c5743380686958e395edf8eb36bf47304402202feedc3b54cd87868406e93ee650742b61ce39162d70b6fde5a805fd40a56c900220015970a2fc874c32edfcd6341981d35e5b019a14b17662e00f49e363db72b93c014cd22102fb6827937707bf432d85b094bc180ab93394ee013b3ecaafa04b9135e3ab6e50ad74926404162c5658b15167762103db22e387923ad0552e1c4a4355324313af85926d4266c0eaa86f02eb1e01b2d28763ac67762102c8662aaa171b5c98fef66c02138165f600c7c5743380686958e395edf8eb36bf886e6b6b0064ab05636f6e643175ac687664756c6c6e6b6bab05636f6e643275ac687664756c6c6e6b6bab05636f6e643375ac687664756c6c6e6b6bab05636f6e643475ac687664756c6c6e6b6bab05636f6e643575ac686868ffffffff01204e0000000000001976a914648a4310b84426f426398ef27e3388a4d2c05a2888ac342c5658";
+    let pkscript = "a9143ae52dbc43c884ef43211a43082d01a0091ef1e387";
+    let input_index = 0;
+    let input_amount = 70000;
+
+    let flags = VerifyFlags::P2SH | VerifyFlags::WITNESS;
+    test_verify_script_with_flags(tx, pkscript, input_index, input_amount, flags);
+}
+
+// https://github.com/rust-bitcoin/rust-bitcoin/issues/4112
+#[test]
+fn test_sighash_single_bug_should_be_handled_properly() {
+    // https://www.blockchain.com/explorer/transactions/btc/1395dde8ec0152f4cb090f4d4e8dcb14cc0d8bbba780e686c44934370cd316ec
+    let tx = "0100000005238e0fd85f30e2072141d80e3f8835fdf2475cc94264804b1e18c3d47b7125ec020000006a473044022042cb0081018fe929f2200588dd78dd894e8971d4c7d78d1b94687ac5f9fa728902203aaa065472d4c1e8e5e596b877356f237f956d4c3215ed801c0db85d9abf0cc5832102539172db3f6f4f6f97f21aee74f1e3ad7afc7a8c378f823d8aa12a48a04d88e9ffffffff484721321d2f1eaefb80861748f239269bc3b3aeaa7933d287792778e6ac43fa000000006b483045022100a33646af02aea9f627d6109d816dea4d91b6cb2b049d3ab9d23d3fd2530b4eb902207d64f947baede3f76d1fe17157d2cb77c924c176e67a6134f43893fabe1657f8832102539172db3f6f4f6f97f21aee74f1e3ad7afc7a8c378f823d8aa12a48a04d88e9ffffffffaf93fa5e2fdcb4f2ab0b6a5ee952d08c6c50ee3b9d0a93c618f72e870f9581c4000000006a473044022063d96da5131fdcfcad5f5e3eb2c4e2f747f4da56252f21e4db9e9120483be6f2022031d4396eda80dcca907a414cba9e9415ed6666ab99d27cc51a08711f6fd8cc2c832102539172db3f6f4f6f97f21aee74f1e3ad7afc7a8c378f823d8aa12a48a04d88e9ffffffffacba187db41514c706bc4158d89edc1cf09ea943bb129eaf14d8e938dcc761a4000000006a473044022063d96da5131fdcfcad5f5e3eb2c4e2f747f4da56252f21e4db9e9120483be6f2022031d4396eda80dcca907a414cba9e9415ed6666ab99d27cc51a08711f6fd8cc2c832102539172db3f6f4f6f97f21aee74f1e3ad7afc7a8c378f823d8aa12a48a04d88e9ffffffff6098091cf010883998204336aeebc43f04628230c769add0145f4e48656922bd000000006a473044022063d96da5131fdcfcad5f5e3eb2c4e2f747f4da56252f21e4db9e9120483be6f2022031d4396eda80dcca907a414cba9e9415ed6666ab99d27cc51a08711f6fd8cc2c832102539172db3f6f4f6f97f21aee74f1e3ad7afc7a8c378f823d8aa12a48a04d88e9ffffffff02fac53b00000000001976a914f1e7b93fde46772793af5c06a8e4120cb8521de988ac00000000000000000a6a08456c657068656e7400000000";
+    let pkscript = "76a9147fb1c3c81973a51d2dc978fe70ac83d869802ba188ac";
+    let input_index = 2;
+    let input_amount = 90000;
+
+    let flags = VerifyFlags::P2SH | VerifyFlags::WITNESS;
+    test_verify_script_with_flags(tx, pkscript, input_index, input_amount, flags);
+}
+
+// https://github.com/rust-bitcoin/rust-bitcoin/issues/4133
+#[test]
+fn test_non_standard_sighash_type_should_be_encoded_correctly() {
+    // https://www.blockchain.com/explorer/transactions/btc/1395dde8ec0152f4cb090f4d4e8dcb14cc0d8bbba780e686c44934370cd316ec
+    let tx = "01000000000101447e208868dbc8e930fc6eba4fe0d0abfe0d9dc2db4ba70542e02467f00205c90100000017160014e20c60563894174c253ae937ba59ace46ab9ffb1ffffffff010845f305000000001976a91414ac7fc2a782bde1555b753d75ff4ed146683cae88ac024730440220120003c32cca7eabf07bad5c31125accc09d13c39546fa93833b8b69a2c72ed7022057083dc2ed348156874b8af859ac7a9c16e5ce39353f3f1ac2226b49c2b319af652103f73386ac6e567581f8d0611ad7a8536c3cd0253e535f6fc4707514b2ab54198700000000";
+    let pkscript = "a914e93f9e95f6d5cb1736a94de992d0d18819072fa587";
+    let input_index = 0;
+    let input_amount = 99830000;
+
+    let flags = VerifyFlags::P2SH | VerifyFlags::WITNESS;
     test_verify_script_with_flags(tx, pkscript, input_index, input_amount, flags);
 }

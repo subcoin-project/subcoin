@@ -38,7 +38,7 @@ array-bytes = "6.2.2"
 async-channel = "1.8.0"
 async-trait = "0.1"
 bincode = "1.3.3"
-bitcoin = { git = "https://github.com/liuchengxu/rust-bitcoin", branch = "0.32.x-subcoin", default-features = false }
+bitcoin = { git = "https://github.com/liuchengxu/rust-bitcoin", rev = "1a24197c4ad4065963a006ef553cb1eec993720e", default-features = false }
 bitcoinconsensus = "0.105.0+25.1"
 bitcoin-explorer = { git = "https://github.com/liuchengxu/Rusty-Bitcoin-Explorer", branch = "main", default-features = false }
 bitflags = "2.6.0"
@@ -121,6 +121,8 @@ substrate-build-script-utils = { git = "https://github.com/subcoin-project/polka
 substrate-frame-rpc-system = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v6" }
 substrate-prometheus-endpoint = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v6", default-features = false }
 substrate-wasm-builder = { git = "https://github.com/subcoin-project/polkadot-sdk", branch = "subcoin-v6" }
+
+# This crate must use the same bitcoin dep above.
 txoutset = { git = "https://github.com/liuchengxu/txoutset", branch = "subcoin" }
 
 pallet-bitcoin = { path = "crates/pallet-bitcoin", default-features = false }
