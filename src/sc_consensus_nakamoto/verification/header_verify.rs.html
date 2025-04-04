@@ -313,6 +313,8 @@
 <a href="#313" id="313">313</a>
 <a href="#314" id="314">314</a>
 <a href="#315" id="315">315</a>
+<a href="#316" id="316">316</a>
+<a href="#317" id="317">317</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::chain_params::{ChainParams, MEDIAN_TIME_SPAN};
 <span class="kw">use </span>bitcoin::blockdata::block::{Header <span class="kw">as </span>BitcoinHeader, ValidationError};
 <span class="kw">use </span>bitcoin::consensus::Params;
@@ -574,6 +576,8 @@
     <span class="kw">let </span>pow_target_timespan = params.pow_target_timespan;
 
     <span class="comment">// Limit adjustment step.
+    //
+    // Note: The new difficulty is in [Difficulty_old * 1/4, Difficulty_old * 4].
     </span><span class="kw">if </span>actual_timespan &lt; pow_target_timespan / <span class="number">4 </span>{
         actual_timespan = pow_target_timespan / <span class="number">4</span>;
     }

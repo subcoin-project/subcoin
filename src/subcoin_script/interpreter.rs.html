@@ -506,7 +506,7 @@
     }
 
     <span class="kw">if </span>!stack.peek_bool()<span class="question-mark">? </span>{
-        <span class="macro">tracing::debug!</span>(<span class="string">"[verify_script] Invalid script: false stack element"</span>);
+        <span class="macro">tracing::debug!</span>(%stack, <span class="string">"[verify_script] Invalid script: false stack element"</span>);
         <span class="kw">return </span><span class="prelude-val">Err</span>(Error::EvalFalse);
     }
 

@@ -522,6 +522,10 @@
 <a href="#522" id="522">522</a>
 <a href="#523" id="523">523</a>
 <a href="#524" id="524">524</a>
+<a href="#525" id="525">525</a>
+<a href="#526" id="526">526</a>
+<a href="#527" id="527">527</a>
+<a href="#528" id="528">528</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::num::ScriptNum;
 <span class="kw">use </span><span class="kw">crate</span>::VerifyFlags;
 <span class="kw">use </span>std::fmt::Display;
@@ -545,8 +549,12 @@
 
         <span class="comment">// Iterate over each Vec&lt;u8&gt; in `data` and display it as hex
         </span><span class="kw">for </span>(i, vec_item) <span class="kw">in </span><span class="self">self</span>.data.iter().enumerate() {
-            <span class="kw">for </span>item <span class="kw">in </span>vec_item {
-                <span class="macro">write!</span>(f, <span class="string">"{:02x?}"</span>, item)<span class="question-mark">?</span>;
+            <span class="kw">if </span>vec_item.is_empty() {
+                <span class="macro">write!</span>(f, <span class="string">"00000000 &lt;empty&gt;"</span>)<span class="question-mark">?</span>;
+            } <span class="kw">else </span>{
+                <span class="kw">for </span>item <span class="kw">in </span>vec_item {
+                    <span class="macro">write!</span>(f, <span class="string">"{:02x?}"</span>, item)<span class="question-mark">?</span>;
+                }
             }
 
             <span class="comment">// If this is not the last item, add a comma and a space
