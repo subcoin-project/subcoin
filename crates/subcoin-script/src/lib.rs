@@ -25,7 +25,7 @@ mod interpreter;
 mod num;
 mod opcode;
 mod signature_checker;
-mod solver;
+pub mod solver;
 mod stack;
 #[cfg(test)]
 mod tests;
@@ -39,7 +39,6 @@ pub use self::interpreter::verify_script;
 pub use self::signature_checker::{
     NoSignatureCheck, SignatureChecker, SignatureError, TransactionSignatureChecker,
 };
-pub use self::solver::{solve_txout_type, TxOutType};
 
 pub type H256 = bitcoin::hashes::sha256::Hash;
 pub type SchnorrSignature = bitcoin::taproot::Signature;

@@ -4,7 +4,7 @@ use bitcoin::{Opcode, PublicKey, Script, WitnessVersion};
 
 /// Transaction output types
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum TxOutType {
+pub enum TxoutType {
     NonStandard,
     // anyone can spend script.
     Anchor,
@@ -25,10 +25,10 @@ pub enum TxOutType {
     WitnessUnknown(Vec<Vec<u8>>),
 }
 
-pub fn solve_txout_type(script_pubkey: &Script) -> TxOutType {
+pub fn solve(script_pubkey: &Script) -> TxoutType {
     if script_pubkey.is_p2sh() {
         let hash: [u8; 20] = script_pubkey.as_bytes()[2..22].try_into().unwrap();
-        return TxOutType::ScriptHash(hash);
+        return TxoutType::ScriptHash(hash);
     }
 
     if let Some(version) = script_pubkey.witness_version() {
@@ -36,53 +36,53 @@ pub fn solve_txout_type(script_pubkey: &Script) -> TxOutType {
 
         match (version, program.len()) {
             (WitnessVersion::V0, 20) => {
-                return TxOutType::WitnessV0KeyHash(program.try_into().unwrap());
+                return TxoutType::WitnessV0KeyHash(program.try_into().unwrap());
             }
             (WitnessVersion::V0, 32) => {
-                return TxOutType::WitnessV0ScriptHash(program.try_into().unwrap());
+                return TxoutType::WitnessV0ScriptHash(program.try_into().unwrap());
             }
             (WitnessVersion::V1, 32) => {
-                return TxOutType::WitnessV1Taproot(program.try_into().unwrap());
+                return TxoutType::WitnessV1Taproot(program.try_into().unwrap());
             }
             _ => {}
         }
 
         if is_pay_to_anchor(script_pubkey) {
-            return TxOutType::Anchor;
+            return TxoutType::Anchor;
         }
 
         if version != WitnessVersion::V0 {
             let mut res = Vec::with_capacity(2);
             res.push(vec![version as u8]);
             res.push(program.to_vec());
-            return TxOutType::WitnessUnknown(res);
+            return TxoutType::WitnessUnknown(res);
         }
 
-        return TxOutType::NonStandard;
+        return TxoutType::NonStandard;
     }
 
     // TODO: check IsPushOnly(script_pubkey[0])
     if script_pubkey.is_op_return() {
-        return TxOutType::NullData;
+        return TxoutType::NullData;
     }
 
     if let Some(pubkey) = script_pubkey.p2pk_public_key() {
-        return TxOutType::PubKey(pubkey);
+        return TxoutType::PubKey(pubkey);
     }
 
     if script_pubkey.is_p2pkh() {
-        return TxOutType::PubKeyHash(script_pubkey.as_bytes()[3..23].try_into().unwrap());
+        return TxoutType::PubKeyHash(script_pubkey.as_bytes()[3..23].try_into().unwrap());
     }
 
     if let Some((required_sigs, keys_count, keys)) = match_multisig(script_pubkey) {
-        return TxOutType::Multisig {
+        return TxoutType::Multisig {
             required_sigs,
             keys_count,
             keys,
         };
     }
 
-    TxOutType::NonStandard
+    TxoutType::NonStandard
 }
 
 fn is_pay_to_anchor(script: &Script) -> bool {

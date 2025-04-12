@@ -9119,8 +9119,10 @@ version = "0.1.0"
 dependencies = [
  "bitcoin 0.32.2",
  "sc-client-api",
+ "sc-transaction-pool-api",
  "sp-runtime",
  "subcoin-primitives",
+ "subcoin-script",
  "thiserror 1.0.68",
 ]
 
