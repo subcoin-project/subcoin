@@ -1,3 +1,15 @@
+//! # Bitcoin Mempool Overview
+//!
+//! 1. Transaction Validation.
+//!     - Transactions are validated before being added to the mempool.
+//!     - Validation includes checking transaction size, fees and script validity.
+//! 2. Fee Management
+//!     - Transactions are prioritized based on their fee rate.
+//!     - The mempool may evict lower-fee transactions if it reaches its size limit.
+//! 3. Ancestors and Descendants.
+//!     - The mempool tracks transaction dependencies to ensure that transactions are minded the
+//!     correct order.
+
 mod options;
 mod policy;
 
@@ -32,8 +44,28 @@ where
     Block: BlockT,
     Client: HeaderBackend<Block>,
 {
-    pub fn accept_to_memory_pool(&self, tx: Transaction) -> Result<(), Error> {
-        check_transaction_sanity(&tx)?;
+    pub fn accept_single_transaction(&self, tx: Transaction) -> Result<(), Error> {
+        self.pre_checks(&tx)?;
+
+        // Fee checks
+
+        // Script validation.
+
+        // ReplacementChecks
+
+        // PolicyScriptchecks.
+
+        // ConsensusScriptChecks
+
+        // Ancestor/descendent limits.
+
+        // Add to pool
+        Ok(())
+    }
+
+    // validation.cpp MemPoolAccept::PreChecks()
+    fn pre_checks(&self, tx: &Transaction) -> Result<(), Error> {
+        check_transaction_sanity(tx)?;
 
         // Coinbase is only valid in a block, not as a loose transaction.
         if tx.is_coinbase() {
@@ -45,7 +77,7 @@ where
                 &tx,
                 options::MAX_OP_RETURN_RELAY,
                 self.options.permit_bare_multisig,
-                self.options.dust_relay_fee,
+                self.options.dust_relay_feerate,
             )
             .map_err(Error::NotStandard)?;
         }
@@ -58,15 +90,12 @@ where
 
         // TODO: CheckTxInputs()
 
-        // Fee checks
-
-        // Script validation.
-
-        // Policy checks.
-
-        // Ancestor/descendent limits.
-
-        // Add to pool
         Ok(())
     }
+
+    pub fn remove_transaction(&self, tx: Transaction) -> Result<(), Error> {
+        Ok(())
+    }
+
+    pub fn trim_to_size(&self, max_size: usize) {}
 }

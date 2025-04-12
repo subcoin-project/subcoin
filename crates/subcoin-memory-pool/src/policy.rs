@@ -1,6 +1,7 @@
 use bitcoin::transaction::Version;
-use bitcoin::{Amount, Transaction, TxOut, Weight};
+use bitcoin::{Amount, Script, Transaction, TxOut, Weight, WitnessVersion};
 use std::collections::HashSet;
+use subcoin_script::solver::{solve, TxoutType};
 
 const TX_MAX_STANDARD_VERSION: Version = Version(3);
 
@@ -33,6 +34,7 @@ pub enum StandardTxError {
     NonStandardWitness,
     BareMultisig,
     ScriptsigNotPushonly,
+    ScriptPubkey,
 }
 
 /// Check whether a transaction is standard
@@ -69,9 +71,13 @@ pub fn is_standard_tx(
     let mut data_out = 0;
 
     for output in &tx.output {
-        let txout_type: TxoutType = todo!("IsStandard");
+        let which_type = solve(output.script_pubkey);
 
-        match txout_type {
+        if !is_standard(&which_type) {
+            return Err(StandardTxError::ScriptPubkey);
+        }
+
+        match which_type {
             TxoutType::NullData => {
                 data_out += 1;
 
@@ -94,6 +100,33 @@ pub fn is_standard_tx(
     Ok(())
 }
 
+fn is_standard(which_type: &TxoutType, max_datacarrier_bytes: usize) -> bool {
+    match which_type {
+        TxoutType::NonStandard => return false,
+        TxoutType::Multisig {
+            required_sigs: m,
+            keys_count: n,
+            keys: _,
+        } => {
+            if n < 1 && n > 3 {
+                return false;
+            }
+
+            if m < 1 && m > n {
+                return false;
+            }
+        }
+        TxoutType::NullData => {
+            if max_datacarrier_bytes > 0 && script_pubkey.len() > max_datacarrier_bytes {
+                return false;
+            }
+        }
+        _ => {}
+    }
+
+    true
+}
+
 /// Check if an output is dust (value too small compared to fee)
 fn is_dust(output: &TxOut, dust_relay_fee: u64) -> bool {
     let dust_threshold = get_dust_threshold(output);
@@ -103,87 +136,3 @@ fn is_dust(output: &TxOut, dust_relay_fee: u64) -> bool {
 fn get_dust_threshold(txout: &TxOut) -> Amount {
     todo!()
 }
-
-/*
-/// Check if a witness program is standard
-fn is_standard_witness(
-    witness: &Witness,
-    version: u8,
-    program: &[u8],
-    rules: &StandardTxRules,
-) -> bool {
-    // Only version 0 and 1 are currently standard
-    match version {
-        0 => {
-            match program.len() {
-                20 => {
-                    // P2WPKH
-                    witness.stack.len() == 2
-                }
-                32 => {
-                    // P2WSH
-                    if witness.stack.len() > MAX_STANDARD_P2WSH_STACK_ITEMS {
-                        return false;
-                    }
-
-                    let mut size = 0;
-                    for item in &witness.stack {
-                        if item.len() > MAX_STANDARD_P2WSH_STACK_ITEM_SIZE {
-                            return false;
-                        }
-                        size += item.len();
-                    }
-
-                    // Check script size
-                    if size > rules.max_script_size {
-                        return false;
-                    }
-
-                    // Check sigops limit
-                    if count_witness_sigops(&witness) > MAX_STANDARD_P2WSH_SIGOPS {
-                        return false;
-                    }
-
-                    true
-                }
-                _ => false,
-            }
-        }
-        1 => {
-            // Taproot
-            program.len() == 32 && witness.stack.len() <= 1
-        }
-        _ => false,
-    }
-}
-
-
-
-/// Get the most restrictive script type from a set of outputs
-fn get_most_restrictive_type(outputs: &[TxOutput]) -> TxoutType {
-    let mut types = HashSet::new();
-    for output in outputs {
-        types.insert(get_script_type(&output.script_pubkey));
-    }
-
-    // Order from most to least restrictive
-    let type_order = [
-        TxoutType::WitnessV1Taproot,
-        TxoutType::WitnessV0ScriptHash,
-        TxoutType::WitnessV0KeyHash,
-        TxoutType::ScriptHash,
-        TxoutType::PubKeyHash,
-        TxoutType::PubKey,
-        TxoutType::Multisig,
-        TxoutType::NullData,
-    ];
-
-    for tx_type in type_order {
-        if types.contains(&tx_type) {
-            return tx_type;
-        }
-    }
-
-    TxoutType::Nonstandard
-}
-*/
