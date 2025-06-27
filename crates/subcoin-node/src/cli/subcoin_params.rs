@@ -62,7 +62,7 @@ impl Defaults {
 
 /// Subcoin networking params.
 #[derive(Debug, Clone, Parser)]
-pub struct NetworkParams {
+pub struct SubcoinNetworkParams {
     /// Specify the remote peer address to connect.
     #[clap(long, value_name = "SEEDNODE")]
     pub seednodes: Vec<String>,
