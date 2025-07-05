@@ -751,6 +751,7 @@ checksum = "d965446196e3b7decd44aa7ee49e31d630118f90ef12f97900f262eb915c951d"
 [[package]]
 name = "binary-merkle-tree"
 version = "13.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "hash-db",
  "log",
@@ -2544,6 +2545,7 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 [[package]]
 name = "fork-tree"
 version = "12.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "parity-scale-codec",
 ]
@@ -2576,6 +2578,7 @@ checksum = "28dd6caf6059519a65843af8fe2a3ae298b14b80179855aeb4adc2c1934ee619"
 [[package]]
 name = "frame-benchmarking"
 version = "28.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "frame-support",
  "frame-support-procedural",
@@ -2611,6 +2614,7 @@ dependencies = [
 [[package]]
 name = "frame-support"
 version = "28.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "aquamarine",
  "array-bytes",
@@ -2651,6 +2655,7 @@ dependencies = [
 [[package]]
 name = "frame-support-procedural"
 version = "23.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "Inflector",
  "cfg-expr",
@@ -2670,6 +2675,7 @@ dependencies = [
 [[package]]
 name = "frame-support-procedural-tools"
 version = "10.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "frame-support-procedural-tools-derive",
  "proc-macro-crate 3.3.0",
@@ -2681,6 +2687,7 @@ dependencies = [
 [[package]]
 name = "frame-support-procedural-tools-derive"
 version = "11.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2690,6 +2697,7 @@ dependencies = [
 [[package]]
 name = "frame-system"
 version = "28.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "cfg-if",
  "docify",
@@ -2708,6 +2716,7 @@ dependencies = [
 [[package]]
 name = "frame-system-rpc-runtime-api"
 version = "26.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "docify",
  "parity-scale-codec",
@@ -2717,6 +2726,7 @@ dependencies = [
 [[package]]
 name = "frame-try-runtime"
 version = "0.34.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "frame-support",
  "parity-scale-codec",
@@ -5608,6 +5618,7 @@ checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 [[package]]
 name = "pallet-balances"
 version = "28.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "docify",
  "frame-benchmarking",
@@ -5664,6 +5675,7 @@ dependencies = [
 [[package]]
 name = "pallet-transaction-payment"
 version = "28.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "frame-benchmarking",
  "frame-support",
@@ -6988,6 +7000,7 @@ dependencies = [
 [[package]]
 name = "sc-allocator"
 version = "23.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "log",
  "sp-core",
@@ -6998,6 +7011,7 @@ dependencies = [
 [[package]]
 name = "sc-block-builder"
 version = "0.33.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "parity-scale-codec",
  "sp-api",
@@ -7012,6 +7026,7 @@ dependencies = [
 [[package]]
 name = "sc-chain-spec"
 version = "28.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "array-bytes",
  "docify",
@@ -7037,6 +7052,7 @@ dependencies = [
 [[package]]
 name = "sc-chain-spec-derive"
 version = "11.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "proc-macro-crate 3.3.0",
  "proc-macro2",
@@ -7047,6 +7063,7 @@ dependencies = [
 [[package]]
 name = "sc-cli"
 version = "0.36.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "array-bytes",
  "chrono",
@@ -7088,6 +7105,7 @@ dependencies = [
 [[package]]
 name = "sc-client-api"
 version = "28.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "fnv",
  "futures",
@@ -7113,6 +7131,7 @@ dependencies = [
 [[package]]
 name = "sc-client-db"
 version = "0.35.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "hash-db",
  "kvdb",
@@ -7140,6 +7159,7 @@ dependencies = [
 [[package]]
 name = "sc-consensus"
 version = "0.33.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "async-trait",
  "futures",
@@ -7190,6 +7210,7 @@ dependencies = [
 [[package]]
 name = "sc-executor"
 version = "0.32.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "parity-scale-codec",
  "parking_lot 0.12.4",
@@ -7212,6 +7233,7 @@ dependencies = [
 [[package]]
 name = "sc-executor-common"
 version = "0.29.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "polkavm",
  "sc-allocator",
@@ -7224,6 +7246,7 @@ dependencies = [
 [[package]]
 name = "sc-executor-polkavm"
 version = "0.29.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "log",
  "polkavm",
@@ -7234,6 +7257,7 @@ dependencies = [
 [[package]]
 name = "sc-executor-wasmtime"
 version = "0.29.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "anyhow",
  "log",
@@ -7249,6 +7273,7 @@ dependencies = [
 [[package]]
 name = "sc-informant"
 version = "0.33.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "console",
  "futures",
@@ -7264,6 +7289,7 @@ dependencies = [
 [[package]]
 name = "sc-keystore"
 version = "25.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "array-bytes",
  "parking_lot 0.12.4",
@@ -7277,6 +7303,7 @@ dependencies = [
 [[package]]
 name = "sc-mixnet"
 version = "0.4.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "array-bytes",
  "arrayvec",
@@ -7304,6 +7331,7 @@ dependencies = [
 [[package]]
 name = "sc-network"
 version = "0.34.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "array-bytes",
  "async-channel",
@@ -7353,6 +7381,7 @@ dependencies = [
 [[package]]
 name = "sc-network-common"
 version = "0.33.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "bitflags 1.3.2",
  "parity-scale-codec",
@@ -7362,6 +7391,7 @@ dependencies = [
 [[package]]
 name = "sc-network-light"
 version = "0.33.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "array-bytes",
  "async-channel",
@@ -7382,6 +7412,7 @@ dependencies = [
 [[package]]
 name = "sc-network-sync"
 version = "0.33.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "array-bytes",
  "async-channel",
@@ -7417,6 +7448,7 @@ dependencies = [
 [[package]]
 name = "sc-network-transactions"
 version = "0.33.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "array-bytes",
  "futures",
@@ -7435,6 +7467,7 @@ dependencies = [
 [[package]]
 name = "sc-network-types"
 version = "0.10.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "bs58",
  "bytes",
@@ -7455,6 +7488,7 @@ dependencies = [
 [[package]]
 name = "sc-rpc"
 version = "29.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "futures",
  "jsonrpsee",
@@ -7486,6 +7520,7 @@ dependencies = [
 [[package]]
 name = "sc-rpc-api"
 version = "0.33.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "jsonrpsee",
  "parity-scale-codec",
@@ -7505,6 +7540,7 @@ dependencies = [
 [[package]]
 name = "sc-rpc-server"
 version = "11.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "dyn-clone",
  "forwarded-header-value",
@@ -7528,6 +7564,7 @@ dependencies = [
 [[package]]
 name = "sc-rpc-spec-v2"
 version = "0.34.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "array-bytes",
  "futures",
@@ -7560,6 +7597,7 @@ dependencies = [
 [[package]]
 name = "sc-service"
 version = "0.35.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "async-trait",
  "directories",
@@ -7623,6 +7661,7 @@ dependencies = [
 [[package]]
 name = "sc-state-db"
 version = "0.30.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "log",
  "parity-scale-codec",
@@ -7633,6 +7672,7 @@ dependencies = [
 [[package]]
 name = "sc-storage-monitor"
 version = "0.16.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "clap",
  "fs4",
@@ -7645,6 +7685,7 @@ dependencies = [
 [[package]]
 name = "sc-sysinfo"
 version = "27.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "derive_more 0.99.20",
  "futures",
@@ -7664,6 +7705,7 @@ dependencies = [
 [[package]]
 name = "sc-telemetry"
 version = "15.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "chrono",
  "futures",
@@ -7682,6 +7724,7 @@ dependencies = [
 [[package]]
 name = "sc-tracing"
 version = "28.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "chrono",
  "console",
@@ -7709,6 +7752,7 @@ dependencies = [
 [[package]]
 name = "sc-tracing-proc-macro"
 version = "11.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "proc-macro-crate 3.3.0",
  "proc-macro2",
@@ -7719,6 +7763,7 @@ dependencies = [
 [[package]]
 name = "sc-transaction-pool"
 version = "28.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "async-trait",
  "futures",
@@ -7749,6 +7794,7 @@ dependencies = [
 [[package]]
 name = "sc-transaction-pool-api"
 version = "28.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "async-trait",
  "futures",
@@ -7765,6 +7811,7 @@ dependencies = [
 [[package]]
 name = "sc-utils"
 version = "14.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "async-channel",
  "futures",
@@ -8265,6 +8312,7 @@ dependencies = [
 [[package]]
 name = "sp-api"
 version = "26.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "docify",
  "hash-db",
@@ -8286,6 +8334,7 @@ dependencies = [
 [[package]]
 name = "sp-api-proc-macro"
 version = "15.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "Inflector",
  "blake2 0.10.6",
@@ -8299,6 +8348,7 @@ dependencies = [
 [[package]]
 name = "sp-application-crypto"
 version = "30.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
@@ -8310,6 +8360,7 @@ dependencies = [
 [[package]]
 name = "sp-arithmetic"
 version = "23.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "docify",
  "integer-sqrt",
@@ -8323,6 +8374,7 @@ dependencies = [
 [[package]]
 name = "sp-block-builder"
 version = "26.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "sp-api",
  "sp-inherents",
@@ -8332,6 +8384,7 @@ dependencies = [
 [[package]]
 name = "sp-blockchain"
 version = "28.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "futures",
  "parity-scale-codec",
@@ -8350,6 +8403,7 @@ dependencies = [
 [[package]]
 name = "sp-consensus"
 version = "0.32.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "async-trait",
  "futures",
@@ -8363,6 +8417,7 @@ dependencies = [
 [[package]]
 name = "sp-consensus-grandpa"
 version = "13.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "finality-grandpa",
  "log",
@@ -8379,6 +8434,7 @@ dependencies = [
 [[package]]
 name = "sp-core"
 version = "28.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "ark-vrf",
  "array-bytes",
@@ -8426,6 +8482,7 @@ dependencies = [
 [[package]]
 name = "sp-crypto-hashing"
 version = "0.1.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "blake2b_simd",
  "byteorder",
@@ -8438,6 +8495,7 @@ dependencies = [
 [[package]]
 name = "sp-crypto-hashing-proc-macro"
 version = "0.1.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "quote",
  "sp-crypto-hashing",
@@ -8447,6 +8505,7 @@ dependencies = [
 [[package]]
 name = "sp-database"
 version = "10.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "kvdb",
  "parking_lot 0.12.4",
@@ -8455,6 +8514,7 @@ dependencies = [
 [[package]]
 name = "sp-debug-derive"
 version = "14.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8464,6 +8524,7 @@ dependencies = [
 [[package]]
 name = "sp-externalities"
 version = "0.25.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "environmental",
  "parity-scale-codec",
@@ -8473,6 +8534,7 @@ dependencies = [
 [[package]]
 name = "sp-genesis-builder"
 version = "0.8.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
@@ -8484,6 +8546,7 @@ dependencies = [
 [[package]]
 name = "sp-inherents"
 version = "26.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "async-trait",
  "impl-trait-for-tuples",
@@ -8496,6 +8559,7 @@ dependencies = [
 [[package]]
 name = "sp-io"
 version = "30.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "bytes",
  "docify",
@@ -8521,6 +8585,7 @@ dependencies = [
 [[package]]
 name = "sp-keyring"
 version = "31.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "sp-core",
  "sp-runtime",
@@ -8530,6 +8595,7 @@ dependencies = [
 [[package]]
 name = "sp-keystore"
 version = "0.34.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "parity-scale-codec",
  "parking_lot 0.12.4",
@@ -8540,6 +8606,7 @@ dependencies = [
 [[package]]
 name = "sp-maybe-compressed-blob"
 version = "11.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "thiserror 1.0.69",
  "zstd 0.12.4",
@@ -8548,6 +8615,7 @@ dependencies = [
 [[package]]
 name = "sp-metadata-ir"
 version = "0.6.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "frame-metadata",
  "parity-scale-codec",
@@ -8557,6 +8625,7 @@ dependencies = [
 [[package]]
 name = "sp-mixnet"
 version = "0.4.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
@@ -8567,6 +8636,7 @@ dependencies = [
 [[package]]
 name = "sp-offchain"
 version = "26.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "sp-api",
  "sp-core",
@@ -8576,6 +8646,7 @@ dependencies = [
 [[package]]
 name = "sp-panic-handler"
 version = "13.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "backtrace",
  "regex",
@@ -8584,6 +8655,7 @@ dependencies = [
 [[package]]
 name = "sp-rpc"
 version = "26.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "rustc-hash 1.1.0",
  "serde",
@@ -8593,6 +8665,7 @@ dependencies = [
 [[package]]
 name = "sp-runtime"
 version = "31.0.1"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "binary-merkle-tree",
  "docify",
@@ -8621,6 +8694,7 @@ dependencies = [
 [[package]]
 name = "sp-runtime-interface"
 version = "24.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "bytes",
  "impl-trait-for-tuples",
@@ -8639,6 +8713,7 @@ dependencies = [
 [[package]]
 name = "sp-runtime-interface-proc-macro"
 version = "17.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "Inflector",
  "expander",
@@ -8651,6 +8726,7 @@ dependencies = [
 [[package]]
 name = "sp-session"
 version = "27.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
@@ -8664,6 +8740,7 @@ dependencies = [
 [[package]]
 name = "sp-staking"
 version = "26.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "impl-trait-for-tuples",
  "parity-scale-codec",
@@ -8676,6 +8753,7 @@ dependencies = [
 [[package]]
 name = "sp-state-machine"
 version = "0.35.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "hash-db",
  "log",
@@ -8695,6 +8773,7 @@ dependencies = [
 [[package]]
 name = "sp-statement-store"
 version = "10.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "aes-gcm",
  "curve25519-dalek",
@@ -8718,10 +8797,12 @@ dependencies = [
 [[package]]
 name = "sp-std"
 version = "14.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 
 [[package]]
 name = "sp-storage"
 version = "19.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "impl-serde",
  "parity-scale-codec",
@@ -8733,6 +8814,7 @@ dependencies = [
 [[package]]
 name = "sp-tracing"
 version = "16.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "parity-scale-codec",
  "regex",
@@ -8744,6 +8826,7 @@ dependencies = [
 [[package]]
 name = "sp-transaction-pool"
 version = "26.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "sp-api",
  "sp-runtime",
@@ -8752,6 +8835,7 @@ dependencies = [
 [[package]]
 name = "sp-transaction-storage-proof"
 version = "26.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "async-trait",
  "parity-scale-codec",
@@ -8765,6 +8849,7 @@ dependencies = [
 [[package]]
 name = "sp-trie"
 version = "29.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "ahash",
  "hash-db",
@@ -8787,6 +8872,7 @@ dependencies = [
 [[package]]
 name = "sp-version"
 version = "29.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "impl-serde",
  "parity-scale-codec",
@@ -8803,6 +8889,7 @@ dependencies = [
 [[package]]
 name = "sp-version-proc-macro"
 version = "13.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "parity-scale-codec",
  "proc-macro-warning",
@@ -8814,6 +8901,7 @@ dependencies = [
 [[package]]
 name = "sp-wasm-interface"
 version = "20.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "anyhow",
  "impl-trait-for-tuples",
@@ -8825,6 +8913,7 @@ dependencies = [
 [[package]]
 name = "sp-weights"
 version = "27.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "bounded-collections",
  "parity-scale-codec",
@@ -9308,6 +9397,7 @@ dependencies = [
 [[package]]
 name = "substrate-bip39"
 version = "0.4.7"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "hmac",
  "pbkdf2",
@@ -9319,10 +9409,12 @@ dependencies = [
 [[package]]
 name = "substrate-build-script-utils"
 version = "11.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 
 [[package]]
 name = "substrate-frame-rpc-system"
 version = "28.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "docify",
  "frame-system-rpc-runtime-api",
@@ -9342,6 +9434,7 @@ dependencies = [
 [[package]]
 name = "substrate-prometheus-endpoint"
 version = "0.17.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "http-body-util",
  "hyper 1.6.0",
@@ -9355,6 +9448,7 @@ dependencies = [
 [[package]]
 name = "substrate-wasm-builder"
 version = "17.0.0"
+source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"
 dependencies = [
  "build-helper",
  "cargo_metadata",
