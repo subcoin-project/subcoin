@@ -1,8 +1,8 @@
 use crate::peer_connection::Direction;
 use crate::sync::{SyncAction, SyncRequest};
 use crate::{Local, NetworkHandle, PeerId, SyncStrategy};
-use bitcoin::consensus::{deserialize_partial, Encodable};
-use bitcoin::p2p::message::{NetworkMessage, RawNetworkMessage, MAX_MSG_SIZE};
+use bitcoin::consensus::{Encodable, deserialize_partial};
+use bitcoin::p2p::message::{MAX_MSG_SIZE, NetworkMessage, RawNetworkMessage};
 use bitcoin::p2p::message_blockdata::Inventory;
 use bitcoin::p2p::message_network::VersionMessage;
 use bitcoin::p2p::{Address, ServiceFlags};
@@ -13,11 +13,11 @@ use sc_service::{SpawnTaskHandle, TaskManager};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subcoin_service::{new_node, NodeComponents, SubcoinConfiguration};
+use subcoin_service::{NodeComponents, SubcoinConfiguration, new_node};
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio::runtime::Handle;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 
 #[derive(Clone)]
 struct MockBitcoind {

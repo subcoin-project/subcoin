@@ -5,8 +5,8 @@ use sc_network_sync::strategy::state_sync::{
     ImportResult, StateSync, StateSyncProgress, StateSyncProvider,
 };
 use sc_network_sync::{StateRequest, StateResponse};
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_runtime::SaturatedConversion;
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};

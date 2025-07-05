@@ -11,7 +11,7 @@ use sc_service::{BasePath, Configuration, TaskManager};
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use subcoin_network::{BlockSyncOption, NetworkApi, SyncStrategy};
-use subcoin_primitives::{TransactionIndex, CONFIRMATION_DEPTH};
+use subcoin_primitives::{CONFIRMATION_DEPTH, TransactionIndex};
 
 /// Options for configuring the Subcoin network behavior.
 #[derive(Copy, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, clap::ValueEnum)]

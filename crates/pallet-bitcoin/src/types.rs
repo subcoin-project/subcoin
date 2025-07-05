@@ -40,7 +40,9 @@ impl From<LockTime> for absolute::LockTime {
 }
 
 /// Wrapper type for representing [`bitcoin::Txid`] in runtime, stored in reversed byte order.
-#[derive(Clone, Copy, TypeInfo, Encode, Decode, MaxEncodedLen, PartialEq, DecodeWithMemTracking)]
+#[derive(
+    Clone, Copy, TypeInfo, Encode, Decode, MaxEncodedLen, PartialEq, DecodeWithMemTracking,
+)]
 pub struct Txid(H256);
 
 impl Txid {
@@ -78,7 +80,9 @@ impl core::fmt::Debug for Txid {
 }
 
 /// A reference to a transaction output.
-#[derive(Clone, Debug, Encode, Decode, TypeInfo, PartialEq, MaxEncodedLen, DecodeWithMemTracking)]
+#[derive(
+    Clone, Debug, Encode, Decode, TypeInfo, PartialEq, MaxEncodedLen, DecodeWithMemTracking,
+)]
 pub struct OutPoint {
     /// The transaction ID of the referenced output.
     pub txid: Txid,

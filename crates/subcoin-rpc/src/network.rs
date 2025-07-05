@@ -1,6 +1,6 @@
 use crate::error::Error;
-use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::Extensions;
+use jsonrpsee::proc_macros::rpc;
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 use serde::{Deserialize, Serialize};
 use sp_runtime::traits::Block as BlockT;

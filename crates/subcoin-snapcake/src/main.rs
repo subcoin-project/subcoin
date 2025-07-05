@@ -45,16 +45,16 @@ use sc_cli::SubstrateCli;
 use sc_consensus::import_queue::BasicQueue;
 use sc_consensus_nakamoto::SubstrateImportQueueVerifier;
 use sc_executor::WasmExecutor;
-use sc_network::config::NetworkBackendType;
 use sc_network::Roles;
+use sc_network::config::NetworkBackendType;
 use sc_network_sync::engine::SyncingEngine;
 use sc_network_sync::service::network::NetworkServiceProvider;
 use sc_service::{Configuration, ImportQueue, TaskManager};
 use sp_runtime::traits::Block as BlockT;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subcoin_runtime::interface::OpaqueBlock as Block;
 use subcoin_runtime::RuntimeApi;
+use subcoin_runtime::interface::OpaqueBlock as Block;
 use subcoin_service::{GenesisBlockBuilder, TransactionAdapter};
 use syncing_strategy::TargetBlock;
 

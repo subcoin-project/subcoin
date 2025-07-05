@@ -3,7 +3,7 @@ use bitcoin::consensus::encode::Error;
 use bitcoin::consensus::{Decodable, Encodable};
 use bitcoin::hashes::Hash;
 use bitcoin::script::{Builder, ScriptBuf};
-use bitcoin::{opcodes, PubkeyHash, PublicKey, ScriptHash};
+use bitcoin::{PubkeyHash, PublicKey, ScriptHash, opcodes};
 use txoutset::var_int::VarInt;
 
 const NUM_SPECIAL_SCRIPTS: usize = 6;

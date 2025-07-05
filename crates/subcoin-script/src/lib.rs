@@ -30,7 +30,7 @@ mod stack;
 mod tests;
 
 use bitcoin::hashes::Hash;
-use bitcoin::{secp256k1, TapLeafHash};
+use bitcoin::{TapLeafHash, secp256k1};
 use bitflags::bitflags;
 
 pub use self::error::Error;

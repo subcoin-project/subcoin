@@ -9,7 +9,7 @@ mod verifier;
 pub use block_import::{BitcoinBlockImport, BitcoinBlockImporter, ImportConfig, ImportStatus};
 pub use chain_params::ChainParams;
 pub use import_queue::{
-    bitcoin_import_queue, BlockImportQueue, ImportBlocks, ImportManyBlocksResult,
+    BlockImportQueue, ImportBlocks, ImportManyBlocksResult, bitcoin_import_queue,
 };
 pub use verification::{
     BlockVerification, BlockVerifier, HeaderError, HeaderVerifier, ScriptEngine,

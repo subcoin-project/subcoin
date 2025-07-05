@@ -1,4 +1,4 @@
-use bitcoin::consensus::{deserialize, Encodable};
+use bitcoin::consensus::{Encodable, deserialize};
 use hex::test_hex_unwrap as hex;
 use sp_core::Encode;
 

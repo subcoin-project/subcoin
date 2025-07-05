@@ -17,11 +17,11 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::ClientInfoExt;
-use bitcoin::hashes::Hash;
 use bitcoin::BlockHash;
+use bitcoin::hashes::Hash;
 use console::style;
-use sp_runtime::traits::{Block as BlockT, CheckedDiv, NumberFor, Saturating, Zero};
 use sp_runtime::SaturatedConversion;
+use sp_runtime::traits::{Block as BlockT, CheckedDiv, NumberFor, Saturating, Zero};
 use std::fmt::{self, Display};
 use std::time::Instant;
 use subcoin_network::{NetworkStatus, SyncStatus};

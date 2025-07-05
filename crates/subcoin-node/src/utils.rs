@@ -1,6 +1,6 @@
 use indicatif::{ProgressBar, ProgressStyle};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 /// A future that will always `yield` on the first call of `poll` but schedules the

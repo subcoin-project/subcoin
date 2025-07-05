@@ -1,4 +1,4 @@
-use crate::{validate_outbound_services, PeerId};
+use crate::{PeerId, validate_outbound_services};
 use bitcoin::p2p::address::{AddrV2, AddrV2Message, Address};
 use std::collections::HashSet;
 use std::net::IpAddr;

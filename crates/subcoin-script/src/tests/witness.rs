@@ -1,6 +1,6 @@
 //! Witness related script tests ported from https://github.com/paritytech/parity-bitcoin/blob/master/script/src/interpreter.rs#L2416-L3245
 
-use crate::{verify_script, Error, TransactionSignatureChecker, VerifyFlags};
+use crate::{Error, TransactionSignatureChecker, VerifyFlags, verify_script};
 use bitcoin::consensus::encode::deserialize_hex;
 use bitcoin::hashes::Hash;
 use bitcoin::script::{Builder, Script};
@@ -426,7 +426,9 @@ fn witness_p2wpkh_with_future_version() {
                 "304402205ae57ae0534c05ca9981c8a6cdf353b505eaacb7375f96681a2d1a4ba6f02f84022056248e68643b7d8ce7c7d128c9f1f348bcab8be15d094ad5cadd24251a28df8001",
                 "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8",
             ],
-            VerifyFlags::P2SH | VerifyFlags::WITNESS | VerifyFlags::DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM,
+            VerifyFlags::P2SH
+                | VerifyFlags::WITNESS
+                | VerifyFlags::DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM,
             0,
         ),
         Err(Error::DiscourageUpgradableWitnessProgram),
@@ -496,7 +498,7 @@ fn witness_p2wpkh_with_witness_program_mismatch() {
                 "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8",
                 "",
             ],
-            VerifyFlags::P2SH | VerifyFlags::WITNESS ,
+            VerifyFlags::P2SH | VerifyFlags::WITNESS,
             0,
         ),
         Err(Error::WitnessProgramMismatch),
@@ -514,7 +516,7 @@ fn witness_p2wpkh_with_non_empty_script_sig() {
                 "304402201a96950593cb0af32d080b0f193517f4559241a8ebd1e95e414533ad64a3f423022047f4f6d3095c23235bdff3aeff480d0529c027a3f093cb265b7cbf148553b85101",
                 "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8",
             ],
-            VerifyFlags::P2SH | VerifyFlags::WITNESS ,
+            VerifyFlags::P2SH | VerifyFlags::WITNESS,
             0,
         ),
         Err(Error::WitnessMalleated),
@@ -532,7 +534,7 @@ fn witness_p2sh_p2wpkh_with_superfluous_push_in_script_sig() {
                 "304402204209e49457c2358f80d0256bc24535b8754c14d08840fc4be762d6f5a0aed80b02202eaf7d8fc8d62f60c67adcd99295528d0e491ae93c195cec5a67e7a09532a88001",
                 "048282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f5150811f8a8098557dfe45e8256e830b60ace62d613ac2f7b17bed31b6eaff6e26caf",
             ],
-            VerifyFlags::P2SH | VerifyFlags::WITNESS ,
+            VerifyFlags::P2SH | VerifyFlags::WITNESS,
             0,
         ),
         Err(Error::WitnessMalleatedP2SH),
@@ -547,7 +549,7 @@ fn witness_p2pk_with_witness() {
             "47304402200a5c6163f07b8d3b013c4d1d6dba25e780b39658d79ba37af7057a3b7f15ffa102201fd9b4eaa9943f734928b99a83592c2e7bf342ea2680f6a2bb705167966b742001",
             "410479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8ac",
             vec![""],
-            VerifyFlags::P2SH | VerifyFlags::WITNESS ,
+            VerifyFlags::P2SH | VerifyFlags::WITNESS,
             0,
         ),
         Err(Error::WitnessUnexpected),
@@ -1323,7 +1325,16 @@ fn witness_1_byte_push_not_witness_script_pubkey() {
 fn witness_41_byte_push_not_witness_script_pubkey() {
     let tx = deserialize_hex::<Transaction>("010000000100010000000000000000000000000000000000000000000000000000000000000000000000ffffffff01e803000000000000015100000000").unwrap();
     let flags = VerifyFlags::P2SH | VerifyFlags::WITNESS;
-    assert_eq!(Ok(()), run_witness_test_tx_test("6029ff25429251b5a84f452230a3c75fd886b7fc5a7865ce4a7bb7a9d7c5be6da3dbff0000000000000000", &tx, &flags, 1000, 0));
+    assert_eq!(
+        Ok(()),
+        run_witness_test_tx_test(
+            "6029ff25429251b5a84f452230a3c75fd886b7fc5a7865ce4a7bb7a9d7c5be6da3dbff0000000000000000",
+            &tx,
+            &flags,
+            1000,
+            0
+        )
+    );
 }
 
 // https://github.com/bitcoin/bitcoin/blob/7ee6c434ce8df9441abcf1718555cc7728a4c575/src/test/data/tx_valid.json#L447

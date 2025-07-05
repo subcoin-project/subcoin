@@ -54,7 +54,7 @@ mod tests {
     use super::*;
     use sc_cli::SubstrateCli;
     use sc_client_api::HeaderBackend;
-    use subcoin_service::{new_node, NodeComponents, SubcoinConfiguration};
+    use subcoin_service::{NodeComponents, SubcoinConfiguration, new_node};
     use tokio::runtime::Handle;
 
     #[tokio::test]

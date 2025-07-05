@@ -2,8 +2,8 @@
 
 pub mod muhash;
 
-use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 use chacha20::ChaCha20;
+use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 
 // A function to generate the keystream from the test vectors
 pub fn chacha20_block(key: &[u8; 32], nonce: &[u8; 12], counter: u32) -> Vec<u8> {

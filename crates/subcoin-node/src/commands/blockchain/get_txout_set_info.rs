@@ -1,10 +1,10 @@
 use super::MergedParams;
-use crate::commands::blockchain::{fetch_utxo_set_at, ClientParams};
+use crate::commands::blockchain::{ClientParams, fetch_utxo_set_at};
 use crate::utils::Yield;
 use sc_client_api::HeaderBackend;
 use sp_api::ProvideRuntimeApi;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use subcoin_primitives::runtime::SubcoinApi;
 use subcoin_service::FullClient;

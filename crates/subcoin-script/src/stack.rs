@@ -1,5 +1,5 @@
-use crate::num::ScriptNum;
 use crate::VerifyFlags;
+use crate::num::ScriptNum;
 use std::fmt::Display;
 use std::ops::{Deref, DerefMut};
 

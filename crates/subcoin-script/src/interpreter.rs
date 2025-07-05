@@ -5,7 +5,7 @@ use crate::constants::{
     WITNESS_V0_SCRIPTHASH_SIZE, WITNESS_V0_TAPROOT_SIZE,
 };
 use crate::error::Error;
-use crate::signature_checker::{SignatureChecker, SECP};
+use crate::signature_checker::{SECP, SignatureChecker};
 use crate::stack::Stack;
 use crate::{SchnorrSignature, ScriptExecutionData, SigVersion, VerifyFlags};
 use bitcoin::hashes::Hash;
@@ -17,7 +17,7 @@ use bitcoin::taproot::{
 };
 use bitcoin::{Script, TapLeafHash, Witness, WitnessProgram, WitnessVersion, XOnlyPublicKey};
 
-pub use self::eval::{eval_script, CheckMultiSigError, CheckSigError};
+pub use self::eval::{CheckMultiSigError, CheckSigError, eval_script};
 
 /// Verifies the script validity.
 ///

@@ -1,6 +1,6 @@
 use bitcoin::consensus::encode::FromHexError;
-use jsonrpsee::types::error::ErrorObject;
 use jsonrpsee::types::ErrorObjectOwned;
+use jsonrpsee::types::error::ErrorObject;
 use sc_rpc_api::UnsafeRpcError;
 
 /// Chain RPC errors.

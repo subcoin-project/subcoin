@@ -1,7 +1,7 @@
 use super::orphan_blocks_pool::OrphanBlocksPool;
+use crate::PeerId;
 use crate::peer_store::PeerStore;
 use crate::sync::SyncAction;
-use crate::PeerId;
 use bitcoin::p2p::message_blockdata::Inventory;
 use bitcoin::{Block as BitcoinBlock, BlockHash};
 use sc_consensus::BlockImportError;

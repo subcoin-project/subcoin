@@ -1,5 +1,5 @@
 use bitcoin::blockdata::script::Script;
-use bitcoin::hashes::{sha256d, Hash};
+use bitcoin::hashes::{Hash, sha256d};
 
 /// Utilities
 #[derive(Debug, clap::Subcommand)]

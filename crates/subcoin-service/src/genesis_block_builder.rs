@@ -1,11 +1,11 @@
-use sc_client_api::backend::Backend;
 use sc_client_api::BlockImportOperation;
+use sc_client_api::backend::Backend;
 use sc_executor::RuntimeVersionOf;
 use sc_service::BuildGenesisBlock;
-use sp_core::storage::Storage;
 use sp_core::Encode;
-use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT};
+use sp_core::storage::Storage;
 use sp_runtime::BuildStorage;
+use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT};
 use std::marker::PhantomData;
 use std::sync::Arc;
 

@@ -369,7 +369,7 @@ pub fn extract_bitcoin_block_hash<Block: BlockT>(
         tracing::trace!("Checking log {:?}, looking for pre runtime digest", log);
         match (log, pre_digest.is_some()) {
             (DigestItem::PreRuntime(NAKAMOTO_HASH_ENGINE_ID, _), true) => {
-                return Err(HeaderError::MultiplePreRuntimeDigests)
+                return Err(HeaderError::MultiplePreRuntimeDigests);
             }
             (DigestItem::PreRuntime(NAKAMOTO_HASH_ENGINE_ID, v), false) => {
                 pre_digest.replace(v);
@@ -397,7 +397,7 @@ pub fn extract_bitcoin_block_header<Block: BlockT>(
         tracing::trace!("Checking log {:?}, looking for pre runtime digest", log);
         match (log, pre_digest.is_some()) {
             (DigestItem::PreRuntime(NAKAMOTO_HEADER_ENGINE_ID, _), true) => {
-                return Err(HeaderError::MultiplePreRuntimeDigests)
+                return Err(HeaderError::MultiplePreRuntimeDigests);
             }
             (DigestItem::PreRuntime(NAKAMOTO_HEADER_ENGINE_ID, v), false) => {
                 pre_digest.replace(v);

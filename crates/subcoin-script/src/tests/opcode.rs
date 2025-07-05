@@ -147,12 +147,10 @@ fn test_hash256() {
         .push_slice(b"hello")
         .push_opcode(OP_HASH256)
         .into_script();
-    let stack =
-        vec![
-            Vec::from_hex("9595c9df90075148eb06860365df33584b75bff782a510c6cd4883a419833d50")
-                .unwrap(),
-        ]
-        .into();
+    let stack = vec![
+        Vec::from_hex("9595c9df90075148eb06860365df33584b75bff782a510c6cd4883a419833d50").unwrap(),
+    ]
+    .into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }
@@ -206,12 +204,10 @@ fn test_sha256() {
         .push_slice(b"hello")
         .push_opcode(OP_SHA256)
         .into_script();
-    let stack =
-        vec![
-            Vec::from_hex("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824")
-                .unwrap(),
-        ]
-        .into();
+    let stack = vec![
+        Vec::from_hex("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824").unwrap(),
+    ]
+    .into();
     let result = EvalResult::ok(true, stack);
     basic_test(&script, result);
 }

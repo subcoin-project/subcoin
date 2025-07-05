@@ -6,10 +6,11 @@ use sc_consensus::{BlockImportError, BlockImportStatus};
 use sc_network::config::{FullNetworkConfiguration, ProtocolId};
 use sc_network::service::traits::RequestResponseConfig;
 use sc_network::{NetworkBackend, PeerId, ProtocolName};
+use sc_network_common::sync::SyncMode;
 use sc_network_common::sync::message::{
     BlockAnnounce, BlockAttributes, BlockData, BlockRequest, Direction, FromBlock,
 };
-use sc_network_common::sync::SyncMode;
+use sc_network_sync::SyncStatus;
 use sc_network_sync::block_relay_protocol::{BlockDownloader, BlockResponseError};
 use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_network_sync::state_request_handler::StateRequestHandler;
@@ -18,7 +19,6 @@ use sc_network_sync::strategy::polkadot::PolkadotSyncingStrategyConfig;
 use sc_network_sync::strategy::state::StateStrategy;
 use sc_network_sync::strategy::warp::WarpSync;
 use sc_network_sync::strategy::{StrategyKey, SyncingAction, SyncingStrategy};
-use sc_network_sync::SyncStatus;
 use sc_service::SpawnTaskHandle;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderMetadata;
@@ -29,7 +29,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subcoin_primitives::runtime::SubcoinApi;
 use subcoin_service::network_request_handler::{
-    v1, VersionedNetworkRequest, VersionedNetworkResponse,
+    VersionedNetworkRequest, VersionedNetworkResponse, v1,
 };
 
 const LOG_TARGET: &str = "sync::snapcake";
@@ -126,7 +126,7 @@ where
         metrics_registry: None,
         state_request_protocol_name,
         block_downloader,
-        min_peers_to_start_warp_sync: None
+        min_peers_to_start_warp_sync: None,
     };
 
     Ok(Box::new(SnapcakeSyncingStrategy::new(

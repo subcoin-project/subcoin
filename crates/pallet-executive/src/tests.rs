@@ -32,7 +32,7 @@ use sp_runtime::{BuildStorage, DispatchError};
 use frame_support::migrations::MultiStepMigrator;
 use frame_support::pallet_prelude::*;
 use frame_support::traits::{
-    fungible, ConstU8, Currency, IsInherent, VariantCount, VariantCountOf,
+    ConstU8, Currency, IsInherent, VariantCount, VariantCountOf, fungible,
 };
 use frame_support::weights::{
     ConstantMultiplier, IdentityFee, RuntimeDbWeight, Weight, WeightMeter, WeightToFee,

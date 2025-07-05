@@ -44,7 +44,7 @@ use sp_std::vec;
 use sp_std::vec::Vec;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
-use sp_version::{runtime_version, RuntimeVersion};
+use sp_version::{RuntimeVersion, runtime_version};
 
 /// header weight (80 * 4) + tx_data_len(4)
 const BITCOIN_BASE_BLOCK_WEIGHT: u64 = 80 * 4 + 4;
@@ -258,7 +258,7 @@ impl_runtime_apis! {
 ///   `AccountIdLookup` in [`frame_system::Config::Lookup`].
 mod types_common {
     use frame_system::Config as SysConfig;
-    use sp_runtime::{generic, traits, OpaqueExtrinsic};
+    use sp_runtime::{OpaqueExtrinsic, generic, traits};
 
     /// A signature type compatible capably of handling multiple crypto-schemes.
     pub type Signature = sp_runtime::MultiSignature;

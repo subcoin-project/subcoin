@@ -1,8 +1,8 @@
-use crate::network_api::IncomingTransaction;
 use crate::PeerId;
+use crate::network_api::IncomingTransaction;
 use bitcoin::{Transaction, Txid};
-use indexmap::map::Entry;
 use indexmap::IndexMap;
+use indexmap::map::Entry;
 use std::collections::HashSet;
 use std::time::{Duration, SystemTime};
 

@@ -18,9 +18,9 @@
 //! - [`ImportStatus`]
 //!     An enum representing the result of an import operation, with variants for different import outcomes.
 
+use crate::ScriptEngine;
 use crate::metrics::Metrics;
 use crate::verification::{BlockVerification, BlockVerifier};
-use crate::ScriptEngine;
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::hashes::Hash;
 use bitcoin::{Block as BitcoinBlock, BlockHash, Network, Work};
@@ -42,7 +42,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use subcoin_primitives::runtime::SubcoinApi;
 use subcoin_primitives::{
-    substrate_header_digest, BackendExt, BitcoinTransactionAdapter, CoinStorageKey,
+    BackendExt, BitcoinTransactionAdapter, CoinStorageKey, substrate_header_digest,
 };
 use substrate_prometheus_endpoint::Registry;
 

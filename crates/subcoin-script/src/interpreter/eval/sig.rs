@@ -1,5 +1,5 @@
 use crate::constants::{COMPRESSED_PUBKEY_SIZE, HALF_ORDER, VALIDATION_WEIGHT_PER_SIGOP_PASSED};
-use crate::signature_checker::{check_ecdsa_signature, SignatureChecker, SignatureError};
+use crate::signature_checker::{SignatureChecker, SignatureError, check_ecdsa_signature};
 use crate::{SchnorrSignature, ScriptExecutionData, SigVersion, VerifyFlags};
 use bitcoin::{Script, XOnlyPublicKey};
 use num_bigint::Sign;
@@ -59,7 +59,9 @@ pub enum CheckSigError {
     BadPubKey,
     #[error("Invalid public key type")]
     PubKeyType,
-    #[error("ScriptVerifyWitness is set and the public key used in checksig/checkmultisig isn't serialized in a compressed format.")]
+    #[error(
+        "ScriptVerifyWitness is set and the public key used in checksig/checkmultisig isn't serialized in a compressed format."
+    )]
     WitnessPubKeyType,
     // Signatures are not empty on failed checksig or checkmultisig operations.
     #[error("signatures are not empty on failed checksig/checkmultisig operations.")]

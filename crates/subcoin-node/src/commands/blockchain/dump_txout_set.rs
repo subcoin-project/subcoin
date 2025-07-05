@@ -1,11 +1,11 @@
 use super::MergedParams;
-use crate::commands::blockchain::{fetch_utxo_set_at, ClientParams};
+use crate::commands::blockchain::{ClientParams, fetch_utxo_set_at};
 use crate::utils::Yield;
 use std::fs::File;
 use std::io::{Stdout, Write};
 use std::path::PathBuf;
-use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
 use subcoin_primitives::runtime::Coin;
 use subcoin_service::FullClient;
 use subcoin_utxo_snapshot::UtxoSnapshotGenerator;

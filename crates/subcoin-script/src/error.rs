@@ -20,7 +20,9 @@ pub enum Error {
     // Max sizes.
     #[error("Exceeds max script size")]
     ScriptSize,
-    #[error("Size of the element pushed to the stack exceeds MAX_SCRIPT_ELEMENT_SIZE ({MAX_SCRIPT_ELEMENT_SIZE})")]
+    #[error(
+        "Size of the element pushed to the stack exceeds MAX_SCRIPT_ELEMENT_SIZE ({MAX_SCRIPT_ELEMENT_SIZE})"
+    )]
     PushSize,
     #[error("Exceeds max operations ({MAX_OPS_PER_SCRIPT}) per script")]
     OpCount,

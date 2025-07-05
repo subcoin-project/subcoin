@@ -18,8 +18,8 @@ use sp_consensus::BlockOrigin;
 use sp_runtime::traits::Block as BlockT;
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use subcoin_primitives::ClientExt;
 
 // Do major sync when the current tip falls behind the network by 144 blocks (roughly one day).
