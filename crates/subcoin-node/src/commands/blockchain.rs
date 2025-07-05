@@ -142,6 +142,7 @@ impl sc_cli::CliConfiguration for BlockchainCmd {
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn fetch_utxo_set_at(
     client: &Arc<FullClient>,
     height: Option<u32>,

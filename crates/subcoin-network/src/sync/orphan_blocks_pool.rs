@@ -219,7 +219,7 @@ mod tests {
         let b1 = block1();
         let b1_hash = b1.block_hash();
 
-        pool.insert_unknown_block(b1.into());
+        pool.insert_unknown_block(b1);
 
         assert_eq!(pool.len(), 1);
         assert!(pool.contains_unknown_block(&b1_hash));

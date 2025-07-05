@@ -25,6 +25,7 @@ mod tests {
 
     // https://github.com/bitcoin/bitcoin/blob/6f9db1e/test/functional/test_framework/crypto/chacha20.py#L142
     #[test]
+    #[allow(clippy::type_complexity)]
     fn test_chacha20() {
         // Test vectors from RFC7539/8439 consisting of 32 byte key, 12 byte nonce, block counter
         // and 64 byte output after applying `chacha20_block` function

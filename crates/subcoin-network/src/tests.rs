@@ -217,6 +217,7 @@ async fn new_mock_bitcoind(spawn_handle: SpawnTaskHandle) -> MockBitcoind {
 
 struct TestNode {
     client: Arc<subcoin_service::FullClient>,
+    #[allow(dead_code)]
     backend: Arc<subcoin_service::FullBackend>,
     base_path: PathBuf,
     task_manager: TaskManager,
@@ -332,14 +333,14 @@ async fn block_announcement_via_headers_should_work() {
     };
 
     let block1 = bitcoind.blocks[1].clone();
-    let header1 = block1.header.clone();
+    let header1 = block1.header;
 
     // Receive new block #1 in headers.
     let sync_action = network_handle
         .process_network_message(
             bitcoind.local_addr,
             Direction::Outbound,
-            NetworkMessage::Headers(vec![header1.clone()]),
+            NetworkMessage::Headers(vec![header1]),
         )
         .await
         .unwrap();

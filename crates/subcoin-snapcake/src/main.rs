@@ -60,6 +60,7 @@ use syncing_strategy::TargetBlock;
 
 type FullClient = sc_service::TFullClient<Block, RuntimeApi, WasmExecutor>;
 
+#[allow(clippy::result_large_err)]
 fn main() -> sc_cli::Result<()> {
     let app = App::parse();
 
@@ -89,6 +90,7 @@ fn main() -> sc_cli::Result<()> {
         .map_err(Into::into)
 }
 
+#[allow(clippy::result_large_err)]
 fn start_snapcake_node(
     bitcoin_network: bitcoin::Network,
     mut config: Configuration,
@@ -151,6 +153,7 @@ fn start_snapcake_node(
     Ok(task_manager)
 }
 
+#[allow(clippy::result_large_err)]
 fn start_substrate_network<N>(
     config: &mut Configuration,
     client: Arc<FullClient>,

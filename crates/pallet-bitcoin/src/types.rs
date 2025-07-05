@@ -73,7 +73,7 @@ impl Txid {
 impl core::fmt::Debug for Txid {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         for byte in self.0.as_bytes().iter() {
-            write!(f, "{:02x}", byte)?;
+            write!(f, "{byte:02x}")?;
         }
         Ok(())
     }

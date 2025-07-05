@@ -9,6 +9,7 @@ use subcoin_service::FullClient;
 use substrate_frame_rpc_system::{System as FrameSystem, SystemApiServer as _};
 
 /// Instantiate all full RPC extensions.
+#[allow(clippy::result_large_err)]
 pub fn gen_rpc_module(
     system_info: sc_rpc::system::SystemInfo,
     client: Arc<FullClient>,

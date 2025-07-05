@@ -116,7 +116,7 @@ mod tests {
     fn test_script_compression() {
         let line = "7e27944eacef755d2fa83b6559f480941aa4f0e5f3f0623fc3d0de9cd28c0100:1,false,413198,7800,5121030b3810fd20fd3771517b2b8847d225791035ea06768e17c733a5756b6005bf55210222b6e887bb4d4bca08f97348e6b8561e6d11e0ed96dec0584b34d709078cd4a54104289699814d1c9ef35ae45cfb41116501c15b0141430a481226aa19bcb8806c7223802d24f2638d8ce14378137dd52114d1d965e2969b5b3ac011c25e2803eb5753ae";
 
-        let utxo = crate::tests::parse_csv_entry(&line);
+        let utxo = crate::tests::parse_csv_entry(line);
         let script = utxo.coin.script_pubkey;
 
         let script_compression = ScriptCompression(ScriptBuf::from_bytes(script.clone()));

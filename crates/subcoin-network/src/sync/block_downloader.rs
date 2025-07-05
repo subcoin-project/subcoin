@@ -217,9 +217,7 @@ impl BlockDownloader {
 
             if self
                 .last_overloaded_queue_log_time
-                .map_or(true, |last_time| {
-                    last_time.elapsed() > BUSY_QUEUE_LOG_INTERVAL
-                })
+                .is_none_or(|last_time| last_time.elapsed() > BUSY_QUEUE_LOG_INTERVAL)
             {
                 tracing::debug!(
                     best_number,

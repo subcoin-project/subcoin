@@ -61,7 +61,7 @@ pub enum TargetBlock<Block: BlockT> {
 }
 
 /// Build snapcake state syncing strategy.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::result_large_err)]
 pub fn build_snapcake_syncing_strategy<Block, Client, Net>(
     protocol_id: ProtocolId,
     fork_id: Option<&str>,
@@ -764,7 +764,7 @@ where
                 })
                 .collect()
         } else if let Some(ref mut state) = self.state {
-            state.actions(network_service).map(Into::into).collect()
+            state.actions(network_service).collect()
         } else {
             return Ok(Vec::new());
         };

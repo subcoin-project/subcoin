@@ -165,7 +165,7 @@ where
     // Convert satoshis (u64) to BTC (f64)
     let btc_value = *amount as f64 / 100_000_000.0;
     // Format the value as a string with 8 decimal places
-    serializer.serialize_str(&format!("{:.8}", btc_value))
+    serializer.serialize_str(&format!("{btc_value:.8}"))
 }
 
 #[derive(serde::Serialize)]

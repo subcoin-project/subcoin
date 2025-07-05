@@ -33,11 +33,11 @@ impl Display for DisplayBlockHash {
         const BYTES: usize = 32;
         let bytes = self.0.as_byte_array();
         for i in bytes[BYTES - 2..BYTES].iter().rev() {
-            write!(f, "{:02x}", i)?;
+            write!(f, "{i:02x}")?;
         }
         write!(f, "…")?;
         for i in bytes[0..3].iter().rev() {
-            write!(f, "{:02x}", i)?;
+            write!(f, "{i:02x}")?;
         }
         Ok(())
     }
@@ -169,7 +169,7 @@ fn speed<B: BlockT>(
             .checked_div(u128::from(elapsed_ms))
             .map_or(0.0, |s| s as f64)
             / 10.0;
-        format!(" {:4.1} bps", speed)
+        format!(" {speed:4.1} bps")
     } else {
         // If the number of blocks can't be converted to a regular integer, then we need a more
         // algebraic approach and we stay within the realm of integers.
@@ -181,7 +181,7 @@ fn speed<B: BlockT>(
             .saturating_mul(one_thousand)
             .checked_div(&elapsed)
             .unwrap_or_else(Zero::zero);
-        format!(" {} bps", speed)
+        format!(" {speed} bps")
     }
 }
 

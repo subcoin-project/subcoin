@@ -26,7 +26,7 @@ fn print_hex_dump(data: &[u8]) {
 
         // Print the hex values
         for byte in chunk.iter() {
-            print!("{:02x} ", byte);
+            print!("{byte:02x} ");
         }
 
         // Add spacing if the line is not full

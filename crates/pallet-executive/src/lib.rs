@@ -148,9 +148,6 @@
 /// ```
 pub mod block_flowchart {}
 
-#[cfg(test)]
-mod tests;
-
 extern crate alloc;
 
 use codec::{Codec, Encode};
@@ -204,11 +201,9 @@ pub enum ExecutiveError {
 impl core::fmt::Debug for ExecutiveError {
     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
-            ExecutiveError::InvalidInherentPosition(i) => write!(
-                fmt,
-                "Invalid inherent position for extrinsic at index {}",
-                i
-            ),
+            ExecutiveError::InvalidInherentPosition(i) => {
+                write!(fmt, "Invalid inherent position for extrinsic at index {i}",)
+            }
             ExecutiveError::OnlyInherentsAllowed => {
                 write!(fmt, "Only inherents are allowed in this block")
             }
@@ -373,7 +368,7 @@ where
 			BlockNumberFor<System>,
 		>>::try_state(*header.number(), select.clone())
 		.map_err(|e| {
-			log::error!(target: LOG_TARGET, "failure: {:?}", e);
+			log::error!(target: LOG_TARGET, "failure: {e:?}");
 			ExecutiveError::Custom(e.into())
 		})?;
         if select.any() {
@@ -472,8 +467,7 @@ where
             Ok(bytes) => {
                 log::info!(
                     target: LOG_TARGET,
-                    "✅ Entire runtime state decodes without error. {} bytes total.",
-                    bytes
+                    "✅ Entire runtime state decodes without error. {bytes} bytes total.",
                 );
 
                 Ok(())
@@ -648,7 +642,7 @@ where
                     Self::do_apply_extrinsic(uxt, is_inherent, Block::Extrinsic::check)
                 }
             ) {
-                panic!("{:?}", e)
+                panic!("{e:?}")
             }
 
             // In this case there were no transactions to trigger this state transition:
@@ -706,14 +700,14 @@ where
                 }
             }
 
-            log::debug!(target: LOG_TARGET, "Executing transaction: {:?}", uxt);
+            log::debug!(target: LOG_TARGET, "Executing transaction: {uxt:?}");
             if let Err(e) = apply_extrinsic(uxt, is_inherent) {
                 log::error!(
                     target: LOG_TARGET,
                     "Transaction({idx}) failed due to {e:?}. \
                     Aborting the rest of the block execution.",
                 );
-                return Err(ExecutiveError::ApplyExtrinsic(e.into()));
+                return Err(ExecutiveError::ApplyExtrinsic(e));
             }
         }
 

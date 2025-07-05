@@ -7,16 +7,16 @@
 //! Key components:
 //!
 //! - [`BitcoinBlockImporter`]
-//!     The main struct responsible for importing Bitcoin blocks and managing the import process.
+//!   The main struct responsible for importing Bitcoin blocks and managing the import process.
 //!
 //! - [`BitcoinBlockImport`]
-//!     An async trait for importing Bitcoin blocks, which is implemented by [`BitcoinBlockImporter`].
+//!   An async trait for importing Bitcoin blocks, which is implemented by [`BitcoinBlockImporter`].
 //!
 //! - [`ImportConfig`]
-//!     Configuration for block import, including network type, verification level, and execution options.
+//!   Configuration for block import, including network type, verification level, and execution options.
 //!
 //! - [`ImportStatus`]
-//!     An enum representing the result of an import operation, with variants for different import outcomes.
+//!   An enum representing the result of an import operation, with variants for different import outcomes.
 
 use crate::ScriptEngine;
 use crate::metrics::Metrics;

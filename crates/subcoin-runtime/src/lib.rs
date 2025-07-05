@@ -127,7 +127,6 @@ impl Get<frame_system::limits::BlockWeights> for BlockWeights {
 }
 
 impl pallet_bitcoin::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type WeightInfo = pallet_bitcoin::BitcoinTransactionWeight;
 }
 

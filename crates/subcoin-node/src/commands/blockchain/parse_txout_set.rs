@@ -26,6 +26,7 @@ pub struct ParseTxoutSetCmd {
 }
 
 impl ParseTxoutSetCmd {
+    #[allow(clippy::result_large_err)]
     pub fn execute(self) -> sc_cli::Result<()> {
         let Self {
             path,
@@ -71,7 +72,7 @@ impl ParseTxoutSetCmd {
 
             match (compute_addresses, address) {
                 (true, Some(address)) => {
-                    let _ = write!(addr_str, ",{}", address);
+                    let _ = write!(addr_str, ",{address}");
                 }
                 (true, None) => {
                     let _ = write!(addr_str, ",");

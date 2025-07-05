@@ -299,7 +299,7 @@ fn calculate_import_speed<B: BlockT>(
             .checked_div(u128::from(elapsed_ms))
             .map_or(0.0, |s| s as f64)
             / 10.0;
-        format!(" {:4.1} bps", speed)
+        format!(" {speed:4.1} bps")
     } else {
         // If the number of blocks can't be converted to a regular integer, then we need a more
         // algebraic approach and we stay within the realm of integers.
@@ -311,7 +311,7 @@ fn calculate_import_speed<B: BlockT>(
             .saturating_mul(one_thousand)
             .checked_div(&elapsed)
             .unwrap_or_else(Zero::zero);
-        format!(" {} bps", speed)
+        format!(" {speed} bps")
     }
 }
 
@@ -338,6 +338,7 @@ enum BitcoinBlockProvider {
 }
 
 impl BitcoinBlockProvider {
+    #[allow(clippy::result_large_err)]
     fn new(maybe_data_dir: Option<PathBuf>) -> sc_cli::Result<Self> {
         match maybe_data_dir {
             Some(data_dir) => {
@@ -362,10 +363,7 @@ impl BitcoinBlockProvider {
         match self {
             Self::Local(db) => {
                 let raw_block = db.get_raw_block(height).map_err(|err| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Failed to get bitcoin block at #{height}: {err}"),
-                    )
+                    std::io::Error::other(format!("Failed to get bitcoin block at #{height}: {err}"))
                 })?;
 
                 Ok(bitcoin::Block::consensus_decode(&mut raw_block.as_slice())
