@@ -1,13 +1,13 @@
 use bitcoin::consensus::Encodable;
 use bitcoin::locktime::absolute;
-use codec::{Decode, Encode, MaxEncodedLen};
+use codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_std::vec::Vec;
 
 /// An absolute lock time value, representing either a block height or a UNIX timestamp (seconds
 /// since epoch).
-#[derive(Clone, Debug, Encode, Decode, TypeInfo, PartialEq)]
+#[derive(Clone, Debug, Encode, Decode, TypeInfo, PartialEq, DecodeWithMemTracking)]
 pub enum LockTime {
     /// A block height lock time value.
     Height(u32),
@@ -40,7 +40,7 @@ impl From<LockTime> for absolute::LockTime {
 }
 
 /// Wrapper type for representing [`bitcoin::Txid`] in runtime, stored in reversed byte order.
-#[derive(Clone, Copy, TypeInfo, Encode, Decode, MaxEncodedLen, PartialEq)]
+#[derive(Clone, Copy, TypeInfo, Encode, Decode, MaxEncodedLen, PartialEq, DecodeWithMemTracking)]
 pub struct Txid(H256);
 
 impl Txid {
@@ -78,7 +78,7 @@ impl core::fmt::Debug for Txid {
 }
 
 /// A reference to a transaction output.
-#[derive(Clone, Debug, Encode, Decode, TypeInfo, PartialEq, MaxEncodedLen)]
+#[derive(Clone, Debug, Encode, Decode, TypeInfo, PartialEq, MaxEncodedLen, DecodeWithMemTracking)]
 pub struct OutPoint {
     /// The transaction ID of the referenced output.
     pub txid: Txid,
@@ -129,7 +129,7 @@ pub struct Witness {
 /// Regular bitcoin transaction input.
 ///
 /// Structurely same with [`bitcoin::TxIn`].
-#[derive(Clone, Debug, Encode, Decode, TypeInfo, PartialEq)]
+#[derive(Clone, Debug, Encode, Decode, TypeInfo, PartialEq, DecodeWithMemTracking)]
 pub struct RegularTxIn {
     /// The reference to the previous output that is being used as an input.
     pub previous_output: OutPoint,
@@ -154,7 +154,7 @@ pub struct RegularTxIn {
 /// This type is a wrapper around [`bitcoin::TxIn`], designed to provide a user-friendly representation
 /// of transaction inputs (`TxIn`) in polkadot.js.org. It handles both coinbase (block reward)
 /// transactions and standard transactions.
-#[derive(Clone, Debug, Encode, Decode, TypeInfo, PartialEq)]
+#[derive(Clone, Debug, Encode, Decode, TypeInfo, PartialEq, DecodeWithMemTracking)]
 pub enum TxIn {
     /// Input from a coinbase transaction, which does not reference any previous output.
     Coinbase {
@@ -212,7 +212,7 @@ impl From<TxIn> for bitcoin::TxIn {
 }
 
 /// Bitcoin transaction output.
-#[derive(Clone, Debug, Encode, Decode, TypeInfo, PartialEq)]
+#[derive(Clone, Debug, Encode, Decode, TypeInfo, PartialEq, DecodeWithMemTracking)]
 pub struct TxOut {
     /// The value of the output, in satoshis.
     pub value: u64,
@@ -221,7 +221,7 @@ pub struct TxOut {
 }
 
 /// Bitcoin transaction.
-#[derive(Clone, Debug, Encode, Decode, TypeInfo, PartialEq)]
+#[derive(Clone, Debug, Encode, Decode, TypeInfo, PartialEq, DecodeWithMemTracking)]
 pub struct Transaction {
     /// The protocol version, is currently expected to be 1 or 2 (BIP 68).
     pub version: i32,

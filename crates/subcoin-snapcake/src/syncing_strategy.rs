@@ -126,6 +126,7 @@ where
         metrics_registry: None,
         state_request_protocol_name,
         block_downloader,
+        min_peers_to_start_warp_sync: None
     };
 
     Ok(Box::new(SnapcakeSyncingStrategy::new(

@@ -121,7 +121,7 @@ enum UtxoSetOutput {
 impl UtxoSetOutput {
     fn write(&mut self, txid: bitcoin::Txid, vout: u32, coin: Coin) -> std::io::Result<()> {
         match self {
-            Self::Csv(ref mut file) => {
+            Self::Csv(file) => {
                 let Coin {
                     is_coinbase,
                     amount,
@@ -137,7 +137,7 @@ impl UtxoSetOutput {
                     "{outpoint},{is_coinbase},{height},{amount},{script_pubkey}",
                 )?;
             }
-            Self::Stdout(ref mut stdout) => {
+            Self::Stdout(stdout) => {
                 let Coin {
                     is_coinbase,
                     amount,
