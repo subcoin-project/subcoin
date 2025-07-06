@@ -1,3 +1,0 @@
-# Clippy configuration to globally allow result_large_err
-warns = []
-allow = ["clippy::result_large_err"]

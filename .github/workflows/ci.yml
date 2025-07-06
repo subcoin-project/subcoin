@@ -58,7 +58,7 @@ jobs:
 
       - name: Run clippy
         run: |
-          cargo clippy --locked --all-features --all-targets --manifest-path Cargo.toml -- -D warnings
+          cargo clippy --locked --all-features --all-targets --manifest-path Cargo.toml -- -D warnings -A clippy::result_large_err
 
   test:
     name: Test
