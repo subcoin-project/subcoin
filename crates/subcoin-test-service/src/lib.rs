@@ -125,7 +125,6 @@ pub fn test_configuration(tokio_handle: tokio::runtime::Handle) -> Configuration
     full_test_configuration(tokio_handle, Box::new(spec))
 }
 
-#[allow(clippy::result_large_err)]
 pub fn new_test_node(tokio_handle: tokio::runtime::Handle) -> Result<NodeComponents, ServiceError> {
     let config = test_configuration(tokio_handle);
     subcoin_service::new_node(SubcoinConfiguration {

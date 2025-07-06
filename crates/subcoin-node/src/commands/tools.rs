@@ -27,7 +27,6 @@ pub enum Tools {
     },
 }
 
-#[allow(clippy::result_large_err)]
 fn revert_sha256d(h256d: &str) -> sc_cli::Result<String> {
     let hash: sha256d::Hash = h256d
         .strip_prefix("0x")
@@ -44,7 +43,6 @@ fn revert_sha256d(h256d: &str) -> sc_cli::Result<String> {
 }
 
 impl Tools {
-    #[allow(clippy::result_large_err)]
     pub fn run(self) -> sc_cli::Result<()> {
         match self {
             Self::RevertH256 { h256 } => {

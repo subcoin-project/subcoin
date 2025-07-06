@@ -137,7 +137,6 @@ pub fn initialize_genesis_block_hash_mapping<
 }
 
 /// Creates a new subcoin node.
-#[allow(clippy::result_large_err)]
 pub fn new_node(config: SubcoinConfiguration) -> Result<NodeComponents, ServiceError> {
     let SubcoinConfiguration {
         network: bitcoin_network,
@@ -249,7 +248,6 @@ type SubstrateNetworkingParts = (
 );
 
 /// Runs the Substrate networking.
-#[allow(clippy::result_large_err)]
 pub fn start_substrate_network<N>(
     config: &mut Configuration,
     client: Arc<FullClient>,
@@ -396,7 +394,6 @@ type PartialComponents = sc_service::PartialComponents<
 >;
 
 /// Creates a partial node, for the chain ops commands.
-#[allow(clippy::result_large_err)]
 pub fn new_partial(
     config: &Configuration,
     bitcoin_network: bitcoin::Network,

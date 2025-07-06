@@ -22,7 +22,6 @@ pub struct ParseBlockCmd {
 }
 
 impl ParseBlockCmd {
-    #[allow(clippy::result_large_err)]
     pub fn execute(self, client: Arc<FullClient>) -> sc_cli::Result<()> {
         let block_number = self.height.unwrap_or_else(|| client.info().best_number);
 

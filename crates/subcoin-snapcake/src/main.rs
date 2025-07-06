@@ -15,8 +15,8 @@
 //!
 //! - **Decentralized UTXO Set Download:** Fetch the UTXO set from the decentralized Subcoin P2P network,
 //!   removing the need for trusted third-party snapshots.
-//! - **Bitcoin Core Compatibility:** Generate UTXO set snapshots compatible with Bitcoin Core’s `txoutset`,
-//!   allowing for seamless integration with Bitcoin’s Fast Sync functionality.
+//! - **Bitcoin Core Compatibility:** Generate UTXO set snapshots compatible with Bitcoin Core's `txoutset`,
+//!   allowing for seamless integration with Bitcoin's Fast Sync functionality.
 //! - **Lightweight Node:** Only includes essential network components for state syncing, reducing
 //!   resource consumption compared to a full regular Substrate node.
 //!
@@ -31,7 +31,7 @@
 //!
 //! `snapcake` can be used to speed up the synchronization of Bitcoin Core nodes by providing decentralized
 //! UTXO snapshots, thereby reducing the reliance on centralized snapshot providers and enhancing the
-//! decentralization of Bitcoin’s fast sync process.
+//! decentralization of Bitcoin's fast sync process.
 
 mod cli;
 mod params;
@@ -60,7 +60,6 @@ use syncing_strategy::TargetBlock;
 
 type FullClient = sc_service::TFullClient<Block, RuntimeApi, WasmExecutor>;
 
-#[allow(clippy::result_large_err)]
 fn main() -> sc_cli::Result<()> {
     let app = App::parse();
 
@@ -90,7 +89,6 @@ fn main() -> sc_cli::Result<()> {
         .map_err(Into::into)
 }
 
-#[allow(clippy::result_large_err)]
 fn start_snapcake_node(
     bitcoin_network: bitcoin::Network,
     mut config: Configuration,
@@ -153,7 +151,6 @@ fn start_snapcake_node(
     Ok(task_manager)
 }
 
-#[allow(clippy::result_large_err)]
 fn start_substrate_network<N>(
     config: &mut Configuration,
     client: Arc<FullClient>,

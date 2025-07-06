@@ -70,7 +70,6 @@ pub struct Cli {
 }
 
 /// Parse and run command line arguments
-#[allow(clippy::result_large_err)]
 pub fn run() -> sc_cli::Result<()> {
     let Cli {
         command,

@@ -61,7 +61,7 @@ pub enum TargetBlock<Block: BlockT> {
 }
 
 /// Build snapcake state syncing strategy.
-#[allow(clippy::too_many_arguments, clippy::result_large_err)]
+#[allow(clippy::too_many_arguments)]
 pub fn build_snapcake_syncing_strategy<Block, Client, Net>(
     protocol_id: ProtocolId,
     fork_id: Option<&str>,

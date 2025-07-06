@@ -26,7 +26,6 @@ pub struct ParseTxoutSetCmd {
 }
 
 impl ParseTxoutSetCmd {
-    #[allow(clippy::result_large_err)]
     pub fn execute(self) -> sc_cli::Result<()> {
         let Self {
             path,

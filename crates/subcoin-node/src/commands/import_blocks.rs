@@ -338,7 +338,6 @@ enum BitcoinBlockProvider {
 }
 
 impl BitcoinBlockProvider {
-    #[allow(clippy::result_large_err)]
     fn new(maybe_data_dir: Option<PathBuf>) -> sc_cli::Result<Self> {
         match maybe_data_dir {
             Some(data_dir) => {
