@@ -103,9 +103,10 @@ where
             }
         }
 
-        if self.last_progress_print_time.is_none_or(|last_time| {
-            last_time.elapsed() > DOWNLOAD_PROGRESS_LOG_INTERVAL
-        }) {
+        if self
+            .last_progress_print_time
+            .is_none_or(|last_time| last_time.elapsed() > DOWNLOAD_PROGRESS_LOG_INTERVAL)
+        {
             let percent = self.received_coins as f64 * 100.0 / self.total_coins as f64;
             tracing::info!(target: "snapcake", "Download progress: {percent:.2}%");
             self.last_progress_print_time.replace(Instant::now());

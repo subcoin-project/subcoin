@@ -51,9 +51,8 @@ impl SnapshotStore {
                 Ok(())
             }
             Self::Csv(path) => Self::append_to_csv(path, utxo),
-            Self::Rocksdb(db) => Self::insert_to_rocksdb(db, utxo).map_err(|err| {
-                std::io::Error::other(format!("rocksdb: {err:?}"))
-            }),
+            Self::Rocksdb(db) => Self::insert_to_rocksdb(db, utxo)
+                .map_err(|err| std::io::Error::other(format!("rocksdb: {err:?}"))),
         }
     }
 

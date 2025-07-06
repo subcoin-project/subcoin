@@ -363,7 +363,9 @@ impl BitcoinBlockProvider {
         match self {
             Self::Local(db) => {
                 let raw_block = db.get_raw_block(height).map_err(|err| {
-                    std::io::Error::other(format!("Failed to get bitcoin block at #{height}: {err}"))
+                    std::io::Error::other(format!(
+                        "Failed to get bitcoin block at #{height}: {err}"
+                    ))
                 })?;
 
                 Ok(bitcoin::Block::consensus_decode(&mut raw_block.as_slice())
