@@ -1,3 +1,9 @@
-(function() {var implementors = {
-"subcoin_runtime":[["impl IsSubType&lt;&lt;<a class=\"struct\" href=\"pallet_bitcoin/pallet/struct.Pallet.html\" title=\"struct pallet_bitcoin::pallet::Pallet\">Pallet</a>&lt;<a class=\"struct\" href=\"subcoin_runtime/struct.Runtime.html\" title=\"struct subcoin_runtime::Runtime\">Runtime</a>&gt; as Callable&lt;<a class=\"struct\" href=\"subcoin_runtime/struct.Runtime.html\" title=\"struct subcoin_runtime::Runtime\">Runtime</a>&gt;&gt;::RuntimeCall&gt; for <a class=\"enum\" href=\"subcoin_runtime/enum.RuntimeCall.html\" title=\"enum subcoin_runtime::RuntimeCall\">RuntimeCall</a>"],["impl IsSubType&lt;&lt;Pallet&lt;<a class=\"struct\" href=\"subcoin_runtime/struct.Runtime.html\" title=\"struct subcoin_runtime::Runtime\">Runtime</a>&gt; as Callable&lt;<a class=\"struct\" href=\"subcoin_runtime/struct.Runtime.html\" title=\"struct subcoin_runtime::Runtime\">Runtime</a>&gt;&gt;::RuntimeCall&gt; for <a class=\"enum\" href=\"subcoin_runtime/enum.RuntimeCall.html\" title=\"enum subcoin_runtime::RuntimeCall\">RuntimeCall</a>"]]
-};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
+(function() {
+    var implementors = Object.fromEntries([["subcoin_runtime",[["impl IsSubType&lt;&lt;<a class=\"struct\" href=\"pallet_bitcoin/pallet/struct.Pallet.html\" title=\"struct pallet_bitcoin::pallet::Pallet\">Pallet</a>&lt;<a class=\"struct\" href=\"subcoin_runtime/struct.Runtime.html\" title=\"struct subcoin_runtime::Runtime\">Runtime</a>&gt; as Callable&lt;<a class=\"struct\" href=\"subcoin_runtime/struct.Runtime.html\" title=\"struct subcoin_runtime::Runtime\">Runtime</a>&gt;&gt;::RuntimeCall&gt; for <a class=\"enum\" href=\"subcoin_runtime/enum.RuntimeCall.html\" title=\"enum subcoin_runtime::RuntimeCall\">RuntimeCall</a>"],["impl IsSubType&lt;&lt;Pallet&lt;<a class=\"struct\" href=\"subcoin_runtime/struct.Runtime.html\" title=\"struct subcoin_runtime::Runtime\">Runtime</a>&gt; as Callable&lt;<a class=\"struct\" href=\"subcoin_runtime/struct.Runtime.html\" title=\"struct subcoin_runtime::Runtime\">Runtime</a>&gt;&gt;::RuntimeCall&gt; for <a class=\"enum\" href=\"subcoin_runtime/enum.RuntimeCall.html\" title=\"enum subcoin_runtime::RuntimeCall\">RuntimeCall</a>"]]]]);
+    if (window.register_implementors) {
+        window.register_implementors(implementors);
+    } else {
+        window.pending_implementors = implementors;
+    }
+})()
+//{"start":57,"fragment_lengths":[1037]}

@@ -1,3 +1,9 @@
-(function() {var implementors = {
-"subcoin_runtime":[["impl&lt;Block: BlockT, C: CallApiAt&lt;Block&gt;&gt; ApiExt&lt;Block&gt; for <a class=\"struct\" href=\"subcoin_runtime/struct.RuntimeApiImpl.html\" title=\"struct subcoin_runtime::RuntimeApiImpl\">RuntimeApiImpl</a>&lt;Block, C&gt;"]]
-};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
+(function() {
+    var implementors = Object.fromEntries([["subcoin_runtime",[["impl&lt;Block: BlockT, C: CallApiAt&lt;Block&gt;&gt; ApiExt&lt;Block&gt; for <a class=\"struct\" href=\"subcoin_runtime/struct.RuntimeApiImpl.html\" title=\"struct subcoin_runtime::RuntimeApiImpl\">RuntimeApiImpl</a>&lt;Block, C&gt;"]]]]);
+    if (window.register_implementors) {
+        window.register_implementors(implementors);
+    } else {
+        window.pending_implementors = implementors;
+    }
+})()
+//{"start":57,"fragment_lengths":[258]}
