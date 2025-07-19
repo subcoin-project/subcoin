@@ -46,8 +46,8 @@ use sp_runtime::traits::Block as BlockT;
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subcoin_primitives::runtime::{bitcoin_block_subsidy, Coin};
 use subcoin_primitives::CoinStorageKey;
+use subcoin_primitives::runtime::{Coin, bitcoin_block_subsidy};
 use tx_verify::{check_transaction_sanity, get_legacy_sig_op_count, is_final_tx};
 
 pub use header_verify::{Error as HeaderError, HeaderVerifier};
@@ -122,9 +122,7 @@ pub enum Error {
     /// A block must contain only one coinbase transaction.
     #[error("Block#{0} contains multiple coinbase transactions")]
     MultipleCoinbase(BlockHash),
-    #[error(
-        "Block#{block_hash} has incorrect coinbase height, (expected: {expected}, got: {got})"
-    )]
+    #[error("Block#{block_hash} has incorrect coinbase height, (expected: {expected}, got: {got})")]
     BadCoinbaseBlockHeight {
         block_hash: BlockHash,
         got: u32,
@@ -141,7 +139,9 @@ pub enum Error {
     #[error("Transaction in block#{0} is not finalized")]
     TransactionNotFinal(BlockHash),
     /// Transaction script contains too many signature operations.
-    #[error("Transaction in block #{block_number},{block_hash} exceeds signature operation limit (max: {MAX_BLOCK_SIGOPS_COST})")]
+    #[error(
+        "Transaction in block #{block_number},{block_hash} exceeds signature operation limit (max: {MAX_BLOCK_SIGOPS_COST})"
+    )]
     TooManySigOps {
         block_hash: BlockHash,
         block_number: u32,
@@ -170,7 +170,9 @@ pub enum Error {
         utxo: OutPoint,
     },
     /// Insufficient funds: total input amount is lower than the total output amount.
-    #[error("Block#{block_hash} has an invalid transaction: total input {value_in} < total output {value_out}")]
+    #[error(
+        "Block#{block_hash} has an invalid transaction: total input {value_in} < total output {value_out}"
+    )]
     InsufficientFunds {
         block_hash: BlockHash,
         value_in: u64,

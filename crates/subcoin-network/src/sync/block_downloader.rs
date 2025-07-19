@@ -1,7 +1,7 @@
 use super::orphan_blocks_pool::OrphanBlocksPool;
+use crate::PeerId;
 use crate::peer_store::PeerStore;
 use crate::sync::SyncAction;
-use crate::PeerId;
 use bitcoin::p2p::message_blockdata::Inventory;
 use bitcoin::{Block as BitcoinBlock, BlockHash};
 use sc_consensus::BlockImportError;
@@ -217,9 +217,7 @@ impl BlockDownloader {
 
             if self
                 .last_overloaded_queue_log_time
-                .map_or(true, |last_time| {
-                    last_time.elapsed() > BUSY_QUEUE_LOG_INTERVAL
-                })
+                .is_none_or(|last_time| last_time.elapsed() > BUSY_QUEUE_LOG_INTERVAL)
             {
                 tracing::debug!(
                     best_number,

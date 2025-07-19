@@ -1,5 +1,5 @@
 use bitcoin::blockdata::script::Script;
-use bitcoin::hashes::{sha256d, Hash};
+use bitcoin::hashes::{Hash, sha256d};
 
 /// Utilities
 #[derive(Debug, clap::Subcommand)]
@@ -37,7 +37,7 @@ fn revert_sha256d(h256d: &str) -> sc_cli::Result<String> {
     Ok(hash
         .as_byte_array()
         .iter()
-        .map(|byte| format!("{:02x}", byte))
+        .map(|byte| format!("{byte:02x}"))
         .collect::<Vec<_>>()
         .join(""))
 }

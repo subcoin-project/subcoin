@@ -23,7 +23,6 @@ impl frame_system::Config for Test {
 }
 
 impl Config for Test {
-    type RuntimeEvent = RuntimeEvent;
     type WeightInfo = ();
 }
 

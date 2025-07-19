@@ -5,8 +5,8 @@ use sc_network_sync::strategy::state_sync::{
     ImportResult, StateSync, StateSyncProgress, StateSyncProvider,
 };
 use sc_network_sync::{StateRequest, StateResponse};
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_runtime::SaturatedConversion;
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -103,9 +103,10 @@ where
             }
         }
 
-        if self.last_progress_print_time.map_or(true, |last_time| {
-            last_time.elapsed() > DOWNLOAD_PROGRESS_LOG_INTERVAL
-        }) {
+        if self
+            .last_progress_print_time
+            .is_none_or(|last_time| last_time.elapsed() > DOWNLOAD_PROGRESS_LOG_INTERVAL)
+        {
             let percent = self.received_coins as f64 * 100.0 / self.total_coins as f64;
             tracing::info!(target: "snapcake", "Download progress: {percent:.2}%");
             self.last_progress_print_time.replace(Instant::now());

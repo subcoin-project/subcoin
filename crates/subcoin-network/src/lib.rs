@@ -8,11 +8,11 @@
 //! This crate offers two strategies for the initial block download:
 //!
 //! - **Blocks-First**: Downloads the full block data sequentially starting from the last known
-//!     block until it's fully synced with the network, in batches. This is primarily for the testing
-//!     purpose.
+//!   block until it's fully synced with the network, in batches. This is primarily for the testing
+//!   purpose.
 //!
 //! - **Headers-First**: First downloads the block headers and then proceeds to the full block data
-//!     based on the checkpoints.
+//!   based on the checkpoints.
 //!
 //! However, due to the nature of Subcoin, building a Bitcoin SPV node solely by syncing Bitcoin headers
 //! from the network is not possible, in that Subcoin requires full block data to derive the corresponding
@@ -52,12 +52,12 @@ use sc_client_api::{AuxStore, HeaderBackend};
 use sc_consensus_nakamoto::{BlockImportQueue, ChainParams, HeaderVerifier};
 use sc_network_sync::SyncingService;
 use sc_service::TaskManager;
-use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
+use sc_utils::mpsc::{TracingUnboundedSender, tracing_unbounded};
 use sp_runtime::traits::Block as BlockT;
 use std::net::{AddrParseError, SocketAddr};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use substrate_prometheus_endpoint::Registry;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
@@ -479,7 +479,9 @@ where
                 watch_substrate_fast_sync(network_handle.clone(), substrate_sync_service),
             );
         } else {
-            tracing::warn!("Block sync from Bitcoin P2P network will not be started automatically on Substrate fast sync completion");
+            tracing::warn!(
+                "Block sync from Bitcoin P2P network will not be started automatically on Substrate fast sync completion"
+            );
         }
     }
 

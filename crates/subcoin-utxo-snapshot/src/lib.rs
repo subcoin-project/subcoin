@@ -6,9 +6,9 @@ mod tests;
 
 use self::compressor::ScriptCompression;
 use self::serialize::write_compact_size;
+use bitcoin::BlockHash;
 use bitcoin::consensus::encode::Encodable;
 use bitcoin::hashes::Hash;
-use bitcoin::BlockHash;
 use compressor::compress_amount;
 use std::collections::{BTreeMap, HashSet};
 use std::fs::File;
@@ -134,7 +134,9 @@ impl SnapshotMetadata {
         if magic_bytes != SNAPSHOT_MAGIC_BYTES {
             return Err(Error::new(
                 ErrorKind::InvalidData,
-                format!("Invalid UTXO snapshot magic bytes (expected: {SNAPSHOT_MAGIC_BYTES:?}, got: {magic_bytes:?})"),
+                format!(
+                    "Invalid UTXO snapshot magic bytes (expected: {SNAPSHOT_MAGIC_BYTES:?}, got: {magic_bytes:?})"
+                ),
             ));
         }
 

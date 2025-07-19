@@ -1,4 +1,4 @@
-use substrate_prometheus_endpoint::{register, GaugeVec, Opts, PrometheusError, Registry, U64};
+use substrate_prometheus_endpoint::{GaugeVec, Opts, PrometheusError, Registry, U64, register};
 
 pub struct Metrics {
     block_execution_time: GaugeVec<U64>,

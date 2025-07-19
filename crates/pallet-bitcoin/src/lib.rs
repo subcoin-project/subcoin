@@ -19,8 +19,8 @@ pub mod types;
 use self::types::{OutPoint, Transaction, Txid};
 use frame_support::dispatch::DispatchResult;
 use frame_support::weights::Weight;
-use sp_runtime::traits::BlockNumberProvider;
 use sp_runtime::SaturatedConversion;
+use sp_runtime::traits::BlockNumberProvider;
 use sp_std::prelude::*;
 use sp_std::vec::Vec;
 use subcoin_runtime_primitives::Coin;
@@ -61,9 +61,6 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
-        /// The overarching event type.
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-
         type WeightInfo: WeightInfo;
     }
 

@@ -107,7 +107,7 @@ mod tests {
             finalized
                 .iter()
                 .rev()
-                .map(|b| format!("{:02x}", b))
+                .map(|b| format!("{b:02x}"))
                 .collect::<String>(),
             "10d312b100cbd32ada024a6646e40d3482fcff103668d2625f10002a607d5863"
         );

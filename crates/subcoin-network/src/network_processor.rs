@@ -3,24 +3,24 @@ use crate::network_api::{
     IncomingTransaction, NetworkProcessorMessage, NetworkStatus, SendTransactionResult,
 };
 use crate::peer_connection::{ConnectionInitiator, Direction, NewConnection};
-use crate::peer_manager::{Config, NewPeer, PeerManager, SlowPeer, PEER_LATENCY_THRESHOLD};
+use crate::peer_manager::{Config, NewPeer, PEER_LATENCY_THRESHOLD, PeerManager, SlowPeer};
 use crate::peer_store::PeerStore;
 use crate::sync::{ChainSync, LocatorRequest, RestartReason, SyncAction, SyncRequest};
 use crate::transaction_manager::TransactionManager;
 use crate::{Bandwidth, Error, PeerId, SyncStrategy};
 use bitcoin::blockdata::block::Header as BitcoinHeader;
-use bitcoin::p2p::message::{NetworkMessage, MAX_INV_SIZE};
+use bitcoin::p2p::message::{MAX_INV_SIZE, NetworkMessage};
 use bitcoin::p2p::message_blockdata::{GetBlocksMessage, GetHeadersMessage, Inventory};
 use bitcoin::{Block as BitcoinBlock, BlockHash};
-use futures::stream::FusedStream;
 use futures::StreamExt;
+use futures::stream::FusedStream;
 use sc_client_api::{AuxStore, HeaderBackend};
 use sc_consensus_nakamoto::{BlockImportQueue, HeaderVerifier};
 use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_runtime::traits::Block as BlockT;
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use subcoin_primitives::{BackendExt, ClientExt};
 use substrate_prometheus_endpoint::Registry;

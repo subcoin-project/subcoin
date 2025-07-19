@@ -1,7 +1,7 @@
 use crate::network_processor::Event;
 use crate::{Bandwidth, Error, PeerId};
-use bitcoin::consensus::{encode, Decodable, Encodable};
-use bitcoin::p2p::message::{NetworkMessage, RawNetworkMessage, MAX_MSG_SIZE};
+use bitcoin::consensus::{Decodable, Encodable, encode};
+use bitcoin::p2p::message::{MAX_MSG_SIZE, NetworkMessage, RawNetworkMessage};
 use futures::FutureExt;
 use sc_service::SpawnTaskHandle;
 use std::collections::VecDeque;
@@ -9,7 +9,7 @@ use std::fmt::{Debug, Display};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio::sync::watch;
 
 const MSG_HEADER_SIZE: usize = 24;

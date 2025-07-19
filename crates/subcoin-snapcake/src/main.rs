@@ -15,8 +15,8 @@
 //!
 //! - **Decentralized UTXO Set Download:** Fetch the UTXO set from the decentralized Subcoin P2P network,
 //!   removing the need for trusted third-party snapshots.
-//! - **Bitcoin Core Compatibility:** Generate UTXO set snapshots compatible with Bitcoin Core’s `txoutset`,
-//!   allowing for seamless integration with Bitcoin’s Fast Sync functionality.
+//! - **Bitcoin Core Compatibility:** Generate UTXO set snapshots compatible with Bitcoin Core's `txoutset`,
+//!   allowing for seamless integration with Bitcoin's Fast Sync functionality.
 //! - **Lightweight Node:** Only includes essential network components for state syncing, reducing
 //!   resource consumption compared to a full regular Substrate node.
 //!
@@ -31,7 +31,7 @@
 //!
 //! `snapcake` can be used to speed up the synchronization of Bitcoin Core nodes by providing decentralized
 //! UTXO snapshots, thereby reducing the reliance on centralized snapshot providers and enhancing the
-//! decentralization of Bitcoin’s fast sync process.
+//! decentralization of Bitcoin's fast sync process.
 
 mod cli;
 mod params;
@@ -45,16 +45,16 @@ use sc_cli::SubstrateCli;
 use sc_consensus::import_queue::BasicQueue;
 use sc_consensus_nakamoto::SubstrateImportQueueVerifier;
 use sc_executor::WasmExecutor;
-use sc_network::config::NetworkBackendType;
 use sc_network::Roles;
+use sc_network::config::NetworkBackendType;
 use sc_network_sync::engine::SyncingEngine;
 use sc_network_sync::service::network::NetworkServiceProvider;
 use sc_service::{Configuration, ImportQueue, TaskManager};
 use sp_runtime::traits::Block as BlockT;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subcoin_runtime::interface::OpaqueBlock as Block;
 use subcoin_runtime::RuntimeApi;
+use subcoin_runtime::interface::OpaqueBlock as Block;
 use subcoin_service::{GenesisBlockBuilder, TransactionAdapter};
 use syncing_strategy::TargetBlock;
 

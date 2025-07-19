@@ -1,10 +1,10 @@
-use super::sig::{check_pubkey_encoding, check_signature_encoding, find_and_delete, CheckSigError};
+use super::sig::{CheckSigError, check_pubkey_encoding, check_signature_encoding, find_and_delete};
 use crate::constants::{MAX_OPS_PER_SCRIPT, MAX_PUBKEYS_PER_MULTISIG};
-use crate::signature_checker::{check_ecdsa_signature, SignatureChecker, SignatureError};
+use crate::signature_checker::{SignatureChecker, SignatureError, check_ecdsa_signature};
 use crate::stack::{Stack, StackError};
 use crate::{SigVersion, VerifyFlags};
-use bitcoin::script::{Builder, PushBytesBuf};
 use bitcoin::Script;
+use bitcoin::script::{Builder, PushBytesBuf};
 
 /// Multisig error type.
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]

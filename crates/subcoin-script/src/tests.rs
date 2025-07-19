@@ -3,7 +3,7 @@ mod witness;
 
 use crate::num::NumError;
 use crate::signature_checker::SECP;
-use crate::{verify_script, EcdsaSignature, Error, TransactionSignatureChecker, VerifyFlags};
+use crate::{EcdsaSignature, Error, TransactionSignatureChecker, VerifyFlags, verify_script};
 use bitcoin::consensus::encode::deserialize_hex;
 use bitcoin::secp256k1::Message;
 use bitcoin::{PublicKey, Script, ScriptBuf, Transaction};

@@ -71,7 +71,7 @@ impl ParseTxoutSetCmd {
 
             match (compute_addresses, address) {
                 (true, Some(address)) => {
-                    let _ = write!(addr_str, ",{}", address);
+                    let _ = write!(addr_str, ",{address}");
                 }
                 (true, None) => {
                     let _ = write!(addr_str, ",");

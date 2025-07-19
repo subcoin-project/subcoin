@@ -124,7 +124,7 @@ impl sc_transaction_pool_api::TransactionPool for Transactions {
         Box::new(std::iter::empty::<Arc<Self::InPoolTransaction>>())
     }
 
-    fn report_invalid(
+    async fn report_invalid(
         &self,
         _at: Option<Self::Hash>,
         _invalid_tx_errors: TxInvalidityReportMap<TxHash<Self>>,

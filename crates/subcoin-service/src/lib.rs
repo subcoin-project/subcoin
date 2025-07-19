@@ -28,8 +28,8 @@ use sp_runtime::traits::Block as BlockT;
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
-use subcoin_runtime::interface::OpaqueBlock as Block;
 use subcoin_runtime::RuntimeApi;
+use subcoin_runtime::interface::OpaqueBlock as Block;
 
 pub use finalizer::SubcoinFinalizer;
 pub use genesis_block_builder::GenesisBlockBuilder;
@@ -462,7 +462,7 @@ pub fn new_partial(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{new_node, NodeComponents, SubcoinConfiguration};
+    use crate::{NodeComponents, SubcoinConfiguration, new_node};
     use subcoin_primitives::extract_bitcoin_block_hash;
     use tokio::runtime::Handle;
 

@@ -3,7 +3,7 @@ use crate::metrics::Metrics;
 use crate::peer_connection::{
     ConnectionCloser, ConnectionInitiator, ConnectionWriter, Direction, NewConnection,
 };
-use crate::{validate_outbound_services, Error, Latency, LocalTime, PeerId};
+use crate::{Error, Latency, LocalTime, PeerId, validate_outbound_services};
 use bitcoin::p2p::address::AddrV2Message;
 use bitcoin::p2p::message::NetworkMessage;
 use bitcoin::p2p::message_network::VersionMessage;
@@ -87,8 +87,7 @@ impl Connection {
     #[inline]
     fn send(&self, network_message: NetworkMessage) -> std::io::Result<()> {
         self.writer.send(network_message).map_err(|_| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
+            std::io::Error::other(
                 "Failed to send network message: connection writer receiver dropped",
             )
         })

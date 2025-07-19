@@ -19,9 +19,6 @@
 
 //! # Executive Module
 //!
-//! This is a fork of the upstream `frame-executive`. Most of the superior features have been
-//! removed, this pallet aims to provide the minimum stable interfaces for runtime.
-//!
 //! The Executive module acts as the orchestration layer for the runtime. It dispatches incoming
 //! extrinsic calls to the respective modules in the runtime.
 //!
@@ -48,6 +45,78 @@
 //!
 //! - `ExecuteBlock`: Trait that can be used to execute a block.
 //! - `Executive`: Type that can be used to make the FRAME available from the runtime.
+//!
+//! ## Usage
+//!
+//! The default Substrate node template declares the [`Executive`](./struct.Executive.html) type in
+//! its library.
+//!
+//! ### Example
+//!
+//! `Executive` type declaration from the node template.
+//!
+//! ```
+//! # use sp_runtime::generic;
+//! # use frame_executive as executive;
+//! # pub struct UncheckedExtrinsic {};
+//! # pub struct Header {};
+//! # type Context = frame_system::ChainContext<Runtime>;
+//! # pub type Block = generic::Block<Header, UncheckedExtrinsic>;
+//! # pub type Balances = u64;
+//! # pub type AllPalletsWithSystem = u64;
+//! # pub enum Runtime {};
+//! # use sp_runtime::transaction_validity::{
+//! #    TransactionValidity, UnknownTransaction, TransactionSource,
+//! # };
+//! # use sp_runtime::traits::ValidateUnsigned;
+//! # impl ValidateUnsigned for Runtime {
+//! #     type Call = ();
+//! #
+//! #     fn validate_unsigned(_source: TransactionSource, _call: &Self::Call) -> TransactionValidity {
+//! #         UnknownTransaction::NoUnsignedValidator.into()
+//! #     }
+//! # }
+//! /// Executive: handles dispatch to the various modules.
+//! pub type Executive = executive::Executive<Runtime, Block, Context, Runtime, AllPalletsWithSystem>;
+//! ```
+//!
+//! ### Custom `OnRuntimeUpgrade` logic
+//!
+//! You can add custom logic that should be called in your runtime on a runtime upgrade. This is
+//! done by setting an optional generic parameter. The custom logic will be called before
+//! the on runtime upgrade logic of all modules is called.
+//!
+//! ```
+//! # use sp_runtime::generic;
+//! # use frame_executive as executive;
+//! # pub struct UncheckedExtrinsic {};
+//! # pub struct Header {};
+//! # type Context = frame_system::ChainContext<Runtime>;
+//! # pub type Block = generic::Block<Header, UncheckedExtrinsic>;
+//! # pub type Balances = u64;
+//! # pub type AllPalletsWithSystem = u64;
+//! # pub enum Runtime {};
+//! # use sp_runtime::transaction_validity::{
+//! #    TransactionValidity, UnknownTransaction, TransactionSource,
+//! # };
+//! # use sp_runtime::traits::ValidateUnsigned;
+//! # impl ValidateUnsigned for Runtime {
+//! #     type Call = ();
+//! #
+//! #     fn validate_unsigned(_source: TransactionSource, _call: &Self::Call) -> TransactionValidity {
+//! #         UnknownTransaction::NoUnsignedValidator.into()
+//! #     }
+//! # }
+//! struct CustomOnRuntimeUpgrade;
+//! impl frame_support::traits::OnRuntimeUpgrade for CustomOnRuntimeUpgrade {
+//!     fn on_runtime_upgrade() -> frame_support::weights::Weight {
+//!         // Do whatever you want.
+//!         frame_support::weights::Weight::zero()
+//!     }
+//! }
+//!
+//! pub type Executive = executive::Executive<Runtime, Block, Context, Runtime, AllPalletsWithSystem, CustomOnRuntimeUpgrade>;
+//! ```
 
 #[cfg(doc)]
 #[cfg_attr(doc, aquamarine::aquamarine)]
@@ -79,35 +148,35 @@
 /// ```
 pub mod block_flowchart {}
 
-// #[cfg(test)]
-// mod tests;
+extern crate alloc;
 
 use codec::{Codec, Encode};
-use frame_support::defensive_assert;
+use core::marker::PhantomData;
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo, PostDispatchInfo};
 use frame_support::migrations::MultiStepMigrator;
 use frame_support::pallet_prelude::InvalidTransaction;
 use frame_support::traits::{
-    BeforeAllRuntimeMigrations, EnsureInherentsAreFirst, ExecuteBlock, OffchainWorker, OnFinalize,
-    OnIdle, OnInitialize, OnPoll, OnRuntimeUpgrade, PostInherents, PostTransactions,
+    BeforeAllRuntimeMigrations, ExecuteBlock, IsInherent, OffchainWorker, OnFinalize, OnIdle,
+    OnInitialize, OnPoll, OnRuntimeUpgrade, PostInherents, PostTransactions, PreInherents,
 };
 use frame_support::weights::{Weight, WeightMeter};
+use frame_support::{MAX_EXTRINSIC_DEPTH, defensive_assert};
 use frame_system::pallet_prelude::BlockNumberFor;
 use sp_runtime::generic::Digest;
 use sp_runtime::traits::{
     self, Applyable, CheckEqual, Checkable, Dispatchable, Header, NumberFor, One, ValidateUnsigned,
     Zero,
 };
-use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
+use sp_runtime::transaction_validity::{
+    TransactionSource, TransactionValidity, TransactionValidityError,
+};
 use sp_runtime::{ApplyExtrinsicResult, ExtrinsicInclusionMode};
-use sp_std::marker::PhantomData;
-use sp_std::prelude::*;
 
 #[cfg(feature = "try-runtime")]
 use ::{
     frame_support::{
-        traits::{TryDecodeEntireStorage, TryDecodeEntireStorageError, TryState},
         StorageNoopGuard,
+        traits::{TryDecodeEntireStorage, TryDecodeEntireStorageError, TryState},
     },
     frame_try_runtime::{TryStateSelect, UpgradeCheckSelect},
     log,
@@ -120,6 +189,33 @@ const LOG_TARGET: &str = "runtime::executive";
 pub type CheckedOf<E, C> = <E as Checkable<C>>::Checked;
 pub type CallOf<E, C> = <CheckedOf<E, C> as Applyable>::Call;
 pub type OriginOf<E, C> = <CallOf<E, C> as Dispatchable>::RuntimeOrigin;
+
+#[derive(PartialEq)]
+pub enum ExecutiveError {
+    InvalidInherentPosition(usize),
+    OnlyInherentsAllowed,
+    ApplyExtrinsic(TransactionValidityError),
+    Custom(&'static str),
+}
+
+impl core::fmt::Debug for ExecutiveError {
+    fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            ExecutiveError::InvalidInherentPosition(i) => {
+                write!(fmt, "Invalid inherent position for extrinsic at index {i}",)
+            }
+            ExecutiveError::OnlyInherentsAllowed => {
+                write!(fmt, "Only inherents are allowed in this block")
+            }
+            ExecutiveError::ApplyExtrinsic(e) => write!(
+                fmt,
+                "ExecuteBlockError applying extrinsic: {}",
+                Into::<&'static str>::into(*e)
+            ),
+            ExecutiveError::Custom(err) => write!(fmt, "{err}"),
+        }
+    }
+}
 
 /// Main entry point for certain runtime actions as e.g. `execute_block`.
 ///
@@ -151,22 +247,19 @@ pub struct Executive<
 );
 
 impl<
-        System: frame_system::Config + EnsureInherentsAreFirst<Block>,
-        Block: traits::Block<
-            Header = frame_system::pallet_prelude::HeaderFor<System>,
-            Hash = System::Hash,
-        >,
-        Context: Default,
-        UnsignedValidator,
-        AllPalletsWithSystem: OnRuntimeUpgrade
-            + BeforeAllRuntimeMigrations
-            + OnInitialize<BlockNumberFor<System>>
-            + OnIdle<BlockNumberFor<System>>
-            + OnFinalize<BlockNumberFor<System>>
-            + OffchainWorker<BlockNumberFor<System>>
-            + OnPoll<BlockNumberFor<System>>,
-        COnRuntimeUpgrade: OnRuntimeUpgrade,
-    > ExecuteBlock<Block>
+    System: frame_system::Config + IsInherent<Block::Extrinsic>,
+    Block: traits::Block<Header = frame_system::pallet_prelude::HeaderFor<System>, Hash = System::Hash>,
+    Context: Default,
+    UnsignedValidator,
+    AllPalletsWithSystem: OnRuntimeUpgrade
+        + BeforeAllRuntimeMigrations
+        + OnInitialize<BlockNumberFor<System>>
+        + OnIdle<BlockNumberFor<System>>
+        + OnFinalize<BlockNumberFor<System>>
+        + OffchainWorker<BlockNumberFor<System>>
+        + OnPoll<BlockNumberFor<System>>,
+    COnRuntimeUpgrade: OnRuntimeUpgrade,
+> ExecuteBlock<Block>
     for Executive<
         System,
         Block,
@@ -197,24 +290,21 @@ where
 
 #[cfg(feature = "try-runtime")]
 impl<
-        System: frame_system::Config + EnsureInherentsAreFirst<Block>,
-        Block: traits::Block<
-            Header = frame_system::pallet_prelude::HeaderFor<System>,
-            Hash = System::Hash,
-        >,
-        Context: Default,
-        UnsignedValidator,
-        AllPalletsWithSystem: OnRuntimeUpgrade
-            + BeforeAllRuntimeMigrations
-            + OnInitialize<BlockNumberFor<System>>
-            + OnIdle<BlockNumberFor<System>>
-            + OnFinalize<BlockNumberFor<System>>
-            + OffchainWorker<BlockNumberFor<System>>
-            + OnPoll<BlockNumberFor<System>>
-            + TryState<BlockNumberFor<System>>
-            + TryDecodeEntireStorage,
-        COnRuntimeUpgrade: OnRuntimeUpgrade,
-    > Executive<System, Block, Context, UnsignedValidator, AllPalletsWithSystem, COnRuntimeUpgrade>
+    System: frame_system::Config + IsInherent<Block::Extrinsic>,
+    Block: traits::Block<Header = frame_system::pallet_prelude::HeaderFor<System>, Hash = System::Hash>,
+    Context: Default,
+    UnsignedValidator,
+    AllPalletsWithSystem: OnRuntimeUpgrade
+        + BeforeAllRuntimeMigrations
+        + OnInitialize<BlockNumberFor<System>>
+        + OnIdle<BlockNumberFor<System>>
+        + OnFinalize<BlockNumberFor<System>>
+        + OffchainWorker<BlockNumberFor<System>>
+        + OnPoll<BlockNumberFor<System>>
+        + TryState<BlockNumberFor<System>>
+        + TryDecodeEntireStorage,
+    COnRuntimeUpgrade: OnRuntimeUpgrade,
+> Executive<System, Block, Context, UnsignedValidator, AllPalletsWithSystem, COnRuntimeUpgrade>
 where
     Block::Extrinsic: Checkable<Context> + Codec,
     CheckedOf<Block::Extrinsic, Context>: Applyable + GetDispatchInfo,
@@ -236,7 +326,7 @@ where
         state_root_check: bool,
         signature_check: bool,
         select: frame_try_runtime::TryStateSelect,
-    ) -> Result<Weight, &'static str> {
+    ) -> Result<Weight, ExecutiveError> {
         log::info!(
             target: LOG_TARGET,
             "try-runtime: executing block #{:?} / state root check: {:?} / signature check: {:?} / try-state-select: {:?}",
@@ -247,55 +337,18 @@ where
         );
 
         let mode = Self::initialize_block(block.header());
-        let num_inherents = Self::initial_checks(&block) as usize;
+        Self::initial_checks(&block);
         let (header, extrinsics) = block.deconstruct();
 
-        // Check if there are any forbidden non-inherents in the block.
-        if mode == ExtrinsicInclusionMode::OnlyInherents && extrinsics.len() > num_inherents {
-            return Err("Only inherents allowed".into());
-        }
-
-        let try_apply_extrinsic = |uxt: Block::Extrinsic| -> ApplyExtrinsicResult {
-            sp_io::init_tracing();
-            let encoded = uxt.encode();
-            let encoded_len = encoded.len();
-
-            let is_inherent = System::is_inherent(&uxt);
-            // skip signature verification.
-            let xt = if signature_check {
-                uxt.check(&Default::default())
-            } else {
-                uxt.unchecked_into_checked_i_know_what_i_am_doing(&Default::default())
-            }?;
-
-            let dispatch_info = xt.get_dispatch_info();
-            if !is_inherent && !<frame_system::Pallet<System>>::inherents_applied() {
-                Self::inherents_applied();
-            }
-
-            <frame_system::Pallet<System>>::note_extrinsic(encoded);
-            let r = Applyable::apply::<UnsignedValidator>(xt, &dispatch_info, encoded_len)?;
-
-            if r.is_err() && dispatch_info.class == DispatchClass::Mandatory {
-                return Err(InvalidTransaction::BadMandatory.into());
-            }
-
-            <frame_system::Pallet<System>>::note_applied_extrinsic(&r, dispatch_info);
-
-            Ok(r.map(|_| ()).map_err(|e| e.error))
-        };
-
         // Apply extrinsics:
-        for e in extrinsics.iter() {
-            if let Err(err) = try_apply_extrinsic(e.clone()) {
-                log::error!(
-                    target: LOG_TARGET, "transaction {:?} failed due to {:?}. Aborting the rest of the block execution.",
-                    e,
-                    err,
-                );
-                break;
-            }
-        }
+        let signature_check = if signature_check {
+            Block::Extrinsic::check
+        } else {
+            Block::Extrinsic::unchecked_into_checked_i_know_what_i_am_doing
+        };
+        Self::apply_extrinsics(mode, extrinsics.into_iter(), |uxt, is_inherent| {
+            Self::do_apply_extrinsic(uxt, is_inherent, signature_check)
+        })?;
 
         // In this case there were no transactions to trigger this state transition:
         if !<frame_system::Pallet<System>>::inherents_applied() {
@@ -315,12 +368,12 @@ where
 			BlockNumberFor<System>,
 		>>::try_state(*header.number(), select.clone())
 		.map_err(|e| {
-			log::error!(target: LOG_TARGET, "failure: {:?}", e);
-			e
+			log::error!(target: LOG_TARGET, "failure: {e:?}");
+			ExecutiveError::Custom(e.into())
 		})?;
         if select.any() {
             let res = AllPalletsWithSystem::try_decode_entire_state();
-            Self::log_decode_result(res)?;
+            Self::log_decode_result(res).map_err(|e| ExecutiveError::Custom(e.into()))?;
         }
         drop(_guard);
 
@@ -408,14 +461,13 @@ where
 
     /// Logs the result of trying to decode the entire state.
     fn log_decode_result(
-        res: Result<usize, Vec<TryDecodeEntireStorageError>>,
+        res: Result<usize, alloc::vec::Vec<TryDecodeEntireStorageError>>,
     ) -> Result<(), TryRuntimeError> {
         match res {
             Ok(bytes) => {
                 log::info!(
                     target: LOG_TARGET,
-                    "✅ Entire runtime state decodes without error. {} bytes total.",
-                    bytes
+                    "✅ Entire runtime state decodes without error. {bytes} bytes total.",
                 );
 
                 Ok(())
@@ -440,22 +492,19 @@ where
 }
 
 impl<
-        System: frame_system::Config + EnsureInherentsAreFirst<Block>,
-        Block: traits::Block<
-            Header = frame_system::pallet_prelude::HeaderFor<System>,
-            Hash = System::Hash,
-        >,
-        Context: Default,
-        UnsignedValidator,
-        AllPalletsWithSystem: OnRuntimeUpgrade
-            + BeforeAllRuntimeMigrations
-            + OnInitialize<BlockNumberFor<System>>
-            + OnIdle<BlockNumberFor<System>>
-            + OnFinalize<BlockNumberFor<System>>
-            + OffchainWorker<BlockNumberFor<System>>
-            + OnPoll<BlockNumberFor<System>>,
-        COnRuntimeUpgrade: OnRuntimeUpgrade,
-    > Executive<System, Block, Context, UnsignedValidator, AllPalletsWithSystem, COnRuntimeUpgrade>
+    System: frame_system::Config + IsInherent<Block::Extrinsic>,
+    Block: traits::Block<Header = frame_system::pallet_prelude::HeaderFor<System>, Hash = System::Hash>,
+    Context: Default,
+    UnsignedValidator,
+    AllPalletsWithSystem: OnRuntimeUpgrade
+        + BeforeAllRuntimeMigrations
+        + OnInitialize<BlockNumberFor<System>>
+        + OnIdle<BlockNumberFor<System>>
+        + OnFinalize<BlockNumberFor<System>>
+        + OffchainWorker<BlockNumberFor<System>>
+        + OnPoll<BlockNumberFor<System>>,
+    COnRuntimeUpgrade: OnRuntimeUpgrade,
+> Executive<System, Block, Context, UnsignedValidator, AllPalletsWithSystem, COnRuntimeUpgrade>
 where
     Block::Extrinsic: Checkable<Context> + Codec,
     CheckedOf<Block::Extrinsic, Context>: Applyable + GetDispatchInfo,
@@ -464,31 +513,40 @@ where
     OriginOf<Block::Extrinsic, Context>: From<Option<System::AccountId>>,
     UnsignedValidator: ValidateUnsigned<Call = CallOf<Block::Extrinsic, Context>>,
 {
+    /// Execute all `OnRuntimeUpgrade` of this runtime, and return the aggregate weight.
+    pub fn execute_on_runtime_upgrade() -> Weight {
+        let before_all_weight =
+            <AllPalletsWithSystem as BeforeAllRuntimeMigrations>::before_all_runtime_migrations();
+
+        let runtime_upgrade_weight = <(
+            COnRuntimeUpgrade,
+            <System as frame_system::Config>::SingleBlockMigrations,
+            // We want to run the migrations before we call into the pallets as they may
+            // access any state that would then not be migrated.
+            AllPalletsWithSystem,
+        ) as OnRuntimeUpgrade>::on_runtime_upgrade();
+
+        before_all_weight.saturating_add(runtime_upgrade_weight)
+    }
+
     /// Start the execution of a particular block.
     pub fn initialize_block(
         header: &frame_system::pallet_prelude::HeaderFor<System>,
     ) -> ExtrinsicInclusionMode {
         sp_io::init_tracing();
         sp_tracing::enter_span!(sp_tracing::Level::TRACE, "init_block");
-
         let digests = Self::extract_pre_digest(header);
+        Self::initialize_block_impl(header.number(), header.parent_hash(), &digests);
 
-        // Reset events before apply runtime upgrade hook.
-        // This is required to preserve events from runtime upgrade hook.
-        // This means the format of all the event related storages must always be compatible.
-        <frame_system::Pallet<System>>::reset_events();
+        Self::extrinsic_mode()
+    }
 
-        <frame_system::Pallet<System>>::initialize(header.number(), header.parent_hash(), &digests);
-
-        let weight = <System::BlockWeights as frame_support::traits::Get<_>>::get().base_block;
-        <frame_system::Pallet<System>>::register_extra_weight_unchecked(
-            weight,
-            DispatchClass::Mandatory,
-        );
-
-        frame_system::Pallet::<System>::note_finished_initialize();
-
-        ExtrinsicInclusionMode::AllExtrinsics
+    fn extrinsic_mode() -> ExtrinsicInclusionMode {
+        if <System as frame_system::Config>::MultiBlockMigrator::ongoing() {
+            ExtrinsicInclusionMode::OnlyInherents
+        } else {
+            ExtrinsicInclusionMode::AllExtrinsics
+        }
     }
 
     fn extract_pre_digest(header: &frame_system::pallet_prelude::HeaderFor<System>) -> Digest {
@@ -501,8 +559,51 @@ where
         digest
     }
 
-    /// Returns the number of inherents in the block.
-    fn initial_checks(block: &Block) -> u32 {
+    fn initialize_block_impl(
+        block_number: &BlockNumberFor<System>,
+        parent_hash: &System::Hash,
+        digest: &Digest,
+    ) {
+        // Reset events before apply runtime upgrade hook.
+        // This is required to preserve events from runtime upgrade hook.
+        // This means the format of all the event related storages must always be compatible.
+        <frame_system::Pallet<System>>::reset_events();
+
+        let mut weight = Weight::zero();
+        if Self::runtime_upgraded() {
+            weight = weight.saturating_add(Self::execute_on_runtime_upgrade());
+
+            frame_system::LastRuntimeUpgrade::<System>::put(
+                frame_system::LastRuntimeUpgradeInfo::from(
+                    <System::Version as frame_support::traits::Get<_>>::get(),
+                ),
+            );
+        }
+        <frame_system::Pallet<System>>::initialize(block_number, parent_hash, digest);
+        weight = weight.saturating_add(<AllPalletsWithSystem as OnInitialize<
+            BlockNumberFor<System>,
+        >>::on_initialize(*block_number));
+        weight = weight.saturating_add(
+            <System::BlockWeights as frame_support::traits::Get<_>>::get().base_block,
+        );
+        <frame_system::Pallet<System>>::register_extra_weight_unchecked(
+            weight,
+            DispatchClass::Mandatory,
+        );
+
+        frame_system::Pallet::<System>::note_finished_initialize();
+        <System as frame_system::Config>::PreInherents::pre_inherents();
+    }
+
+    /// Returns if the runtime has been upgraded, based on [`frame_system::LastRuntimeUpgrade`].
+    fn runtime_upgraded() -> bool {
+        let last = frame_system::LastRuntimeUpgrade::<System>::get();
+        let current = <System::Version as frame_support::traits::Get<_>>::get();
+
+        last.map(|v| v.was_upgraded(&current)).unwrap_or(true)
+    }
+
+    fn initial_checks(block: &Block) {
         sp_tracing::enter_span!(sp_tracing::Level::TRACE, "initial_checks");
         let header = block.header();
 
@@ -514,34 +615,38 @@ where
                     == *header.parent_hash(),
             "Parent hash should be valid.",
         );
-
-        match System::ensure_inherents_are_first(block) {
-            Ok(num) => num,
-            Err(i) => panic!("Invalid inherent position for extrinsic at index {}", i),
-        }
     }
 
     /// Actually execute all transitions for `block`.
     pub fn execute_block(block: Block) {
+        Self::execute_block_inner(block, true)
+    }
+
+    pub fn execute_block_without_state_root_check(block: Block) {
+        Self::execute_block_inner(block, false)
+    }
+
+    fn execute_block_inner(block: Block, state_root_check: bool) {
         sp_io::init_tracing();
         sp_tracing::within_span! {
             sp_tracing::info_span!("execute_block", ?block);
             // Execute `on_runtime_upgrade` and `on_initialize`.
             let mode = Self::initialize_block(block.header());
-            let num_inherents = Self::initial_checks(&block) as usize;
+            Self::initial_checks(&block);
+
             let (header, extrinsics) = block.deconstruct();
-            let num_extrinsics = extrinsics.len();
-
-            if mode == ExtrinsicInclusionMode::OnlyInherents && num_extrinsics > num_inherents {
-                // Invalid block
-                panic!("Only inherents are allowed in this block")
+            if let Err(e) = Self::apply_extrinsics(
+                mode,
+                extrinsics.into_iter(),
+                |uxt, is_inherent| {
+                    Self::do_apply_extrinsic(uxt, is_inherent, Block::Extrinsic::check)
+                }
+            ) {
+                panic!("{e:?}")
             }
-
-            Self::apply_extrinsics(extrinsics.into_iter());
 
             // In this case there were no transactions to trigger this state transition:
             if !<frame_system::Pallet<System>>::inherents_applied() {
-                defensive_assert!(num_inherents == num_extrinsics);
                 Self::inherents_applied();
             }
 
@@ -550,76 +655,8 @@ where
 
             Self::on_idle_hook(*header.number());
             Self::on_finalize_hook(*header.number());
-            Self::final_checks(&header, true, true);
+            Self::final_checks(&header, state_root_check, true);
         }
-    }
-
-    /// Actually execute all transitions for `block`.
-    pub fn execute_block_without_state_root_check(block: Block) {
-        sp_io::init_tracing();
-        sp_tracing::within_span! {
-            sp_tracing::info_span!("execute_block_without_state_root_check", ?block);
-
-            #[cfg(feature = "std")]
-            let now = std::time::Instant::now();
-
-            // Execute `on_runtime_upgrade` and `on_initialize`.
-            Self::initialize_block(block.header());
-
-            #[cfg(feature = "std")]
-            let initialize_block_duration = now.elapsed().as_nanos();
-
-            let num_inherents = Self::initial_checks(&block) as usize;
-            let (header, extrinsics) = block.deconstruct();
-            let num_extrinsics = extrinsics.len();
-
-            #[cfg(feature = "std")]
-            let now = std::time::Instant::now();
-
-            Self::apply_extrinsics(extrinsics.into_iter());
-
-            #[cfg(feature = "std")]
-            let apply_extrinsics_duration = now.elapsed().as_nanos();
-
-            #[cfg(feature = "std")]
-            let now = std::time::Instant::now();
-
-            // In this case there were no transactions to trigger this state transition:
-            if !<frame_system::Pallet<System>>::inherents_applied() {
-                defensive_assert!(num_inherents == num_extrinsics);
-                Self::inherents_applied();
-            }
-
-            <frame_system::Pallet<System>>::note_finished_extrinsics();
-
-            Self::on_finalize_hook(*header.number());
-            Self::final_checks(&header, false, false);
-
-            #[cfg(feature = "std")]
-            let finalize_block_duration = now.elapsed().as_nanos();
-
-            #[cfg(feature = "std")]
-            log::debug!(
-                target: "runtime::executive",
-                "[execute_block] \
-                initialize_block: {initialize_block_duration:?}ns, \
-                apply_extrinsics: {apply_extrinsics_duration}ns, \
-                finalize_block: {finalize_block_duration}ns",
-            );
-        }
-    }
-
-    pub fn finalize_block_without_checks(header: frame_system::pallet_prelude::HeaderFor<System>) {
-        // In this case there were no transactions to trigger this state transition:
-        if !<frame_system::Pallet<System>>::inherents_applied() {
-            // defensive_assert!(num_inherents == num_extrinsics);
-            Self::inherents_applied();
-        }
-
-        <frame_system::Pallet<System>>::note_finished_extrinsics();
-
-        Self::on_finalize_hook(*header.number());
-        Self::final_checks(&header, false, false);
     }
 
     /// Logic that runs directly after inherent application.
@@ -642,13 +679,74 @@ where
     }
 
     /// Execute given extrinsics.
-    fn apply_extrinsics(extrinsics: impl Iterator<Item = Block::Extrinsic>) {
-        extrinsics.into_iter().for_each(|e| {
-            if let Err(e) = Self::apply_extrinsic(e) {
-                let err: &'static str = e.into();
-                panic!("{}", err)
+    fn apply_extrinsics(
+        mode: ExtrinsicInclusionMode,
+        extrinsics: impl Iterator<Item = Block::Extrinsic>,
+        mut apply_extrinsic: impl FnMut(Block::Extrinsic, bool) -> ApplyExtrinsicResult,
+    ) -> Result<(), ExecutiveError> {
+        let mut first_non_inherent_idx = 0;
+        for (idx, uxt) in extrinsics.into_iter().enumerate() {
+            let is_inherent = System::is_inherent(&uxt);
+            if is_inherent {
+                // Check if inherents are first
+                if first_non_inherent_idx != idx {
+                    return Err(ExecutiveError::InvalidInherentPosition(idx));
+                }
+                first_non_inherent_idx += 1;
+            } else {
+                // Check if there are any forbidden non-inherents in the block.
+                if mode == ExtrinsicInclusionMode::OnlyInherents {
+                    return Err(ExecutiveError::OnlyInherentsAllowed);
+                }
             }
-        });
+
+            log::debug!(target: LOG_TARGET, "Executing transaction: {uxt:?}");
+            if let Err(e) = apply_extrinsic(uxt, is_inherent) {
+                log::error!(
+                    target: LOG_TARGET,
+                    "Transaction({idx}) failed due to {e:?}. \
+                    Aborting the rest of the block execution.",
+                );
+                return Err(ExecutiveError::ApplyExtrinsic(e));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Finalize the block - it is up the caller to ensure that all header fields are valid
+    /// except state-root.
+    // Note: Only used by the block builder - not Executive itself.
+    pub fn finalize_block() -> frame_system::pallet_prelude::HeaderFor<System> {
+        sp_io::init_tracing();
+        sp_tracing::enter_span!(sp_tracing::Level::TRACE, "finalize_block");
+
+        // In this case there were no transactions to trigger this state transition:
+        if !<frame_system::Pallet<System>>::inherents_applied() {
+            Self::inherents_applied();
+        }
+
+        <frame_system::Pallet<System>>::note_finished_extrinsics();
+        <System as frame_system::Config>::PostTransactions::post_transactions();
+        let block_number = <frame_system::Pallet<System>>::block_number();
+        Self::on_idle_hook(block_number);
+        Self::on_finalize_hook(block_number);
+        <frame_system::Pallet<System>>::finalize()
+    }
+
+    pub fn finalize_block_without_checks(header: frame_system::pallet_prelude::HeaderFor<System>) {
+        sp_io::init_tracing();
+        sp_tracing::enter_span!(sp_tracing::Level::TRACE, "finalize_block_without_checks");
+
+        // In this case there were no transactions to trigger this state transition:
+        if !<frame_system::Pallet<System>>::inherents_applied() {
+            Self::inherents_applied();
+        }
+
+        <frame_system::Pallet<System>>::note_finished_extrinsics();
+
+        Self::on_finalize_hook(*header.number());
+        Self::final_checks(&header, false, false);
     }
 
     /// Run the `on_idle` hook of all pallet, but only if there is weight remaining and there are no
@@ -706,19 +804,30 @@ where
     ///
     /// This doesn't attempt to validate anything regarding the block, but it builds a list of uxt
     /// hashes.
-    pub fn apply_extrinsic(uxt: Block::Extrinsic) -> ApplyExtrinsicResult {
+    fn do_apply_extrinsic(
+        uxt: Block::Extrinsic,
+        is_inherent: bool,
+        check: impl FnOnce(
+            Block::Extrinsic,
+            &Context,
+        )
+            -> Result<CheckedOf<Block::Extrinsic, Context>, TransactionValidityError>,
+    ) -> ApplyExtrinsicResult {
         sp_io::init_tracing();
         let encoded = uxt.encode();
         let encoded_len = encoded.len();
         sp_tracing::enter_span!(sp_tracing::info_span!("apply_extrinsic",
-				ext=?sp_core::hexdisplay::HexDisplay::from(&encoded)));
+			ext=?sp_core::hexdisplay::HexDisplay::from(&encoded)));
 
-        // We use the dedicated `is_inherent` check here, since just relying on `Mandatory` dispatch
-        // class does not capture optional inherents.
-        let is_inherent = System::is_inherent(&uxt);
+        let uxt = <Block::Extrinsic as codec::DecodeLimit>::decode_all_with_depth_limit(
+            MAX_EXTRINSIC_DEPTH,
+            &mut &encoded[..],
+        )
+        .map_err(|_| InvalidTransaction::Call)?;
 
         // Verify that the signature is good.
-        let xt = uxt.check(&Default::default())?;
+        let xt = check(uxt, &Context::default())?;
+
         let dispatch_info = xt.get_dispatch_info();
 
         if !is_inherent && !<frame_system::Pallet<System>>::inherents_applied() {
@@ -742,21 +851,23 @@ where
             return Err(InvalidTransaction::BadMandatory.into());
         }
 
-        let tx_weight = frame_support::dispatch::extract_actual_weight(&r, &dispatch_info);
-
         <frame_system::Pallet<System>>::note_applied_extrinsic(&r, dispatch_info);
-
-        <frame_system::Pallet<System>>::register_extra_weight_unchecked(
-            tx_weight,
-            DispatchClass::Normal,
-        );
 
         Ok(r.map(|_| ()).map_err(|e| e.error))
     }
 
+    /// Apply extrinsic outside of the block execution function.
+    ///
+    /// This doesn't attempt to validate anything regarding the block, but it builds a list of uxt
+    /// hashes.
+    pub fn apply_extrinsic(uxt: Block::Extrinsic) -> ApplyExtrinsicResult {
+        let is_inherent = System::is_inherent(&uxt);
+        Self::do_apply_extrinsic(uxt, is_inherent, Block::Extrinsic::check)
+    }
+
     fn final_checks(
         header: &frame_system::pallet_prelude::HeaderFor<System>,
-        check_storage_root: bool,
+        check_state_root: bool,
         check_extrinsics_root: bool,
     ) {
         sp_tracing::enter_span!(sp_tracing::Level::TRACE, "final_checks");
@@ -782,8 +893,8 @@ where
             );
         }
 
-        // check storage root.
-        if check_storage_root {
+        if check_state_root {
+            // check storage root.
             let storage_root = new_header.state_root();
             header.state_root().check_equal(storage_root);
             assert!(
@@ -821,9 +932,15 @@ where
 
         enter_span! { sp_tracing::Level::TRACE, "validate_transaction" };
 
-        let encoded_len = within_span! { sp_tracing::Level::TRACE, "using_encoded";
-            uxt.using_encoded(|d| d.len())
+        let encoded = within_span! { sp_tracing::Level::TRACE, "using_encoded";
+            uxt.encode()
         };
+
+        let uxt = <Block::Extrinsic as codec::DecodeLimit>::decode_all_with_depth_limit(
+            MAX_EXTRINSIC_DEPTH,
+            &mut &encoded[..],
+        )
+        .map_err(|_| InvalidTransaction::Call)?;
 
         let xt = within_span! { sp_tracing::Level::TRACE, "check";
             uxt.check(&Default::default())
@@ -839,7 +956,27 @@ where
 
         within_span! {
             sp_tracing::Level::TRACE, "validate";
-            xt.validate::<UnsignedValidator>(source, &dispatch_info, encoded_len)
+            xt.validate::<UnsignedValidator>(source, &dispatch_info, encoded.len())
         }
+    }
+
+    /// Start an offchain worker and generate extrinsics.
+    pub fn offchain_worker(header: &frame_system::pallet_prelude::HeaderFor<System>) {
+        sp_io::init_tracing();
+        // We need to keep events available for offchain workers,
+        // hence we initialize the block manually.
+        // OffchainWorker RuntimeApi should skip initialization.
+        let digests = header.digest().clone();
+
+        <frame_system::Pallet<System>>::initialize(header.number(), header.parent_hash(), &digests);
+
+        // Frame system only inserts the parent hash into the block hashes as normally we don't know
+        // the hash for the header before. However, here we are aware of the hash and we can add it
+        // as well.
+        frame_system::BlockHash::<System>::insert(header.number(), header.hash());
+
+        <AllPalletsWithSystem as OffchainWorker<BlockNumberFor<System>>>::offchain_worker(
+            *header.number(),
+        )
     }
 }

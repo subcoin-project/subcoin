@@ -513,7 +513,7 @@ impl SignatureChecker for TransactionSignatureChecker<'_> {
 
         match (lock_time, input_lock_time) {
             (RelativeLockTime::Blocks(h1), RelativeLockTime::Blocks(h2)) if h1 > h2 => {
-                return false
+                return false;
             }
             (RelativeLockTime::Time(t1), RelativeLockTime::Time(t2)) if t1 > t2 => return false,
             (RelativeLockTime::Blocks(_), RelativeLockTime::Time(_)) => return false,

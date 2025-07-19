@@ -9,12 +9,12 @@ use crate::num::ScriptNum;
 use crate::signature_checker::SignatureChecker;
 use crate::stack::{Stack, StackError};
 use crate::{ScriptExecutionData, SigVersion, VerifyFlags};
-use bitcoin::hashes::{hash160, ripemd160, sha1, sha256, sha256d, Hash};
+use bitcoin::Script;
+use bitcoin::hashes::{Hash, hash160, ripemd160, sha1, sha256, sha256d};
 use bitcoin::opcodes::all::{
     OP_ENDIF as CONST_OP_ENDIF, OP_IF as CONST_OP_IF, OP_PUSHNUM_16 as CONST_OP_PUSHNUM_16,
 };
 use bitcoin::script::Instruction;
-use bitcoin::Script;
 use std::ops::{Add, Neg, Sub};
 
 pub use self::multisig::CheckMultiSigError;
@@ -238,7 +238,7 @@ pub fn eval_script<SC: SignatureChecker>(
 
                     // Splice
                     OP_CAT | OP_SUBSTR | OP_LEFT | OP_RIGHT => {
-                        return Err(Error::DisabledOpcode(op))
+                        return Err(Error::DisabledOpcode(op));
                     }
                     OP_SIZE => {
                         stack.push_num(stack.last()?.len() as i64);

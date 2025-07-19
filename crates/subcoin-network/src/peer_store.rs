@@ -279,12 +279,8 @@ impl PersistentPeerStore {
 
     fn save_peers(&self) -> std::io::Result<()> {
         let file = std::fs::File::create(&self.file_path)?;
-        serde_json::to_writer(file, &self.peers).map_err(|err| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to serialize peers: {err:?}"),
-            )
-        })
+        serde_json::to_writer(file, &self.peers)
+            .map_err(|err| std::io::Error::other(format!("Failed to serialize peers: {err:?}")))
     }
 }
 
@@ -294,10 +290,7 @@ fn load_peers(file_path: &Path) -> std::io::Result<HashMap<PeerId, PeerStats>> {
             let mut data = String::new();
             file.read_to_string(&mut data)?;
             Ok(serde_json::from_str(&data).map_err(|err| {
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to deserialize peers: {err:?}"),
-                )
+                std::io::Error::other(format!("Failed to deserialize peers: {err:?}"))
             })?)
         }
         Err(error) => match error.kind() {

@@ -1,10 +1,10 @@
 use super::MergedParams;
-use crate::commands::blockchain::{fetch_utxo_set_at, ClientParams};
+use crate::commands::blockchain::{ClientParams, fetch_utxo_set_at};
 use crate::utils::Yield;
 use sc_client_api::HeaderBackend;
 use sp_api::ProvideRuntimeApi;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use subcoin_primitives::runtime::SubcoinApi;
 use subcoin_service::FullClient;
@@ -165,7 +165,7 @@ where
     // Convert satoshis (u64) to BTC (f64)
     let btc_value = *amount as f64 / 100_000_000.0;
     // Format the value as a string with 8 decimal places
-    serializer.serialize_str(&format!("{:.8}", btc_value))
+    serializer.serialize_str(&format!("{btc_value:.8}"))
 }
 
 #[derive(serde::Serialize)]

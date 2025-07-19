@@ -51,9 +51,8 @@ impl SnapshotStore {
                 Ok(())
             }
             Self::Csv(path) => Self::append_to_csv(path, utxo),
-            Self::Rocksdb(db) => Self::insert_to_rocksdb(db, utxo).map_err(|err| {
-                std::io::Error::new(std::io::ErrorKind::Other, format!("rocksdb: {err:?}"))
-            }),
+            Self::Rocksdb(db) => Self::insert_to_rocksdb(db, utxo)
+                .map_err(|err| std::io::Error::other(format!("rocksdb: {err:?}"))),
         }
     }
 
@@ -67,10 +66,9 @@ impl SnapshotStore {
 
         let utxo_csv_entry = UtxoCsvEntry::from(utxo);
         if let Err(e) = wtr.serialize(&utxo_csv_entry) {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to write UTXO entry to CSV: {e}"),
-            ));
+            return Err(std::io::Error::other(format!(
+                "Failed to write UTXO entry to CSV: {e}"
+            )));
         }
 
         wtr.flush()?;
@@ -399,5 +397,5 @@ fn calculate_sha256sum(file_path: impl AsRef<Path>) -> std::io::Result<String> {
     // Finalize the hash and return it as a hexadecimal string
     let hash_result = hasher.finalize();
 
-    Ok(format!("{:x}", hash_result))
+    Ok(format!("{hash_result:x}"))
 }

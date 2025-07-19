@@ -2,8 +2,8 @@ use crate::chain_params::ChainParams;
 use crate::verification::HeaderVerifier;
 use sc_client_api::{AuxStore, HeaderBackend};
 use sc_consensus::{BlockImportParams, Verifier};
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use sp_runtime::SaturatedConversion;
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::sync::Arc;
 use subcoin_primitives::{extract_bitcoin_block_hash, extract_bitcoin_block_header};
 

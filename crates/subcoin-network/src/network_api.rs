@@ -1,20 +1,20 @@
 //! This module provides the interfaces for external interaction with Subcoin network.
 
 #[cfg(test)]
+use crate::Error;
+use crate::PeerId;
+#[cfg(test)]
 use crate::peer_connection::Direction;
 use crate::sync::PeerSync;
 #[cfg(test)]
 use crate::sync::SyncAction;
 #[cfg(test)]
-use crate::Error;
-use crate::PeerId;
-#[cfg(test)]
 use bitcoin::p2p::message::NetworkMessage;
 use bitcoin::{Transaction, Txid};
 use sc_utils::mpsc::TracingUnboundedSender;
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use tokio::sync::oneshot;
 
 /// Represents the sync status of node.

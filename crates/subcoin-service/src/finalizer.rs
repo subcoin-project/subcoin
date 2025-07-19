@@ -6,8 +6,8 @@ use sc_service::SpawnTaskHandle;
 use sp_consensus::SyncOracle;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, NumberFor};
 use std::marker::PhantomData;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use subcoin_network::NetworkApi;
 
 type BlockInfo<Block> = (NumberFor<Block>, <Block as BlockT>::Hash);
@@ -198,7 +198,9 @@ fn do_finalize_block<Block, Client, Backend>(
 
             // Only print the log when not major syncing to not clutter the logs.
             if !is_major_syncing {
-                tracing::info!("✅ Successfully finalized block #{confirmed_block_number},{confirmed_block_hash}");
+                tracing::info!(
+                    "✅ Successfully finalized block #{confirmed_block_number},{confirmed_block_hash}"
+                );
             }
         }
         Err(err) => {

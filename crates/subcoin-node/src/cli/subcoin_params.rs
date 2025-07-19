@@ -36,11 +36,7 @@ pub(crate) struct Defaults;
 
 impl Defaults {
     pub(crate) fn min_sync_peer_threshold(is_dev: bool) -> usize {
-        if is_dev {
-            0
-        } else {
-            3
-        }
+        if is_dev { 0 } else { 3 }
     }
 
     pub(crate) fn sync_strategy(is_dev: bool) -> SyncStrategy {

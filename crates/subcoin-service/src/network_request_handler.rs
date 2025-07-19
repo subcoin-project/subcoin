@@ -7,7 +7,7 @@ use futures::stream::StreamExt;
 use sc_client_api::{BlockBackend, HeaderBackend, ProofProvider};
 use sc_network::config::ProtocolId;
 use sc_network::request_responses::{IncomingRequest, OutgoingResponse};
-use sc_network::{NetworkBackend, PeerId, MAX_RESPONSE_SIZE};
+use sc_network::{MAX_RESPONSE_SIZE, NetworkBackend, PeerId};
 use sp_api::ProvideRuntimeApi;
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;

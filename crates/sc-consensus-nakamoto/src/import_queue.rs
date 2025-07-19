@@ -5,11 +5,11 @@
 
 use crate::block_import::{BitcoinBlockImport, ImportStatus};
 use bitcoin::{Block as BitcoinBlock, BlockHash};
+use futures::StreamExt;
 use futures::prelude::*;
 use futures::task::{Context, Poll};
-use futures::StreamExt;
 use sc_consensus::{BlockImportError, BlockImportParams};
-use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
+use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender, tracing_unbounded};
 use sp_consensus::BlockOrigin;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::traits::Block as BlockT;

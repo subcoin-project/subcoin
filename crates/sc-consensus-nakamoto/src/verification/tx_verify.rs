@@ -1,5 +1,5 @@
 use super::MAX_BLOCK_WEIGHT;
-use bitcoin::absolute::{LockTime, LOCK_TIME_THRESHOLD};
+use bitcoin::absolute::{LOCK_TIME_THRESHOLD, LockTime};
 use bitcoin::blockdata::weight::WITNESS_SCALE_FACTOR;
 use bitcoin::{Amount, Transaction, Weight};
 use std::collections::HashSet;

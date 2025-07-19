@@ -1,5 +1,5 @@
-use crate::num::ScriptNum;
 use crate::VerifyFlags;
+use crate::num::ScriptNum;
 use std::fmt::Display;
 use std::ops::{Deref, DerefMut};
 
@@ -25,7 +25,7 @@ impl Display for Stack {
                 write!(f, "00000000 <empty>")?;
             } else {
                 for item in vec_item {
-                    write!(f, "{:02x?}", item)?;
+                    write!(f, "{item:02x?}")?;
                 }
             }
 

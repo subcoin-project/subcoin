@@ -1,5 +1,5 @@
-use bitcoin::hashes::Hash;
 use bitcoin::Txid;
+use bitcoin::hashes::Hash;
 use codec::{Decode, Encode};
 use futures::StreamExt;
 use sc_client_api::backend::AuxStore;
