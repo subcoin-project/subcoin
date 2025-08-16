@@ -8,6 +8,7 @@ use bitcoin::{Block as BitcoinBlock, BlockHash};
 use sc_consensus::BlockImportError;
 use sc_consensus_nakamoto::ImportManyBlocksResult;
 use std::collections::{HashMap, HashSet};
+use bitcoin::io::{self, Write};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -24,6 +25,33 @@ const AVERAGE_TRANSACTION_SIZE_BYTES: usize = 500;
 
 /// Additional memory overhead per block for internal data structures.
 const BLOCK_MEMORY_OVERHEAD: usize = 128;
+
+/// A writer that only counts the number of bytes written, without storing them.
+/// This is used for efficient size calculation without memory allocation.
+struct SizeCounter {
+    size: usize,
+}
+
+impl SizeCounter {
+    fn new() -> Self {
+        Self { size: 0 }
+    }
+
+    fn size(&self) -> usize {
+        self.size
+    }
+}
+
+impl Write for SizeCounter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.size += buf.len();
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
 
 /// Manages queued blocks.
 #[derive(Default, Debug, Clone)]
@@ -502,10 +530,10 @@ impl BlockDownloader {
 
 /// Calculates the approximate memory usage of a block.
 fn calculate_block_memory_usage(block: &BitcoinBlock) -> usize {
-    // Estimate memory usage: block header + transactions + overhead
-    let mut buffer = Vec::new();
-    let size = if let Ok(encoded_size) = block.consensus_encode(&mut buffer) {
-        encoded_size
+    // Use a size-counting writer to avoid memory allocation during encoding
+    let mut size_counter = SizeCounter::new();
+    let size = if let Ok(_) = block.consensus_encode(&mut size_counter) {
+        size_counter.size()
     } else {
         // Fallback estimation if encoding fails
         BITCOIN_BLOCK_HEADER_SIZE + block.txdata.len() * AVERAGE_TRANSACTION_SIZE_BYTES
