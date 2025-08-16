@@ -39,7 +39,7 @@ pub trait BlockchainApi {
     #[method(name = "blockchain_getTransaction", blocking)]
     fn transaction(&self, txid: Txid) -> Result<Option<Transaction>, Error>;
 
-    // Get current block height
+    // Get current best block hash
     #[method(name = "blockchain_getBestBlockHash", blocking)]
     fn best_block_hash(&self) -> Result<BlockHash, Error>;
 
