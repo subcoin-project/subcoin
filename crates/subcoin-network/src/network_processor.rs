@@ -496,30 +496,31 @@ where
         }
 
         if inv.len() == 1
-            && let Inventory::Block(block_hash) = inv[0] {
-                if self.client.block_number(block_hash).is_none() {
-                    tracing::debug!("Recv block announcement {inv:?} from {from:?}");
+            && let Inventory::Block(block_hash) = inv[0]
+        {
+            if self.client.block_number(block_hash).is_none() {
+                tracing::debug!("Recv block announcement {inv:?} from {from:?}");
 
-                    let mut is_new_block_announce = false;
+                let mut is_new_block_announce = false;
 
-                    self.requested_block_announce
-                        .entry(from)
-                        .and_modify(|announcements| {
-                            is_new_block_announce = announcements.insert(block_hash);
-                        })
-                        .or_insert_with(|| {
-                            is_new_block_announce = true;
-                            HashSet::from([block_hash])
-                        });
+                self.requested_block_announce
+                    .entry(from)
+                    .and_modify(|announcements| {
+                        is_new_block_announce = announcements.insert(block_hash);
+                    })
+                    .or_insert_with(|| {
+                        is_new_block_announce = true;
+                        HashSet::from([block_hash])
+                    });
 
-                    // A new block is broadcasted via `inv` message.
-                    if is_new_block_announce {
-                        tracing::debug!("Requesting announced block {block_hash} from {from:?}");
-                        return Ok(SyncAction::get_data(inv, from));
-                    }
+                // A new block is broadcasted via `inv` message.
+                if is_new_block_announce {
+                    tracing::debug!("Requesting announced block {block_hash} from {from:?}");
+                    return Ok(SyncAction::get_data(inv, from));
                 }
-                return Ok(SyncAction::None);
             }
+            return Ok(SyncAction::None);
+        }
 
         Ok(self.chain_sync.on_inv(inv, from))
     }
@@ -634,9 +635,10 @@ where
                 Inventory::Transaction(txid) => {
                     tracing::debug!("Recv transaction request: {txid:?} from {from:?}");
                     if let Some(transaction) = self.transaction_manager.get_transaction(&txid)
-                        && let Err(err) = self.send(from, NetworkMessage::Tx(transaction)) {
-                            tracing::error!(?err, "Failed to send transaction {txid} to {from:?}");
-                        }
+                        && let Err(err) = self.send(from, NetworkMessage::Tx(transaction))
+                    {
+                        tracing::error!(?err, "Failed to send transaction {txid} to {from:?}");
+                    }
                 }
                 Inventory::WTx(_)
                 | Inventory::WitnessTransaction(_)

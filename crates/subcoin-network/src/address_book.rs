@@ -75,10 +75,11 @@ impl AddressBook {
             }
 
             if let Ok(addr) = address.socket_addr()
-                && self.should_add_address(from, addr) {
-                    self.discovered_addresses.insert(addr);
-                    added += 1;
-                }
+                && self.should_add_address(from, addr)
+            {
+                self.discovered_addresses.insert(addr);
+                added += 1;
+            }
         }
 
         added

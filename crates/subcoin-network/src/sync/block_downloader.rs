@@ -3,12 +3,12 @@ use crate::peer_store::PeerStore;
 use crate::sync::SyncAction;
 use crate::{MemoryConfig, PeerId};
 use bitcoin::consensus::Encodable;
+use bitcoin::io::{self, Write};
 use bitcoin::p2p::message_blockdata::Inventory;
 use bitcoin::{Block as BitcoinBlock, BlockHash};
 use sc_consensus::BlockImportError;
 use sc_consensus_nakamoto::ImportManyBlocksResult;
 use std::collections::{HashMap, HashSet};
-use bitcoin::io::{self, Write};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
