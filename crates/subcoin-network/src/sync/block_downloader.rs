@@ -530,17 +530,31 @@ impl BlockDownloader {
 
 /// Calculates the approximate memory usage of a block.
 fn calculate_block_memory_usage(block: &BitcoinBlock) -> usize {
-    // Use a size-counting writer to avoid memory allocation during encoding
-    let mut size_counter = SizeCounter::new();
-    let size = if block.consensus_encode(&mut size_counter).is_ok() {
-        size_counter.size()
-    } else {
-        // Fallback estimation if encoding fails
-        BITCOIN_BLOCK_HEADER_SIZE + block.txdata.len() * AVERAGE_TRANSACTION_SIZE_BYTES
+    // Calculate size more efficiently by encoding header and transactions separately
+    let header_size = {
+        let mut size_counter = SizeCounter::new();
+        if block.header.consensus_encode(&mut size_counter).is_ok() {
+            size_counter.size()
+        } else {
+            BITCOIN_BLOCK_HEADER_SIZE
+        }
     };
 
+    let txs_size: usize = block
+        .txdata
+        .iter()
+        .map(|tx| {
+            let mut size_counter = SizeCounter::new();
+            if tx.consensus_encode(&mut size_counter).is_ok() {
+                size_counter.size()
+            } else {
+                AVERAGE_TRANSACTION_SIZE_BYTES
+            }
+        })
+        .sum();
+
     // Add some overhead for internal data structures
-    size + BLOCK_MEMORY_OVERHEAD
+    header_size + txs_size + BLOCK_MEMORY_OVERHEAD
 }
 
 #[cfg(test)]
