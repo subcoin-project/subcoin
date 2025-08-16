@@ -53,11 +53,13 @@ impl Write for SizeCounter {
     }
 }
 
-/// Manages queued blocks.
+/// Manages queued blocks and their memory usage.
 #[derive(Default, Debug, Clone)]
 pub(crate) struct QueuedBlocks {
     hash2number: HashMap<BlockHash, u32>,
     number2hash: HashMap<u32, BlockHash>,
+    /// Tracks memory usage for each block hash.
+    block_memory: HashMap<BlockHash, usize>,
 }
 
 impl QueuedBlocks {
@@ -69,20 +71,28 @@ impl QueuedBlocks {
         self.hash2number.get(&hash).copied()
     }
 
-    fn insert(&mut self, number: u32, hash: BlockHash) {
+    /// Gets the cached memory usage for a block.
+    pub(crate) fn block_memory_usage(&self, hash: BlockHash) -> Option<usize> {
+        self.block_memory.get(&hash).copied()
+    }
+
+    fn insert(&mut self, number: u32, hash: BlockHash, memory_usage: usize) {
         self.hash2number.insert(hash, number);
         self.number2hash.insert(number, hash);
+        self.block_memory.insert(hash, memory_usage);
     }
 
     fn remove(&mut self, hash: &BlockHash) {
         if let Some(number) = self.hash2number.remove(hash) {
             self.number2hash.remove(&number);
         }
+        self.block_memory.remove(hash);
     }
 
     fn clear(&mut self) {
         self.hash2number.clear();
         self.number2hash.clear();
+        self.block_memory.clear();
     }
 }
 
@@ -449,8 +459,12 @@ impl BlockDownloader {
                 .block_number(block_hash)
                 .expect("Corrupted state, number for {block_hash} not found in `queued_blocks`");
 
-            // All blocks were counted in downloaded_blocks_memory, so free their memory
-            total_memory_freed += calculate_block_memory_usage(&block);
+            // Get cached memory usage to avoid recalculation
+            let block_memory = self
+                .queued_blocks
+                .block_memory_usage(block_hash)
+                .unwrap_or_else(|| calculate_block_memory_usage(&block));
+            total_memory_freed += block_memory;
 
             if max_block_number.is_some_and(|target_block| block_number > target_block) {
                 // Block is filtered out - don't add to import queue
@@ -495,7 +509,8 @@ impl BlockDownloader {
             self.downloaded_blocks_memory += block_memory;
 
             self.downloaded_blocks.push(block);
-            self.queued_blocks.insert(block_number, block_hash);
+            self.queued_blocks
+                .insert(block_number, block_hash, block_memory);
             if block_number > self.best_queued_number {
                 self.best_queued_number = block_number;
             }
@@ -610,10 +625,17 @@ mod tests {
         let block = test_blocks[1].clone();
         let block_hash = block.block_hash();
 
-        downloader.add_block(1, block_hash, block, peer_id);
+        downloader.add_block(1, block_hash, block.clone(), peer_id);
 
         // Memory usage should now be greater than zero
         assert!(downloader.downloaded_blocks_memory_usage() > 0);
+
+        // Verify memory usage is tracked in queued_blocks
+        let expected_memory = calculate_block_memory_usage(&block);
+        assert_eq!(
+            downloader.queued_blocks.block_memory_usage(block_hash),
+            Some(expected_memory)
+        );
 
         // Verify memory constraint checking
         let initial_memory = downloader.downloaded_blocks_memory_usage();
@@ -856,5 +878,108 @@ mod tests {
         // Second evaluation should not reset log time immediately
         let status2 = downloader.evaluate_queue_status(0);
         assert!(status2.is_saturated());
+    }
+
+    #[test]
+    fn queued_blocks_tracks_memory_usage() {
+        let mut queued_blocks = QueuedBlocks::default();
+        let test_blocks = subcoin_test_service::block_data();
+        let test_block = &test_blocks[1];
+        let block_hash = test_block.block_hash();
+
+        // Calculate memory usage
+        let memory_usage = calculate_block_memory_usage(test_block);
+        assert!(memory_usage > 0);
+
+        // Insert block with memory tracking
+        queued_blocks.insert(1, block_hash, memory_usage);
+
+        // Verify memory usage is tracked
+        assert_eq!(
+            queued_blocks.block_memory_usage(block_hash),
+            Some(memory_usage)
+        );
+        assert_eq!(queued_blocks.block_number(block_hash), Some(1));
+        assert_eq!(queued_blocks.block_hash(1), Some(block_hash));
+
+        // Test removal clears memory tracking
+        queued_blocks.remove(&block_hash);
+        assert_eq!(queued_blocks.block_memory_usage(block_hash), None);
+        assert_eq!(queued_blocks.block_number(block_hash), None);
+
+        // Test clear removes all memory tracking
+        queued_blocks.insert(1, block_hash, memory_usage);
+        queued_blocks.insert(2, test_blocks[2].block_hash(), memory_usage + 100);
+        queued_blocks.clear();
+        assert_eq!(queued_blocks.block_memory_usage(block_hash), None);
+        assert_eq!(
+            queued_blocks.block_memory_usage(test_blocks[2].block_hash()),
+            None
+        );
+    }
+
+    #[test]
+    fn memory_cleanup_uses_cached_values() {
+        let peer_id: PeerId = "127.0.0.1:8333".parse().unwrap();
+        let memory_config = create_test_memory_config();
+        let peer_store = create_test_peer_store();
+
+        let mut downloader = BlockDownloader::new(peer_id, 0, peer_store, memory_config);
+
+        // Add a block
+        let test_blocks = subcoin_test_service::block_data();
+        let block = test_blocks[1].clone();
+        let block_hash = block.block_hash();
+
+        downloader.add_block(1, block_hash, block.clone(), peer_id);
+
+        let initial_memory = downloader.downloaded_blocks_memory_usage();
+        assert!(initial_memory > 0);
+
+        // Verify the memory is cached in queued_blocks
+        let cached_memory = downloader.queued_blocks.block_memory_usage(block_hash);
+        assert!(cached_memory.is_some());
+        assert_eq!(cached_memory.unwrap(), calculate_block_memory_usage(&block));
+
+        // Prepare blocks for import (this should use cached memory values)
+        let (hashes, blocks) = downloader.prepare_blocks_for_import(None);
+
+        assert_eq!(hashes.len(), 1);
+        assert_eq!(blocks.len(), 1);
+
+        // Memory usage should be reduced
+        let final_memory = downloader.downloaded_blocks_memory_usage();
+        assert!(final_memory < initial_memory);
+
+        // Block should still be tracked in queued_blocks until fully processed
+        assert!(
+            downloader
+                .queued_blocks
+                .block_memory_usage(block_hash)
+                .is_some()
+        );
+
+        // Simulate processing completion
+        use sc_consensus::BlockImportStatus;
+        use sc_consensus_nakamoto::ImportManyBlocksResult;
+        let results = ImportManyBlocksResult {
+            imported: 1,
+            block_count: 1,
+            results: vec![(
+                Ok(BlockImportStatus::ImportedUnknown(
+                    1,
+                    Default::default(),
+                    None,
+                )),
+                block_hash,
+            )],
+        };
+        downloader.handle_processed_blocks(results);
+
+        // Now the block should no longer be tracked in queued_blocks memory
+        assert_eq!(
+            downloader.queued_blocks.block_memory_usage(block_hash),
+            None
+        );
     }
 }
