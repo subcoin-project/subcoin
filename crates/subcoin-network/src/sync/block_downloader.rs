@@ -457,7 +457,7 @@ impl BlockDownloader {
             let block_number = self
                 .queued_blocks
                 .block_number(block_hash)
-                .expect("Corrupted state, number for {block_hash} not found in `queued_blocks`");
+                .expect(&format!("Corrupted state, number for {} not found in `queued_blocks`", block_hash));
 
             // Get cached memory usage to avoid recalculation
             let block_memory = self
