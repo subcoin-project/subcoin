@@ -26,7 +26,10 @@ use subcoin_primitives::ClientExt;
 // Do major sync when the current tip falls behind the network by 144 blocks (roughly one day).
 const MAJOR_SYNC_GAP: u32 = 144;
 
-const LATENCY_IMPROVEMENT_THRESHOLD: f64 = 4.0;
+/// Minimum required improvement ratio in peer score to switch to a better peer.
+/// Since lower scores indicate better peers, we switch when current_score / best_score > threshold.
+/// A value of 1.2 means the current peer must be at least 20% worse to justify switching.
+const PEER_SCORE_IMPROVEMENT_THRESHOLD: f64 = 1.2;
 
 // Define a constant for the low ping latency cutoff, in milliseconds.
 const LOW_LATENCY_CUTOFF: Latency = 20;
@@ -534,7 +537,7 @@ where
 
         // Update sync peer if the score improvement is significant (lower score is better).
         // Protect against division by zero and ensure best_score is positive.
-        if best_score > 0.0 && current_score / best_score > LATENCY_IMPROVEMENT_THRESHOLD {
+        if best_score > 0.0 && current_score / best_score > PEER_SCORE_IMPROVEMENT_THRESHOLD {
             let peer_id = best_sync_peer.peer_id;
             let target_block_number =
                 target_block_number(self.sync_target, best_sync_peer.best_number);
