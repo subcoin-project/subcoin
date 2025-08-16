@@ -101,8 +101,9 @@ where
         let expected_bits = expected_target.to_compact_lossy().to_consensus();
 
         let actual_target = header.target();
+        let actual_bits = actual_target.to_compact_lossy().to_consensus();
 
-        if actual_target.to_compact_lossy().to_consensus() != expected_bits {
+        if actual_bits != expected_bits {
             return Err(Error::BadDifficultyBits {
                 got: actual_target,
                 expected: expected_target,
