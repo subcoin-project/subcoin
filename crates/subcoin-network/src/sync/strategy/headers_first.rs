@@ -254,7 +254,7 @@ where
     }
 
     pub(crate) fn sync_status(&self) -> SyncStatus {
-        if self.block_downloader.queue_status.is_overloaded() {
+        if self.block_downloader.queue_status.is_saturated() {
             SyncStatus::Importing {
                 target: self.target_block_number,
                 peers: vec![self.peer_id],
@@ -303,7 +303,7 @@ where
             return SyncAction::SetIdle;
         }
 
-        if self.block_downloader.queue_status.is_overloaded() {
+        if self.block_downloader.queue_status.is_saturated() {
             let is_ready = self
                 .block_downloader
                 .evaluate_queue_status(self.client.best_number())
@@ -585,7 +585,7 @@ where
                         if self
                             .block_downloader
                             .evaluate_queue_status(self.client.best_number())
-                            .is_overloaded()
+                            .is_saturated()
                         {
                             *paused = true;
                             return SyncAction::None;
@@ -608,7 +608,7 @@ where
             if self
                 .block_downloader
                 .evaluate_queue_status(self.client.best_number())
-                .is_overloaded()
+                .is_saturated()
             {
                 return SyncAction::None;
             }

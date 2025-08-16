@@ -90,13 +90,17 @@ impl QueuedBlocks {
 pub(crate) enum ImportQueueStatus {
     /// Queue is ready to accept more blocks for import.
     Ready,
-    /// The queue is overloaded and cannot accept more blocks at the moment.
-    Overloaded,
+    /// The import system is saturated and cannot accept more blocks at the moment.
+    ///
+    /// This can occur due to either:
+    /// - Too many blocks pending in the import queue (block count limit)
+    /// - Memory pressure from downloaded blocks exceeding configured limits
+    Saturated,
 }
 
 impl ImportQueueStatus {
-    pub(crate) fn is_overloaded(&self) -> bool {
-        matches!(self, Self::Overloaded)
+    pub(crate) fn is_saturated(&self) -> bool {
+        matches!(self, Self::Saturated)
     }
 
     pub(crate) fn is_ready(&self) -> bool {
@@ -145,8 +149,8 @@ pub(crate) struct BlockDownloader {
     pub(super) last_progress_time: Instant,
     /// Import queue status.
     pub(super) queue_status: ImportQueueStatus,
-    /// Last time the log of too many blocks the queue was printed.
-    pub(super) last_overloaded_queue_log_time: Option<Instant>,
+    /// Last time the log of saturated queue was printed.
+    pub(super) last_saturated_queue_log_time: Option<Instant>,
     /// Peer store.
     pub(super) peer_store: Arc<dyn PeerStore>,
     /// Tracks the number of blocks downloaded from the current sync peer.
@@ -175,7 +179,7 @@ impl BlockDownloader {
             orphan_blocks_pool: OrphanBlocksPool::new(),
             last_progress_time: Instant::now(),
             queue_status: ImportQueueStatus::Ready,
-            last_overloaded_queue_log_time: None,
+            last_saturated_queue_log_time: None,
             peer_store,
             downloaded_blocks_count: 0,
             memory_config,
@@ -258,8 +262,11 @@ impl BlockDownloader {
         }
     }
 
-    /// Checks if the import queue is overloaded and updates the internal state.
-    /// Now also considers memory pressure in addition to block count limits.
+    /// Evaluates the import queue status and updates the internal state.
+    ///
+    /// The queue is considered saturated if either:
+    /// - Too many blocks are pending in the import queue (exceeds block count limits)
+    /// - Memory pressure from downloaded blocks exceeds configured limits
     pub(super) fn evaluate_queue_status(&mut self, best_number: u32) -> ImportQueueStatus {
         // Maximum number of pending blocks in the import queue.
         let max_queued_blocks = match best_number {
@@ -274,10 +281,10 @@ impl BlockDownloader {
         let exceeds_memory_limits = self.exceeds_memory_limits();
 
         if queued_blocks > max_queued_blocks || exceeds_memory_limits {
-            self.queue_status = ImportQueueStatus::Overloaded;
+            self.queue_status = ImportQueueStatus::Saturated;
 
             if self
-                .last_overloaded_queue_log_time
+                .last_saturated_queue_log_time
                 .is_none_or(|last_time| last_time.elapsed() > BUSY_QUEUE_LOG_INTERVAL)
             {
                 if exceeds_memory_limits {
@@ -299,7 +306,7 @@ impl BlockDownloader {
                         "⏸️ Pausing download: too many blocks ({queued_blocks}) in the queue",
                     );
                 }
-                self.last_overloaded_queue_log_time.replace(Instant::now());
+                self.last_saturated_queue_log_time.replace(Instant::now());
             }
         } else {
             self.queue_status = ImportQueueStatus::Ready;
@@ -669,9 +676,9 @@ mod tests {
             peer_id,
         );
 
-        // Should now be overloaded due to memory pressure
+        // Should now be saturated due to memory pressure
         let status = downloader.evaluate_queue_status(0);
-        assert!(status.is_overloaded());
+        assert!(status.is_saturated());
     }
 
     #[test]
@@ -841,13 +848,13 @@ mod tests {
 
         // Evaluate queue status multiple times
         let status1 = downloader.evaluate_queue_status(0);
-        assert!(status1.is_overloaded());
+        assert!(status1.is_saturated());
 
         // Log time should be set after first evaluation
-        assert!(downloader.last_overloaded_queue_log_time.is_some());
+        assert!(downloader.last_saturated_queue_log_time.is_some());
 
         // Second evaluation should not reset log time immediately
         let status2 = downloader.evaluate_queue_status(0);
-        assert!(status2.is_overloaded());
+        assert!(status2.is_saturated());
     }
 }

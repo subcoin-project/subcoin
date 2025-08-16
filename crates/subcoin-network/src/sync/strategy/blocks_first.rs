@@ -163,7 +163,7 @@ where
     }
 
     pub(crate) fn sync_status(&self) -> SyncStatus {
-        if self.block_downloader.queue_status.is_overloaded()
+        if self.block_downloader.queue_status.is_saturated()
             || (self.state.is_fetching_block_data()
                 && self.block_downloader.missing_blocks.is_empty())
         {
@@ -210,7 +210,7 @@ where
             return SyncAction::SetIdle;
         }
 
-        if self.block_downloader.queue_status.is_overloaded() {
+        if self.block_downloader.queue_status.is_saturated() {
             // If the queue was overloaded, evalute the current queue status again.
             let is_ready = self
                 .block_downloader
@@ -407,7 +407,7 @@ where
                 if self
                     .block_downloader
                     .evaluate_queue_status(self.client.best_number())
-                    .is_overloaded()
+                    .is_saturated()
                 {
                     SyncAction::None
                 } else {
@@ -449,7 +449,7 @@ where
                 if self
                     .block_downloader
                     .evaluate_queue_status(self.client.best_number())
-                    .is_overloaded()
+                    .is_saturated()
                 {
                     return SyncAction::None;
                 }
