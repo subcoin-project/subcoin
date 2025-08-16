@@ -7,7 +7,7 @@ use crate::peer_manager::{Config, NewPeer, PEER_LATENCY_THRESHOLD, PeerManager, 
 use crate::peer_store::PeerStore;
 use crate::sync::{ChainSync, LocatorRequest, RestartReason, SyncAction, SyncRequest};
 use crate::transaction_manager::TransactionManager;
-use crate::{Bandwidth, Error, PeerId, SyncStrategy};
+use crate::{Bandwidth, Error, MemoryConfig, PeerId, SyncStrategy};
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::p2p::message::{MAX_INV_SIZE, NetworkMessage};
 use bitcoin::p2p::message_blockdata::{GetBlocksMessage, GetHeadersMessage, Inventory};
@@ -69,6 +69,8 @@ pub struct Params<Block, Client> {
     pub enable_block_sync: bool,
     pub peer_store: Arc<dyn PeerStore>,
     pub sync_target: Option<u32>,
+    /// Memory management configuration.
+    pub memory_config: MemoryConfig,
 }
 
 /// [`NetworkProcessor`] is responsible for processing the network events.
@@ -106,6 +108,7 @@ where
             enable_block_sync,
             peer_store,
             sync_target,
+            memory_config,
         } = params;
 
         let config = Config::new();
@@ -135,6 +138,7 @@ where
             peer_store.clone(),
             sync_target,
             min_sync_peer_threshold,
+            memory_config,
         );
 
         Self {

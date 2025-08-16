@@ -1,7 +1,7 @@
 use crate::peer_store::PeerStore;
 use crate::sync::block_downloader::BlockDownloader;
 use crate::sync::{LocatorRequest, SyncAction};
-use crate::{Error, PeerId, SyncStatus};
+use crate::{Error, MemoryConfig, PeerId, SyncStatus};
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::p2p::message_blockdata::Inventory;
 use bitcoin::{Block as BitcoinBlock, BlockHash};
@@ -225,6 +225,7 @@ where
         peer_id: PeerId,
         target_block_number: u32,
         peer_store: Arc<dyn PeerStore>,
+        memory_config: MemoryConfig,
     ) -> (Self, SyncAction) {
         let best_number = client.best_number();
 
@@ -242,7 +243,7 @@ where
             header_verifier,
             peer_id,
             state: State::Idle,
-            block_downloader: BlockDownloader::new(peer_id, best_number, peer_store),
+            block_downloader: BlockDownloader::new(peer_id, best_number, peer_store, memory_config),
             header_requester,
             target_block_number,
         };

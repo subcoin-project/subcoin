@@ -133,6 +133,7 @@ impl Run {
             )
             .path()
             .to_path_buf(),
+            memory_config: Default::default(),
         }
     }
 

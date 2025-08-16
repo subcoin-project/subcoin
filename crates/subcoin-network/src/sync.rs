@@ -5,7 +5,7 @@ mod strategy;
 use self::strategy::{BlocksFirstStrategy, HeadersFirstStrategy};
 use crate::peer_manager::NewPeer;
 use crate::peer_store::PeerStore;
-use crate::{Error, Latency, PeerId, SyncStatus, SyncStrategy};
+use crate::{Error, Latency, MemoryConfig, PeerId, SyncStatus, SyncStrategy};
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::p2p::message_blockdata::Inventory;
 use bitcoin::{Block as BitcoinBlock, BlockHash};
@@ -214,6 +214,8 @@ pub(crate) struct ChainSync<Block, Client> {
     /// Target block of the syncing process.
     sync_target: Option<u32>,
     min_sync_peer_threshold: usize,
+    /// Memory management configuration.
+    memory_config: MemoryConfig,
     _phantom: PhantomData<Block>,
 }
 
@@ -234,6 +236,7 @@ where
         peer_store: Arc<dyn PeerStore>,
         sync_target: Option<u32>,
         min_sync_peer_threshold: usize,
+        memory_config: MemoryConfig,
     ) -> Self {
         Self {
             client,
@@ -248,6 +251,7 @@ where
             peer_store,
             sync_target,
             min_sync_peer_threshold,
+            memory_config,
             _phantom: Default::default(),
         }
     }
@@ -691,8 +695,13 @@ where
             );
 
             if blocks_first {
-                let (sync_strategy, sync_action) =
-                    BlocksFirstStrategy::new(client, next_peer_id, target_block_number, peer_store);
+                let (sync_strategy, sync_action) = BlocksFirstStrategy::new(
+                    client,
+                    next_peer_id,
+                    target_block_number,
+                    peer_store,
+                    self.memory_config.clone(),
+                );
                 (Syncing::BlocksFirst(Box::new(sync_strategy)), sync_action)
             } else {
                 let (sync_strategy, sync_action) = HeadersFirstStrategy::new(
@@ -701,12 +710,18 @@ where
                     next_peer_id,
                     target_block_number,
                     peer_store,
+                    self.memory_config.clone(),
                 );
                 (Syncing::HeadersFirst(Box::new(sync_strategy)), sync_action)
             }
         } else {
-            let (sync_strategy, sync_action) =
-                BlocksFirstStrategy::new(client, next_peer_id, target_block_number, peer_store);
+            let (sync_strategy, sync_action) = BlocksFirstStrategy::new(
+                client,
+                next_peer_id,
+                target_block_number,
+                peer_store,
+                self.memory_config.clone(),
+            );
             (Syncing::BlocksFirst(Box::new(sync_strategy)), sync_action)
         };
 
@@ -745,6 +760,7 @@ where
             best_peer.peer_id,
             best_peer.best_number,
             self.peer_store.clone(),
+            self.memory_config.clone(),
         );
 
         tracing::debug!("Headers-First sync completed, continuing with blocks-first sync");

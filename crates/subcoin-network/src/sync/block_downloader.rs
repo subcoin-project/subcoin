@@ -1,7 +1,8 @@
 use super::orphan_blocks_pool::OrphanBlocksPool;
-use crate::PeerId;
 use crate::peer_store::PeerStore;
 use crate::sync::SyncAction;
+use crate::{MemoryConfig, PeerId};
+use bitcoin::consensus::Encodable;
 use bitcoin::p2p::message_blockdata::Inventory;
 use bitcoin::{Block as BitcoinBlock, BlockHash};
 use sc_consensus::BlockImportError;
@@ -111,6 +112,10 @@ pub(crate) struct BlockDownloader {
     pub(super) peer_store: Arc<dyn PeerStore>,
     /// Tracks the number of blocks downloaded from the current sync peer.
     pub(super) downloaded_blocks_count: usize,
+    /// Memory management configuration.
+    pub(super) memory_config: MemoryConfig,
+    /// Current memory usage for downloaded blocks in bytes.
+    pub(super) downloaded_blocks_memory: usize,
 }
 
 impl BlockDownloader {
@@ -118,6 +123,7 @@ impl BlockDownloader {
         peer_id: PeerId,
         best_queued_number: u32,
         peer_store: Arc<dyn PeerStore>,
+        memory_config: MemoryConfig,
     ) -> Self {
         Self {
             peer_id,
@@ -133,6 +139,8 @@ impl BlockDownloader {
             last_overloaded_queue_log_time: None,
             peer_store,
             downloaded_blocks_count: 0,
+            memory_config,
+            downloaded_blocks_memory: 0,
         }
     }
 
@@ -157,6 +165,32 @@ impl BlockDownloader {
 
     pub(crate) fn blocks_in_queue_count(&self) -> usize {
         self.blocks_in_queue.len()
+    }
+
+    /// Returns the current memory usage of downloaded blocks.
+    pub(crate) fn downloaded_blocks_memory_usage(&self) -> usize {
+        self.downloaded_blocks_memory
+    }
+
+    /// Checks if memory usage is above the configured limit.
+    pub(crate) fn is_memory_constrained(&self) -> bool {
+        self.downloaded_blocks_memory > self.memory_config.max_downloaded_blocks_memory
+            || self.downloaded_blocks.len() > self.memory_config.max_blocks_in_memory
+    }
+
+    /// Calculates the approximate memory usage of a block.
+    fn calculate_block_memory_usage(block: &BitcoinBlock) -> usize {
+        // Estimate memory usage: block header + transactions + overhead
+        let mut buffer = Vec::new();
+        let size = if let Ok(encoded_size) = block.consensus_encode(&mut buffer) {
+            encoded_size
+        } else {
+            // Fallback estimation if encoding fails
+            80 + block.txdata.len() * 500 // 80 bytes header + average tx size
+        };
+
+        // Add some overhead for internal data structures
+        size + 128
     }
 
     pub(super) fn on_block_response(&mut self, block_hash: BlockHash) -> bool {
@@ -200,6 +234,7 @@ impl BlockDownloader {
     }
 
     /// Checks if the import queue is overloaded and updates the internal state.
+    /// Now also considers memory pressure in addition to block count limits.
     pub(super) fn evaluate_queue_status(&mut self, best_number: u32) -> ImportQueueStatus {
         // Maximum number of pending blocks in the import queue.
         let max_queued_blocks = match best_number {
@@ -211,19 +246,34 @@ impl BlockDownloader {
         };
 
         let queued_blocks = self.best_queued_number.saturating_sub(best_number);
+        let memory_constrained = self.is_memory_constrained();
 
-        if queued_blocks > max_queued_blocks {
+        if queued_blocks > max_queued_blocks || memory_constrained {
             self.queue_status = ImportQueueStatus::Overloaded;
 
             if self
                 .last_overloaded_queue_log_time
                 .is_none_or(|last_time| last_time.elapsed() > BUSY_QUEUE_LOG_INTERVAL)
             {
-                tracing::debug!(
-                    best_number,
-                    best_queued_number = self.best_queued_number,
-                    "⏸️ Pausing download: too many blocks ({queued_blocks}) in the queue",
-                );
+                if memory_constrained {
+                    let memory_mb = self.downloaded_blocks_memory / (1024 * 1024);
+                    let max_memory_mb =
+                        self.memory_config.max_downloaded_blocks_memory / (1024 * 1024);
+                    tracing::debug!(
+                        best_number,
+                        memory_usage_mb = memory_mb,
+                        max_memory_mb = max_memory_mb,
+                        blocks_in_memory = self.downloaded_blocks.len(),
+                        max_blocks = self.memory_config.max_blocks_in_memory,
+                        "⏸️ Pausing download: memory pressure detected",
+                    );
+                } else {
+                    tracing::debug!(
+                        best_number,
+                        best_queued_number = self.best_queued_number,
+                        "⏸️ Pausing download: too many blocks ({queued_blocks}) in the queue",
+                    );
+                }
                 self.last_overloaded_queue_log_time.replace(Instant::now());
             }
         } else {
@@ -242,13 +292,14 @@ impl BlockDownloader {
     /// the function truncates the list to the maximum allowed, storing any remaining blocks
     /// back in `self.missing_blocks` for future requests.
     ///
+    /// The batch size is now adaptive based on memory pressure and configuration.
+    ///
     /// # Returns
     ///
     /// A `SyncAction::Request` containing a `SyncRequest::GetData` with the list of blocks to
     /// request from the peer.
     pub(super) fn schedule_next_download_batch(&mut self) -> SyncAction {
-        // TODO: adpative batch size based on the latency of response.
-        let max_request_size = match self.best_queued_number {
+        let base_max_request_size = match self.best_queued_number {
             0..=99_999 => 1024,
             100_000..=199_999 => 512,
             200_000..=299_999 => 128,
@@ -258,6 +309,30 @@ impl BlockDownloader {
             600_000..=699_999 => 8,
             700_000..=799_999 => 4,
             _ => 2,
+        };
+
+        // Apply adaptive batch sizing based on memory pressure
+        let max_request_size = if self.memory_config.enable_adaptive_batch_sizing {
+            let memory_usage_ratio = self.downloaded_blocks_memory as f64
+                / self.memory_config.max_downloaded_blocks_memory as f64;
+
+            let blocks_ratio = self.downloaded_blocks.len() as f64
+                / self.memory_config.max_blocks_in_memory as f64;
+
+            let pressure_ratio = memory_usage_ratio.max(blocks_ratio);
+
+            if pressure_ratio > 0.8 {
+                // High memory pressure: reduce batch size significantly
+                (base_max_request_size / 4).max(1)
+            } else if pressure_ratio > 0.6 {
+                // Medium memory pressure: reduce batch size moderately
+                (base_max_request_size / 2).max(1)
+            } else {
+                // Low memory pressure: use base batch size
+                base_max_request_size
+            }
+        } else {
+            base_max_request_size
         };
 
         let mut blocks_to_download = std::mem::take(&mut self.missing_blocks);
@@ -300,6 +375,7 @@ impl BlockDownloader {
         self.orphan_blocks_pool.clear();
         self.last_progress_time = Instant::now();
         self.queue_status = ImportQueueStatus::Ready;
+        self.downloaded_blocks_memory = 0; // Reset memory tracking
     }
 
     /// Handles blocks that have been processed.
@@ -329,25 +405,32 @@ impl BlockDownloader {
         &mut self,
         max_block_number: Option<u32>,
     ) -> (Vec<BlockHash>, Vec<BitcoinBlock>) {
-        let mut blocks = self
-            .downloaded_blocks
-            .drain(..)
-            .filter_map(|block| {
-                let block_hash = block.block_hash();
+        let mut blocks = Vec::new();
+        let mut total_memory_freed = 0;
 
-                let block_number = self.queued_blocks.block_number(block_hash).expect(
-                    "Corrupted state, number for {block_hash} not found in `queued_blocks`",
-                );
+        // Process blocks and track memory being freed
+        for block in self.downloaded_blocks.drain(..) {
+            let block_hash = block.block_hash();
 
-                if max_block_number.is_some_and(|target_block| block_number > target_block) {
-                    None
-                } else {
-                    self.blocks_in_queue.insert(block_hash, block_number);
+            let block_number = self
+                .queued_blocks
+                .block_number(block_hash)
+                .expect("Corrupted state, number for {block_hash} not found in `queued_blocks`");
 
-                    Some((block_number, block))
-                }
-            })
-            .collect::<Vec<_>>();
+            if max_block_number.is_some_and(|target_block| block_number > target_block) {
+                // Block is filtered out - don't count its memory usage
+                total_memory_freed += Self::calculate_block_memory_usage(&block);
+            } else {
+                self.blocks_in_queue.insert(block_hash, block_number);
+                total_memory_freed += Self::calculate_block_memory_usage(&block);
+                blocks.push((block_number, block));
+            }
+        }
+
+        // Update memory tracking - these blocks are no longer in downloaded_blocks
+        self.downloaded_blocks_memory = self
+            .downloaded_blocks_memory
+            .saturating_sub(total_memory_freed);
 
         // Ensure the blocks sent to the import queue are ordered.
         blocks.sort_unstable_by_key(|(number, _)| *number);
@@ -373,7 +456,11 @@ impl BlockDownloader {
         block: BitcoinBlock,
         from: PeerId,
     ) {
-        let mut insert_block = |block_number, block_hash, block| {
+        let mut insert_block = |block_number, block_hash, block: BitcoinBlock| {
+            // Track memory usage
+            let block_memory = Self::calculate_block_memory_usage(&block);
+            self.downloaded_blocks_memory += block_memory;
+
             self.downloaded_blocks.push(block);
             self.queued_blocks.insert(block_number, block_hash);
             if block_number > self.best_queued_number {
