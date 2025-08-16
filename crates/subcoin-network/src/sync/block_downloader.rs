@@ -179,21 +179,6 @@ impl BlockDownloader {
             || self.downloaded_blocks.len() > self.memory_config.max_blocks_in_memory
     }
 
-    /// Calculates the approximate memory usage of a block.
-    fn calculate_block_memory_usage(block: &BitcoinBlock) -> usize {
-        // Estimate memory usage: block header + transactions + overhead
-        let mut buffer = Vec::new();
-        let size = if let Ok(encoded_size) = block.consensus_encode(&mut buffer) {
-            encoded_size
-        } else {
-            // Fallback estimation if encoding fails
-            80 + block.txdata.len() * 500 // 80 bytes header + average tx size
-        };
-
-        // Add some overhead for internal data structures
-        size + 128
-    }
-
     pub(super) fn on_block_response(&mut self, block_hash: BlockHash) -> bool {
         self.last_progress_time = Instant::now();
         self.requested_blocks.remove(&block_hash)
@@ -420,10 +405,10 @@ impl BlockDownloader {
 
             if max_block_number.is_some_and(|target_block| block_number > target_block) {
                 // Block is filtered out - don't count its memory usage
-                total_memory_freed += Self::calculate_block_memory_usage(&block);
+                total_memory_freed += calculate_block_memory_usage(&block);
             } else {
                 self.blocks_in_queue.insert(block_hash, block_number);
-                total_memory_freed += Self::calculate_block_memory_usage(&block);
+                total_memory_freed += calculate_block_memory_usage(&block);
                 blocks.push((block_number, block));
             }
         }
@@ -459,7 +444,7 @@ impl BlockDownloader {
     ) {
         let mut insert_block = |block_number, block_hash, block: BitcoinBlock| {
             // Track memory usage
-            let block_memory = Self::calculate_block_memory_usage(&block);
+            let block_memory = calculate_block_memory_usage(&block);
             self.downloaded_blocks_memory += block_memory;
 
             self.downloaded_blocks.push(block);
@@ -501,6 +486,21 @@ impl BlockDownloader {
             "Added unknown block {block_hash} to orphan blocks pool",
         );
     }
+}
+
+/// Calculates the approximate memory usage of a block.
+fn calculate_block_memory_usage(block: &BitcoinBlock) -> usize {
+    // Estimate memory usage: block header + transactions + overhead
+    let mut buffer = Vec::new();
+    let size = if let Ok(encoded_size) = block.consensus_encode(&mut buffer) {
+        encoded_size
+    } else {
+        // Fallback estimation if encoding fails
+        80 + block.txdata.len() * 500 // 80 bytes header + average tx size
+    };
+
+    // Add some overhead for internal data structures
+    size + 128
 }
 
 #[cfg(test)]
