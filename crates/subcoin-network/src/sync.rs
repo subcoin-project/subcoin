@@ -207,8 +207,6 @@ pub(crate) struct ChainSync<Block, Client> {
     is_major_syncing: Arc<AtomicBool>,
     /// Whether to sync blocks from Bitcoin network.
     enable_block_sync: bool,
-    /// Randomness generator.
-    rng: fastrand::Rng,
     /// Handle of peer store.
     peer_store: Arc<dyn PeerStore>,
     /// Target block of the syncing process.
@@ -247,7 +245,6 @@ where
             sync_strategy,
             is_major_syncing,
             enable_block_sync,
-            rng: fastrand::Rng::new(),
             peer_store,
             sync_target,
             min_sync_peer_threshold,

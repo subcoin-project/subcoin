@@ -168,6 +168,7 @@ impl BlockDownloader {
     }
 
     /// Returns the current memory usage of downloaded blocks.
+    #[cfg(test)]
     pub(crate) fn downloaded_blocks_memory_usage(&self) -> usize {
         self.downloaded_blocks_memory
     }
