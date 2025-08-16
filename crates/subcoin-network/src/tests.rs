@@ -296,6 +296,7 @@ impl TestNode {
                 sync_strategy,
                 block_sync: crate::BlockSyncOption::Off,
                 base_path: self.base_path.clone(),
+                memory_config: crate::MemoryConfig::default(),
             },
             import_queue,
             &self.task_manager,
