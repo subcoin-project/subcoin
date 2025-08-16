@@ -14,6 +14,17 @@ use std::time::{Duration, Instant};
 /// Interval for logging when the block import queue is too busy.
 const BUSY_QUEUE_LOG_INTERVAL: Duration = Duration::from_secs(5);
 
+/// Bitcoin block header size in bytes.
+const BITCOIN_BLOCK_HEADER_SIZE: usize = 80;
+
+/// Average transaction size in bytes for fallback memory estimation.
+/// Based on empirical data from Bitcoin mainnet where typical transaction sizes
+/// range from ~200-600 bytes, with 500 bytes being a reasonable average.
+const AVERAGE_TRANSACTION_SIZE_BYTES: usize = 500;
+
+/// Additional memory overhead per block for internal data structures.
+const BLOCK_MEMORY_OVERHEAD: usize = 128;
+
 /// Manages queued blocks.
 #[derive(Default, Debug, Clone)]
 pub(crate) struct QueuedBlocks {
@@ -497,11 +508,11 @@ fn calculate_block_memory_usage(block: &BitcoinBlock) -> usize {
         encoded_size
     } else {
         // Fallback estimation if encoding fails
-        80 + block.txdata.len() * 500 // 80 bytes header + average tx size
+        BITCOIN_BLOCK_HEADER_SIZE + block.txdata.len() * AVERAGE_TRANSACTION_SIZE_BYTES
     };
 
     // Add some overhead for internal data structures
-    size + 128
+    size + BLOCK_MEMORY_OVERHEAD
 }
 
 #[cfg(test)]
