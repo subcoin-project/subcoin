@@ -173,8 +173,8 @@ impl BlockDownloader {
         self.downloaded_blocks_memory
     }
 
-    /// Checks if memory usage is above the configured limit.
-    pub(crate) fn is_memory_constrained(&self) -> bool {
+    /// Checks if memory usage exceeds the configured limits.
+    pub(crate) fn exceeds_memory_limits(&self) -> bool {
         self.downloaded_blocks_memory > self.memory_config.max_downloaded_blocks_memory
             || self.downloaded_blocks.len() > self.memory_config.max_blocks_in_memory
     }
@@ -232,16 +232,16 @@ impl BlockDownloader {
         };
 
         let queued_blocks = self.best_queued_number.saturating_sub(best_number);
-        let memory_constrained = self.is_memory_constrained();
+        let exceeds_memory_limits = self.exceeds_memory_limits();
 
-        if queued_blocks > max_queued_blocks || memory_constrained {
+        if queued_blocks > max_queued_blocks || exceeds_memory_limits {
             self.queue_status = ImportQueueStatus::Overloaded;
 
             if self
                 .last_overloaded_queue_log_time
                 .is_none_or(|last_time| last_time.elapsed() > BUSY_QUEUE_LOG_INTERVAL)
             {
-                if memory_constrained {
+                if exceeds_memory_limits {
                     let memory_mb = self.downloaded_blocks_memory / (1024 * 1024);
                     let max_memory_mb =
                         self.memory_config.max_downloaded_blocks_memory / (1024 * 1024);
@@ -542,7 +542,7 @@ mod tests {
 
         // Initially, memory usage should be zero
         assert_eq!(downloader.downloaded_blocks_memory_usage(), 0);
-        assert!(!downloader.is_memory_constrained());
+        assert!(!downloader.exceeds_memory_limits());
 
         // Add a block and verify memory tracking
         let test_blocks = subcoin_test_service::block_data();
@@ -557,7 +557,7 @@ mod tests {
         // Verify memory constraint checking
         let initial_memory = downloader.downloaded_blocks_memory_usage();
         assert!(initial_memory < memory_config.max_downloaded_blocks_memory);
-        assert!(!downloader.is_memory_constrained());
+        assert!(!downloader.exceeds_memory_limits());
     }
 
     #[test]
@@ -578,7 +578,7 @@ mod tests {
         downloader.add_block(1, block_hash, block, peer_id);
 
         // Should be memory constrained due to block count limit
-        assert!(downloader.is_memory_constrained());
+        assert!(downloader.exceeds_memory_limits());
 
         // Test with memory size limit
         let mut memory_config2 = create_test_memory_config();
@@ -590,7 +590,7 @@ mod tests {
         downloader2.add_block(1, block_hash, test_blocks[1].clone(), peer_id);
 
         // Should be memory constrained due to memory size limit
-        assert!(downloader2.is_memory_constrained());
+        assert!(downloader2.exceeds_memory_limits());
     }
 
     #[test]
