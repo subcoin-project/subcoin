@@ -215,8 +215,8 @@ impl PersistentPeerStore {
             };
 
             // Check if we need to replace the lowest quality peer.
-            if self.peers.len() >= self.capacity {
-                if let Some(lowest_peer_id) = self.sorted_peers.first() {
+            if self.peers.len() >= self.capacity
+                && let Some(lowest_peer_id) = self.sorted_peers.first() {
                     let Some(lowest_peer) = self.peers.get(lowest_peer_id) else {
                         return;
                     };
@@ -230,7 +230,6 @@ impl PersistentPeerStore {
                     self.peers.remove(lowest_peer_id);
                     self.sorted_peers.remove(0);
                 }
-            }
 
             self.peers.insert(peer_id, new_peer);
         }

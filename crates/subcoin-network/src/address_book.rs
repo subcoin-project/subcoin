@@ -74,12 +74,11 @@ impl AddressBook {
                 continue;
             }
 
-            if let Ok(addr) = address.socket_addr() {
-                if self.should_add_address(from, addr) {
+            if let Ok(addr) = address.socket_addr()
+                && self.should_add_address(from, addr) {
                     self.discovered_addresses.insert(addr);
                     added += 1;
                 }
-            }
         }
 
         added

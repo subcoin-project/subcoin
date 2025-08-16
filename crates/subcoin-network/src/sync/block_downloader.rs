@@ -532,7 +532,7 @@ impl BlockDownloader {
 fn calculate_block_memory_usage(block: &BitcoinBlock) -> usize {
     // Use a size-counting writer to avoid memory allocation during encoding
     let mut size_counter = SizeCounter::new();
-    let size = if let Ok(_) = block.consensus_encode(&mut size_counter) {
+    let size = if block.consensus_encode(&mut size_counter).is_ok() {
         size_counter.size()
     } else {
         // Fallback estimation if encoding fails

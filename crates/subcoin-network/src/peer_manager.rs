@@ -364,11 +364,10 @@ where
     /// Manages outbound connections by initiating new connections or evicting slow peers.
     fn manage_outbound_connections(&mut self, outbound_peers_count: usize) -> Option<SlowPeer> {
         if outbound_peers_count < self.max_outbound_peers {
-            if let Some(addr) = self.address_book.pop() {
-                if !self.connections.contains_key(&addr) {
+            if let Some(addr) = self.address_book.pop()
+                && !self.connections.contains_key(&addr) {
                     self.connection_initiator.initiate_outbound_connection(addr);
                 }
-            }
             None
         } else {
             // It's possible for the number of connected peers to temporarily exceed the

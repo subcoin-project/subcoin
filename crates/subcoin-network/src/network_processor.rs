@@ -495,8 +495,8 @@ where
             ));
         }
 
-        if inv.len() == 1 {
-            if let Inventory::Block(block_hash) = inv[0] {
+        if inv.len() == 1
+            && let Inventory::Block(block_hash) = inv[0] {
                 if self.client.block_number(block_hash).is_none() {
                     tracing::debug!("Recv block announcement {inv:?} from {from:?}");
 
@@ -520,7 +520,6 @@ where
                 }
                 return Ok(SyncAction::None);
             }
-        }
 
         Ok(self.chain_sync.on_inv(inv, from))
     }
@@ -634,11 +633,10 @@ where
                 }
                 Inventory::Transaction(txid) => {
                     tracing::debug!("Recv transaction request: {txid:?} from {from:?}");
-                    if let Some(transaction) = self.transaction_manager.get_transaction(&txid) {
-                        if let Err(err) = self.send(from, NetworkMessage::Tx(transaction)) {
+                    if let Some(transaction) = self.transaction_manager.get_transaction(&txid)
+                        && let Err(err) = self.send(from, NetworkMessage::Tx(transaction)) {
                             tracing::error!(?err, "Failed to send transaction {txid} to {from:?}");
                         }
-                    }
                 }
                 Inventory::WTx(_)
                 | Inventory::WitnessTransaction(_)

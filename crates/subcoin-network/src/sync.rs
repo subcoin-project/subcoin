@@ -388,8 +388,8 @@ where
         let our_best = self.client.best_number();
 
         let Some(new_peer_id) = self.select_next_peer_for_sync(our_best, prior_peer_id) else {
-            if let Some(median_seen_block) = self.median_seen() {
-                if median_seen_block <= our_best {
+            if let Some(median_seen_block) = self.median_seen()
+                && median_seen_block <= our_best {
                     let best_seen_block = self.peers.values().map(|p| p.best_number).max();
 
                     // We are synced to the median block seen by our peers, but this may
@@ -405,7 +405,6 @@ where
                     self.update_syncing_state(Syncing::Idle);
                     return;
                 }
-            }
 
             // No new sync candidate, keep it as is.
             // TODO: handle this properly.
@@ -619,11 +618,10 @@ where
 
         let our_best = self.client.best_number();
 
-        if let Some(sync_target) = self.sync_target {
-            if our_best >= sync_target {
+        if let Some(sync_target) = self.sync_target
+            && our_best >= sync_target {
                 return SyncAction::None;
             }
-        }
 
         let find_best_available_peer = || {
             self.peers
