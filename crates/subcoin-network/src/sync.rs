@@ -16,6 +16,7 @@ use sc_consensus_nakamoto::{
 use serde::{Deserialize, Serialize};
 use sp_consensus::BlockOrigin;
 use sp_runtime::traits::Block as BlockT;
+use std::cmp::Ordering as CmpOrdering;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -25,13 +26,22 @@ use subcoin_primitives::ClientExt;
 // Do major sync when the current tip falls behind the network by 144 blocks (roughly one day).
 const MAJOR_SYNC_GAP: u32 = 144;
 
-const LATENCY_IMPROVEMENT_THRESHOLD: u128 = 4;
+const LATENCY_IMPROVEMENT_THRESHOLD: f64 = 4.0;
 
 // Define a constant for the low ping latency cutoff, in milliseconds.
 const LOW_LATENCY_CUTOFF: Latency = 20;
 
 /// Maximum number of syncing retries for a deprioritized peer.
 const MAX_STALLS: usize = 5;
+
+/// Weight for latency in peer scoring (lower is better).
+const LATENCY_WEIGHT: f64 = 0.7;
+
+/// Weight for reliability in peer scoring (higher is better).
+const RELIABILITY_WEIGHT: f64 = 0.3;
+
+/// Base reliability score for peers with no stalls.
+const BASE_RELIABILITY_SCORE: f64 = 100.0;
 
 /// The state of syncing between a Peer and ourselves.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize, Hash)]
@@ -83,6 +93,22 @@ pub struct PeerSync {
     /// The state of syncing this peer is in for us, generally categories
     /// into `Available` or "busy" with something as defined by `PeerSyncState`.
     pub state: PeerSyncState,
+}
+
+impl PeerSync {
+    /// Calculates a peer score based on latency and reliability.
+    /// Lower scores indicate better peers.
+    pub fn peer_score(&self) -> f64 {
+        // Normalize latency (higher latency = higher score = worse)
+        let latency_score = self.latency as f64;
+
+        // Calculate reliability score (more stalls = lower reliability = higher score = worse)
+        let reliability_penalty = self.state.stalled_count() as f64 * 20.0; // Each stall adds 20 points penalty
+        let reliability_score = BASE_RELIABILITY_SCORE + reliability_penalty;
+
+        // Combine scores with weights
+        (latency_score * LATENCY_WEIGHT) + (reliability_score * RELIABILITY_WEIGHT)
+    }
 }
 
 /// Locator based sync request, for requesting either Headers or Blocks.
@@ -296,31 +322,59 @@ where
         }
     }
 
-    /// Attempt to find the best available peer, falling back to a random choice if needed
+    /// Attempt to find the best available peer using a composite scoring algorithm
+    /// that considers both latency and reliability.
     fn select_next_peer_for_sync(
         &mut self,
         our_best: u32,
         excluded_peer: PeerId,
     ) -> Option<PeerId> {
-        self.peers
+        // First try available peers with the new scoring algorithm
+        let best_available = self
+            .peers
             .values()
             .filter(|peer| {
                 peer.peer_id != excluded_peer
                     && peer.best_number > our_best
                     && peer.state.is_available()
             })
-            .min_by_key(|peer| peer.latency)
-            .map(|peer| peer.peer_id)
-            .or_else(|| {
-                let sync_candidates = self
-                    .peers
-                    .values()
-                    .filter(|peer| peer.peer_id != excluded_peer && peer.best_number > our_best)
-                    .collect::<Vec<_>>();
-
-                // Pick a random peer, even if it's marked as deprioritized.
-                self.rng.choice(sync_candidates).map(|peer| peer.peer_id)
+            .min_by(|a, b| {
+                let score_a = a.peer_score();
+                let score_b = b.peer_score();
+                score_a.partial_cmp(&score_b).unwrap_or(CmpOrdering::Equal)
             })
+            .map(|peer| peer.peer_id);
+
+        best_available.or_else(|| {
+            // Fall back to deprioritized peers, also using scoring
+            let sync_candidates = self
+                .peers
+                .values()
+                .filter(|peer| {
+                    peer.peer_id != excluded_peer
+                        && peer.best_number > our_best
+                        && !peer.state.is_permanently_deprioritized()
+                })
+                .collect::<Vec<_>>();
+
+            if sync_candidates.is_empty() {
+                None
+            } else {
+                // Use weighted random selection based on inverse scores
+                let mut best_candidate = sync_candidates[0];
+                let mut best_score = best_candidate.peer_score();
+
+                for candidate in sync_candidates.iter().skip(1) {
+                    let score = candidate.peer_score();
+                    if score < best_score {
+                        best_score = score;
+                        best_candidate = candidate;
+                    }
+                }
+
+                Some(best_candidate.peer_id)
+            }
+        })
     }
 
     /// Attempts to restart the sync based on the reason provided.
@@ -448,7 +502,7 @@ where
 
         let our_best = self.client.best_number();
 
-        // Find the peer with lowest latency.
+        // Find the peer with best score (considering both latency and reliability).
         let Some(best_sync_peer) = self
             .peers
             .values()
@@ -457,15 +511,29 @@ where
                     && peer.best_number > our_best
                     && peer.state.is_available()
             })
-            .min_by_key(|peer| peer.latency)
+            .min_by(|a, b| {
+                let score_a = a.peer_score();
+                let score_b = b.peer_score();
+                score_a.partial_cmp(&score_b).unwrap_or(CmpOrdering::Equal)
+            })
         else {
             return;
         };
 
-        let best_latency = best_sync_peer.latency;
+        let Some(current_peer) = self.peers.get(&current_sync_peer_id) else {
+            tracing::debug!(
+                peer_id = ?current_sync_peer_id,
+                "Current sync peer not found in peer list, skipping peer update"
+            );
+            return;
+        };
 
-        // Update sync peer if the latency improvement is significant.
-        if current_latency / best_latency > LATENCY_IMPROVEMENT_THRESHOLD {
+        let current_score = current_peer.peer_score();
+        let best_score = best_sync_peer.peer_score();
+
+        // Update sync peer if the score improvement is significant (lower score is better).
+        // Protect against division by zero and ensure best_score is positive.
+        if best_score > 0.0 && current_score / best_score > LATENCY_IMPROVEMENT_THRESHOLD {
             let peer_id = best_sync_peer.peer_id;
             let target_block_number =
                 target_block_number(self.sync_target, best_sync_peer.best_number);
@@ -486,7 +554,11 @@ where
                 tracing::debug!(
                     old_peer_id = ?current_sync_peer_id,
                     new_peer_id = ?peer_id,
-                    "🔧 Sync peer ({current_latency} ms) updated to a new peer with lower latency ({best_latency} ms)",
+                    old_score = %current_score,
+                    new_score = %best_score,
+                    "🔧 Sync peer updated to a peer with better score (latency: {} ms -> {} ms)",
+                    current_peer.latency,
+                    best_sync_peer.latency,
                 );
                 self.peers.entry(current_sync_peer_id).and_modify(|peer| {
                     peer.state = PeerSyncState::Available;
@@ -553,7 +625,11 @@ where
             self.peers
                 .iter()
                 .filter(|(_peer_id, peer)| peer.best_number > our_best && peer.state.is_available())
-                .min_by_key(|(_peer_id, peer)| peer.latency)
+                .min_by(|(_, a), (_, b)| {
+                    let score_a = a.peer_score();
+                    let score_b = b.peer_score();
+                    score_a.partial_cmp(&score_b).unwrap_or(CmpOrdering::Equal)
+                })
                 .map(|(peer_id, _peer)| peer_id)
         };
 
@@ -576,7 +652,7 @@ where
                     |(_, stalled_count_a, latency_a), (_, stalled_count_b, latency_b)| {
                         // First, compare stalled_count, then latency if stalled_count is equal
                         match stalled_count_a.cmp(stalled_count_b) {
-                            std::cmp::Ordering::Equal => latency_a.cmp(latency_b), // compare latency if stalled_count is the same
+                            CmpOrdering::Equal => latency_a.cmp(latency_b), // compare latency if stalled_count is the same
                             other => other, // otherwise, return the comparison of stalled_count
                         }
                     },
@@ -654,7 +730,11 @@ where
             .peers
             .values()
             .filter(|peer| peer.best_number > our_best && peer.state.is_available())
-            .min_by_key(|peer| peer.latency)
+            .min_by(|a, b| {
+                let score_a = a.peer_score();
+                let score_b = b.peer_score();
+                score_a.partial_cmp(&score_b).unwrap_or(CmpOrdering::Equal)
+            })
         else {
             self.update_syncing_state(Syncing::Idle);
             return None;
