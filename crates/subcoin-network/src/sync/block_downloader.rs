@@ -403,12 +403,13 @@ impl BlockDownloader {
                 .block_number(block_hash)
                 .expect("Corrupted state, number for {block_hash} not found in `queued_blocks`");
 
+            // All blocks were counted in downloaded_blocks_memory, so free their memory
+            total_memory_freed += calculate_block_memory_usage(&block);
+
             if max_block_number.is_some_and(|target_block| block_number > target_block) {
-                // Block is filtered out - don't count its memory usage
-                total_memory_freed += calculate_block_memory_usage(&block);
+                // Block is filtered out - don't add to import queue
             } else {
                 self.blocks_in_queue.insert(block_hash, block_number);
-                total_memory_freed += calculate_block_memory_usage(&block);
                 blocks.push((block_number, block));
             }
         }
