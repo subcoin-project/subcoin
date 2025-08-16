@@ -351,33 +351,19 @@ where
 
         best_available.or_else(|| {
             // Fall back to deprioritized peers, also using scoring
-            let sync_candidates = self
-                .peers
+            self.peers
                 .values()
                 .filter(|peer| {
                     peer.peer_id != excluded_peer
                         && peer.best_number > our_best
                         && !peer.state.is_permanently_deprioritized()
                 })
-                .collect::<Vec<_>>();
-
-            if sync_candidates.is_empty() {
-                None
-            } else {
-                // Use weighted random selection based on inverse scores
-                let mut best_candidate = sync_candidates[0];
-                let mut best_score = best_candidate.peer_score();
-
-                for candidate in sync_candidates.iter().skip(1) {
-                    let score = candidate.peer_score();
-                    if score < best_score {
-                        best_score = score;
-                        best_candidate = candidate;
-                    }
-                }
-
-                Some(best_candidate.peer_id)
-            }
+                .min_by(|a, b| {
+                    let score_a = a.peer_score();
+                    let score_b = b.peer_score();
+                    score_a.partial_cmp(&score_b).unwrap_or(CmpOrdering::Equal)
+                })
+                .map(|peer| peer.peer_id)
         })
     }
 
