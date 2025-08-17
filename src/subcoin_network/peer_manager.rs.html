@@ -364,10 +364,10 @@
 <a href=#364 id=364 data-nosnippet>364</a>    <span class="doccomment">/// Manages outbound connections by initiating new connections or evicting slow peers.
 <a href=#365 id=365 data-nosnippet>365</a>    </span><span class="kw">fn </span>manage_outbound_connections(<span class="kw-2">&amp;mut </span><span class="self">self</span>, outbound_peers_count: usize) -&gt; <span class="prelude-ty">Option</span>&lt;SlowPeer&gt; {
 <a href=#366 id=366 data-nosnippet>366</a>        <span class="kw">if </span>outbound_peers_count &lt; <span class="self">self</span>.max_outbound_peers {
-<a href=#367 id=367 data-nosnippet>367</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(addr) = <span class="self">self</span>.address_book.pop() {
-<a href=#368 id=368 data-nosnippet>368</a>                <span class="kw">if </span>!<span class="self">self</span>.connections.contains_key(<span class="kw-2">&amp;</span>addr) {
-<a href=#369 id=369 data-nosnippet>369</a>                    <span class="self">self</span>.connection_initiator.initiate_outbound_connection(addr);
-<a href=#370 id=370 data-nosnippet>370</a>                }
+<a href=#367 id=367 data-nosnippet>367</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(addr) = <span class="self">self</span>.address_book.pop()
+<a href=#368 id=368 data-nosnippet>368</a>                &amp;&amp; !<span class="self">self</span>.connections.contains_key(<span class="kw-2">&amp;</span>addr)
+<a href=#369 id=369 data-nosnippet>369</a>            {
+<a href=#370 id=370 data-nosnippet>370</a>                <span class="self">self</span>.connection_initiator.initiate_outbound_connection(addr);
 <a href=#371 id=371 data-nosnippet>371</a>            }
 <a href=#372 id=372 data-nosnippet>372</a>            <span class="prelude-val">None
 <a href=#373 id=373 data-nosnippet>373</a>        </span>} <span class="kw">else </span>{

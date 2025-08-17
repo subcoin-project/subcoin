@@ -74,11 +74,11 @@
 <a href=#74 id=74 data-nosnippet>74</a>                <span class="kw">continue</span>;
 <a href=#75 id=75 data-nosnippet>75</a>            }
 <a href=#76 id=76 data-nosnippet>76</a>
-<a href=#77 id=77 data-nosnippet>77</a>            <span class="kw">if let </span><span class="prelude-val">Ok</span>(addr) = address.socket_addr() {
-<a href=#78 id=78 data-nosnippet>78</a>                <span class="kw">if </span><span class="self">self</span>.should_add_address(from, addr) {
-<a href=#79 id=79 data-nosnippet>79</a>                    <span class="self">self</span>.discovered_addresses.insert(addr);
-<a href=#80 id=80 data-nosnippet>80</a>                    added += <span class="number">1</span>;
-<a href=#81 id=81 data-nosnippet>81</a>                }
+<a href=#77 id=77 data-nosnippet>77</a>            <span class="kw">if let </span><span class="prelude-val">Ok</span>(addr) = address.socket_addr()
+<a href=#78 id=78 data-nosnippet>78</a>                &amp;&amp; <span class="self">self</span>.should_add_address(from, addr)
+<a href=#79 id=79 data-nosnippet>79</a>            {
+<a href=#80 id=80 data-nosnippet>80</a>                <span class="self">self</span>.discovered_addresses.insert(addr);
+<a href=#81 id=81 data-nosnippet>81</a>                added += <span class="number">1</span>;
 <a href=#82 id=82 data-nosnippet>82</a>            }
 <a href=#83 id=83 data-nosnippet>83</a>        }
 <a href=#84 id=84 data-nosnippet>84</a>
