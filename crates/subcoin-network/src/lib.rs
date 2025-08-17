@@ -219,6 +219,30 @@ pub enum BlockSyncOption {
     PausedUntilFastSync,
 }
 
+/// Memory management configuration for network operations.
+#[derive(Debug, Clone)]
+pub struct MemoryConfig {
+    /// Maximum memory usage for downloaded blocks in bytes (default: 256 MB).
+    pub max_downloaded_blocks_memory: usize,
+    /// Maximum number of blocks to keep in memory before sending to the import queue (default: 1000).
+    pub max_blocks_in_memory: usize,
+    /// Memory limit for orphan blocks pool in bytes (default: 64 MB).
+    pub max_orphan_blocks_memory: usize,
+    /// Enable adaptive batch sizing based on memory pressure (default: true).
+    pub enable_adaptive_batch_sizing: bool,
+}
+
+impl Default for MemoryConfig {
+    fn default() -> Self {
+        Self {
+            max_downloaded_blocks_memory: 256 * 1024 * 1024, // 256 MB
+            max_blocks_in_memory: 1000,
+            max_orphan_blocks_memory: 64 * 1024 * 1024, // 64 MB
+            enable_adaptive_batch_sizing: true,
+        }
+    }
+}
+
 /// Network configuration.
 pub struct Config {
     /// Bitcoin network type.
@@ -250,6 +274,8 @@ pub struct Config {
     /// The block sync from Bitcoin P2P network may be disabled temporarily when
     /// performing fast sync from the Subcoin network.
     pub block_sync: BlockSyncOption,
+    /// Memory management configuration.
+    pub memory_config: MemoryConfig,
 }
 
 fn builtin_seednodes(network: BitcoinNetwork) -> &'static [&'static str] {
@@ -507,6 +533,7 @@ where
                     enable_block_sync,
                     peer_store: Arc::new(persistent_peer_store_handle),
                     sync_target,
+                    memory_config: config.memory_config.clone(),
                 },
                 registry.as_ref(),
             )

@@ -38,6 +38,18 @@ pub trait BlockchainApi {
     /// Get transaction.
     #[method(name = "blockchain_getTransaction", blocking)]
     fn transaction(&self, txid: Txid) -> Result<Option<Transaction>, Error>;
+
+    // Get current best block hash
+    #[method(name = "blockchain_getBestBlockHash", blocking)]
+    fn best_block_hash(&self) -> Result<BlockHash, Error>;
+
+    // Get block hash by height
+    #[method(name = "blockchain_getBlockHash", blocking)]
+    fn block_hash(&self, height: u32) -> Result<Option<BlockHash>, Error>;
+
+    // Get block height by hash.
+    #[method(name = "blockchain_getBlockNumber", blocking)]
+    fn block_number(&self, block_hash: BlockHash) -> Result<Option<u32>, Error>;
 }
 
 /// This struct provides the Bitcoin Blockchain API.
@@ -163,6 +175,21 @@ where
         let bitcoin_block = convert_to_bitcoin_block::<Block, TransactionAdapter>(substrate_block)
             .map_err(Error::Header)?;
         Ok(bitcoin_block.txdata.into_iter().nth(index as usize))
+    }
+
+    fn best_block_hash(&self) -> Result<BlockHash, Error> {
+        let best_substrate_hash = self.client.info().best_hash;
+        self.client
+            .bitcoin_block_hash_for(best_substrate_hash)
+            .ok_or(Error::Other("Best block hash not found".to_string()))
+    }
+
+    fn block_hash(&self, height: u32) -> Result<Option<BlockHash>, Error> {
+        Ok(self.client.block_hash(height))
+    }
+
+    fn block_number(&self, block_hash: BlockHash) -> Result<Option<u32>, Error> {
+        Ok(self.client.block_number(block_hash))
     }
 }
 

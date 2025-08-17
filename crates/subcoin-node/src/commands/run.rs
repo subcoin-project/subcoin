@@ -1,4 +1,4 @@
-use crate::cli::subcoin_params::{CommonParams, Defaults, NetworkParams};
+use crate::cli::subcoin_params::{CommonParams, Defaults, SubcoinNetworkParams};
 use clap::Parser;
 use sc_cli::{
     ImportParams, NetworkParams as SubstrateNetworkParams, NodeKeyParams, PrometheusParams, Role,
@@ -80,10 +80,6 @@ pub struct Run {
 
     #[allow(missing_docs)]
     #[clap(flatten)]
-    pub network_params: NetworkParams,
-
-    #[allow(missing_docs)]
-    #[clap(flatten)]
     pub prometheus_params: PrometheusParams,
 
     #[allow(missing_docs)]
@@ -92,11 +88,15 @@ pub struct Run {
 
     #[allow(missing_docs)]
     #[clap(flatten)]
-    pub substrate_network_params: SubstrateNetworkParams,
+    pub import_params: ImportParams,
 
     #[allow(missing_docs)]
     #[clap(flatten)]
-    pub import_params: ImportParams,
+    pub subcoin_network_params: SubcoinNetworkParams,
+
+    #[allow(missing_docs)]
+    #[clap(flatten)]
+    pub substrate_network_params: SubstrateNetworkParams,
 }
 
 fn base_path_or_default(base_path: Option<BasePath>, executable_name: &str) -> BasePath {
@@ -109,19 +109,19 @@ impl Run {
 
         subcoin_network::Config {
             network,
-            listen_on: self.network_params.listen,
-            seednodes: self.network_params.seednodes.clone(),
-            seednode_only: self.network_params.seednode_only,
-            ipv4_only: self.network_params.ipv4_only,
+            listen_on: self.subcoin_network_params.listen,
+            seednodes: self.subcoin_network_params.seednodes.clone(),
+            seednode_only: self.subcoin_network_params.seednode_only,
+            ipv4_only: self.subcoin_network_params.ipv4_only,
             sync_target: self.sync_target,
-            max_outbound_peers: self.network_params.max_outbound_peers,
-            max_inbound_peers: self.network_params.max_inbound_peers,
+            max_outbound_peers: self.subcoin_network_params.max_outbound_peers,
+            max_inbound_peers: self.subcoin_network_params.max_inbound_peers,
             min_sync_peer_threshold: self
-                .network_params
+                .subcoin_network_params
                 .min_sync_peer_threshold
                 .unwrap_or_else(|| Defaults::min_sync_peer_threshold(is_dev)),
             persistent_peer_latency_threshold: self
-                .network_params
+                .subcoin_network_params
                 .persistent_peer_latency_threshold,
             sync_strategy: self
                 .sync_strategy
@@ -133,6 +133,7 @@ impl Run {
             )
             .path()
             .to_path_buf(),
+            memory_config: Default::default(),
         }
     }
 

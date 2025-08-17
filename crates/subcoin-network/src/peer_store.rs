@@ -215,21 +215,21 @@ impl PersistentPeerStore {
             };
 
             // Check if we need to replace the lowest quality peer.
-            if self.peers.len() >= self.capacity {
-                if let Some(lowest_peer_id) = self.sorted_peers.first() {
-                    let Some(lowest_peer) = self.peers.get(lowest_peer_id) else {
-                        return;
-                    };
+            if self.peers.len() >= self.capacity
+                && let Some(lowest_peer_id) = self.sorted_peers.first()
+            {
+                let Some(lowest_peer) = self.peers.get(lowest_peer_id) else {
+                    return;
+                };
 
-                    if !new_peer.is_better_than(lowest_peer) {
-                        // New peer is not better, no need to add.
-                        return;
-                    }
-
-                    // Remove the worst peer if it's going to be replaced.
-                    self.peers.remove(lowest_peer_id);
-                    self.sorted_peers.remove(0);
+                if !new_peer.is_better_than(lowest_peer) {
+                    // New peer is not better, no need to add.
+                    return;
                 }
+
+                // Remove the worst peer if it's going to be replaced.
+                self.peers.remove(lowest_peer_id);
+                self.sorted_peers.remove(0);
             }
 
             self.peers.insert(peer_id, new_peer);

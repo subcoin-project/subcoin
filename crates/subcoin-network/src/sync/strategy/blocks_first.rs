@@ -1,7 +1,7 @@
 use crate::peer_store::PeerStore;
 use crate::sync::block_downloader::BlockDownloader;
 use crate::sync::{LocatorRequest, SyncAction};
-use crate::{Error, PeerId, SyncStatus};
+use crate::{Error, MemoryConfig, PeerId, SyncStatus};
 use bitcoin::hashes::Hash;
 use bitcoin::p2p::message_blockdata::Inventory;
 use bitcoin::{Block as BitcoinBlock, BlockHash};
@@ -133,6 +133,7 @@ where
         peer_id: PeerId,
         target_block_number: u32,
         peer_store: Arc<dyn PeerStore>,
+        memory_config: MemoryConfig,
     ) -> (Self, SyncAction) {
         let best_number = client.best_number();
 
@@ -150,7 +151,7 @@ where
             target_block_number,
             state: State::Idle,
             inv_requester,
-            block_downloader: BlockDownloader::new(peer_id, best_number, peer_store),
+            block_downloader: BlockDownloader::new(peer_id, best_number, peer_store, memory_config),
         };
 
         let outcome = blocks_first_sync
@@ -162,7 +163,7 @@ where
     }
 
     pub(crate) fn sync_status(&self) -> SyncStatus {
-        if self.block_downloader.queue_status.is_overloaded()
+        if self.block_downloader.queue_status.is_saturated()
             || (self.state.is_fetching_block_data()
                 && self.block_downloader.missing_blocks.is_empty())
         {
@@ -209,7 +210,7 @@ where
             return SyncAction::SetIdle;
         }
 
-        if self.block_downloader.queue_status.is_overloaded() {
+        if self.block_downloader.queue_status.is_saturated() {
             // If the queue was overloaded, evalute the current queue status again.
             let is_ready = self
                 .block_downloader
@@ -406,7 +407,7 @@ where
                 if self
                     .block_downloader
                     .evaluate_queue_status(self.client.best_number())
-                    .is_overloaded()
+                    .is_saturated()
                 {
                     SyncAction::None
                 } else {
@@ -448,7 +449,7 @@ where
                 if self
                     .block_downloader
                     .evaluate_queue_status(self.client.best_number())
-                    .is_overloaded()
+                    .is_saturated()
                 {
                     return SyncAction::None;
                 }
