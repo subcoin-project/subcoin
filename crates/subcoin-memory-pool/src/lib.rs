@@ -23,7 +23,8 @@ pub use self::coins_view::CoinsViewCache;
 pub use self::inner::MemPoolInner;
 pub use self::options::MemPoolOptions;
 pub use self::types::{
-    ConflictSet, EntryId, FeeRate, LockPoints, MempoolError, RemovalReason, ValidationResult,
+    ConflictSet, EntryId, FeeRate, LockPoints, MempoolError, Package, PackageValidationResult,
+    RemovalReason, ValidationResult,
 };
 
 use bitcoin::Transaction;
@@ -112,7 +113,8 @@ where
             .as_secs() as i64;
 
         // Create validation workspace
-        let mut ws = validation::ValidationWorkspace::new(tx);
+        let tx_arc = Arc::new(tx);
+        let mut ws = validation::ValidationWorkspace::new(tx_arc);
 
         // Stage 1: PreChecks (sanity, standardness, input availability, fees)
         validation::pre_checks(
@@ -395,5 +397,66 @@ where
             .fetch_add(expanded.len() as u32, Ordering::SeqCst);
 
         Ok(())
+    }
+
+    /// Accept a package of related transactions (CPFP support).
+    ///
+    /// All transactions are validated as a unit. If any fails, none are accepted.
+    pub fn accept_package(
+        &self,
+        transactions: Vec<Transaction>,
+    ) -> Result<PackageValidationResult, MempoolError> {
+        if !self.options.enable_package_relay {
+            return Err(MempoolError::PackageRelayDisabled);
+        }
+
+        // Acquire locks for entire package validation
+        let mut inner = self.inner.write().expect("MemPool lock poisoned");
+        let mut coins = self.coins_cache.write().expect("CoinsCache lock poisoned");
+
+        // Get current state
+        let best_block = coins.best_block();
+        let current_height: u32 = self
+            .client
+            .info()
+            .best_number
+            .try_into()
+            .unwrap_or_else(|_| panic!("Block number must fit into u32"));
+        let current_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs() as i64;
+
+        // Convert to Arc (single allocation per tx)
+        let arc_txs: Vec<_> = transactions.into_iter().map(Arc::new).collect();
+
+        let package = Package {
+            transactions: arc_txs,
+        };
+
+        // Validate and accept package (two-phase commit)
+        let sequence_start = self.sequence_number.load(Ordering::SeqCst);
+        let result = validation::validate_package(
+            &package,
+            &mut inner,
+            &mut coins,
+            &self.options,
+            current_height,
+            best_block,
+            current_time,
+            sequence_start,
+        )?;
+
+        // Update sequence counter
+        self.sequence_number.store(
+            sequence_start + result.accepted.len() as u64,
+            Ordering::SeqCst,
+        );
+
+        // Update transactions counter
+        self.transactions_updated
+            .fetch_add(result.accepted.len() as u32, Ordering::SeqCst);
+
+        Ok(result)
     }
 }

@@ -118,6 +118,24 @@ pub enum MempoolError {
     #[error("Insufficient fee: {0}")]
     InsufficientFee(String),
 
+    #[error("Package too large: {0} transactions (max {1})")]
+    PackageTooLarge(usize, usize),
+
+    #[error("Package exceeds size limit: {0} vbytes")]
+    PackageSizeTooLarge(u64),
+
+    #[error("Package has cyclic dependencies")]
+    PackageCyclicDependencies,
+
+    #[error("Package feerate too low: {0}")]
+    PackageFeeTooLow(String),
+
+    #[error("Package validation failed for tx {0}: {1}")]
+    PackageTxValidationFailed(bitcoin::Txid, String),
+
+    #[error("Package relay is disabled")]
+    PackageRelayDisabled,
+
     #[error(transparent)]
     TxError(#[from] subcoin_primitives::consensus::TxError),
 
@@ -200,4 +218,17 @@ pub struct ConflictSet {
 
     /// Total size of all replaced transactions.
     pub replaced_size: i64,
+}
+
+/// A package of related transactions to be validated together.
+#[derive(Debug, Clone)]
+pub struct Package {
+    pub transactions: Vec<std::sync::Arc<bitcoin::Transaction>>,
+}
+
+/// Package validation result.
+#[derive(Debug)]
+pub struct PackageValidationResult {
+    pub accepted: Vec<bitcoin::Txid>,
+    pub package_feerate: FeeRate,
 }

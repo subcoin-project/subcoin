@@ -13,7 +13,7 @@ use crate::options::MemPoolOptions;
 use crate::policy::is_standard_tx;
 use crate::types::{ConflictSet, EntryId, FeeRate, LockPoints, MempoolError};
 use bitcoin::absolute::{LOCK_TIME_THRESHOLD, LockTime};
-use bitcoin::{Transaction, Weight};
+use bitcoin::{Transaction, Txid, Weight};
 use sc_client_api::HeaderBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_runtime::traits::Block as BlockT;
@@ -64,12 +64,12 @@ pub struct ValidationWorkspace {
 
 impl ValidationWorkspace {
     /// Create new workspace for transaction validation.
-    pub fn new(tx: Transaction) -> Self {
+    pub fn new(tx: Arc<Transaction>) -> Self {
         let tx_weight = tx.weight();
         let vsize = tx_weight.to_vbytes_ceil() as i64;
 
         Self {
-            tx: Arc::new(tx),
+            tx,
             base_fee: bitcoin::Amount::ZERO,
             modified_fee: bitcoin::Amount::ZERO,
             tx_weight,
@@ -678,4 +678,347 @@ fn is_final_tx(tx: &Transaction, height: u32, block_time: u32) -> bool {
     }
 
     tx.input.iter().all(|txin| txin.sequence.is_final())
+}
+
+/// Sort package transactions in topological order (parents before children).
+///
+/// Returns transactions sorted so all parents appear before their children.
+/// Returns error if package contains cycles.
+pub fn topological_sort_package(
+    transactions: Vec<Arc<Transaction>>,
+) -> Result<Vec<Arc<Transaction>>, MempoolError> {
+    use std::collections::{HashMap, VecDeque};
+
+    // Build txid -> tx mapping
+    let tx_map: HashMap<Txid, Arc<Transaction>> = transactions
+        .iter()
+        .map(|tx| (tx.compute_txid(), tx.clone()))
+        .collect();
+
+    // Build dependency graph: txid -> set of in-package children
+    let mut children: HashMap<Txid, Vec<Txid>> = HashMap::new();
+    let mut in_degree: HashMap<Txid, usize> = HashMap::new();
+
+    // Initialize in-degree for all txs
+    for tx in &transactions {
+        in_degree.insert(tx.compute_txid(), 0);
+    }
+
+    // Build edges
+    for tx in &transactions {
+        let txid = tx.compute_txid();
+        for input in &tx.input {
+            let parent_txid = input.previous_output.txid;
+            // Only track in-package dependencies
+            if tx_map.contains_key(&parent_txid) {
+                children.entry(parent_txid).or_default().push(txid);
+                *in_degree.get_mut(&txid).expect("txid must exist") += 1;
+            }
+        }
+    }
+
+    // Kahn's algorithm for topological sort
+    let mut queue: VecDeque<Txid> = in_degree
+        .iter()
+        .filter(|&(_, &degree)| degree == 0)
+        .map(|(&txid, _)| txid)
+        .collect();
+
+    let mut sorted = Vec::new();
+
+    while let Some(txid) = queue.pop_front() {
+        sorted.push(tx_map.get(&txid).expect("txid must exist").clone());
+
+        if let Some(child_list) = children.get(&txid) {
+            for &child_txid in child_list {
+                let degree = in_degree.get_mut(&child_txid).expect("child must exist");
+                *degree -= 1;
+                if *degree == 0 {
+                    queue.push_back(child_txid);
+                }
+            }
+        }
+    }
+
+    // Check for cycles
+    if sorted.len() != transactions.len() {
+        return Err(MempoolError::PackageCyclicDependencies);
+    }
+
+    Ok(sorted)
+}
+
+/// Calculate total package fees and feerate.
+///
+/// Builds local map of in-package outputs to handle dependencies.
+/// Returns (total_fee, total_vsize, package_feerate).
+pub fn calculate_package_feerate<Block, Client>(
+    sorted_txs: &[Arc<Transaction>],
+    inner: &MemPoolInner,
+    coins_cache: &mut CoinsViewCache<Block, Client>,
+) -> Result<(bitcoin::Amount, i64, FeeRate), MempoolError>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
+    Client::Api: SubcoinRuntimeApi<Block>,
+{
+    use bitcoin::OutPoint;
+
+    // Build map of in-package outputs: outpoint -> TxOut
+    // This allows children to see parent outputs before they're in mempool
+    let mut package_outputs: HashMap<OutPoint, bitcoin::TxOut> = HashMap::new();
+    for tx in sorted_txs {
+        let txid = tx.compute_txid();
+        for (vout, output) in tx.output.iter().enumerate() {
+            package_outputs.insert(
+                OutPoint {
+                    txid,
+                    vout: vout as u32,
+                },
+                output.clone(),
+            );
+        }
+    }
+
+    let mut total_fee = bitcoin::Amount::ZERO;
+    let mut total_vsize = 0i64;
+
+    for tx in sorted_txs {
+        // Calculate vsize from weight
+        let vsize = tx.weight().to_vbytes_ceil() as i64;
+        total_vsize = total_vsize
+            .checked_add(vsize)
+            .ok_or(MempoolError::FeeOverflow)?;
+
+        // Calculate input value
+        let mut input_value = bitcoin::Amount::ZERO;
+        for input in &tx.input {
+            let outpoint = &input.previous_output;
+
+            // Check in this order:
+            // 1. In-package outputs (earlier in topological order)
+            // 2. Mempool outputs
+            // 3. UTXO from coins_cache
+            let output = if let Some(pkg_output) = package_outputs.get(outpoint) {
+                pkg_output.clone()
+            } else if let Some(parent_id) = inner.arena.get_by_txid(&outpoint.txid) {
+                // Spends mempool transaction
+                let parent = inner
+                    .arena
+                    .get(parent_id)
+                    .ok_or(MempoolError::MissingInputs)?;
+                parent
+                    .tx
+                    .output
+                    .get(outpoint.vout as usize)
+                    .ok_or(MempoolError::MissingInputs)?
+                    .clone()
+            } else {
+                // Spends UTXO
+                let coin = coins_cache
+                    .get_coin(outpoint)?
+                    .ok_or(MempoolError::MissingInputs)?;
+                coin.output
+            };
+
+            input_value = input_value
+                .checked_add(output.value)
+                .ok_or(MempoolError::FeeOverflow)?;
+        }
+
+        // Calculate output value
+        let output_value: bitcoin::Amount = tx.output.iter().map(|out| out.value).sum();
+
+        // Add to total fee
+        let tx_fee = input_value
+            .checked_sub(output_value)
+            .ok_or(MempoolError::NegativeFee)?;
+        total_fee = total_fee
+            .checked_add(tx_fee)
+            .ok_or(MempoolError::FeeOverflow)?;
+    }
+
+    // Guard against division by zero
+    if total_vsize == 0 {
+        return Err(MempoolError::PackageSizeTooLarge(0));
+    }
+
+    // Calculate package feerate: (total_fee_sats * 1000) / total_vsize
+    let feerate_sat_kvb = total_fee
+        .to_sat()
+        .checked_mul(1000)
+        .ok_or(MempoolError::FeeOverflow)?
+        .checked_div(total_vsize as u64)
+        .unwrap_or(0);
+
+    let package_feerate = FeeRate::from_sat_per_kvb(feerate_sat_kvb);
+
+    Ok((total_fee, total_vsize, package_feerate))
+}
+
+/// Pre-validate a single transaction in package context.
+///
+/// Runs all validation checks WITHOUT calling finalize_tx.
+/// Returns ValidationWorkspace with all computed state.
+///
+/// IMPORTANT: Reuses Arc<Transaction> to avoid unnecessary cloning.
+pub fn pre_validate_package_tx<Block, Client>(
+    tx: Arc<Transaction>,
+    inner: &MemPoolInner,
+    coins_cache: &mut CoinsViewCache<Block, Client>,
+    options: &MemPoolOptions,
+    current_height: u32,
+    best_block: Block::Hash,
+    package_feerate: FeeRate,
+) -> Result<ValidationWorkspace, MempoolError>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
+    Client::Api: SubcoinRuntimeApi<Block>,
+{
+    // Create workspace with Arc (no cloning)
+    let mut ws = ValidationWorkspace::new(tx);
+
+    // Run pre_checks (may relax feerate check for CPFP)
+    match pre_checks(
+        &mut ws,
+        inner,
+        coins_cache,
+        options,
+        current_height,
+        best_block,
+    ) {
+        Ok(()) => {}
+        Err(MempoolError::FeeTooLow(msg)) => {
+            // CPFP override: if package feerate meets minimum, allow low individual fee
+            if package_feerate >= options.min_relay_fee_rate() {
+                // Override fee check - package sponsors this transaction
+                // Continue validation
+            } else {
+                return Err(MempoolError::FeeTooLow(msg));
+            }
+        }
+        Err(e) => return Err(e),
+    }
+
+    // Check package limits
+    check_package_limits(&ws, inner, options)?;
+
+    // Policy script checks
+    check_inputs(&ws, coins_cache, standard_script_verify_flags())?;
+
+    // Consensus script checks
+    check_inputs(&ws, coins_cache, mandatory_script_verify_flags())?;
+
+    // Return workspace with all validation passed
+    Ok(ws)
+}
+
+/// Validate and accept a package of transactions (two-phase commit).
+///
+/// Phase 1: Pre-validate all transactions without modifying mempool
+/// Phase 2: Finalize all transactions if all validations passed
+pub fn validate_package<Block, Client>(
+    package: &crate::types::Package,
+    inner: &mut MemPoolInner,
+    coins_cache: &mut CoinsViewCache<Block, Client>,
+    options: &MemPoolOptions,
+    current_height: u32,
+    best_block: Block::Hash,
+    current_time: i64,
+    sequence_start: u64,
+) -> Result<crate::types::PackageValidationResult, MempoolError>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
+    Client::Api: SubcoinRuntimeApi<Block>,
+{
+    // Step 1: Check package limits
+    if package.transactions.len() > options.max_package_count {
+        return Err(MempoolError::PackageTooLarge(
+            package.transactions.len(),
+            options.max_package_count,
+        ));
+    }
+
+    // Calculate total vsize
+    let total_vsize: u64 = package
+        .transactions
+        .iter()
+        .map(|tx| tx.weight().to_vbytes_ceil())
+        .sum();
+
+    if total_vsize > options.max_package_vsize {
+        return Err(MempoolError::PackageSizeTooLarge(total_vsize));
+    }
+
+    // Step 2: Topological sort (parents before children)
+    let sorted_txs = topological_sort_package(package.transactions.clone())?;
+
+    // Step 3: Calculate package feerate (with in-package outputs map)
+    let (_total_fee, _total_vsize_i64, package_feerate) =
+        calculate_package_feerate(&sorted_txs, inner, coins_cache)?;
+
+    // Step 4: Check package meets minimum feerate
+    if package_feerate < options.min_relay_fee_rate() {
+        return Err(MempoolError::PackageFeeTooLow(format!(
+            "package feerate {package_feerate:?} < min {:?}",
+            options.min_relay_fee_rate()
+        )));
+    }
+
+    // PHASE 1: Pre-validate all transactions (NO mempool modification)
+    let mut validated_workspaces = Vec::new();
+
+    for tx in &sorted_txs {
+        match pre_validate_package_tx(
+            tx.clone(),
+            inner,
+            coins_cache,
+            options,
+            current_height,
+            best_block,
+            package_feerate,
+        ) {
+            Ok(ws) => {
+                // Add to coins cache overlay for next tx in package
+                // This makes in-package parent outputs visible to children
+                coins_cache.add_mempool_coins(&ws.tx);
+                validated_workspaces.push(ws);
+            }
+            Err(e) => {
+                // Validation failed - rollback coins cache overlay
+                for ws in &validated_workspaces {
+                    coins_cache.remove_mempool_tx(&ws.tx);
+                }
+                return Err(MempoolError::PackageTxValidationFailed(
+                    tx.compute_txid(),
+                    format!("{e}"),
+                ));
+            }
+        }
+    }
+
+    // PHASE 2: All validations passed - finalize all transactions
+    let mut accepted = Vec::new();
+    let mut sequence = sequence_start;
+
+    for ws in validated_workspaces {
+        let txid = ws.tx.compute_txid();
+        finalize_tx(
+            ws,
+            inner,
+            coins_cache,
+            current_height,
+            current_time,
+            sequence,
+        )?;
+        accepted.push(txid);
+        sequence += 1;
+    }
+
+    Ok(crate::types::PackageValidationResult {
+        accepted,
+        package_feerate,
+    })
 }

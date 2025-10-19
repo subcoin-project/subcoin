@@ -78,6 +78,15 @@ pub struct MemPoolOptions {
 
     /// Maximum number of transactions that can be replaced (BIP125 Rule 6).
     pub max_replacement_txs: usize,
+
+    /// Enable package relay/CPFP.
+    pub enable_package_relay: bool,
+
+    /// Maximum number of transactions in a package.
+    pub max_package_count: usize,
+
+    /// Maximum total virtual size of package in vbytes.
+    pub max_package_vsize: u64,
 }
 
 impl Default for MemPoolOptions {
@@ -94,6 +103,9 @@ impl Default for MemPoolOptions {
             limits: MemPoolLimits::default(),
             enable_rbf: true,
             max_replacement_txs: 100,
+            enable_package_relay: true,
+            max_package_count: 25,
+            max_package_vsize: 101_000,
         }
     }
 }
