@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 /// Handle to entry in mempool arena (not an iterator).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntryId(pub(crate) DefaultKey);
 
 /// Fee rate in satoshis per virtual kilobyte.

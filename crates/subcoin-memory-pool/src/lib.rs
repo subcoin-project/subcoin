@@ -10,11 +10,13 @@
 //!     - The mempool tracks transaction dependencies to ensure that transactions are minded the
 //!     correct order.
 
+mod arena;
 mod coins_view;
 mod options;
 mod policy;
 mod types;
 
+pub use self::arena::{MemPoolArena, TxMemPoolEntry};
 pub use self::coins_view::CoinsViewCache;
 use self::options::MemPoolOptions;
 use self::policy::{StandardTxError, is_standard_tx};
