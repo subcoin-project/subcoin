@@ -71,13 +71,13 @@ pub fn is_standard_tx(
     let mut data_out = 0;
 
     for output in &tx.output {
-        let which_type = solve(output.script_pubkey);
+        let which_type = solve(&output.script_pubkey);
 
-        if !is_standard(&which_type) {
+        if !is_standard(&which_type, &output.script_pubkey, max_datacarrier_bytes) {
             return Err(StandardTxError::ScriptPubkey);
         }
 
-        match which_type {
+        match &which_type {
             TxoutType::NullData => {
                 data_out += 1;
 
@@ -86,7 +86,7 @@ pub fn is_standard_tx(
                     return Err(StandardTxError::MultiOpReturn);
                 }
             }
-            TxoutType::Multisig if !permit_bare_multisig => {
+            TxoutType::Multisig { .. } if !permit_bare_multisig => {
                 return Err(StandardTxError::BareMultisig);
             }
             _ => {}
@@ -100,7 +100,11 @@ pub fn is_standard_tx(
     Ok(())
 }
 
-fn is_standard(which_type: &TxoutType, max_datacarrier_bytes: usize) -> bool {
+fn is_standard(
+    which_type: &TxoutType,
+    script_pubkey: &Script,
+    max_datacarrier_bytes: usize,
+) -> bool {
     match which_type {
         TxoutType::NonStandard => return false,
         TxoutType::Multisig {
@@ -108,11 +112,11 @@ fn is_standard(which_type: &TxoutType, max_datacarrier_bytes: usize) -> bool {
             keys_count: n,
             keys: _,
         } => {
-            if n < 1 && n > 3 {
+            if *n < 1 || *n > 3 {
                 return false;
             }
 
-            if m < 1 && m > n {
+            if *m < 1 || *m > *n {
                 return false;
             }
         }

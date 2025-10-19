@@ -6,7 +6,7 @@ use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::consensus::{Decodable, Encodable};
 use bitcoin::constants::genesis_block;
 use bitcoin::hashes::Hash;
-use bitcoin::{Block as BitcoinBlock, BlockHash, Transaction, Txid, Weight};
+use bitcoin::{Block as BitcoinBlock, BlockHash, OutPoint, Transaction, TxOut, Txid, Weight};
 use codec::{Decode, Encode};
 use sc_client_api::AuxStore;
 use sp_blockchain::HeaderBackend;
@@ -433,4 +433,28 @@ pub fn convert_to_bitcoin_block<
         .collect();
 
     Ok(BitcoinBlock { header, txdata })
+}
+
+/// Marker height for coins that exist only in the mempool.
+pub const MEMPOOL_HEIGHT: u32 = 0x7FFFFFFF;
+
+/// UTXO coin with metadata for mempool validation.
+#[derive(Debug, Clone)]
+pub struct Coin {
+    /// The transaction output.
+    pub output: TxOut,
+    /// Block height where this coin was created (MEMPOOL_HEIGHT for mempool coins).
+    pub height: u32,
+    /// Whether this coin is from a coinbase transaction.
+    pub is_coinbase: bool,
+}
+
+/// Runtime API trait for UTXO queries (to be implemented by runtime).
+pub trait SubcoinRuntimeApi<Block: BlockT> {
+    /// Batch query UTXOs by outpoints.
+    fn batch_get_utxos(
+        &self,
+        at: Block::Hash,
+        outpoints: Vec<OutPoint>,
+    ) -> sp_blockchain::Result<Vec<Option<Coin>>>;
 }

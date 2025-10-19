@@ -10,6 +10,9 @@ license.workspace = true
 bitcoin = { workspace = true }
 sc-client-api = { workspace = true }
 sc-transaction-pool-api = { workspace = true }
+schnellru = "0.2"
+slotmap = "1.0"
+sp-api = { workspace = true }
 sp-runtime = { workspace = true }
 subcoin-primitives = { workspace = true }
 subcoin-script = { workspace = true }
