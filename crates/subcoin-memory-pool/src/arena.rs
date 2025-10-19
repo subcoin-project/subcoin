@@ -212,7 +212,7 @@ impl MemPoolArena {
         &mut self,
         id: EntryId,
         size_delta: i64,
-        fee_delta: bitcoin::Amount,
+        fee_delta: bitcoin::SignedAmount,
         count_delta: i64,
         sigops_delta: i64,
     ) {
@@ -229,9 +229,11 @@ impl MemPoolArena {
         // Mutate entry
         let entry = &mut self.entries[id.0];
         entry.size_with_ancestors += size_delta;
-        entry.fees_with_ancestors = bitcoin::Amount::from_sat(
-            (entry.fees_with_ancestors.to_sat() as i64 + fee_delta.to_sat() as i64) as u64,
-        );
+        entry.fees_with_ancestors =
+            (bitcoin::SignedAmount::from_sat(entry.fees_with_ancestors.to_sat() as i64)
+                + fee_delta)
+                .to_unsigned()
+                .expect("Ancestor fees cannot go negative");
         entry.count_with_ancestors = (entry.count_with_ancestors as i64 + count_delta) as u64;
         entry.sigops_with_ancestors += sigops_delta;
 
@@ -253,7 +255,7 @@ impl MemPoolArena {
         &mut self,
         id: EntryId,
         size_delta: i64,
-        fee_delta: bitcoin::Amount,
+        fee_delta: bitcoin::SignedAmount,
         count_delta: i64,
     ) {
         let entry = &self.entries[id.0];
@@ -267,9 +269,11 @@ impl MemPoolArena {
         // Mutate
         let entry = &mut self.entries[id.0];
         entry.size_with_descendants += size_delta;
-        entry.fees_with_descendants = bitcoin::Amount::from_sat(
-            (entry.fees_with_descendants.to_sat() as i64 + fee_delta.to_sat() as i64) as u64,
-        );
+        entry.fees_with_descendants =
+            (bitcoin::SignedAmount::from_sat(entry.fees_with_descendants.to_sat() as i64)
+                + fee_delta)
+                .to_unsigned()
+                .expect("Descendant fees cannot go negative");
         entry.count_with_descendants = (entry.count_with_descendants as i64 + count_delta) as u64;
 
         // Recompute and cache

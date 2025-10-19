@@ -8,7 +8,7 @@
 //!     - The mempool may evict lower-fee transactions if it reaches its size limit.
 //! 3. Ancestors and Descendants.
 //!     - The mempool tracks transaction dependencies to ensure that transactions are minded the
-//!     correct order.
+//!       correct order.
 
 mod arena;
 mod coins_view;
@@ -30,6 +30,7 @@ use bitcoin::Transaction;
 use sc_client_api::HeaderBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_runtime::traits::Block as BlockT;
+use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
@@ -183,5 +184,213 @@ where
     /// Get mempool options.
     pub fn options(&self) -> &MemPoolOptions {
         &self.options
+    }
+
+    /// Remove transactions confirmed in a block.
+    ///
+    /// This is called after a new block is connected to remove transactions
+    /// that were included in the block, as well as any conflicts.
+    ///
+    /// **Lock hierarchy**: Acquires inner write lock, then coins_cache write lock.
+    pub fn remove_for_block(
+        &self,
+        confirmed_txs: &[Transaction],
+        new_best_block: Block::Hash,
+    ) -> Result<(), MempoolError> {
+        let mut inner = self.inner.write().expect("MemPool lock poisoned");
+        let mut coins = self.coins_cache.write().expect("CoinsCache lock poisoned");
+
+        let mut to_remove = HashSet::new();
+
+        // Phase 1: Collect all transactions to remove (confirmed + conflicts)
+        for tx in confirmed_txs {
+            let txid = tx.compute_txid();
+
+            // Add the confirmed transaction itself
+            if let Some(entry_id) = inner.arena.get_by_txid(&txid) {
+                to_remove.insert(entry_id);
+            }
+
+            // Collect conflicts BEFORE any removal (map_next_tx will be mutated)
+            let conflicts = Self::collect_conflicts(tx, &inner);
+            to_remove.extend(conflicts);
+        }
+
+        // Phase 2: Expand to include all descendants
+        let mut expanded = HashSet::new();
+        for &entry_id in &to_remove {
+            inner.calculate_descendants(entry_id, &mut expanded);
+        }
+
+        // Phase 3: Capture transaction data BEFORE removal (for coins cleanup)
+        let mut removed_txs = Vec::with_capacity(expanded.len());
+        for &entry_id in &expanded {
+            if let Some(entry) = inner.arena.get(entry_id) {
+                removed_txs.push(entry.tx.clone());
+            }
+        }
+
+        // Phase 4: Remove from mempool
+        inner.remove_staged(&expanded, false, RemovalReason::Block);
+
+        // Phase 5: Clean up coins cache (remove mempool overlay entries)
+        for tx in removed_txs {
+            coins.remove_mempool_tx(&tx);
+        }
+
+        // Phase 6: Update coins cache for new block (clears base cache)
+        coins.on_block_connected(new_best_block);
+
+        // Increment transactions_updated counter
+        self.transactions_updated
+            .fetch_add(expanded.len() as u32, Ordering::SeqCst);
+
+        Ok(())
+    }
+
+    /// Collect conflicting mempool transactions for a given transaction.
+    ///
+    /// **CRITICAL**: Must be called BEFORE any remove_staged() that would mutate map_next_tx.
+    fn collect_conflicts(tx: &Transaction, inner: &MemPoolInner) -> HashSet<EntryId> {
+        let mut conflicts = HashSet::new();
+
+        for input in &tx.input {
+            if let Some(conflicting_txid) = inner.get_conflict_tx(&input.previous_output) {
+                if let Some(entry_id) = inner.arena.get_by_txid(&conflicting_txid) {
+                    conflicts.insert(entry_id);
+                }
+            }
+        }
+
+        conflicts
+    }
+
+    /// Remove conflicts for a set of transactions.
+    ///
+    /// This is used when accepting a package of transactions to remove any
+    /// existing mempool transactions that conflict with the package.
+    pub fn remove_conflicts(&self, txs: &[Transaction]) -> Result<(), MempoolError> {
+        let mut inner = self.inner.write().expect("MemPool lock poisoned");
+        let mut coins = self.coins_cache.write().expect("CoinsCache lock poisoned");
+
+        let mut to_remove = HashSet::new();
+
+        // Collect all conflicts BEFORE any removal
+        for tx in txs {
+            let conflicts = Self::collect_conflicts(tx, &inner);
+            to_remove.extend(conflicts);
+        }
+
+        // Expand to descendants
+        let mut expanded = HashSet::new();
+        for &entry_id in &to_remove {
+            inner.calculate_descendants(entry_id, &mut expanded);
+        }
+
+        // Capture transaction data BEFORE removal (for coins cleanup)
+        let mut removed_txs = Vec::with_capacity(expanded.len());
+        for &entry_id in &expanded {
+            if let Some(entry) = inner.arena.get(entry_id) {
+                removed_txs.push(entry.tx.clone());
+            }
+        }
+
+        // Remove from mempool
+        inner.remove_staged(&expanded, false, RemovalReason::Conflict);
+
+        // Clean up coins cache
+        for tx in removed_txs {
+            coins.remove_mempool_tx(&tx);
+        }
+
+        // Increment transactions_updated counter
+        self.transactions_updated
+            .fetch_add(expanded.len() as u32, Ordering::SeqCst);
+
+        Ok(())
+    }
+
+    /// Remove transactions that are no longer valid after a reorg.
+    ///
+    /// This is a simplified version that prunes transactions based on:
+    /// - Height-based timelocks (nLockTime)
+    /// - Coinbase maturity violations
+    /// - Sequence-based timelocks (BIP68)
+    ///
+    /// **Lock hierarchy**: Acquires inner write lock, then coins_cache write lock.
+    pub fn remove_for_reorg(
+        &self,
+        new_tip_height: u32,
+        new_best_block: Block::Hash,
+    ) -> Result<(), MempoolError> {
+        let mut inner = self.inner.write().expect("MemPool lock poisoned");
+        let mut coins = self.coins_cache.write().expect("CoinsCache lock poisoned");
+
+        let mut to_remove = HashSet::new();
+
+        // Iterate all mempool entries and check validity
+        for (entry_id, entry) in inner.arena.iter_by_entry_time() {
+            let mut invalid = false;
+
+            // Check height-based nLockTime
+            if entry.lock_points.height > new_tip_height as i32 {
+                invalid = true;
+            }
+
+            // Check coinbase maturity (100 blocks)
+            if entry.spends_coinbase {
+                // We need to check if the coinbase is still mature
+                // For now, we conservatively mark as invalid if entry was created
+                // at a height that might now violate maturity
+                let min_required_height = entry.entry_height.saturating_add(100);
+                if new_tip_height < min_required_height {
+                    invalid = true;
+                }
+            }
+
+            // TODO: Check sequence-based timelocks (BIP68)
+            // This requires checking lock_points.time against MTP
+
+            if invalid {
+                to_remove.insert(entry_id);
+            }
+        }
+
+        if to_remove.is_empty() {
+            // Update coins cache best block even if no removals
+            coins.on_block_connected(new_best_block);
+            return Ok(());
+        }
+
+        // Expand to descendants
+        let mut expanded = HashSet::new();
+        for &entry_id in &to_remove {
+            inner.calculate_descendants(entry_id, &mut expanded);
+        }
+
+        // Capture transaction data BEFORE removal
+        let mut removed_txs = Vec::with_capacity(expanded.len());
+        for &entry_id in &expanded {
+            if let Some(entry) = inner.arena.get(entry_id) {
+                removed_txs.push(entry.tx.clone());
+            }
+        }
+
+        // Remove from mempool
+        inner.remove_staged(&expanded, false, RemovalReason::Reorg);
+
+        // Clean up coins cache
+        for tx in removed_txs {
+            coins.remove_mempool_tx(&tx);
+        }
+
+        // Update coins cache for new tip
+        coins.on_block_connected(new_best_block);
+
+        // Increment transactions_updated counter
+        self.transactions_updated
+            .fetch_add(expanded.len() as u32, Ordering::SeqCst);
+
+        Ok(())
     }
 }

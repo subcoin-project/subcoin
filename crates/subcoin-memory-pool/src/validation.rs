@@ -94,7 +94,7 @@ pub fn pre_checks<Block, Client>(
     coins_cache: &mut CoinsViewCache<Block, Client>,
     options: &MemPoolOptions,
     current_height: u32,
-    best_block: Block::Hash,
+    _best_block: Block::Hash,
 ) -> Result<(), MempoolError>
 where
     Block: BlockT,
@@ -363,7 +363,7 @@ where
 
     // Update ancestor state for all ancestors
     let size_delta = ws.vsize;
-    let fee_delta = ws.modified_fee;
+    let fee_delta = bitcoin::SignedAmount::from_sat(ws.modified_fee.to_sat() as i64);
     let sigops_delta = ws.sigop_cost;
 
     for &ancestor_id in &ancestors {

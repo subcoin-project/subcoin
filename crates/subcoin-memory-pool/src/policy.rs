@@ -91,7 +91,7 @@ pub fn is_standard_tx(
             _ => {}
         }
 
-        if is_dust(&output, dust_relay_fee) {
+        if is_dust(output, dust_relay_fee) {
             return Err(StandardTxError::Dust);
         }
     }

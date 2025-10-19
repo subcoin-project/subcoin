@@ -135,14 +135,20 @@ impl MemPoolInner {
                 // Remove from unbroadcast set
                 self.unbroadcast.remove(&entry.tx.compute_txid());
 
-                // If we're updating descendants, we need to recalculate their state
-                // (This is a placeholder - full implementation would update all descendants)
-                if update_descendants {
-                    for &child_id in &entry.children {
-                        // TODO: Update child's ancestor state
-                        let _ = child_id;
-                    }
-                }
+                // NOTE: update_descendants parameter is currently unused because
+                // all removal paths in Phase 4 remove entire descendant clusters.
+                // No child ever survives its parent being removed, so there's no
+                // ancestor state to update.
+                //
+                // TODO (Phase 5 - RBF/package handling): When implementing partial
+                // removal where children can survive their parents, add Bitcoin Core's
+                // UpdateForRemoveFromMempool logic here. This requires:
+                // 1. Track the exact ancestor set being removed per surviving child
+                // 2. Subtract each removed ancestor's stats exactly once
+                // 3. Avoid double-counting ancestors shared between multiple parents
+                //
+                // Reference: Bitcoin Core's CTxMemPool::UpdateForRemoveFromMempool
+                let _ = update_descendants;
             }
         }
 
