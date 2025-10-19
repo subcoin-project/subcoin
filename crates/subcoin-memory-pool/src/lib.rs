@@ -127,8 +127,11 @@ where
         // Stage 2: Check package limits (ancestors/descendants)
         validation::check_package_limits(&ws, &inner, &self.options)?;
 
-        // TODO: Stage 3: PolicyScriptChecks (standard script validation)
-        // TODO: Stage 4: ConsensusScriptChecks (consensus script validation)
+        // Stage 3: PolicyScriptChecks (standard script validation)
+        validation::check_inputs(&ws, &mut coins, validation::standard_script_verify_flags())?;
+
+        // Stage 4: ConsensusScriptChecks (consensus script validation)
+        validation::check_inputs(&ws, &mut coins, validation::mandatory_script_verify_flags())?;
 
         // Stage 5: Finalize - add to mempool
         let sequence = self.sequence_number.fetch_add(1, Ordering::SeqCst);
@@ -332,7 +335,7 @@ where
         for (entry_id, entry) in inner.arena.iter_by_entry_time() {
             let mut invalid = false;
 
-            // Check height-based nLockTime
+            // Check height-based nLockTime (basic check)
             if entry.lock_points.height > new_tip_height as i32 {
                 invalid = true;
             }
@@ -348,8 +351,8 @@ where
                 }
             }
 
-            // TODO: Check sequence-based timelocks (BIP68)
-            // This requires checking lock_points.time against MTP
+            // TODO (Phase 6): Implement full BIP68 sequence lock validation. This requires
+            // per-input block metadata and chain MTP from the runtime API.
 
             if invalid {
                 to_remove.insert(entry_id);

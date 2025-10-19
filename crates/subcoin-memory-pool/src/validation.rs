@@ -11,15 +11,18 @@ use crate::coins_view::CoinsViewCache;
 use crate::inner::MemPoolInner;
 use crate::options::MemPoolOptions;
 use crate::policy::is_standard_tx;
-use crate::types::{EntryId, LockPoints, MempoolError};
+use crate::types::{EntryId, FeeRate, LockPoints, MempoolError};
+use bitcoin::absolute::{LOCK_TIME_THRESHOLD, LockTime};
 use bitcoin::{Transaction, Weight};
 use sc_client_api::HeaderBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_runtime::traits::Block as BlockT;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 use std::sync::Arc;
 use subcoin_primitives::SubcoinRuntimeApi;
 use subcoin_primitives::consensus::check_transaction_sanity;
+use subcoin_script::{TransactionSignatureChecker, VerifyFlags, verify_script};
 
 /// Workspace for validating a single transaction.
 ///
@@ -77,6 +80,9 @@ impl ValidationWorkspace {
     }
 }
 
+/// Maximum standard sigop cost for a single transaction (80,000 weight units).
+const MAX_STANDARD_TX_SIGOPS_COST: i64 = 80_000;
+
 /// Pre-validation checks before script execution.
 ///
 /// Corresponds to Bitcoin Core's `PreChecks()` function.
@@ -84,7 +90,7 @@ impl ValidationWorkspace {
 /// - Transaction sanity (CheckTransaction)
 /// - Not coinbase
 /// - Standardness (if required)
-/// - Finality (nLockTime and BIP68)
+/// - Finality (nLockTime; BIP68 deferred)
 /// - Not already in mempool
 /// - Input availability
 /// - Fee requirements
@@ -113,11 +119,12 @@ where
 
     // 3. Check standardness
     if options.require_standard {
+        let dust_relay_feerate = FeeRate::from_sat_per_kvb(options.dust_relay_feerate);
         is_standard_tx(
             tx,
             options.max_datacarrier_bytes,
             options.permit_bare_multisig,
-            options.dust_relay_feerate,
+            dust_relay_feerate,
         )
         .map_err(|e| MempoolError::NotStandard(format!("{e:?}")))?;
     }
@@ -146,6 +153,8 @@ where
     let outpoints: Vec<_> = tx.input.iter().map(|txin| txin.previous_output).collect();
     coins_cache.ensure_coins(&outpoints)?;
 
+    let mut prev_outputs: HashMap<_, _> = HashMap::with_capacity(outpoints.len());
+
     // 8. Check all inputs are available
     for outpoint in &outpoints {
         if !coins_cache.have_coin(outpoint) {
@@ -165,6 +174,8 @@ where
         input_value = input_value
             .checked_add(coin.output.value)
             .ok_or(MempoolError::FeeOverflow)?;
+
+        prev_outputs.insert(*outpoint, coin.output.clone());
 
         if coin.is_coinbase {
             spends_coinbase = true;
@@ -196,19 +207,36 @@ where
         )));
     }
 
-    // 11. TODO: Check finality (nLockTime, nSequence/BIP68)
-    // For now, we accept all transactions
+    // 11. Check finality (nLockTime only; BIP68 sequence locks deferred)
+    let current_time_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_secs() as u32;
 
-    // 12. Store computed values in workspace
+    if !is_final_tx(tx, current_height, current_time_secs) {
+        return Err(MempoolError::NonFinal);
+    }
+
+    // 12. Calculate sigop cost
+    let sigop_cost = ws
+        .tx
+        .total_sigop_cost(|outpoint| prev_outputs.get(outpoint).cloned());
+    let sigop_cost = i64::try_from(sigop_cost).expect("sigop cost must fit into i64");
+
+    if sigop_cost > MAX_STANDARD_TX_SIGOPS_COST {
+        return Err(MempoolError::TooManySigops(sigop_cost));
+    }
+
+    // 13. Store computed values in workspace
     ws.base_fee = base_fee;
     ws.modified_fee = base_fee; // TODO: Apply priority deltas
     ws.spends_coinbase = spends_coinbase;
-
-    // TODO: Calculate sigop cost
-    ws.sigop_cost = 0;
-
-    // TODO: Calculate lock points
-    ws.lock_points = LockPoints::default();
+    ws.sigop_cost = sigop_cost;
+    ws.lock_points = LockPoints {
+        height: current_height as i32,
+        time: i64::from(current_time_secs),
+        max_input_block: None,
+    };
 
     Ok(())
 }
@@ -406,4 +434,87 @@ where
     inner.unbroadcast.insert(txid);
 
     Ok(entry_id)
+}
+
+/// Returns the mandatory consensus script verification flags.
+pub fn mandatory_script_verify_flags() -> VerifyFlags {
+    VerifyFlags::P2SH
+        | VerifyFlags::DERSIG
+        | VerifyFlags::NULLDUMMY
+        | VerifyFlags::CHECKLOCKTIMEVERIFY
+        | VerifyFlags::CHECKSEQUENCEVERIFY
+        | VerifyFlags::WITNESS
+        | VerifyFlags::TAPROOT
+}
+
+/// Returns the standard policy script verification flags.
+pub fn standard_script_verify_flags() -> VerifyFlags {
+    mandatory_script_verify_flags()
+        | VerifyFlags::STRICTENC
+        | VerifyFlags::LOW_S
+        | VerifyFlags::SIGPUSHONLY
+        | VerifyFlags::MINIMALDATA
+        | VerifyFlags::MINIMALIF
+        | VerifyFlags::NULLFAIL
+        | VerifyFlags::WITNESS_PUBKEYTYPE
+        | VerifyFlags::CLEANSTACK
+        | VerifyFlags::DISCOURAGE_UPGRADABLE_NOPS
+        | VerifyFlags::DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM
+        | VerifyFlags::DISCOURAGE_UPGRADABLE_TAPROOT_VERSION
+        | VerifyFlags::DISCOURAGE_UPGRADABLE_PUBKEYTYPE
+        | VerifyFlags::DISCOURAGE_OP_SUCCESS
+        | VerifyFlags::CONST_SCRIPTCODE
+}
+
+/// Verify transaction scripts under the provided verification flags.
+pub fn check_inputs<Block, Client>(
+    ws: &ValidationWorkspace,
+    coins_cache: &mut CoinsViewCache<Block, Client>,
+    flags: VerifyFlags,
+) -> Result<(), MempoolError>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
+    Client::Api: SubcoinRuntimeApi<Block>,
+{
+    let tx = &ws.tx;
+
+    for (input_index, txin) in tx.input.iter().enumerate() {
+        let coin = coins_cache
+            .get_coin(&txin.previous_output)?
+            .ok_or(MempoolError::MissingInputs)?;
+
+        let mut checker =
+            TransactionSignatureChecker::new(tx, input_index, coin.output.value.to_sat());
+
+        verify_script(
+            &txin.script_sig,
+            &coin.output.script_pubkey,
+            &txin.witness,
+            &flags,
+            &mut checker,
+        )
+        .map_err(|e| MempoolError::ScriptValidationFailed(format!("input {input_index}: {e}")))?;
+    }
+
+    Ok(())
+}
+
+/// Check whether the transaction is final with respect to the current height and time.
+fn is_final_tx(tx: &Transaction, height: u32, block_time: u32) -> bool {
+    if tx.lock_time == LockTime::ZERO {
+        return true;
+    }
+
+    let lock_time_limit = if tx.lock_time.to_consensus_u32() < LOCK_TIME_THRESHOLD {
+        height
+    } else {
+        block_time
+    };
+
+    if tx.lock_time.to_consensus_u32() < lock_time_limit {
+        return true;
+    }
+
+    tx.input.iter().all(|txin| txin.sequence.is_final())
 }

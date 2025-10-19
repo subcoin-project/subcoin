@@ -55,6 +55,9 @@ pub enum MempoolError {
     #[error("Fee too low: {0}")]
     FeeTooLow(String),
 
+    #[error("Too many sigops: {0}")]
+    TooManySigops(i64),
+
     #[error("Too many ancestors: {0}")]
     TooManyAncestors(usize),
 
@@ -93,6 +96,9 @@ pub enum MempoolError {
 
     #[error("Transaction conflicts with mempool: {0}")]
     TxConflict(String),
+
+    #[error("Script validation failed: {0}")]
+    ScriptValidationFailed(String),
 
     #[error(transparent)]
     TxError(#[from] subcoin_primitives::consensus::TxError),

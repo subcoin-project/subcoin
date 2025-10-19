@@ -1,3 +1,4 @@
+use crate::types::FeeRate;
 use bitcoin::transaction::Version;
 use bitcoin::{Amount, Script, Transaction, TxOut, Weight};
 use subcoin_script::solver::{TxoutType, solve};
@@ -41,7 +42,7 @@ pub fn is_standard_tx(
     tx: &Transaction,
     max_datacarrier_bytes: usize,
     permit_bare_multisig: bool,
-    dust_relay_fee: u64,
+    dust_relay_feerate: FeeRate,
 ) -> Result<(), StandardTxError> {
     if tx.version < Version::ONE || tx.version > TX_MAX_STANDARD_VERSION {
         return Err(StandardTxError::Version);
@@ -91,7 +92,7 @@ pub fn is_standard_tx(
             _ => {}
         }
 
-        if is_dust(output, dust_relay_fee) {
+        if is_dust(output, dust_relay_feerate) {
             return Err(StandardTxError::Dust);
         }
     }
@@ -131,11 +132,21 @@ fn is_standard(
 }
 
 /// Check if an output is dust (value too small compared to fee)
-fn is_dust(output: &TxOut, dust_relay_fee: u64) -> bool {
-    let dust_threshold = get_dust_threshold(output);
+fn is_dust(output: &TxOut, dust_relay_feerate: FeeRate) -> bool {
+    let dust_threshold = get_dust_threshold(output, dust_relay_feerate);
     output.value < dust_threshold
 }
 
-fn get_dust_threshold(txout: &TxOut) -> Amount {
-    todo!()
+fn get_dust_threshold(txout: &TxOut, dust_relay_feerate: FeeRate) -> Amount {
+    let spend_vbytes: i64 = match solve(&txout.script_pubkey) {
+        // Standard estimates sourced from Bitcoin Core's GetDustThreshold
+        TxoutType::PubKey(_) | TxoutType::PubKeyHash(_) => 148,
+        TxoutType::WitnessV0KeyHash(_) => 68,
+        TxoutType::WitnessV0ScriptHash(_) => 104,
+        TxoutType::ScriptHash(_) => 91,
+        TxoutType::WitnessV1Taproot(_) => 58, // approximate vbytes for key path spend
+        _ => 148,
+    };
+
+    dust_relay_feerate.get_fee(spend_vbytes)
 }
