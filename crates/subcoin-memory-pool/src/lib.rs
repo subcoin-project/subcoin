@@ -14,7 +14,7 @@ mod options;
 mod policy;
 
 use self::options::MemPoolOptions;
-use self::policy::{is_standard_tx, StandardTxError};
+use self::policy::{StandardTxError, is_standard_tx};
 use bitcoin::Transaction;
 use sc_client_api::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;

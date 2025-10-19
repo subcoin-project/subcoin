@@ -9123,7 +9123,7 @@ dependencies = [
  "sp-runtime",
  "subcoin-primitives",
  "subcoin-script",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

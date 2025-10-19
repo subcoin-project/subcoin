@@ -46,7 +46,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subcoin_primitives::consensus::check_transaction_sanity;
+use subcoin_primitives::consensus::{TxError, check_transaction_sanity};
 use subcoin_primitives::runtime::{Coin, bitcoin_block_subsidy};
 use subcoin_primitives::{CoinStorageKey, MAX_BLOCK_WEIGHT};
 use tx_verify::{get_legacy_sig_op_count, is_final_tx};
