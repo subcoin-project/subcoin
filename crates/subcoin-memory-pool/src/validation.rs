@@ -1022,3 +1022,99 @@ where
         package_feerate,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bitcoin::hashes::Hash;
+    use bitcoin::{absolute::LockTime, transaction, Amount, ScriptBuf, Sequence, TxIn, TxOut};
+
+    fn create_test_tx(inputs: Vec<(Txid, u32)>, outputs: Vec<Amount>) -> Transaction {
+        Transaction {
+            version: transaction::Version::TWO,
+            lock_time: LockTime::ZERO,
+            input: inputs
+                .into_iter()
+                .map(|(txid, vout)| TxIn {
+                    previous_output: bitcoin::OutPoint { txid, vout },
+                    script_sig: ScriptBuf::new(),
+                    sequence: Sequence::MAX,
+                    witness: bitcoin::Witness::new(),
+                })
+                .collect(),
+            output: outputs
+                .into_iter()
+                .map(|value| TxOut {
+                    value,
+                    script_pubkey: ScriptBuf::new(),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn test_topological_sort_chain() {
+        let tx_a = Arc::new(create_test_tx(vec![], vec![Amount::from_sat(100_000)]));
+        let txid_a = tx_a.compute_txid();
+        let tx_b = Arc::new(create_test_tx(
+            vec![(txid_a, 0)],
+            vec![Amount::from_sat(90_000)],
+        ));
+        let txid_b = tx_b.compute_txid();
+        let tx_c = Arc::new(create_test_tx(
+            vec![(txid_b, 0)],
+            vec![Amount::from_sat(80_000)],
+        ));
+
+        let sorted =
+            topological_sort_package(vec![tx_c.clone(), tx_a.clone(), tx_b.clone()]).unwrap();
+
+        assert_eq!(sorted[0].compute_txid(), txid_a);
+        assert_eq!(sorted[1].compute_txid(), txid_b);
+        assert_eq!(sorted[2].compute_txid(), tx_c.compute_txid());
+    }
+
+    #[test]
+    fn test_topological_sort_cpfp() {
+        let tx_a = Arc::new(create_test_tx(vec![], vec![Amount::from_sat(100_000)]));
+        let tx_b = Arc::new(create_test_tx(vec![], vec![Amount::from_sat(50_000)]));
+        let txid_a = tx_a.compute_txid();
+        let txid_b = tx_b.compute_txid();
+        let tx_c = Arc::new(create_test_tx(
+            vec![(txid_a, 0), (txid_b, 0)],
+            vec![Amount::from_sat(140_000)],
+        ));
+        let txid_c = tx_c.compute_txid();
+
+        let sorted = topological_sort_package(vec![tx_c.clone(), tx_b.clone(), tx_a.clone()])
+            .unwrap();
+
+        let pos: std::collections::HashMap<_, _> = sorted
+            .iter()
+            .enumerate()
+            .map(|(i, tx)| (tx.compute_txid(), i))
+            .collect();
+
+        assert!(pos[&txid_a] < pos[&txid_c]);
+        assert!(pos[&txid_b] < pos[&txid_c]);
+    }
+
+    // Note: Actual cycle detection test would require creating transactions
+    // with circular dependencies, which is cryptographically impossible in Bitcoin
+    // (you can't know the txid before creating the transaction).
+    // The cycle detection code path is exercised indirectly through chain tests.
+
+    #[test]
+    fn test_topological_sort_empty() {
+        let sorted = topological_sort_package(vec![]).unwrap();
+        assert_eq!(sorted.len(), 0);
+    }
+
+    #[test]
+    fn test_topological_sort_single() {
+        let tx = Arc::new(create_test_tx(vec![], vec![Amount::from_sat(100_000)]));
+        let sorted = topological_sort_package(vec![tx.clone()]).unwrap();
+        assert_eq!(sorted.len(), 1);
+        assert_eq!(sorted[0].compute_txid(), tx.compute_txid());
+    }
+}

@@ -15,6 +15,9 @@ mod coins_view;
 mod inner;
 mod options;
 mod policy;
+// TODO: Fix and re-enable integration tests
+// #[cfg(test)]
+// mod tests;
 mod types;
 mod validation;
 

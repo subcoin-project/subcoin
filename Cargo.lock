@@ -9132,6 +9132,7 @@ dependencies = [
  "schnellru",
  "slotmap",
  "sp-api",
+ "sp-blockchain",
  "sp-runtime",
  "subcoin-primitives",
  "subcoin-script",

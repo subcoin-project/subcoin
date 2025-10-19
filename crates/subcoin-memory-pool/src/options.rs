@@ -241,9 +241,9 @@ mod tests {
     fn test_mempool_options_defaults() {
         let options = MemPoolOptions::default();
 
-        assert_eq!(options.max_size_bytes, 300);
+        assert_eq!(options.max_size_bytes, 300_000_000);
         assert_eq!(options.min_relay_feerate, 1000);
-        assert_eq!(options.expiry_seconds, 336);
+        assert_eq!(options.expiry_seconds, 336 * 60 * 60);
         assert_eq!(options.limits.max_ancestors, 25);
     }
 }
