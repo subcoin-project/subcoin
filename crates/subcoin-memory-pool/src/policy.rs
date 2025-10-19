@@ -1,6 +1,5 @@
 use bitcoin::transaction::Version;
-use bitcoin::{Amount, Script, Transaction, TxOut, Weight, WitnessVersion};
-use std::collections::HashSet;
+use bitcoin::{Amount, Script, Transaction, TxOut, Weight};
 use subcoin_script::solver::{TxoutType, solve};
 
 const TX_MAX_STANDARD_VERSION: Version = Version(3);

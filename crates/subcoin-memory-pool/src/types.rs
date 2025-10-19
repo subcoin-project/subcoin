@@ -1,9 +1,8 @@
 //! Core type definitions for the mempool.
 
-use bitcoin::{Amount, BlockHash, OutPoint as COutPoint, Transaction, Txid, Weight, Wtxid};
+use bitcoin::{Amount, BlockHash, Txid};
 use slotmap::DefaultKey;
 use std::collections::HashSet;
-use std::sync::Arc;
 
 /// Handle to entry in mempool arena (not an iterator).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

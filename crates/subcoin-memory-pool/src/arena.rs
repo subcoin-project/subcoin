@@ -18,9 +18,9 @@ use std::sync::Arc;
 pub struct AncestorScoreKey {
     /// Negated feerate for reverse sort (higher fee = lower value = earlier in BTreeSet).
     /// Uses fraction (fee * 1_000_000, size) for exact comparison without floats.
-    neg_feerate_frac: (i64, i64),
+    pub neg_feerate_frac: (i64, i64),
     /// Tie-breaker (deterministic ordering).
-    txid: Txid,
+    pub txid: Txid,
 }
 
 /// Comparable key for descendant score index.
@@ -30,9 +30,9 @@ pub struct AncestorScoreKey {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DescendantScoreKey {
     /// Negated feerate for reverse sort (higher fee = lower value = earlier in BTreeSet).
-    neg_feerate_frac: (i64, i64),
+    pub neg_feerate_frac: (i64, i64),
     /// Secondary sort by entry time (older first for same feerate).
-    time: i64,
+    pub time: i64,
 }
 
 /// Mempool entry with cached ancestor/descendant state.

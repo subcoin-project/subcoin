@@ -2,7 +2,7 @@
 
 use crate::arena::MemPoolArena;
 use crate::types::{EntryId, RemovalReason};
-use bitcoin::{Amount, OutPoint as COutPoint, Transaction, Txid, Wtxid};
+use bitcoin::{Amount, OutPoint as COutPoint, Txid, Wtxid};
 use std::collections::{HashMap, HashSet};
 
 /// Inner mempool state (protected by RwLock in main MemPool).

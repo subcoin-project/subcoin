@@ -16,12 +16,12 @@ mod inner;
 mod options;
 mod policy;
 mod types;
+mod validation;
 
 pub use self::arena::{MemPoolArena, TxMemPoolEntry};
 pub use self::coins_view::CoinsViewCache;
 pub use self::inner::MemPoolInner;
 pub use self::options::MemPoolOptions;
-use self::policy::{StandardTxError, is_standard_tx};
 pub use self::types::{
     EntryId, FeeRate, LockPoints, MempoolError, RemovalReason, ValidationResult,
 };
@@ -34,17 +34,6 @@ use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use subcoin_primitives::SubcoinRuntimeApi;
-use subcoin_primitives::consensus::check_transaction_sanity;
-
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("Transaction is an individual coinbase")]
-    Coinbase,
-    #[error("not a standard tx: {0:?}")]
-    NotStandard(policy::StandardTxError),
-    #[error(transparent)]
-    PreliminaryCheck(#[from] subcoin_primitives::consensus::TxError),
-}
 
 /// Thread-safe Bitcoin mempool.
 ///
@@ -108,23 +97,51 @@ where
         let mut inner = self.inner.write().expect("MemPool lock poisoned");
         let mut coins = self.coins_cache.write().expect("CoinsCache lock poisoned");
 
-        // Re-check duplicates under write lock
-        if inner.contains_wtxid(&tx.compute_wtxid()) {
-            return Err(MempoolError::AlreadyInMempool);
-        }
+        // Get current chain state
+        let best_block = coins.best_block();
+        let current_height: u32 = self
+            .client
+            .info()
+            .best_number
+            .try_into()
+            .unwrap_or_else(|_| panic!("Block number must fit into u32"));
+        let current_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs() as i64;
 
-        // TODO: Full validation pipeline
-        // For now, just basic checks
-        check_transaction_sanity(&tx)?;
+        // Create validation workspace
+        let mut ws = validation::ValidationWorkspace::new(tx);
 
-        if tx.is_coinbase() {
-            return Err(MempoolError::Coinbase);
-        }
+        // Stage 1: PreChecks (sanity, standardness, input availability, fees)
+        validation::pre_checks(
+            &mut ws,
+            &inner,
+            &mut coins,
+            &self.options,
+            current_height,
+            best_block,
+        )?;
 
-        // TODO: Implement full ATMP flow:
-        // - Batch-prefetch all input coins
-        // - Validate
-        // - Commit
+        // Stage 2: Check package limits (ancestors/descendants)
+        validation::check_package_limits(&ws, &inner, &self.options)?;
+
+        // TODO: Stage 3: PolicyScriptChecks (standard script validation)
+        // TODO: Stage 4: ConsensusScriptChecks (consensus script validation)
+
+        // Stage 5: Finalize - add to mempool
+        let sequence = self.sequence_number.fetch_add(1, Ordering::SeqCst);
+        let _entry_id = validation::finalize_tx(
+            ws,
+            &mut inner,
+            &mut coins,
+            current_height,
+            current_time,
+            sequence,
+        )?;
+
+        // Increment transactions_updated counter
+        self.transactions_updated.fetch_add(1, Ordering::SeqCst);
 
         Ok(())
     }

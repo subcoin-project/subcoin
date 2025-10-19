@@ -110,6 +110,31 @@ impl MemPoolOptions {
     pub fn expiry_duration(&self) -> Duration {
         Duration::from_secs(self.expiry_seconds as u64 * 3600)
     }
+
+    /// Get maximum number of ancestors
+    pub fn max_ancestors(&self) -> usize {
+        self.limits.max_ancestors
+    }
+
+    /// Get maximum ancestor size
+    pub fn max_ancestor_size(&self) -> i64 {
+        self.limits.max_ancestor_size_vbytes as i64
+    }
+
+    /// Get maximum number of descendants
+    pub fn max_descendants(&self) -> u64 {
+        self.limits.max_descendants as u64
+    }
+
+    /// Get maximum descendant size
+    pub fn max_descendant_size(&self) -> i64 {
+        self.limits.max_descendant_size_vbytes as i64
+    }
+
+    /// Get the minimum relay fee rate as FeeRate
+    pub fn min_relay_fee_rate(&self) -> crate::types::FeeRate {
+        crate::types::FeeRate::from_sat_per_kvb(self.min_relay_feerate)
+    }
 }
 
 /// Builder pattern for MemPoolOptions
