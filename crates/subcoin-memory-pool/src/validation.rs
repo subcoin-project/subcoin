@@ -143,14 +143,26 @@ where
         return Err(MempoolError::AlreadyInMempool);
     }
 
-    // 6. Check for conflicts with mempool transactions
+    // 6. Check for conflicts with mempool transactions (RBF handling)
+    let mut has_conflicts = false;
     for input in &tx.input {
         if let Some(conflicting_txid) = inner.get_conflict_tx(&input.previous_output) {
-            // For now, reject conflicts (TODO: RBF support)
-            return Err(MempoolError::TxConflict(format!(
-                "spends output already spent by {conflicting_txid}"
-            )));
+            has_conflicts = true;
+            ws.conflicts.insert(conflicting_txid);
         }
+    }
+
+    // If there are conflicts, check RBF policy
+    if has_conflicts {
+        if !options.enable_rbf {
+            return Err(MempoolError::TxConflict(
+                "conflicts with mempool transaction but RBF is disabled".to_string(),
+            ));
+        }
+
+        // Validate RBF rules (BIP125)
+        let conflict_set = check_rbf_policy(ws, inner, coins_cache, options)?;
+        ws.conflict_set = Some(conflict_set);
     }
 
     // 7. Batch-prefetch all input coins
@@ -311,6 +323,7 @@ pub fn check_package_limits(
 /// Finalize transaction addition to mempool.
 ///
 /// Creates TxMemPoolEntry and adds it to arena, updating ancestor/descendant state.
+/// If conflict_set is present, removes conflicting transactions first (RBF).
 pub fn finalize_tx<Block, Client>(
     ws: ValidationWorkspace,
     inner: &mut MemPoolInner,
@@ -324,6 +337,21 @@ where
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
     Client::Api: SubcoinRuntimeApi<Block>,
 {
+    // Handle RBF: Remove conflicting transactions if present
+    if let Some(conflict_set) = &ws.conflict_set {
+        // Remove from mempool (with update_descendants = true for RBF)
+        inner.remove_staged(
+            &conflict_set.all_conflicts,
+            true, // update_descendants = true for RBF
+            crate::types::RemovalReason::Replaced,
+        );
+
+        // Clean up coins cache overlay for removed transactions
+        for removed_tx in &conflict_set.removed_transactions {
+            coins_cache.remove_mempool_tx(removed_tx);
+        }
+    }
+
     // Find in-mempool parents
     let mut parents = HashSet::new();
     let mut ancestors = HashSet::new();
@@ -516,7 +544,7 @@ where
 pub fn check_rbf_policy<Block, Client>(
     ws: &ValidationWorkspace,
     inner: &MemPoolInner,
-    coins_cache: &CoinsViewCache<Block, Client>,
+    _coins_cache: &CoinsViewCache<Block, Client>,
     options: &MemPoolOptions,
 ) -> Result<ConflictSet, MempoolError>
 where

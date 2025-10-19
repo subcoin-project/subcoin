@@ -113,13 +113,21 @@ impl MemPoolInner {
     /// - Removes entries from arena
     /// - Updates map_next_tx
     /// - Updates statistics
-    /// - Does NOT update ancestor/descendant state (caller's responsibility)
+    /// - Optionally updates ancestor/descendant state for surviving children (RBF)
     pub fn remove_staged(
         &mut self,
         to_remove: &HashSet<EntryId>,
         update_descendants: bool,
         _reason: RemovalReason,
     ) {
+        // Phase 1: Collect metadata for surviving children BEFORE any removal
+        let surviving_children_metadata = if update_descendants {
+            collect_surviving_children_metadata(&self.arena, to_remove)
+        } else {
+            Vec::new()
+        };
+
+        // Phase 2: Remove entries from arena
         for &entry_id in to_remove {
             if let Some(entry) = self.arena.remove(entry_id) {
                 // Update statistics
@@ -134,21 +142,13 @@ impl MemPoolInner {
 
                 // Remove from unbroadcast set
                 self.unbroadcast.remove(&entry.tx.compute_txid());
+            }
+        }
 
-                // NOTE: update_descendants parameter is currently unused because
-                // all removal paths in Phase 4 remove entire descendant clusters.
-                // No child ever survives its parent being removed, so there's no
-                // ancestor state to update.
-                //
-                // TODO (Phase 5 - RBF/package handling): When implementing partial
-                // removal where children can survive their parents, add Bitcoin Core's
-                // UpdateForRemoveFromMempool logic here. This requires:
-                // 1. Track the exact ancestor set being removed per surviving child
-                // 2. Subtract each removed ancestor's stats exactly once
-                // 3. Avoid double-counting ancestors shared between multiple parents
-                //
-                // Reference: Bitcoin Core's CTxMemPool::UpdateForRemoveFromMempool
-                let _ = update_descendants;
+        // Phase 3: Update surviving children (AFTER removal)
+        if update_descendants {
+            for child_metadata in surviving_children_metadata {
+                update_child_for_removed_ancestors(&mut self.arena, child_metadata);
             }
         }
 
@@ -218,6 +218,183 @@ impl MemPoolInner {
     /// Get total fees.
     pub fn total_fees(&self) -> Amount {
         self.total_fee
+    }
+}
+
+/// Metadata for a child whose ancestors are being removed.
+///
+/// Captured BEFORE removal to preserve parent graph state.
+struct SurvivingChildMetadata {
+    child_id: EntryId,
+    removed_ancestor_stats: AncestorStats,
+}
+
+/// Aggregated statistics for ancestors being removed.
+#[derive(Default)]
+struct AncestorStats {
+    count: i64,
+    size: i64,
+    fees: bitcoin::SignedAmount,
+    sigops: i64,
+}
+
+/// Collect metadata for surviving children before removal.
+///
+/// A "surviving child" is a transaction that:
+/// - Has at least one parent in `to_remove`
+/// - Has at least one parent NOT in `to_remove` (survives)
+///
+/// Returns metadata for each surviving child, capturing the stats of
+/// ancestors that will be truly removed (not reachable through surviving parents).
+fn collect_surviving_children_metadata(
+    arena: &MemPoolArena,
+    to_remove: &HashSet<EntryId>,
+) -> Vec<SurvivingChildMetadata> {
+    let mut result = Vec::new();
+
+    // Find all children of transactions being removed
+    let mut potential_survivors = HashSet::new();
+    for &entry_id in to_remove {
+        if let Some(entry) = arena.get(entry_id) {
+            for &child_id in &entry.children {
+                // Only consider children that are NOT being removed
+                if !to_remove.contains(&child_id) {
+                    potential_survivors.insert(child_id);
+                }
+            }
+        }
+    }
+
+    // For each surviving child, calculate which ancestors are truly removed
+    for child_id in potential_survivors {
+        let removed_stats = calculate_truly_removed_ancestors(arena, child_id, to_remove);
+
+        result.push(SurvivingChildMetadata {
+            child_id,
+            removed_ancestor_stats: removed_stats,
+        });
+    }
+
+    result
+}
+
+/// Calculate statistics for ancestors that are truly being removed.
+///
+/// An ancestor is "truly removed" if:
+/// - It's in the `to_remove` set
+/// - It's NOT reachable through any surviving parent
+///
+/// This prevents double-counting shared ancestors.
+fn calculate_truly_removed_ancestors(
+    arena: &MemPoolArena,
+    child_id: EntryId,
+    to_remove: &HashSet<EntryId>,
+) -> AncestorStats {
+    // Step 1: Find all ancestors of this child
+    let mut all_ancestors = HashSet::new();
+    calculate_ancestors_recursive(arena, child_id, &mut all_ancestors);
+    all_ancestors.remove(&child_id); // Exclude the child itself
+
+    // Step 2: Find ancestors reachable through surviving parents
+    let mut reachable_through_survivors = HashSet::new();
+    if let Some(child_entry) = arena.get(child_id) {
+        for &parent_id in &child_entry.parents {
+            // If parent is NOT being removed, it's a surviving parent
+            if !to_remove.contains(&parent_id) {
+                // Add all ancestors of this surviving parent
+                calculate_ancestors_recursive(arena, parent_id, &mut reachable_through_survivors);
+            }
+        }
+    }
+
+    // Step 3: Truly removed = (all ancestors ∩ to_remove) - reachable_through_survivors
+    let mut stats = AncestorStats::default();
+
+    for ancestor_id in all_ancestors {
+        // Must be in removal set AND not reachable through survivors
+        if to_remove.contains(&ancestor_id) && !reachable_through_survivors.contains(&ancestor_id) {
+            if let Some(entry) = arena.get(ancestor_id) {
+                stats.count += 1;
+                stats.size += entry.vsize();
+                stats.fees = bitcoin::SignedAmount::from_sat(
+                    stats.fees.to_sat() + entry.modified_fee.to_sat() as i64,
+                );
+                stats.sigops += entry.sigop_cost;
+            }
+        }
+    }
+
+    stats
+}
+
+/// Recursively collect all ancestors (including the starting entry).
+fn calculate_ancestors_recursive(
+    arena: &MemPoolArena,
+    entry_id: EntryId,
+    ancestors: &mut HashSet<EntryId>,
+) {
+    if !ancestors.insert(entry_id) {
+        return; // Already visited
+    }
+
+    if let Some(entry) = arena.get(entry_id) {
+        for &parent_id in &entry.parents {
+            calculate_ancestors_recursive(arena, parent_id, ancestors);
+        }
+    }
+}
+
+/// Update a surviving child after its ancestors have been removed.
+///
+/// Applies negative deltas to subtract the removed ancestors from the child's
+/// cached ancestor state.
+///
+/// **CRITICAL**: Must be called AFTER entries are removed from arena.
+fn update_child_for_removed_ancestors(arena: &mut MemPoolArena, metadata: SurvivingChildMetadata) {
+    let stats = metadata.removed_ancestor_stats;
+
+    // Apply negative deltas to the child
+    arena.update_ancestor_state(
+        metadata.child_id,
+        -stats.size,
+        -stats.fees,
+        -stats.count,
+        -stats.sigops,
+    );
+
+    // Also update all descendants of this child (they lose the same ancestors)
+    let mut descendants = HashSet::new();
+    if let Some(entry) = arena.get(metadata.child_id) {
+        for &desc_id in &entry.children {
+            calculate_descendants_recursive(arena, desc_id, &mut descendants);
+        }
+    }
+
+    for desc_id in descendants {
+        arena.update_ancestor_state(
+            desc_id,
+            -stats.size,
+            -stats.fees,
+            -stats.count,
+            -stats.sigops,
+        );
+    }
+}
+
+/// Recursively collect all descendants (including the starting entry).
+fn calculate_descendants_recursive(
+    arena: &MemPoolArena,
+    entry_id: EntryId,
+    descendants: &mut HashSet<EntryId>,
+) {
+    if !descendants.insert(entry_id) {
+        return; // Already visited
+    }
+
+    if let Some(entry) = arena.get(entry_id) {
+        for &child_id in &entry.children {
+            calculate_descendants_recursive(arena, child_id, descendants);
+        }
     }
 }
 
