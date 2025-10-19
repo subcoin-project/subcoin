@@ -11,7 +11,7 @@ use crate::coins_view::CoinsViewCache;
 use crate::inner::MemPoolInner;
 use crate::options::MemPoolOptions;
 use crate::policy::is_standard_tx;
-use crate::types::{EntryId, FeeRate, LockPoints, MempoolError};
+use crate::types::{ConflictSet, EntryId, FeeRate, LockPoints, MempoolError};
 use bitcoin::absolute::{LOCK_TIME_THRESHOLD, LockTime};
 use bitcoin::{Transaction, Weight};
 use sc_client_api::HeaderBackend;
@@ -57,6 +57,9 @@ pub struct ValidationWorkspace {
 
     /// Conflicting mempool transactions (txids).
     pub conflicts: HashSet<bitcoin::Txid>,
+
+    /// Full conflict set for RBF (if any).
+    pub conflict_set: Option<ConflictSet>,
 }
 
 impl ValidationWorkspace {
@@ -76,6 +79,7 @@ impl ValidationWorkspace {
             spends_coinbase: false,
             ancestors: HashSet::new(),
             conflicts: HashSet::new(),
+            conflict_set: None,
         }
     }
 }
@@ -498,6 +502,135 @@ where
     }
 
     Ok(())
+}
+
+/// Check if a replacement transaction satisfies BIP125 rules.
+///
+/// BIP125 Rules:
+/// 1. All original transactions signal replaceability
+/// 2. Replacement doesn't introduce new unconfirmed inputs
+/// 3. Replacement pays higher absolute fee
+/// 4. Replacement pays for its own bandwidth
+/// 5. Replacement pays for replaced bandwidth
+/// 6. No more than max_replacement_txs original transactions replaced
+pub fn check_rbf_policy<Block, Client>(
+    ws: &ValidationWorkspace,
+    inner: &MemPoolInner,
+    coins_cache: &CoinsViewCache<Block, Client>,
+    options: &MemPoolOptions,
+) -> Result<ConflictSet, MempoolError>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
+    Client::Api: SubcoinRuntimeApi<Block>,
+{
+    let tx = &ws.tx;
+
+    // Step 1: Find ALL direct conflicts (not just first one!)
+    let mut direct_conflicts = HashSet::new();
+
+    for input in &tx.input {
+        if let Some(conflicting_txid) = inner.get_conflict_tx(&input.previous_output) {
+            if let Some(entry_id) = inner.arena.get_by_txid(&conflicting_txid) {
+                direct_conflicts.insert(entry_id);
+            }
+        }
+    }
+
+    if direct_conflicts.is_empty() {
+        return Err(MempoolError::NoConflictToReplace);
+    }
+
+    // Step 2: Expand to include all descendants
+    let mut all_conflicts = HashSet::new();
+    for &conflict_id in &direct_conflicts {
+        inner.calculate_descendants(conflict_id, &mut all_conflicts);
+    }
+
+    // Rule 6: Check replacement count limit EARLY
+    if all_conflicts.len() > options.max_replacement_txs {
+        return Err(MempoolError::TooManyReplacements(all_conflicts.len()));
+    }
+
+    // Rule 1: All direct conflicts must signal RBF
+    for &conflict_id in &direct_conflicts {
+        let conflict_entry = inner
+            .arena
+            .get(conflict_id)
+            .ok_or(MempoolError::MissingConflict)?;
+
+        if !conflict_entry.signals_rbf() {
+            return Err(MempoolError::TxNotReplaceable);
+        }
+    }
+
+    // Step 3: Calculate total fees and size of ALL replaced txs
+    let mut replaced_fees = bitcoin::Amount::ZERO;
+    let mut replaced_size: i64 = 0;
+    let mut removed_transactions = Vec::with_capacity(all_conflicts.len());
+
+    for &conflict_id in &all_conflicts {
+        let entry = inner
+            .arena
+            .get(conflict_id)
+            .ok_or(MempoolError::MissingConflict)?;
+
+        replaced_fees = replaced_fees
+            .checked_add(entry.modified_fee)
+            .ok_or(MempoolError::FeeOverflow)?;
+        replaced_size += entry.vsize();
+
+        // CRITICAL: Capture Arc<Transaction> for coins cache cleanup
+        removed_transactions.push(entry.tx.clone());
+    }
+
+    // Rule 2: Replacement doesn't introduce new unconfirmed inputs
+    for input in &tx.input {
+        if let Some(parent_id) = inner.arena.get_by_txid(&input.previous_output.txid) {
+            if !all_conflicts.contains(&parent_id) {
+                // Spending mempool tx that's not being replaced!
+                return Err(MempoolError::NewUnconfirmedInput);
+            }
+        }
+    }
+
+    // Rule 3: Replacement pays higher absolute fee
+    if ws.modified_fee <= replaced_fees {
+        return Err(MempoolError::InsufficientFee(format!(
+            "replacement fee {} <= replaced fees {replaced_fees}",
+            ws.modified_fee
+        )));
+    }
+
+    // Rule 4: Pays for own bandwidth (additional fee >= min_relay * new_size)
+    let min_relay_rate = options.min_relay_fee_rate();
+    let own_bandwidth_fee = min_relay_rate.get_fee(ws.vsize);
+
+    let additional_fee_sat = ws.modified_fee.to_sat() as i64 - replaced_fees.to_sat() as i64;
+    if additional_fee_sat < own_bandwidth_fee.to_sat() as i64 {
+        return Err(MempoolError::InsufficientFee(format!(
+            "doesn't pay for own bandwidth: additional {} < required {own_bandwidth_fee}",
+            bitcoin::Amount::from_sat(additional_fee_sat as u64)
+        )));
+    }
+
+    // Rule 5: Pays for replaced bandwidth (additional >= min_relay * replaced_size)
+    let replaced_bandwidth_fee = min_relay_rate.get_fee(replaced_size);
+
+    if additional_fee_sat < replaced_bandwidth_fee.to_sat() as i64 {
+        return Err(MempoolError::InsufficientFee(format!(
+            "doesn't pay for replaced bandwidth: additional {} < required {replaced_bandwidth_fee}",
+            bitcoin::Amount::from_sat(additional_fee_sat as u64)
+        )));
+    }
+
+    Ok(ConflictSet {
+        direct_conflicts,
+        all_conflicts,
+        removed_transactions,
+        replaced_fees,
+        replaced_size,
+    })
 }
 
 /// Check whether the transaction is final with respect to the current height and time.

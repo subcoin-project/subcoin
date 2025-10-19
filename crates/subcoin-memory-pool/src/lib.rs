@@ -23,7 +23,7 @@ pub use self::coins_view::CoinsViewCache;
 pub use self::inner::MemPoolInner;
 pub use self::options::MemPoolOptions;
 pub use self::types::{
-    EntryId, FeeRate, LockPoints, MempoolError, RemovalReason, ValidationResult,
+    ConflictSet, EntryId, FeeRate, LockPoints, MempoolError, RemovalReason, ValidationResult,
 };
 
 use bitcoin::Transaction;

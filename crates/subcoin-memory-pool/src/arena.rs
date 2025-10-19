@@ -135,6 +135,20 @@ impl TxMemPoolEntry {
     pub fn descendant_feerate(&self) -> i64 {
         (self.fees_with_descendants.to_sat() as i64 * 1_000_000) / self.size_with_descendants
     }
+
+    /// Check if transaction signals RBF per BIP125.
+    ///
+    /// Returns true if any input has nSequence < 0xfffffffe.
+    /// BIP125 Rule: Any nSequence value less than 0xfffffffe signals replaceability.
+    pub fn signals_rbf(&self) -> bool {
+        // BIP125: Any nSequence value less than 0xfffffffe signals RBF
+        const RBF_THRESHOLD: u32 = 0xfffffffe;
+
+        self.tx
+            .input
+            .iter()
+            .any(|txin| txin.sequence.to_consensus_u32() < RBF_THRESHOLD)
+    }
 }
 
 /// Arena holding all mempool entries with multi-index support.

@@ -72,6 +72,12 @@ pub struct MemPoolOptions {
     pub max_script_cache_size: usize,
 
     pub limits: MemPoolLimits,
+
+    /// Whether to enable RBF (BIP125).
+    pub enable_rbf: bool,
+
+    /// Maximum number of transactions that can be replaced (BIP125 Rule 6).
+    pub max_replacement_txs: usize,
 }
 
 impl Default for MemPoolOptions {
@@ -86,6 +92,8 @@ impl Default for MemPoolOptions {
             require_standard: true,
             max_script_cache_size: 32 << 20, // 32 MB
             limits: MemPoolLimits::default(),
+            enable_rbf: true,
+            max_replacement_txs: 100,
         }
     }
 }

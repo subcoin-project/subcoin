@@ -100,6 +100,24 @@ pub enum MempoolError {
     #[error("Script validation failed: {0}")]
     ScriptValidationFailed(String),
 
+    #[error("No conflicting transaction to replace")]
+    NoConflictToReplace,
+
+    #[error("Conflicting transaction is not replaceable (doesn't signal BIP125)")]
+    TxNotReplaceable,
+
+    #[error("Too many transactions to replace: {0} (max 100)")]
+    TooManyReplacements(usize),
+
+    #[error("Replacement introduces new unconfirmed inputs")]
+    NewUnconfirmedInput,
+
+    #[error("Missing conflict transaction in mempool")]
+    MissingConflict,
+
+    #[error("Insufficient fee: {0}")]
+    InsufficientFee(String),
+
     #[error(transparent)]
     TxError(#[from] subcoin_primitives::consensus::TxError),
 
@@ -162,4 +180,24 @@ impl RemovalReason {
             Self::Expiry => "expiry",
         }
     }
+}
+
+/// Set of transactions being replaced by RBF.
+#[derive(Debug, Clone)]
+pub struct ConflictSet {
+    /// Direct conflicts (txs spending same outputs).
+    pub direct_conflicts: HashSet<EntryId>,
+
+    /// All affected (conflicts + descendants).
+    pub all_conflicts: HashSet<EntryId>,
+
+    /// Transactions to remove (for coins cache cleanup).
+    /// Must capture BEFORE calling remove_staged().
+    pub removed_transactions: Vec<std::sync::Arc<bitcoin::Transaction>>,
+
+    /// Total fees of all replaced transactions.
+    pub replaced_fees: bitcoin::Amount,
+
+    /// Total size of all replaced transactions.
+    pub replaced_size: i64,
 }
