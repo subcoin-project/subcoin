@@ -5,7 +5,7 @@
 //! remove-before-mutate problem when updating BTreeSet indices.
 
 use crate::types::{EntryId, LockPoints};
-use bitcoin::{Transaction, Txid, Weight, Wtxid};
+use bitcoin::{Amount, Transaction, Txid, Weight, Wtxid};
 use slotmap::{DefaultKey, SlotMap};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
@@ -49,10 +49,10 @@ pub struct TxMemPoolEntry {
     pub tx: Arc<Transaction>,
 
     /// Base fee (without priority adjustments).
-    pub fee: bitcoin::Amount,
+    pub fee: Amount,
 
     /// Modified fee (includes priority delta from prioritise_transaction).
-    pub modified_fee: bitcoin::Amount,
+    pub modified_fee: Amount,
 
     /// Cached transaction weight.
     pub tx_weight: Weight,
@@ -62,6 +62,12 @@ pub struct TxMemPoolEntry {
 
     /// Block height when transaction entered mempool.
     pub entry_height: u32,
+
+    /// Median Time Past of the best block when transaction entered mempool.
+    pub entry_block_mtp: i64,
+
+    /// Best block hash when transaction entered mempool (for reorg detection).
+    pub entry_block_hash: bitcoin::BlockHash,
 
     /// Sequence number for replay protection.
     pub entry_sequence: u64,
@@ -83,7 +89,7 @@ pub struct TxMemPoolEntry {
     pub size_with_ancestors: i64,
 
     /// Total fees of ancestors (including this tx).
-    pub fees_with_ancestors: bitcoin::Amount,
+    pub fees_with_ancestors: Amount,
 
     /// Total sigop cost of ancestors (including this tx).
     pub sigops_with_ancestors: i64,
@@ -95,7 +101,7 @@ pub struct TxMemPoolEntry {
     pub size_with_descendants: i64,
 
     /// Total fees of descendants (including this tx).
-    pub fees_with_descendants: bitcoin::Amount,
+    pub fees_with_descendants: Amount,
 
     // === Graph links (handles only, no direct references) ===
     /// Parent entries (in-mempool dependencies).
@@ -197,8 +203,8 @@ impl MemPoolArena {
     /// Returns the handle to the inserted entry.
     pub fn insert(&mut self, mut entry: TxMemPoolEntry) -> EntryId {
         // Compute and cache index keys
-        let anc_key = Self::compute_ancestor_key(&entry);
-        let desc_key = Self::compute_descendant_key(&entry);
+        let anc_key = compute_ancestor_key(&entry);
+        let desc_key = compute_descendant_key(&entry);
         entry.cached_ancestor_key = anc_key;
         entry.cached_descendant_key = desc_key;
 
@@ -252,8 +258,8 @@ impl MemPoolArena {
         entry.sigops_with_ancestors += sigops_delta;
 
         // Recompute keys
-        let new_anc_key = Self::compute_ancestor_key(entry);
-        let new_desc_key = Self::compute_descendant_key(entry);
+        let new_anc_key = compute_ancestor_key(entry);
+        let new_desc_key = compute_descendant_key(entry);
 
         // Cache new keys in entry
         entry.cached_ancestor_key = new_anc_key;
@@ -291,7 +297,7 @@ impl MemPoolArena {
         entry.count_with_descendants = (entry.count_with_descendants as i64 + count_delta) as u64;
 
         // Recompute and cache
-        let new_desc_key = Self::compute_descendant_key(entry);
+        let new_desc_key = compute_descendant_key(entry);
         entry.cached_descendant_key = new_desc_key;
 
         // Reinsert
@@ -299,7 +305,7 @@ impl MemPoolArena {
     }
 
     /// Update modified fee (priority adjustment) and reindex.
-    pub fn update_modified_fee(&mut self, id: EntryId, new_modified_fee: bitcoin::Amount) {
+    pub fn update_modified_fee(&mut self, id: EntryId, new_modified_fee: Amount) {
         let entry = &self.entries[id.0];
 
         // CAPTURE old keys
@@ -316,49 +322,24 @@ impl MemPoolArena {
         entry.modified_fee = new_modified_fee;
 
         // Update ancestor/descendant fees
-        let fee_delta = bitcoin::Amount::from_sat(
-            (new_modified_fee.to_sat() as i64 - old_fee.to_sat() as i64) as u64,
-        );
-        entry.fees_with_ancestors = bitcoin::Amount::from_sat(
+        let fee_delta =
+            Amount::from_sat((new_modified_fee.to_sat() as i64 - old_fee.to_sat() as i64) as u64);
+        entry.fees_with_ancestors = Amount::from_sat(
             (entry.fees_with_ancestors.to_sat() as i64 + fee_delta.to_sat() as i64) as u64,
         );
-        entry.fees_with_descendants = bitcoin::Amount::from_sat(
+        entry.fees_with_descendants = Amount::from_sat(
             (entry.fees_with_descendants.to_sat() as i64 + fee_delta.to_sat() as i64) as u64,
         );
 
         // Recompute and cache
-        let new_anc_key = Self::compute_ancestor_key(entry);
-        let new_desc_key = Self::compute_descendant_key(entry);
+        let new_anc_key = compute_ancestor_key(entry);
+        let new_desc_key = compute_descendant_key(entry);
         entry.cached_ancestor_key = new_anc_key;
         entry.cached_descendant_key = new_desc_key;
 
         // Reinsert
         self.by_ancestor_score.insert((new_anc_key, id));
         self.by_descendant_score.insert((new_desc_key, id));
-    }
-
-    /// Compute ancestor score key for an entry.
-    fn compute_ancestor_key(entry: &TxMemPoolEntry) -> AncestorScoreKey {
-        let entry_feerate = entry.feerate();
-        let ancestor_feerate = entry.ancestor_feerate();
-        let min_feerate = std::cmp::min(entry_feerate, ancestor_feerate);
-
-        AncestorScoreKey {
-            neg_feerate_frac: (-min_feerate, entry.size_with_ancestors),
-            txid: entry.tx.compute_txid(),
-        }
-    }
-
-    /// Compute descendant score key for an entry.
-    fn compute_descendant_key(entry: &TxMemPoolEntry) -> DescendantScoreKey {
-        let entry_feerate = entry.feerate();
-        let desc_feerate = entry.descendant_feerate();
-        let max_feerate = std::cmp::max(entry_feerate, desc_feerate);
-
-        DescendantScoreKey {
-            neg_feerate_frac: (-max_feerate, entry.size_with_descendants),
-            time: entry.time,
-        }
     }
 
     /// Get entry by ID (immutable).
@@ -438,6 +419,28 @@ impl MemPoolArena {
 impl Default for MemPoolArena {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn compute_ancestor_key(entry: &TxMemPoolEntry) -> AncestorScoreKey {
+    let entry_feerate = entry.feerate();
+    let ancestor_feerate = entry.ancestor_feerate();
+    let min_feerate = std::cmp::min(entry_feerate, ancestor_feerate);
+
+    AncestorScoreKey {
+        neg_feerate_frac: (-min_feerate, entry.size_with_ancestors),
+        txid: entry.tx.compute_txid(),
+    }
+}
+
+fn compute_descendant_key(entry: &TxMemPoolEntry) -> DescendantScoreKey {
+    let entry_feerate = entry.feerate();
+    let desc_feerate = entry.descendant_feerate();
+    let max_feerate = std::cmp::max(entry_feerate, desc_feerate);
+
+    DescendantScoreKey {
+        neg_feerate_frac: (-max_feerate, entry.size_with_descendants),
+        time: entry.time,
     }
 }
 

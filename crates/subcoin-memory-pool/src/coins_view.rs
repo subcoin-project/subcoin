@@ -137,6 +137,7 @@ where
                     output: output.clone(),
                     height: MEMPOOL_HEIGHT,
                     is_coinbase: false,
+                    median_time_past: 0, // Mempool coins don't have MTP yet
                 },
             );
         }
@@ -210,6 +211,11 @@ where
     /// Get the current best block hash.
     pub fn best_block(&self) -> Block::Hash {
         self.best_block
+    }
+
+    /// Get reference to the client.
+    pub fn client(&self) -> &Arc<Client> {
+        &self.client
     }
 
     /// Get statistics about the cache.

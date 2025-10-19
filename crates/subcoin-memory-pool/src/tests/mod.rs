@@ -1,32 +1,38 @@
 //! Integration tests for mempool RBF and Package/CPFP functionality.
 
 use bitcoin::hashes::Hash;
-use bitcoin::{absolute, transaction, Address, Amount, Network, OutPoint, ScriptBuf, Transaction, TxIn, TxOut, Txid};
+use bitcoin::{
+    Address, Amount, Network, OutPoint, ScriptBuf, Transaction, TxIn, TxOut, Txid, absolute,
+    transaction,
+};
 use sc_client_api::{BlockchainEvents, HeaderBackend};
 use sp_api::ProvideRuntimeApi;
+use sp_runtime::testing::{Block as TestBlock, Header, TestXt};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT};
-use sp_runtime::testing::{Block as TestBlock, Header};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use subcoin_primitives::{BackendExt, Coin, SubcoinRuntimeApi};
+use subcoin_primitives::{BlockMetadata, Coin, SubcoinRuntimeApi};
 
 use crate::{MemPool, MemPoolOptions};
+
+// Type alias for test block with no-op extrinsics
+type TestBlockType = TestBlock<TestXt<(), ()>>;
 
 /// Minimal mock client for deterministic UTXO testing.
 pub struct MockClient {
     /// UTXO set: OutPoint -> Coin
     utxos: RwLock<HashMap<OutPoint, Coin>>,
     /// Current best block hash
-    best_block: RwLock<<TestBlock as BlockT>::Hash>,
+    best_block: RwLock<<TestBlockType as BlockT>::Hash>,
     /// Current best block number
-    best_number: RwLock<u32>,
+    best_number: RwLock<u64>,
 }
 
 impl MockClient {
     pub fn new() -> Self {
         Self {
             utxos: RwLock::new(HashMap::new()),
-            best_block: RwLock::new(<TestBlock as BlockT>::Hash::default()),
+            best_block: RwLock::new(<TestBlockType as BlockT>::Hash::default()),
             best_number: RwLock::new(0),
         }
     }
@@ -40,21 +46,17 @@ impl MockClient {
     }
 }
 
-impl HeaderBackend<TestBlock> for MockClient {
+impl HeaderBackend<TestBlockType> for MockClient {
     fn header(
         &self,
-        _hash: <TestBlock as BlockT>::Hash,
+        _hash: <TestBlockType as BlockT>::Hash,
     ) -> sp_blockchain::Result<Option<Header>> {
-        Ok(Some(Header::new(
+        Ok(Some(Header::new_from_number(
             *self.best_number.read().unwrap(),
-            Default::default(),
-            Default::default(),
-            Default::default(),
-            Default::default(),
         )))
     }
 
-    fn info(&self) -> sc_client_api::blockchain::Info<TestBlock> {
+    fn info(&self) -> sc_client_api::blockchain::Info<TestBlockType> {
         sc_client_api::blockchain::Info {
             best_hash: *self.best_block.read().unwrap(),
             best_number: *self.best_number.read().unwrap(),
@@ -69,24 +71,21 @@ impl HeaderBackend<TestBlock> for MockClient {
 
     fn status(
         &self,
-        _hash: <TestBlock as BlockT>::Hash,
+        _hash: <TestBlockType as BlockT>::Hash,
     ) -> sp_blockchain::Result<sc_client_api::blockchain::BlockStatus> {
         Ok(sc_client_api::blockchain::BlockStatus::InChain)
     }
 
-    fn number(
-        &self,
-        _hash: <TestBlock as BlockT>::Hash,
-    ) -> sp_blockchain::Result<Option<u32>> {
+    fn number(&self, _hash: <TestBlockType as BlockT>::Hash) -> sp_blockchain::Result<Option<u64>> {
         Ok(Some(*self.best_number.read().unwrap()))
     }
 
-    fn hash(&self, _number: u32) -> sp_blockchain::Result<Option<<TestBlock as BlockT>::Hash>> {
+    fn hash(&self, _number: u64) -> sp_blockchain::Result<Option<<TestBlockType as BlockT>::Hash>> {
         Ok(Some(*self.best_block.read().unwrap()))
     }
 }
 
-impl ProvideRuntimeApi<TestBlock> for MockClient {
+impl ProvideRuntimeApi<TestBlockType> for MockClient {
     type Api = Self;
 
     fn runtime_api(&self) -> sp_api::ApiRef<Self::Api> {
@@ -94,28 +93,52 @@ impl ProvideRuntimeApi<TestBlock> for MockClient {
     }
 }
 
-impl SubcoinRuntimeApi<TestBlock> for MockClient {
-    fn get_coin(&self, outpoint: OutPoint) -> Result<Option<Coin>, sp_api::ApiError> {
-        Ok(self.get_utxo(&outpoint))
+impl SubcoinRuntimeApi<TestBlockType> for MockClient {
+    fn batch_get_utxos(
+        &self,
+        _at: <TestBlockType as BlockT>::Hash,
+        outpoints: Vec<OutPoint>,
+    ) -> sp_blockchain::Result<Vec<Option<Coin>>> {
+        Ok(outpoints
+            .iter()
+            .map(|outpoint| self.get_utxo(outpoint))
+            .collect())
+    }
+
+    fn get_block_metadata(
+        &self,
+        _at: <TestBlockType as BlockT>::Hash,
+        _block_hash: bitcoin::BlockHash,
+    ) -> sp_blockchain::Result<Option<BlockMetadata>> {
+        // For tests, return current block metadata
+        Ok(Some(BlockMetadata {
+            height: *self.best_number.read().unwrap() as u32,
+            median_time_past: 0, // Simplified for tests
+        }))
+    }
+
+    fn is_block_on_active_chain(
+        &self,
+        _at: <TestBlockType as BlockT>::Hash,
+        _block_hash: bitcoin::BlockHash,
+    ) -> sp_blockchain::Result<bool> {
+        // For tests, assume all blocks are on active chain
+        Ok(true)
     }
 }
 
-impl BlockchainEvents<TestBlock> for MockClient {
-    fn import_notification_stream(
-        &self,
-    ) -> sc_client_api::ImportNotifications<TestBlock> {
+impl BlockchainEvents<TestBlockType> for MockClient {
+    fn import_notification_stream(&self) -> sc_client_api::ImportNotifications<TestBlockType> {
         unimplemented!()
     }
 
     fn every_import_notification_stream(
         &self,
-    ) -> sc_client_api::ImportNotifications<TestBlock> {
+    ) -> sc_client_api::ImportNotifications<TestBlockType> {
         unimplemented!()
     }
 
-    fn finality_notification_stream(
-        &self,
-    ) -> sc_client_api::FinalityNotifications<TestBlock> {
+    fn finality_notification_stream(&self) -> sc_client_api::FinalityNotifications<TestBlockType> {
         unimplemented!()
     }
 
@@ -123,9 +146,13 @@ impl BlockchainEvents<TestBlock> for MockClient {
         &self,
         _filter_keys: Option<&[sc_client_api::StorageKey]>,
         _child_filter_keys: Option<
-            &[(sc_client_api::StorageKey, Option<Vec<sc_client_api::StorageKey>>)],
+            &[(
+                sc_client_api::StorageKey,
+                Option<Vec<sc_client_api::StorageKey>>,
+            )],
         >,
-    ) -> sp_blockchain::Result<sc_client_api::StorageEventStream<<TestBlock as BlockT>::Hash>> {
+    ) -> sp_blockchain::Result<sc_client_api::StorageEventStream<<TestBlockType as BlockT>::Hash>>
+    {
         unimplemented!()
     }
 }
@@ -179,7 +206,7 @@ impl Default for TxBuilder {
 }
 
 /// Helper: Assert transaction is in mempool.
-pub fn assert_in_mempool(mempool: &MemPool<TestBlock, MockClient>, txid: &Txid) {
+pub fn assert_in_mempool(mempool: &MemPool<TestBlockType, MockClient>, txid: &Txid) {
     assert!(
         mempool
             .inner
@@ -193,7 +220,7 @@ pub fn assert_in_mempool(mempool: &MemPool<TestBlock, MockClient>, txid: &Txid) 
 }
 
 /// Helper: Assert transaction is NOT in mempool.
-pub fn assert_not_in_mempool(mempool: &MemPool<TestBlock, MockClient>, txid: &Txid) {
+pub fn assert_not_in_mempool(mempool: &MemPool<TestBlockType, MockClient>, txid: &Txid) {
     assert!(
         mempool
             .inner
@@ -207,7 +234,7 @@ pub fn assert_not_in_mempool(mempool: &MemPool<TestBlock, MockClient>, txid: &Tx
 }
 
 /// Helper: Assert mempool size.
-pub fn assert_mempool_size(mempool: &MemPool<TestBlock, MockClient>, expected: usize) {
+pub fn assert_mempool_size(mempool: &MemPool<TestBlockType, MockClient>, expected: usize) {
     let actual = mempool.size();
     assert_eq!(
         actual, expected,
@@ -225,7 +252,12 @@ pub fn dummy_address() -> Address {
 }
 
 /// Helper: Create a Coin for testing.
-pub fn create_coin(amount: Amount, script_pubkey: ScriptBuf, height: u32, is_coinbase: bool) -> Coin {
+pub fn create_coin(
+    amount: Amount,
+    script_pubkey: ScriptBuf,
+    height: u32,
+    is_coinbase: bool,
+) -> Coin {
     Coin {
         output: TxOut {
             value: amount,
@@ -233,11 +265,13 @@ pub fn create_coin(amount: Amount, script_pubkey: ScriptBuf, height: u32, is_coi
         },
         height,
         is_coinbase,
+        median_time_past: 0, // Default to 0 for tests (can be overridden when needed)
     }
 }
 
-// TODO: Fix integration tests - need to add missing MemPoolOptionsBuilder methods
-// and fix MockClient implementation
+// TODO: Fix MockClient ApiExt implementation for integration tests
+// The infrastructure is set up but MockClient needs to implement ApiExt<Block>
+// which is complex. For now, keep tests commented until after BIP68 is complete.
 // #[cfg(test)]
 // mod rbf_tests;
 

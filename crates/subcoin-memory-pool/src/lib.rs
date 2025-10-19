@@ -15,9 +15,8 @@ mod coins_view;
 mod inner;
 mod options;
 mod policy;
-// TODO: Fix and re-enable integration tests
-// #[cfg(test)]
-// mod tests;
+#[cfg(test)]
+mod tests;
 mod types;
 mod validation;
 
@@ -31,7 +30,7 @@ pub use self::types::{
 };
 
 use bitcoin::Transaction;
-use sc_client_api::HeaderBackend;
+use sc_client_api::{AuxStore, HeaderBackend};
 use sp_api::ProvideRuntimeApi;
 use sp_runtime::traits::Block as BlockT;
 use std::collections::HashSet;
@@ -71,7 +70,7 @@ pub struct MemPool<Block: BlockT, Client> {
 impl<Block, Client> MemPool<Block, Client>
 where
     Block: BlockT,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore + Send + Sync,
     Client::Api: SubcoinRuntimeApi<Block>,
 {
     /// Create a new mempool with default options.
@@ -115,17 +114,33 @@ where
             .expect("Time went backwards")
             .as_secs() as i64;
 
+        // Get current MTP from runtime API
+        use bitcoin::hashes::Hash;
+        use subcoin_primitives::BackendExt;
+        let current_mtp =
+            if let Some(bitcoin_block_hash) = self.client.bitcoin_block_hash_for(best_block) {
+                use subcoin_primitives::SubcoinRuntimeApi as RuntimeApi;
+                self.client
+                    .runtime_api()
+                    .get_block_metadata(best_block, bitcoin_block_hash)
+                    .ok()
+                    .flatten()
+                    .map(|metadata| metadata.median_time_past)
+                    .unwrap_or(current_time) // Fallback to current time if API fails
+            } else {
+                current_time // Fallback if block hash not found
+            };
+
         // Create validation workspace
         let tx_arc = Arc::new(tx);
         let mut ws = validation::ValidationWorkspace::new(tx_arc);
-
-        // Stage 1: PreChecks (sanity, standardness, input availability, fees)
         validation::pre_checks(
             &mut ws,
             &inner,
             &mut coins,
             &self.options,
             current_height,
+            current_mtp,
             best_block,
         )?;
 
@@ -140,12 +155,19 @@ where
 
         // Stage 5: Finalize - add to mempool
         let sequence = self.sequence_number.fetch_add(1, Ordering::SeqCst);
+        // Get Bitcoin block hash for entry_block_hash
+        let entry_block_hash = self
+            .client
+            .bitcoin_block_hash_for(best_block)
+            .unwrap_or_else(bitcoin::BlockHash::all_zeros);
         let _entry_id = validation::finalize_tx(
             ws,
             &mut inner,
             &mut coins,
             current_height,
             current_time,
+            current_mtp,
+            entry_block_hash,
             sequence,
         )?;
 
@@ -320,10 +342,11 @@ where
 
     /// Remove transactions that are no longer valid after a reorg.
     ///
-    /// This is a simplified version that prunes transactions based on:
+    /// Prunes transactions based on:
     /// - Height-based timelocks (nLockTime)
     /// - Coinbase maturity violations
     /// - Sequence-based timelocks (BIP68)
+    /// - Max input block no longer on active chain
     ///
     /// **Lock hierarchy**: Acquires inner write lock, then coins_cache write lock.
     pub fn remove_for_reorg(
@@ -334,30 +357,69 @@ where
         let mut inner = self.inner.write().expect("MemPool lock poisoned");
         let mut coins = self.coins_cache.write().expect("CoinsCache lock poisoned");
 
+        // Get new tip's MTP for BIP68 validation
+        use subcoin_primitives::BackendExt;
+        let fallback_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs() as i64;
+
+        let new_tip_mtp =
+            if let Some(bitcoin_block_hash) = self.client.bitcoin_block_hash_for(new_best_block) {
+                use subcoin_primitives::SubcoinRuntimeApi as RuntimeApi;
+                self.client
+                    .runtime_api()
+                    .get_block_metadata(new_best_block, bitcoin_block_hash)
+                    .ok()
+                    .flatten()
+                    .map(|metadata| metadata.median_time_past)
+                    .unwrap_or(fallback_time)
+            } else {
+                fallback_time
+            };
+
         let mut to_remove = HashSet::new();
 
-        // Iterate all mempool entries and check validity
+        // Iterate all mempool entries and check validity at new tip
         for (entry_id, entry) in inner.arena.iter_by_entry_time() {
             let mut invalid = false;
 
-            // Check height-based nLockTime (basic check)
-            if entry.lock_points.height > new_tip_height as i32 {
+            // Check height-based lock points (BIP68)
+            if entry.lock_points.height > 0 && entry.lock_points.height > new_tip_height as i32 {
                 invalid = true;
+            }
+
+            // Check time-based lock points (BIP68)
+            if entry.lock_points.time > 0 && entry.lock_points.time > new_tip_mtp {
+                invalid = true;
+            }
+
+            // Check if max_input_block is still on active chain (optional optimization)
+            // If the block containing transaction inputs is no longer on the active chain,
+            // the transaction may reference coins that don't exist anymore.
+            if let Some(max_input_block) = entry.lock_points.max_input_block {
+                use subcoin_primitives::SubcoinRuntimeApi as RuntimeApi;
+                let is_on_active_chain = self
+                    .client
+                    .runtime_api()
+                    .is_block_on_active_chain(new_best_block, max_input_block)
+                    .unwrap_or(true); // Conservative: assume it's on active chain if API fails
+
+                if !is_on_active_chain {
+                    invalid = true;
+                }
             }
 
             // Check coinbase maturity (100 blocks)
             if entry.spends_coinbase {
-                // We need to check if the coinbase is still mature
-                // For now, we conservatively mark as invalid if entry was created
-                // at a height that might now violate maturity
+                // Re-validate coinbase maturity at new tip
+                // This is conservative: if entry was created at height H and new tip is H-1,
+                // the coinbase might not be mature anymore
                 let min_required_height = entry.entry_height.saturating_add(100);
                 if new_tip_height < min_required_height {
                     invalid = true;
                 }
             }
-
-            // TODO (Phase 6): Implement full BIP68 sequence lock validation. This requires
-            // per-input block metadata and chain MTP from the runtime API.
 
             if invalid {
                 to_remove.insert(entry_id);
@@ -430,6 +492,22 @@ where
             .expect("Time went backwards")
             .as_secs() as i64;
 
+        // Get current MTP from runtime API for BIP68 validation
+        use subcoin_primitives::BackendExt;
+        let current_mtp =
+            if let Some(bitcoin_block_hash) = self.client.bitcoin_block_hash_for(best_block) {
+                use subcoin_primitives::SubcoinRuntimeApi as RuntimeApi;
+                self.client
+                    .runtime_api()
+                    .get_block_metadata(best_block, bitcoin_block_hash)
+                    .ok()
+                    .flatten()
+                    .map(|metadata| metadata.median_time_past)
+                    .unwrap_or(current_time) // Fallback to current time if API fails
+            } else {
+                current_time // Fallback if block hash not found
+            };
+
         // Convert to Arc (single allocation per tx)
         let arc_txs: Vec<_> = transactions.into_iter().map(Arc::new).collect();
 
@@ -446,7 +524,7 @@ where
             &self.options,
             current_height,
             best_block,
-            current_time,
+            current_mtp,
             sequence_start,
         )?;
 

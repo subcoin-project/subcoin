@@ -1,8 +1,9 @@
 //! Core type definitions for the mempool.
 
-use bitcoin::{Amount, BlockHash, Txid};
+use bitcoin::{Amount, BlockHash, Transaction, Txid};
 use slotmap::DefaultKey;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 /// Handle to entry in mempool arena (not an iterator).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -211,7 +212,7 @@ pub struct ConflictSet {
 
     /// Transactions to remove (for coins cache cleanup).
     /// Must capture BEFORE calling remove_staged().
-    pub removed_transactions: Vec<std::sync::Arc<bitcoin::Transaction>>,
+    pub removed_transactions: Vec<Arc<Transaction>>,
 
     /// Total fees of all replaced transactions.
     pub replaced_fees: bitcoin::Amount,
@@ -223,12 +224,12 @@ pub struct ConflictSet {
 /// A package of related transactions to be validated together.
 #[derive(Debug, Clone)]
 pub struct Package {
-    pub transactions: Vec<std::sync::Arc<bitcoin::Transaction>>,
+    pub transactions: Vec<Arc<Transaction>>,
 }
 
 /// Package validation result.
 #[derive(Debug)]
 pub struct PackageValidationResult {
-    pub accepted: Vec<bitcoin::Txid>,
+    pub accepted: Vec<Txid>,
     pub package_feerate: FeeRate,
 }

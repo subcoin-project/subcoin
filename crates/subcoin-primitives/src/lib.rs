@@ -447,6 +447,17 @@ pub struct Coin {
     pub height: u32,
     /// Whether this coin is from a coinbase transaction.
     pub is_coinbase: bool,
+    /// Median Time Past of the block containing this coin (for BIP68 validation).
+    pub median_time_past: i64,
+}
+
+/// Block metadata for BIP68 validation.
+#[derive(Debug, Clone, Copy)]
+pub struct BlockMetadata {
+    /// Block height.
+    pub height: u32,
+    /// Median Time Past of this block.
+    pub median_time_past: i64,
 }
 
 /// Runtime API trait for UTXO queries (to be implemented by runtime).
@@ -457,4 +468,22 @@ pub trait SubcoinRuntimeApi<Block: BlockT> {
         at: Block::Hash,
         outpoints: Vec<OutPoint>,
     ) -> sp_blockchain::Result<Vec<Option<Coin>>>;
+
+    /// Get block metadata (height and median time past) for a given block hash.
+    ///
+    /// Returns None if the block is not found in the chain.
+    fn get_block_metadata(
+        &self,
+        at: Block::Hash,
+        block_hash: BlockHash,
+    ) -> sp_blockchain::Result<Option<BlockMetadata>>;
+
+    /// Check if a block is on the active (best) chain.
+    ///
+    /// Returns false if the block is not found or is on a stale fork.
+    fn is_block_on_active_chain(
+        &self,
+        at: Block::Hash,
+        block_hash: BlockHash,
+    ) -> sp_blockchain::Result<bool>;
 }
