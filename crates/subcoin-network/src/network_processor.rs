@@ -740,8 +740,11 @@ where
 
         tracing::debug!("Received tx {txid} from peer {from}");
 
-        // Check if peer has relay permission
-        // TODO: Add proper relay permission check based on peer's relay flag
+        // Check if peer has relay permission (from version handshake)
+        if !self.peer_manager.peer_wants_tx_relay(&from) {
+            tracing::debug!("Peer {from} sent tx but doesn't have relay permission");
+            return;
+        }
 
         // Check if we already have this transaction
         if self.tx_pool.contains(&txid) {
@@ -758,12 +761,8 @@ where
                     "Transaction {txid} accepted into mempool (fee rate: {fee_rate} sat/kvB)"
                 );
 
-                // TODO: Broadcast to other peers (respecting fee filters)
-                // This would involve:
-                // 1. Get list of connected peers
-                // 2. Filter by those who haven't seen this tx
-                // 3. Filter by fee_filter preferences (BIP133)
-                // 4. Send inv message to qualified peers
+                // Broadcast to other peers (respecting fee filters and relay preferences)
+                self.broadcast_transaction(txid, fee_rate, from);
             }
             TxValidationResult::Rejected { txid, reason } => {
                 if reason.should_penalize_peer() {
@@ -798,5 +797,66 @@ where
 
         self.peer_manager
             .set_fee_filter(from, min_fee_rate_u64);
+    }
+
+    /// Broadcast transaction to peers via inv message.
+    ///
+    /// Filters peers based on:
+    /// 1. Relay permission (peer.relay flag from version handshake)
+    /// 2. Fee filter preference (BIP133) - only send if tx fee rate >= peer's minimum
+    /// 3. Exclude the peer who sent us this transaction (avoid echo)
+    fn broadcast_transaction(&mut self, txid: bitcoin::Txid, fee_rate: u64, sender: PeerId) {
+        use bitcoin::p2p::message_blockdata::Inventory;
+
+        let mut broadcast_count = 0;
+
+        // Collect peers to broadcast to (iterate once to avoid borrow issues)
+        let peers_to_notify: Vec<PeerId> = self
+            .peer_manager
+            .connected_peer_ids()
+            .filter(|&peer_id| {
+                // Don't send back to the peer who sent it to us
+                if *peer_id == sender {
+                    return false;
+                }
+
+                // Check if peer wants transaction relay
+                if !self.peer_manager.peer_wants_tx_relay(peer_id) {
+                    return false;
+                }
+
+                // Check fee filter (BIP133) - only send if tx fee rate >= peer's minimum
+                if let Some(peer_min_fee) = self.peer_manager.get_fee_filter(peer_id) {
+                    if fee_rate < peer_min_fee {
+                        tracing::trace!(
+                            "Not relaying tx {txid} to peer {peer_id}: fee rate {fee_rate} < peer's filter {peer_min_fee}"
+                        );
+                        return false;
+                    }
+                }
+
+                true
+            })
+            .copied()
+            .collect();
+
+        // Send inv message to each qualifying peer
+        for peer_id in peers_to_notify {
+            let inv_msg = bitcoin::p2p::message::NetworkMessage::Inv(vec![
+                Inventory::Transaction(txid)
+            ]);
+
+            if let Err(err) = self.send(peer_id, inv_msg) {
+                tracing::warn!("Failed to send inv for tx {txid} to peer {peer_id}: {err}");
+            } else {
+                broadcast_count += 1;
+            }
+        }
+
+        if broadcast_count > 0 {
+            tracing::debug!("Broadcasted tx {txid} to {broadcast_count} peers");
+        } else {
+            tracing::trace!("No peers qualified to receive tx {txid}");
+        }
     }
 }

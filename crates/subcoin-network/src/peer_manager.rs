@@ -856,4 +856,17 @@ where
             .map(|info| info.invalid_tx_count)
             .unwrap_or(0)
     }
+
+    /// Get all connected peer IDs.
+    pub fn connected_peer_ids(&self) -> impl Iterator<Item = &PeerId> {
+        self.connected_peers.keys()
+    }
+
+    /// Check if a peer wants transaction relay (from version handshake).
+    pub fn peer_wants_tx_relay(&self, peer: &PeerId) -> bool {
+        self.connected_peers
+            .get(peer)
+            .map(|info| info.relay)
+            .unwrap_or(false)
+    }
 }
