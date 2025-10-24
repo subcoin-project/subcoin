@@ -7,7 +7,7 @@ fn test_runtime_txid_type() {
     let genesis_block = bitcoin::constants::genesis_block(bitcoin::Network::Bitcoin);
     let txid = genesis_block.txdata[0].compute_txid();
 
-    let runtime_txid = crate::Txid::from_bitcoin_txid(txid);
+    let runtime_txid: crate::Txid = txid.into();
     assert_eq!(format!("{txid:?}"), format!("{runtime_txid:?}"));
 
     let mut d = Vec::new();

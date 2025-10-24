@@ -6,7 +6,7 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 use bitcoin::consensus::Encodable;
-use codec::{Decode, Encode, MaxEncodedLen};
+use codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_runtime::ConsensusEngineId;
@@ -48,8 +48,18 @@ impl MaxEncodedLen for Coin {
 }
 
 /// Wrapper type for representing [`bitcoin::Txid`] in runtime, stored in reversed byte order.
-#[derive(Clone, Copy, TypeInfo, Encode, Decode, MaxEncodedLen, PartialEq, Eq)]
-#[cfg_attr(feature = "std", derive(Debug))]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    TypeInfo,
+    Encode,
+    Decode,
+    DecodeWithMemTracking,
+    MaxEncodedLen,
+    PartialEq,
+    Eq,
+)]
 pub struct Txid(H256);
 
 impl From<bitcoin::Txid> for Txid {
@@ -78,8 +88,9 @@ impl From<Txid> for bitcoin::Txid {
 }
 
 /// A reference to a transaction output.
-#[derive(Clone, Encode, Decode, TypeInfo, PartialEq, Eq, MaxEncodedLen)]
-#[cfg_attr(feature = "std", derive(Debug))]
+#[derive(
+    Debug, Clone, Encode, Decode, DecodeWithMemTracking, TypeInfo, PartialEq, Eq, MaxEncodedLen,
+)]
 pub struct OutPoint {
     /// The transaction ID of the referenced output.
     pub txid: Txid,

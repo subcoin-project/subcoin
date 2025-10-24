@@ -102,7 +102,7 @@ pub mod pallet {
 pub fn coin_storage_key<T: Config>(bitcoin_txid: bitcoin::Txid, vout: OutputIndex) -> Vec<u8> {
     use frame_support::storage::generator::StorageDoubleMap;
 
-    let txid = Txid::from_bitcoin_txid(bitcoin_txid);
+    let txid: Txid = bitcoin_txid.into();
     Coins::<T>::storage_double_map_final_key(txid, vout)
 }
 
@@ -124,7 +124,7 @@ impl<T: Config> Pallet<T> {
         outpoints
             .into_iter()
             .map(|outpoint| {
-                let txid = Txid::from_bitcoin_txid(outpoint.txid.into());
+                let txid: Txid = outpoint.txid.into();
                 Coins::<T>::get(txid, outpoint.vout)
             })
             .collect()
@@ -175,8 +175,8 @@ impl<T: Config> Pallet<T> {
         if is_coinbase {
             // Insert new UTXOs for coinbase transaction.
             for (out_point, coin) in new_coins {
-                let OutPoint { txid, output_index } = OutPoint::from(out_point);
-                Coins::<T>::insert(txid, output_index, coin);
+                let OutPoint { txid, vout } = OutPoint::from(out_point);
+                Coins::<T>::insert(txid, vout, coin);
             }
             CoinsCount::<T>::mutate(|v| {
                 *v += num_created as u64;
@@ -189,8 +189,8 @@ impl<T: Config> Pallet<T> {
         // Process the inputs to remove consumed UTXOs.
         for input in tx.input {
             let previous_output = input.previous_output;
-            let OutPoint { txid, output_index } = OutPoint::from(previous_output);
-            if let Some(_spent) = Coins::<T>::take(txid, output_index) {
+            let OutPoint { txid, vout } = OutPoint::from(previous_output);
+            if let Some(_spent) = Coins::<T>::take(txid, vout) {
             } else {
                 panic!("Corruputed state, UTXO {previous_output:?} not found");
             }
@@ -198,8 +198,8 @@ impl<T: Config> Pallet<T> {
 
         // Insert new UTXOs for non-coinbase transaction.
         for (out_point, coin) in new_coins {
-            let OutPoint { txid, output_index } = OutPoint::from(out_point);
-            Coins::<T>::insert(txid, output_index, coin);
+            let OutPoint { txid, vout } = OutPoint::from(out_point);
+            Coins::<T>::insert(txid, vout, coin);
         }
 
         CoinsCount::<T>::mutate(|v| {
