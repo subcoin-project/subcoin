@@ -9135,6 +9135,7 @@ dependencies = [
  "sp-blockchain",
  "sp-runtime",
  "subcoin-primitives",
+ "subcoin-runtime-primitives",
  "subcoin-script",
  "thiserror 1.0.69",
 ]
@@ -9216,6 +9217,7 @@ dependencies = [
  "subcoin-crypto",
  "subcoin-indexer",
  "subcoin-informant",
+ "subcoin-memory-pool",
  "subcoin-network",
  "subcoin-primitives",
  "subcoin-rpc",
@@ -9295,10 +9297,12 @@ dependencies = [
 name = "subcoin-runtime-primitives"
 version = "0.1.0"
 dependencies = [
+ "bitcoin 0.32.2",
  "parity-scale-codec",
  "scale-info",
  "serde",
  "sp-api",
+ "sp-core",
  "sp-runtime",
  "sp-std",
 ]

@@ -1,38 +1,5 @@
-use super::MAX_BLOCK_WEIGHT;
+use bitcoin::Transaction;
 use bitcoin::absolute::{LOCK_TIME_THRESHOLD, LockTime};
-use bitcoin::blockdata::weight::WITNESS_SCALE_FACTOR;
-use bitcoin::{Amount, Transaction, Weight};
-use std::collections::HashSet;
-
-// MinCoinbaseScriptLen is the minimum length a coinbase script can be.
-const MIN_COINBASE_SCRIPT_LEN: usize = 2;
-
-// MaxCoinbaseScriptLen is the maximum length a coinbase script can be.
-const MAX_COINBASE_SCRIPT_LEN: usize = 100;
-
-/// Transaction verification error.
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("Transaction has no inputs")]
-    EmptyInput,
-    #[error("Transaction has no outputs")]
-    EmptyOutput,
-    #[error("Transaction is too large")]
-    TransactionOversize,
-    #[error("Transaction contains duplicate inputs at index {0}")]
-    DuplicateTxInput(usize),
-    #[error("Output value (0) is too large")]
-    OutputValueTooLarge(Amount),
-    #[error("Total output value (0) is too large")]
-    TotalOutputValueTooLarge(Amount),
-    #[error(
-        "Coinbase transaction script length of {0} is out of range \
-        (min: {MIN_COINBASE_SCRIPT_LEN}, max: {MAX_COINBASE_SCRIPT_LEN})"
-    )]
-    BadCoinbaseLength(usize),
-    #[error("Transaction input refers to a previous output that is null")]
-    PreviousOutputNull,
-}
 
 /// Checks whether the transaction is final at the given height and block time.
 pub fn is_final_tx(tx: &Transaction, height: u32, block_time: u32) -> bool {

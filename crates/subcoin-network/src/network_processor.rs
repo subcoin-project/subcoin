@@ -1,7 +1,5 @@
 use crate::metrics::Metrics;
-use crate::network_api::{
-    IncomingTransaction, NetworkProcessorMessage, NetworkStatus, SendTransactionResult,
-};
+use crate::network_api::{NetworkProcessorMessage, NetworkStatus, SendTransactionResult};
 use crate::peer_connection::{ConnectionInitiator, Direction, NewConnection};
 use crate::peer_manager::{Config, NewPeer, PEER_LATENCY_THRESHOLD, PeerManager, SlowPeer};
 use crate::peer_store::PeerStore;
@@ -22,6 +20,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+use subcoin_primitives::tx_pool::TxValidationResult;
 use subcoin_primitives::{BackendExt, ClientExt};
 use substrate_prometheus_endpoint::Registry;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -55,7 +54,7 @@ impl Event {
 }
 
 /// Parameters for creating a [`NetworkProcessor`].
-pub struct Params<Block, Client, Pool = subcoin_primitives::tx_pool::NoOpTxPool> {
+pub struct Params<Block, Client, Pool> {
     pub client: Arc<Client>,
     pub header_verifier: HeaderVerifier<Block, Client>,
     pub network_event_receiver: UnboundedReceiver<Event>,
@@ -76,7 +75,7 @@ pub struct Params<Block, Client, Pool = subcoin_primitives::tx_pool::NoOpTxPool>
 }
 
 /// [`NetworkProcessor`] is responsible for processing the network events.
-pub struct NetworkProcessor<Block, Client, Pool = subcoin_primitives::tx_pool::NoOpTxPool> {
+pub struct NetworkProcessor<Block, Client, Pool> {
     config: Config,
     client: Arc<Client>,
     chain_sync: ChainSync<Block, Client>,
@@ -734,14 +733,12 @@ where
     /// Validates the transaction using the mempool and broadcasts to other peers
     /// if accepted. Penalizes the peer if the transaction is invalid.
     fn handle_tx_message(&mut self, from: PeerId, tx: bitcoin::Transaction) {
-        use subcoin_primitives::tx_pool::{TxPool, TxValidationResult};
-
         let txid = tx.compute_txid();
 
         tracing::debug!("Received tx {txid} from peer {from}");
 
         // Check if peer has relay permission (from version handshake)
-        if !self.peer_manager.peer_wants_tx_relay(&from) {
+        if !self.peer_manager.peer_wants_tx_relay(from) {
             tracing::debug!("Peer {from} sent tx but doesn't have relay permission");
             return;
         }
@@ -766,15 +763,11 @@ where
             }
             TxValidationResult::Rejected { txid, reason } => {
                 if reason.should_penalize_peer() {
-                    tracing::warn!(
-                        "Peer {from} sent invalid transaction {txid}: {:?}",
-                        reason
-                    );
+                    tracing::warn!("Peer {from} sent invalid transaction {txid}: {reason:?}");
                     self.peer_manager.record_invalid_tx(from);
                 } else {
                     tracing::debug!(
-                        "Transaction {txid} softly rejected (legitimate reason): {:?}",
-                        reason
+                        "Transaction {txid} softly rejected (legitimate reason): {reason:?}"
                     );
                 }
             }
@@ -795,8 +788,7 @@ where
 
         tracing::debug!("Peer {from} set fee filter to {min_fee_rate_u64} sat/kvB");
 
-        self.peer_manager
-            .set_fee_filter(from, min_fee_rate_u64);
+        self.peer_manager.set_fee_filter(from, min_fee_rate_u64);
     }
 
     /// Broadcast transaction to peers via inv message.
@@ -806,45 +798,30 @@ where
     /// 2. Fee filter preference (BIP133) - only send if tx fee rate >= peer's minimum
     /// 3. Exclude the peer who sent us this transaction (avoid echo)
     fn broadcast_transaction(&mut self, txid: bitcoin::Txid, fee_rate: u64, sender: PeerId) {
-        use bitcoin::p2p::message_blockdata::Inventory;
-
         let mut broadcast_count = 0;
 
-        // Collect peers to broadcast to (iterate once to avoid borrow issues)
-        let peers_to_notify: Vec<PeerId> = self
-            .peer_manager
-            .connected_peer_ids()
-            .filter(|&peer_id| {
-                // Don't send back to the peer who sent it to us
-                if *peer_id == sender {
-                    return false;
+        for peer_id in self.peer_manager.connected_peer_ids().copied() {
+            // Don't send back to the peer who sent it to us
+            if peer_id == sender {
+                continue;
+            }
+
+            // Check if peer wants transaction relay
+            if !self.peer_manager.peer_wants_tx_relay(peer_id) {
+                continue;
+            }
+
+            // Check fee filter (BIP133) - only send if tx fee rate >= peer's minimum
+            if let Some(peer_min_fee) = self.peer_manager.get_fee_filter(peer_id) {
+                if fee_rate < peer_min_fee {
+                    tracing::trace!(
+                        "Not relaying tx {txid} to peer {peer_id}: fee rate {fee_rate} < peer's filter {peer_min_fee}"
+                    );
+                    continue;
                 }
+            }
 
-                // Check if peer wants transaction relay
-                if !self.peer_manager.peer_wants_tx_relay(peer_id) {
-                    return false;
-                }
-
-                // Check fee filter (BIP133) - only send if tx fee rate >= peer's minimum
-                if let Some(peer_min_fee) = self.peer_manager.get_fee_filter(peer_id) {
-                    if fee_rate < peer_min_fee {
-                        tracing::trace!(
-                            "Not relaying tx {txid} to peer {peer_id}: fee rate {fee_rate} < peer's filter {peer_min_fee}"
-                        );
-                        return false;
-                    }
-                }
-
-                true
-            })
-            .copied()
-            .collect();
-
-        // Send inv message to each qualifying peer
-        for peer_id in peers_to_notify {
-            let inv_msg = bitcoin::p2p::message::NetworkMessage::Inv(vec![
-                Inventory::Transaction(txid)
-            ]);
+            let inv_msg = NetworkMessage::Inv(vec![Inventory::Transaction(txid)]);
 
             if let Err(err) = self.send(peer_id, inv_msg) {
                 tracing::warn!("Failed to send inv for tx {txid} to peer {peer_id}: {err}");

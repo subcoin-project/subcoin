@@ -15,6 +15,7 @@ slotmap = "1.0"
 sp-api = { workspace = true }
 sp-runtime = { workspace = true }
 subcoin-primitives = { workspace = true }
+subcoin-runtime-primitives = { workspace = true }
 subcoin-script = { workspace = true }
 thiserror = { workspace = true }
 

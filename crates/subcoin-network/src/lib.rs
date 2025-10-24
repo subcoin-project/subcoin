@@ -419,10 +419,11 @@ async fn initialize_outbound_connections(
 }
 
 /// Creates Subcoin network.
-pub async fn build_network<Block, Client>(
+pub async fn build_network<Block, Client, Pool>(
     client: Arc<Client>,
     config: Config,
     import_queue: BlockImportQueue,
+    tx_pool: Arc<Pool>,
     task_manager: &TaskManager,
     registry: Option<Registry>,
     substrate_sync_service: Option<Arc<SyncingService<Block>>>,
@@ -430,6 +431,7 @@ pub async fn build_network<Block, Client>(
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore + 'static,
+    Pool: subcoin_primitives::tx_pool::TxPool + 'static,
 {
     let (processor_msg_sender, processor_msg_receiver) =
         tracing_unbounded("mpsc_subcoin_network_processor", 100);
@@ -534,7 +536,7 @@ where
                     peer_store: Arc::new(persistent_peer_store_handle),
                     sync_target,
                     memory_config: config.memory_config.clone(),
-                    tx_pool: Arc::new(subcoin_primitives::tx_pool::NoOpTxPool),
+                    tx_pool,
                 },
                 registry.as_ref(),
             )

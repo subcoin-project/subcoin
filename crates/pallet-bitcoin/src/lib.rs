@@ -118,6 +118,18 @@ impl<T: Config> Pallet<T> {
         CoinsCount::<T>::get()
     }
 
+    pub fn get_utxos(
+        outpoints: Vec<subcoin_runtime_primitives::OutPoint>,
+    ) -> Vec<Option<subcoin_runtime_primitives::Coin>> {
+        outpoints
+            .into_iter()
+            .map(|outpoint| {
+                let txid = Txid::from_bitcoin_txid(outpoint.txid.into());
+                Coins::<T>::get(txid, outpoint.vout)
+            })
+            .collect()
+    }
+
     fn process_bitcoin_transaction(tx: bitcoin::Transaction) {
         let txid = tx.compute_txid();
         let is_coinbase = tx.is_coinbase();

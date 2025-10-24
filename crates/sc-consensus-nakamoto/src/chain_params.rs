@@ -2,9 +2,6 @@ use bitcoin::consensus::Params;
 use bitcoin::{BlockHash, Network};
 use std::collections::HashMap;
 
-/// bip-0113 defines the median of the last 11 blocks instead of the block's timestamp for lock-time calculations.
-pub const MEDIAN_TIME_SPAN: usize = 11;
-
 /// Extended [`Params`].
 #[derive(Debug, Clone)]
 pub struct ChainParams {

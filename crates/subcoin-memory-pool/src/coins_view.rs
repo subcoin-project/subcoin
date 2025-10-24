@@ -13,7 +13,8 @@ use sp_runtime::traits::Block as BlockT;
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subcoin_primitives::{Coin, MEMPOOL_HEIGHT, SubcoinRuntimeApi};
+use subcoin_primitives::{MEMPOOL_HEIGHT, PoolCoin};
+use subcoin_runtime_primitives::SubcoinApi;
 
 /// In-memory UTXO cache with Substrate runtime backend.
 ///
@@ -23,10 +24,10 @@ use subcoin_primitives::{Coin, MEMPOOL_HEIGHT, SubcoinRuntimeApi};
 /// - `mempool_spends`: Outputs spent by pending transactions
 pub struct CoinsViewCache<Block: BlockT, Client> {
     /// Base layer: coins from blockchain (invalidated on block import).
-    base_cache: LruMap<COutPoint, Option<Coin>, ByLength>,
+    base_cache: LruMap<COutPoint, Option<PoolCoin>, ByLength>,
 
     /// Overlay: coins created by mempool transactions (never cleared).
-    mempool_overlay: HashMap<COutPoint, Coin>,
+    mempool_overlay: HashMap<COutPoint, PoolCoin>,
 
     /// Outputs spent by mempool transactions.
     mempool_spends: HashSet<COutPoint>,
@@ -44,7 +45,7 @@ impl<Block, Client> CoinsViewCache<Block, Client>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
-    Client::Api: SubcoinRuntimeApi<Block>,
+    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
 {
     /// Create a new coins view cache.
     ///
@@ -71,7 +72,7 @@ where
     /// 2. Check mempool overlay (created by pending txs)
     /// 3. Check base cache
     /// 4. Query runtime and cache result
-    pub fn get_coin(&mut self, outpoint: &COutPoint) -> Result<Option<Coin>, MempoolError> {
+    pub fn get_coin(&mut self, outpoint: &COutPoint) -> Result<Option<PoolCoin>, MempoolError> {
         // 1. Check mempool spends first
         if self.mempool_spends.contains(outpoint) {
             return Ok(None);
@@ -133,7 +134,7 @@ where
             let outpoint = COutPoint::new(tx.compute_txid(), idx as u32);
             self.mempool_overlay.insert(
                 outpoint,
-                Coin {
+                PoolCoin {
                     output: output.clone(),
                     height: MEMPOOL_HEIGHT,
                     is_coinbase: false,
@@ -187,24 +188,36 @@ where
     }
 
     /// Synchronous runtime API call for single coin.
-    fn fetch_from_runtime(&self, outpoint: &COutPoint) -> Result<Option<Coin>, MempoolError> {
+    fn fetch_from_runtime(&self, outpoint: &COutPoint) -> Result<Option<PoolCoin>, MempoolError> {
         let api = self.client.runtime_api();
+        let outpoint_prim = subcoin_runtime_primitives::OutPoint::from(*outpoint);
 
-        api.batch_get_utxos(self.best_block, vec![*outpoint])
+        api.get_utxos(self.best_block, vec![outpoint_prim])
             .map_err(|e| MempoolError::RuntimeApi(format!("Failed to fetch UTXO: {e:?}")))?
             .into_iter()
             .next()
             .ok_or_else(|| MempoolError::RuntimeApi("Empty response from runtime API".into()))
+            .map(|opt_coin| opt_coin.map(|coin| coin.into()))
     }
 
     /// Batch fetch multiple coins from runtime.
     fn batch_fetch_from_runtime(
         &self,
         outpoints: &[COutPoint],
-    ) -> Result<Vec<Option<Coin>>, MempoolError> {
+    ) -> Result<Vec<Option<PoolCoin>>, MempoolError> {
         let api = self.client.runtime_api();
+        let outpoints_prim: Vec<_> = outpoints
+            .iter()
+            .map(|op| subcoin_runtime_primitives::OutPoint::from(*op))
+            .collect();
 
-        api.batch_get_utxos(self.best_block, outpoints.to_vec())
+        api.get_utxos(self.best_block, outpoints_prim)
+            .map(|coins| {
+                coins
+                    .into_iter()
+                    .map(|opt_coin| opt_coin.map(|coin| coin.into()))
+                    .collect()
+            })
             .map_err(|e| MempoolError::RuntimeApi(format!("Batch fetch failed: {e:?}")))
     }
 

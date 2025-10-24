@@ -11,7 +11,8 @@ use sp_runtime::testing::{Block as TestBlock, Header, TestXt};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use subcoin_primitives::{BlockMetadata, Coin, SubcoinRuntimeApi};
+use subcoin_primitives::{BlockMetadata, PoolCoin};
+// TODO: Implement proper runtime API mocks for SubcoinApi
 
 use crate::{MemPool, MemPoolOptions};
 
@@ -21,7 +22,7 @@ type TestBlockType = TestBlock<TestXt<(), ()>>;
 /// Minimal mock client for deterministic UTXO testing.
 pub struct MockClient {
     /// UTXO set: OutPoint -> Coin
-    utxos: RwLock<HashMap<OutPoint, Coin>>,
+    utxos: RwLock<HashMap<OutPoint, PoolCoin>>,
     /// Current best block hash
     best_block: RwLock<<TestBlockType as BlockT>::Hash>,
     /// Current best block number
@@ -37,11 +38,11 @@ impl MockClient {
         }
     }
 
-    pub fn add_utxo(&self, outpoint: OutPoint, coin: Coin) {
+    pub fn add_utxo(&self, outpoint: OutPoint, coin: PoolCoin) {
         self.utxos.write().unwrap().insert(outpoint, coin);
     }
 
-    pub fn get_utxo(&self, outpoint: &OutPoint) -> Option<Coin> {
+    pub fn get_utxo(&self, outpoint: &OutPoint) -> Option<PoolCoin> {
         self.utxos.read().unwrap().get(outpoint).cloned()
     }
 }
@@ -93,39 +94,10 @@ impl ProvideRuntimeApi<TestBlockType> for MockClient {
     }
 }
 
-impl SubcoinRuntimeApi<TestBlockType> for MockClient {
-    fn batch_get_utxos(
-        &self,
-        _at: <TestBlockType as BlockT>::Hash,
-        outpoints: Vec<OutPoint>,
-    ) -> sp_blockchain::Result<Vec<Option<Coin>>> {
-        Ok(outpoints
-            .iter()
-            .map(|outpoint| self.get_utxo(outpoint))
-            .collect())
-    }
-
-    fn get_block_metadata(
-        &self,
-        _at: <TestBlockType as BlockT>::Hash,
-        _block_hash: bitcoin::BlockHash,
-    ) -> sp_blockchain::Result<Option<BlockMetadata>> {
-        // For tests, return current block metadata
-        Ok(Some(BlockMetadata {
-            height: *self.best_number.read().unwrap() as u32,
-            median_time_past: 0, // Simplified for tests
-        }))
-    }
-
-    fn is_block_on_active_chain(
-        &self,
-        _at: <TestBlockType as BlockT>::Hash,
-        _block_hash: bitcoin::BlockHash,
-    ) -> sp_blockchain::Result<bool> {
-        // For tests, assume all blocks are on active chain
-        Ok(true)
-    }
-}
+// TODO: Implement runtime API mocks using proper sp_api infrastructure
+// The old SubcoinRuntimeApi has been removed and replaced with:
+// - subcoin_runtime_primitives::SubcoinApi (runtime API for get_utxos)
+// - subcoin_primitives::ClientExt (client-side for get_block_metadata, is_block_on_active_chain)
 
 impl BlockchainEvents<TestBlockType> for MockClient {
     fn import_notification_stream(&self) -> sc_client_api::ImportNotifications<TestBlockType> {
@@ -251,14 +223,14 @@ pub fn dummy_address() -> Address {
     .unwrap()
 }
 
-/// Helper: Create a Coin for testing.
+/// Helper: Create a PoolCoin for testing.
 pub fn create_coin(
     amount: Amount,
     script_pubkey: ScriptBuf,
     height: u32,
     is_coinbase: bool,
-) -> Coin {
-    Coin {
+) -> PoolCoin {
+    PoolCoin {
         output: TxOut {
             value: amount,
             script_pubkey,

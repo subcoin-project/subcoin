@@ -9,7 +9,7 @@ use bitcoin::p2p::message::NetworkMessage;
 use bitcoin::p2p::message_network::VersionMessage;
 use bitcoin::p2p::{Address, ServiceFlags};
 use chrono::prelude::Local;
-use sc_client_api::HeaderBackend;
+use sc_client_api::{AuxStore, HeaderBackend};
 use sp_runtime::traits::Block as BlockT;
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -295,7 +295,7 @@ pub struct PeerManager<Block, Client> {
 impl<Block, Client> PeerManager<Block, Client>
 where
     Block: BlockT,
-    Client: HeaderBackend<Block>,
+    Client: HeaderBackend<Block> + AuxStore,
 {
     /// Constructs a new instance of [`PeerManager`].
     pub(crate) fn new(
@@ -813,9 +813,9 @@ where
     ///
     /// Returns the minimum fee rate (in sat/kvB) this peer wants to receive,
     /// or None if no filter is set.
-    pub fn get_fee_filter(&self, peer: &PeerId) -> Option<u64> {
+    pub fn get_fee_filter(&self, peer: PeerId) -> Option<u64> {
         self.connected_peers
-            .get(peer)
+            .get(&peer)
             .and_then(|info| info.fee_filter)
     }
 
@@ -863,9 +863,9 @@ where
     }
 
     /// Check if a peer wants transaction relay (from version handshake).
-    pub fn peer_wants_tx_relay(&self, peer: &PeerId) -> bool {
+    pub fn peer_wants_tx_relay(&self, peer: PeerId) -> bool {
         self.connected_peers
-            .get(peer)
+            .get(&peer)
             .map(|info| info.relay)
             .unwrap_or(false)
     }

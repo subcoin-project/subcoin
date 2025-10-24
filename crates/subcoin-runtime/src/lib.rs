@@ -240,6 +240,10 @@ impl_runtime_apis! {
         fn coins_count() -> u64 {
             Bitcoin::coins_count()
         }
+
+        fn get_utxos(outpoints: Vec<subcoin_runtime_primitives::OutPoint>) -> Vec<Option<subcoin_runtime_primitives::Coin>> {
+            Bitcoin::get_utxos(outpoints)
+        }
     }
 }
 

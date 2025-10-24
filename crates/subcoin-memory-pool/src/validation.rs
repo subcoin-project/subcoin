@@ -21,7 +21,6 @@ use sp_runtime::traits::Block as BlockT;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::sync::Arc;
-use subcoin_primitives::SubcoinRuntimeApi;
 use subcoin_primitives::consensus::check_transaction_sanity;
 use subcoin_script::{TransactionSignatureChecker, VerifyFlags, verify_script};
 
@@ -111,7 +110,7 @@ pub fn pre_checks<Block, Client>(
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
-    Client::Api: SubcoinRuntimeApi<Block>,
+    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
 {
     let tx = &ws.tx;
 
@@ -228,10 +227,9 @@ where
     let min_relay_fee_rate = options.min_relay_fee_rate();
     let min_fee = min_relay_fee_rate.get_fee(ws.vsize);
     if base_fee < min_fee {
-        use subcoin_primitives::tx_pool::fee_rate_from_amount_vsize;
-
-        let actual_kvb = fee_rate_from_amount_vsize(base_fee, ws.vsize)
-            .map_err(|e| MempoolError::InvalidFeeRate(e.to_string()))?;
+        let actual_kvb = FeeRate::from_amount_and_vsize(base_fee, ws.vsize)
+            .map_err(|e| MempoolError::InvalidFeeRate(e.to_string()))?
+            .as_sat_per_kvb();
         let min_kvb = min_relay_fee_rate.as_sat_per_kvb();
 
         return Err(MempoolError::FeeTooLow {
@@ -353,7 +351,7 @@ pub fn finalize_tx<Block, Client>(
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
-    Client::Api: SubcoinRuntimeApi<Block>,
+    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
 {
     // Handle RBF: Remove conflicting transactions if present
     if let Some(conflict_set) = &ws.conflict_set {
@@ -527,7 +525,7 @@ pub fn check_inputs<Block, Client>(
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
-    Client::Api: SubcoinRuntimeApi<Block>,
+    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
 {
     let tx = &ws.tx;
 
@@ -572,7 +570,7 @@ pub fn check_rbf_policy<Block, Client>(
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
-    Client::Api: SubcoinRuntimeApi<Block>,
+    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
 {
     let tx = &ws.tx;
 
@@ -782,7 +780,7 @@ pub fn calculate_package_feerate<Block, Client>(
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
-    Client::Api: SubcoinRuntimeApi<Block>,
+    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
 {
     use bitcoin::OutPoint;
 
@@ -825,12 +823,13 @@ where
                 pkg_output.clone()
             } else if let Some(parent_id) = inner.arena.get_by_txid(&outpoint.txid) {
                 // Spends mempool transaction
-                let parent = inner
-                    .arena
-                    .get(parent_id)
-                    .ok_or_else(|| MempoolError::MissingInputs {
-                        parents: vec![outpoint.txid],
-                    })?;
+                let parent =
+                    inner
+                        .arena
+                        .get(parent_id)
+                        .ok_or_else(|| MempoolError::MissingInputs {
+                            parents: vec![outpoint.txid],
+                        })?;
                 parent
                     .tx
                     .output
@@ -841,11 +840,12 @@ where
                     .clone()
             } else {
                 // Spends UTXO
-                let coin = coins_cache
-                    .get_coin(outpoint)?
-                    .ok_or_else(|| MempoolError::MissingInputs {
-                        parents: vec![outpoint.txid],
-                    })?;
+                let coin =
+                    coins_cache
+                        .get_coin(outpoint)?
+                        .ok_or_else(|| MempoolError::MissingInputs {
+                            parents: vec![outpoint.txid],
+                        })?;
                 coin.output
             };
 
@@ -903,7 +903,7 @@ pub fn pre_validate_package_tx<Block, Client>(
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
-    Client::Api: SubcoinRuntimeApi<Block>,
+    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
 {
     // Create workspace with Arc (no cloning)
     let mut ws = ValidationWorkspace::new(tx);
@@ -967,7 +967,7 @@ pub fn validate_package<Block, Client>(
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + sc_client_api::AuxStore + Send + Sync,
-    Client::Api: SubcoinRuntimeApi<Block>,
+    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
 {
     // Step 1: Check package limits
     if package.transactions.len() > options.max_package_count {
@@ -1124,7 +1124,7 @@ pub fn calculate_lock_points_at_tip<Block, Client>(
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
-    Client::Api: SubcoinRuntimeApi<Block>,
+    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
 {
     let mut lock_height: i32 = -1;
     let mut lock_time: i64 = 0;
@@ -1312,13 +1312,14 @@ mod tests {
         use sp_runtime::testing::{Block as TestBlock, Header, TestXt};
         use std::collections::HashMap;
         use std::sync::{Arc, RwLock};
-        use subcoin_primitives::{Coin, SubcoinRuntimeApi};
+        use subcoin_primitives::PoolCoin;
+        // TODO: Fix BIP68 test mocks to use new API structure
 
         type TestBlockType = TestBlock<TestXt<(), ()>>;
 
         /// Mock client for BIP68 testing
         struct MockBIP68Client {
-            utxos: RwLock<HashMap<OutPoint, Coin>>,
+            utxos: RwLock<HashMap<OutPoint, PoolCoin>>,
             best_block: RwLock<<TestBlockType as sp_runtime::traits::Block>::Hash>,
             best_number: RwLock<u64>,
         }
@@ -1332,7 +1333,7 @@ mod tests {
                 }
             }
 
-            fn add_utxo(&self, outpoint: OutPoint, coin: Coin) {
+            fn add_utxo(&self, outpoint: OutPoint, coin: PoolCoin) {
                 self.utxos.write().unwrap().insert(outpoint, coin);
             }
         }
@@ -1391,40 +1392,10 @@ mod tests {
             }
         }
 
-        impl SubcoinRuntimeApi<TestBlockType> for MockBIP68Client {
-            fn batch_get_utxos(
-                &self,
-                _at: <TestBlockType as sp_runtime::traits::Block>::Hash,
-                outpoints: Vec<OutPoint>,
-            ) -> sp_blockchain::Result<Vec<Option<Coin>>> {
-                Ok(outpoints
-                    .iter()
-                    .map(|outpoint| self.utxos.read().unwrap().get(outpoint).cloned())
-                    .collect())
-            }
+        // TODO: Implement mock using subcoin_runtime_primitives::SubcoinApi and subcoin_primitives::ClientExt
 
-            fn get_block_metadata(
-                &self,
-                _at: <TestBlockType as sp_runtime::traits::Block>::Hash,
-                _block_hash: bitcoin::BlockHash,
-            ) -> sp_blockchain::Result<Option<subcoin_primitives::BlockMetadata>> {
-                Ok(Some(subcoin_primitives::BlockMetadata {
-                    height: *self.best_number.read().unwrap() as u32,
-                    median_time_past: 1000000,
-                }))
-            }
-
-            fn is_block_on_active_chain(
-                &self,
-                _at: <TestBlockType as sp_runtime::traits::Block>::Hash,
-                _block_hash: bitcoin::BlockHash,
-            ) -> sp_blockchain::Result<bool> {
-                Ok(true)
-            }
-        }
-
-        fn create_coin(height: u32, mtp: i64, is_coinbase: bool) -> Coin {
-            Coin {
+        fn create_coin(height: u32, mtp: i64, is_coinbase: bool) -> PoolCoin {
+            PoolCoin {
                 output: TxOut {
                     value: Amount::from_sat(100_000),
                     script_pubkey: ScriptBuf::new(),

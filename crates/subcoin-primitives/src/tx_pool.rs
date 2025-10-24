@@ -1,6 +1,6 @@
 //! Bitcoin transaction pool abstraction for network integration.
 
-use bitcoin::{Amount, Transaction, Txid};
+use bitcoin::{Transaction, Txid};
 use std::sync::Arc;
 
 /// Result of transaction validation.
@@ -13,10 +13,7 @@ pub enum TxValidationResult {
         fee_rate: u64,
     },
     /// Transaction rejected.
-    Rejected {
-        txid: Txid,
-        reason: RejectionReason,
-    },
+    Rejected { txid: Txid, reason: RejectionReason },
 }
 
 /// Classification of rejection reasons for peer penalty policy.
@@ -153,9 +150,9 @@ pub trait TxPool: Send + Sync + 'static {
 /// This default implementation allows existing code to compile without
 /// requiring immediate mempool integration.
 #[derive(Debug, Default, Clone)]
-pub struct NoOpTxPool;
+pub struct NoTxPool;
 
-impl TxPool for NoOpTxPool {
+impl TxPool for NoTxPool {
     fn validate_transaction(&self, tx: Transaction) -> TxValidationResult {
         TxValidationResult::Rejected {
             txid: tx.compute_txid(),
@@ -191,45 +188,37 @@ impl TxPool for NoOpTxPool {
     }
 }
 
-/// Helper: Calculate fee rate from amount and vsize with overflow protection.
-///
-/// Returns fee rate in sat/kvB.
-pub fn fee_rate_from_amount_vsize(fee: Amount, vsize: i64) -> Result<u64, &'static str> {
-    if vsize <= 0 {
-        return Err("vsize must be positive");
-    }
-
-    let fee_sat = fee.to_sat();
-    let vsize_u64 = vsize as u64;
-
-    // Calculate fee_sat * 1000 / vsize with overflow protection
-    let numerator = fee_sat
-        .checked_mul(1000)
-        .ok_or("Fee rate calculation overflow")?;
-
-    Ok(numerator / vsize_u64)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_fee_rate_calculation() {
-        // 1000 sat fee, 250 vbytes = 4000 sat/kvB
-        let fee = Amount::from_sat(1000);
-        assert_eq!(fee_rate_from_amount_vsize(fee, 250).unwrap(), 4000);
+    fn test_noop_pool() {
+        let pool = NoTxPool;
+        let tx = Transaction {
+            version: bitcoin::transaction::Version::TWO,
+            lock_time: bitcoin::absolute::LockTime::ZERO,
+            input: vec![],
+            output: vec![],
+        };
 
-        // 500 sat fee, 200 vbytes = 2500 sat/kvB
-        let fee = Amount::from_sat(500);
-        assert_eq!(fee_rate_from_amount_vsize(fee, 200).unwrap(), 2500);
+        let result = pool.validate_transaction(tx);
+        assert!(matches!(
+            result,
+            TxValidationResult::Rejected {
+                reason: RejectionReason::Soft(SoftRejection::PackageRelayDisabled),
+                ..
+            }
+        ));
+    }
 
-        // Zero vsize should error
-        let fee = Amount::from_sat(1000);
-        assert!(fee_rate_from_amount_vsize(fee, 0).is_err());
+    #[test]
+    fn test_rejection_reason_penalize() {
+        let soft = RejectionReason::Soft(SoftRejection::PackageRelayDisabled);
+        assert!(!soft.should_penalize_peer());
 
-        // Negative vsize should error
-        assert!(fee_rate_from_amount_vsize(fee, -1).is_err());
+        let hard = RejectionReason::Hard(HardRejection::Coinbase);
+        assert!(hard.should_penalize_peer());
     }
 
     #[test]
@@ -243,7 +232,7 @@ mod tests {
 
     #[test]
     fn test_noop_pool() {
-        let pool = NoOpTxPool;
+        let pool = NoTxPool;
         let tx = Transaction {
             version: bitcoin::transaction::Version::TWO,
             lock_time: bitcoin::absolute::LockTime::ZERO,

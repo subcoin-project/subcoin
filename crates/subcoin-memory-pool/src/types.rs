@@ -24,6 +24,25 @@ impl FeeRate {
         Self(sat_kvb)
     }
 
+    /// Calculate fee rate from amount and vsize with overflow protection.
+    ///
+    /// Returns fee rate in sat/kvB.
+    pub fn from_amount_and_vsize(fee: Amount, vsize: i64) -> Result<Self, &'static str> {
+        if vsize <= 0 {
+            return Err("vsize must be positive");
+        }
+
+        let fee_sat = fee.to_sat();
+        let vsize_u64 = vsize as u64;
+
+        // Calculate fee_sat * 1000 / vsize with overflow protection
+        let numerator = fee_sat
+            .checked_mul(1000)
+            .ok_or("Fee rate calculation overflow")?;
+
+        Ok(Self(numerator / vsize_u64))
+    }
+
     /// Get fee for given virtual size.
     pub fn get_fee(&self, vsize: i64) -> Amount {
         let fee_sat = (self
@@ -235,4 +254,37 @@ pub struct Package {
 pub struct PackageValidationResult {
     pub accepted: Vec<Txid>,
     pub package_feerate: FeeRate,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fee_rate_from_amount_and_vsize() {
+        // 1000 sat fee, 250 vbytes = 4000 sat/kvB
+        let fee = Amount::from_sat(1000);
+        assert_eq!(
+            FeeRate::from_amount_and_vsize(fee, 250)
+                .unwrap()
+                .as_sat_per_kvb(),
+            4000
+        );
+
+        // 500 sat fee, 200 vbytes = 2500 sat/kvB
+        let fee = Amount::from_sat(500);
+        assert_eq!(
+            FeeRate::from_amount_and_vsize(fee, 200)
+                .unwrap()
+                .as_sat_per_kvb(),
+            2500
+        );
+
+        // Zero vsize should error
+        let fee = Amount::from_sat(1000);
+        assert!(FeeRate::from_amount_and_vsize(fee, 0).is_err());
+
+        // Negative vsize should error
+        assert!(FeeRate::from_amount_and_vsize(fee, -1).is_err());
+    }
 }

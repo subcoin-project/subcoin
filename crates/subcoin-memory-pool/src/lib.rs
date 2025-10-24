@@ -30,6 +30,7 @@ pub use self::types::{
 };
 
 use bitcoin::Transaction;
+use bitcoin::hashes::Hash;
 use sc_client_api::{AuxStore, HeaderBackend};
 use sp_api::ProvideRuntimeApi;
 use sp_runtime::traits::Block as BlockT;
@@ -37,7 +38,8 @@ use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
-use subcoin_primitives::SubcoinRuntimeApi;
+use subcoin_primitives::tx_pool::*;
+use subcoin_primitives::{BackendExt, ClientExt};
 
 /// Thread-safe Bitcoin mempool.
 ///
@@ -71,7 +73,7 @@ impl<Block, Client> MemPool<Block, Client>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore + Send + Sync,
-    Client::Api: SubcoinRuntimeApi<Block>,
+    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
 {
     /// Create a new mempool with default options.
     pub fn new(client: Arc<Client>) -> Self {
@@ -114,17 +116,11 @@ where
             .expect("Time went backwards")
             .as_secs() as i64;
 
-        // Get current MTP from runtime API
-        use bitcoin::hashes::Hash;
-        use subcoin_primitives::BackendExt;
+        // Get current MTP from ClientExt
         let current_mtp =
             if let Some(bitcoin_block_hash) = self.client.bitcoin_block_hash_for(best_block) {
-                use subcoin_primitives::SubcoinRuntimeApi as RuntimeApi;
                 self.client
-                    .runtime_api()
-                    .get_block_metadata(best_block, bitcoin_block_hash)
-                    .ok()
-                    .flatten()
+                    .get_block_metadata(bitcoin_block_hash)
                     .map(|metadata| metadata.median_time_past)
                     .unwrap_or(current_time) // Fallback to current time if API fails
             } else {
@@ -358,7 +354,6 @@ where
         let mut coins = self.coins_cache.write().expect("CoinsCache lock poisoned");
 
         // Get new tip's MTP for BIP68 validation
-        use subcoin_primitives::BackendExt;
         let fallback_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("Time went backwards")
@@ -366,12 +361,8 @@ where
 
         let new_tip_mtp =
             if let Some(bitcoin_block_hash) = self.client.bitcoin_block_hash_for(new_best_block) {
-                use subcoin_primitives::SubcoinRuntimeApi as RuntimeApi;
                 self.client
-                    .runtime_api()
-                    .get_block_metadata(new_best_block, bitcoin_block_hash)
-                    .ok()
-                    .flatten()
+                    .get_block_metadata(bitcoin_block_hash)
                     .map(|metadata| metadata.median_time_past)
                     .unwrap_or(fallback_time)
             } else {
@@ -398,12 +389,7 @@ where
             // If the block containing transaction inputs is no longer on the active chain,
             // the transaction may reference coins that don't exist anymore.
             if let Some(max_input_block) = entry.lock_points.max_input_block {
-                use subcoin_primitives::SubcoinRuntimeApi as RuntimeApi;
-                let is_on_active_chain = self
-                    .client
-                    .runtime_api()
-                    .is_block_on_active_chain(new_best_block, max_input_block)
-                    .unwrap_or(true); // Conservative: assume it's on active chain if API fails
+                let is_on_active_chain = self.client.is_block_on_active_chain(max_input_block);
 
                 if !is_on_active_chain {
                     invalid = true;
@@ -493,15 +479,10 @@ where
             .as_secs() as i64;
 
         // Get current MTP from runtime API for BIP68 validation
-        use subcoin_primitives::BackendExt;
         let current_mtp =
             if let Some(bitcoin_block_hash) = self.client.bitcoin_block_hash_for(best_block) {
-                use subcoin_primitives::SubcoinRuntimeApi as RuntimeApi;
                 self.client
-                    .runtime_api()
-                    .get_block_metadata(best_block, bitcoin_block_hash)
-                    .ok()
-                    .flatten()
+                    .get_block_metadata(bitcoin_block_hash)
                     .map(|metadata| metadata.median_time_past)
                     .unwrap_or(current_time) // Fallback to current time if API fails
             } else {
@@ -622,8 +603,6 @@ where
         txid: bitcoin::Txid,
         result: Result<(), MempoolError>,
     ) -> subcoin_primitives::tx_pool::TxValidationResult {
-        use subcoin_primitives::tx_pool::*;
-
         match result {
             Ok(()) => {
                 // Transaction accepted - get its fee rate
@@ -651,9 +630,13 @@ where
                     MempoolError::MissingInputs { parents } => {
                         RejectionReason::Soft(SoftRejection::MissingInputs { parents })
                     }
-                    MempoolError::FeeTooLow { min_kvb, actual_kvb } => {
-                        RejectionReason::Soft(SoftRejection::FeeTooLow { min_kvb, actual_kvb })
-                    }
+                    MempoolError::FeeTooLow {
+                        min_kvb,
+                        actual_kvb,
+                    } => RejectionReason::Soft(SoftRejection::FeeTooLow {
+                        min_kvb,
+                        actual_kvb,
+                    }),
                     MempoolError::MempoolFull => RejectionReason::Soft(SoftRejection::MempoolFull),
                     MempoolError::TooManyAncestors(count) => {
                         RejectionReason::Soft(SoftRejection::TooManyAncestors(count))
@@ -756,9 +739,12 @@ impl<Block, Client> subcoin_primitives::tx_pool::TxPool for MemPool<Block, Clien
 where
     Block: BlockT + 'static,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore + Send + Sync + 'static,
-    Client::Api: SubcoinRuntimeApi<Block>,
+    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
 {
-    fn validate_transaction(&self, tx: Transaction) -> subcoin_primitives::tx_pool::TxValidationResult {
+    fn validate_transaction(
+        &self,
+        tx: Transaction,
+    ) -> subcoin_primitives::tx_pool::TxValidationResult {
         let txid = tx.compute_txid();
         let result = self.accept_single_transaction(tx);
         self.into_validation_result(txid, result)

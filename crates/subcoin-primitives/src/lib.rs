@@ -7,7 +7,9 @@ use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::consensus::{Decodable, Encodable};
 use bitcoin::constants::genesis_block;
 use bitcoin::hashes::Hash;
-use bitcoin::{Block as BitcoinBlock, BlockHash, OutPoint, Transaction, TxOut, Txid, Weight};
+use bitcoin::{
+    Amount, Block as BitcoinBlock, BlockHash, ScriptBuf, Transaction, TxOut, Txid, Weight,
+};
 use codec::{Decode, Encode};
 use sc_client_api::AuxStore;
 use sp_blockchain::HeaderBackend;
@@ -181,22 +183,81 @@ where
     }
 }
 
+/// Number of blocks for median time calculation (BIP113).
+pub const MEDIAN_TIME_SPAN: usize = 11;
+
 /// A trait to extend the Substrate Client.
 pub trait ClientExt<Block> {
     /// Returns the number of best block.
     fn best_number(&self) -> u32;
+
+    /// Calculate median time past for a given block (BIP113).
+    ///
+    /// Returns the median timestamp of the last 11 blocks (including the given block).
+    fn calculate_median_time_past(&self, block_hash: BlockHash) -> Option<i64>;
+
+    /// Get block metadata (height and median time past) for a given block hash.
+    ///
+    /// Returns None if the block is not found in the chain.
+    fn get_block_metadata(&self, block_hash: BlockHash) -> Option<BlockMetadata>;
+
+    /// Check if a block is on the active (best) chain.
+    ///
+    /// Returns false if the block is not found or is on a stale fork.
+    fn is_block_on_active_chain(&self, block_hash: BlockHash) -> bool;
 }
 
 impl<Block, Client> ClientExt<Block> for Arc<Client>
 where
     Block: BlockT,
-    Client: HeaderBackend<Block>,
+    Client: HeaderBackend<Block> + AuxStore,
 {
     fn best_number(&self) -> u32 {
         self.info()
             .best_number
             .try_into()
             .unwrap_or_else(|_| panic!("BlockNumber must fit into u32; qed"))
+    }
+
+    fn calculate_median_time_past(&self, block_hash: BlockHash) -> Option<i64> {
+        let mut timestamps = Vec::with_capacity(MEDIAN_TIME_SPAN);
+
+        let header = self.block_header(block_hash)?;
+        timestamps.push(header.time as i64);
+
+        let zero_hash = BlockHash::all_zeros();
+        let mut prev_hash = header.prev_blockhash;
+
+        // Collect timestamps from previous blocks
+        for _ in 0..MEDIAN_TIME_SPAN - 1 {
+            if prev_hash == zero_hash {
+                break;
+            }
+
+            let header = self.block_header(prev_hash)?;
+            timestamps.push(header.time as i64);
+            prev_hash = header.prev_blockhash;
+        }
+
+        timestamps.sort_unstable();
+        Some(timestamps[timestamps.len() / 2])
+    }
+
+    fn get_block_metadata(&self, block_hash: BlockHash) -> Option<BlockMetadata> {
+        let height = self.block_number(block_hash)?;
+        let median_time_past = self.calculate_median_time_past(block_hash)?;
+
+        Some(BlockMetadata {
+            height,
+            median_time_past,
+        })
+    }
+
+    fn is_block_on_active_chain(&self, block_hash: BlockHash) -> bool {
+        self.block_number(block_hash)
+            .and_then(|height| self.block_hash(height))
+            .map(|canonical_hash| canonical_hash == block_hash)
+            .unwrap_or(false)
     }
 }
 
@@ -441,7 +502,7 @@ pub const MEMPOOL_HEIGHT: u32 = 0x7FFFFFFF;
 
 /// UTXO coin with metadata for mempool validation.
 #[derive(Debug, Clone)]
-pub struct Coin {
+pub struct PoolCoin {
     /// The transaction output.
     pub output: TxOut,
     /// Block height where this coin was created (MEMPOOL_HEIGHT for mempool coins).
@@ -452,6 +513,20 @@ pub struct Coin {
     pub median_time_past: i64,
 }
 
+impl From<subcoin_runtime_primitives::Coin> for PoolCoin {
+    fn from(coin: subcoin_runtime_primitives::Coin) -> Self {
+        Self {
+            output: TxOut {
+                value: Amount::from_sat(coin.amount),
+                script_pubkey: ScriptBuf::from_bytes(coin.script_pubkey),
+            },
+            height: coin.height,
+            is_coinbase: coin.is_coinbase,
+            median_time_past: 0, // Runtime coins don't have MTP; set to 0
+        }
+    }
+}
+
 /// Block metadata for BIP68 validation.
 #[derive(Debug, Clone, Copy)]
 pub struct BlockMetadata {
@@ -459,32 +534,4 @@ pub struct BlockMetadata {
     pub height: u32,
     /// Median Time Past of this block.
     pub median_time_past: i64,
-}
-
-/// Runtime API trait for UTXO queries (to be implemented by runtime).
-pub trait SubcoinRuntimeApi<Block: BlockT> {
-    /// Batch query UTXOs by outpoints.
-    fn batch_get_utxos(
-        &self,
-        at: Block::Hash,
-        outpoints: Vec<OutPoint>,
-    ) -> sp_blockchain::Result<Vec<Option<Coin>>>;
-
-    /// Get block metadata (height and median time past) for a given block hash.
-    ///
-    /// Returns None if the block is not found in the chain.
-    fn get_block_metadata(
-        &self,
-        at: Block::Hash,
-        block_hash: BlockHash,
-    ) -> sp_blockchain::Result<Option<BlockMetadata>>;
-
-    /// Check if a block is on the active (best) chain.
-    ///
-    /// Returns false if the block is not found or is on a stale fork.
-    fn is_block_on_active_chain(
-        &self,
-        at: Block::Hash,
-        block_hash: BlockHash,
-    ) -> sp_blockchain::Result<bool>;
 }
