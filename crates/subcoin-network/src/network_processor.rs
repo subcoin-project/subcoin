@@ -378,17 +378,7 @@ where
                 Ok(SyncAction::None)
             }
             NetworkMessage::Tx(tx) => {
-                // TODO: Check has relay permission.
-                let incoming_transaction = IncomingTransaction {
-                    txid: tx.compute_txid(),
-                    transaction: tx,
-                };
-                if let Err(err_msg) = self
-                    .transaction_manager
-                    .add_transaction(incoming_transaction)
-                {
-                    tracing::debug!(?from, "Failed to add transaction: {err_msg}");
-                }
+                self.handle_tx_message(from, tx);
                 Ok(SyncAction::None)
             }
             NetworkMessage::GetData(inv) => {
@@ -424,8 +414,8 @@ where
                 self.peer_manager.set_prefer_headers(from);
                 Ok(SyncAction::None)
             }
-            NetworkMessage::FeeFilter(_) => {
-                self.send(from, NetworkMessage::FeeFilter(1000))?;
+            NetworkMessage::FeeFilter(min_fee_rate) => {
+                self.handle_fee_filter(from, min_fee_rate);
                 Ok(SyncAction::None)
             }
             NetworkMessage::Inv(inv) => self.process_inv(from, inv),
@@ -735,5 +725,78 @@ where
             metrics.messages_sent.with_label_values(&[msg_cmd]).inc();
         }
         Ok(())
+    }
+
+    // --- Transaction relay handlers ---
+
+    /// Handle incoming transaction message from peer.
+    ///
+    /// Validates the transaction using the mempool and broadcasts to other peers
+    /// if accepted. Penalizes the peer if the transaction is invalid.
+    fn handle_tx_message(&mut self, from: PeerId, tx: bitcoin::Transaction) {
+        use subcoin_primitives::tx_pool::{TxPool, TxValidationResult};
+
+        let txid = tx.compute_txid();
+
+        tracing::debug!("Received tx {txid} from peer {from}");
+
+        // Check if peer has relay permission
+        // TODO: Add proper relay permission check based on peer's relay flag
+
+        // Check if we already have this transaction
+        if self.tx_pool.contains(&txid) {
+            tracing::trace!("Transaction {txid} already in mempool");
+            return;
+        }
+
+        // Validate transaction using mempool
+        let result = self.tx_pool.validate_transaction(tx.clone());
+
+        match result {
+            TxValidationResult::Accepted { txid, fee_rate } => {
+                tracing::info!(
+                    "Transaction {txid} accepted into mempool (fee rate: {fee_rate} sat/kvB)"
+                );
+
+                // TODO: Broadcast to other peers (respecting fee filters)
+                // This would involve:
+                // 1. Get list of connected peers
+                // 2. Filter by those who haven't seen this tx
+                // 3. Filter by fee_filter preferences (BIP133)
+                // 4. Send inv message to qualified peers
+            }
+            TxValidationResult::Rejected { txid, reason } => {
+                if reason.should_penalize_peer() {
+                    tracing::warn!(
+                        "Peer {from} sent invalid transaction {txid}: {:?}",
+                        reason
+                    );
+                    self.peer_manager.record_invalid_tx(from);
+                } else {
+                    tracing::debug!(
+                        "Transaction {txid} softly rejected (legitimate reason): {:?}",
+                        reason
+                    );
+                }
+            }
+        }
+    }
+
+    /// Handle fee filter message from peer (BIP133).
+    ///
+    /// Updates the peer's minimum fee rate preference. We should not relay
+    /// transactions to this peer if their fee rate is below this threshold.
+    fn handle_fee_filter(&mut self, from: PeerId, min_fee_rate: i64) {
+        if min_fee_rate < 0 {
+            tracing::warn!("Peer {from} sent negative fee filter: {min_fee_rate}");
+            return;
+        }
+
+        let min_fee_rate_u64 = min_fee_rate as u64;
+
+        tracing::debug!("Peer {from} set fee filter to {min_fee_rate_u64} sat/kvB");
+
+        self.peer_manager
+            .set_fee_filter(from, min_fee_rate_u64);
     }
 }
