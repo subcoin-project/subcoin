@@ -9123,7 +9123,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "subcoin-memory-pool"
+name = "subcoin-mempool"
 version = "0.1.0"
 dependencies = [
  "bitcoin 0.32.2",
@@ -9217,7 +9217,7 @@ dependencies = [
  "subcoin-crypto",
  "subcoin-indexer",
  "subcoin-informant",
- "subcoin-memory-pool",
+ "subcoin-mempool",
  "subcoin-network",
  "subcoin-primitives",
  "subcoin-rpc",

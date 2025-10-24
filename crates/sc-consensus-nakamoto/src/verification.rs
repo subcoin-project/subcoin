@@ -40,6 +40,7 @@ use bitcoin::{
     Amount, Block as BitcoinBlock, BlockHash, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid,
     VarInt, Weight,
 };
+pub use header_verify::{Error as HeaderError, HeaderVerifier};
 use sc_client_api::{AuxStore, Backend, StorageProvider};
 use sp_blockchain::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
@@ -50,8 +51,6 @@ use subcoin_primitives::consensus::{TxError, check_transaction_sanity};
 use subcoin_primitives::runtime::{Coin, bitcoin_block_subsidy};
 use subcoin_primitives::{CoinStorageKey, MAX_BLOCK_WEIGHT};
 use tx_verify::{get_legacy_sig_op_count, is_final_tx};
-
-pub use header_verify::{Error as HeaderError, HeaderVerifier};
 
 /// Represents the Bitcoin script backend.
 #[derive(Copy, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]

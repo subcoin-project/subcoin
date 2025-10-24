@@ -2,8 +2,6 @@ use bitcoin::locktime::absolute;
 use codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use sp_std::vec::Vec;
-
-// Re-export core types from runtime-primitives to avoid duplication
 pub use subcoin_runtime_primitives::{OutPoint, Txid};
 
 /// An absolute lock time value, representing either a block height or a UNIX timestamp (seconds

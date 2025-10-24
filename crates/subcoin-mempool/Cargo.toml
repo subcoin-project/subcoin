@@ -1,5 +1,5 @@
 [package]
-name = "subcoin-memory-pool"
+name = "subcoin-mempool"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

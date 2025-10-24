@@ -733,30 +733,25 @@ where
     /// Validates the transaction using the mempool and broadcasts to other peers
     /// if accepted. Penalizes the peer if the transaction is invalid.
     fn handle_tx_message(&mut self, from: PeerId, tx: bitcoin::Transaction) {
-        let txid = tx.compute_txid();
-
-        tracing::debug!("Received tx {txid} from peer {from}");
-
         // Check if peer has relay permission (from version handshake)
         if !self.peer_manager.peer_wants_tx_relay(from) {
             tracing::debug!("Peer {from} sent tx but doesn't have relay permission");
             return;
         }
 
+        let txid = tx.compute_txid();
+
+        tracing::debug!("Received tx {txid} from peer {from}");
+
         // Check if we already have this transaction
         if self.tx_pool.contains(&txid) {
-            tracing::trace!("Transaction {txid} already in mempool");
+            tracing::trace!("Tx {txid} already in mempool");
             return;
         }
 
-        // Validate transaction using mempool
-        let result = self.tx_pool.validate_transaction(tx.clone());
-
-        match result {
+        match self.tx_pool.validate_transaction(tx) {
             TxValidationResult::Accepted { txid, fee_rate } => {
-                tracing::info!(
-                    "Transaction {txid} accepted into mempool (fee rate: {fee_rate} sat/kvB)"
-                );
+                tracing::info!("Tx {txid} accepted into mempool (fee rate: {fee_rate} sat/kvB)");
 
                 // Broadcast to other peers (respecting fee filters and relay preferences)
                 self.broadcast_transaction(txid, fee_rate, from);
@@ -766,9 +761,7 @@ where
                     tracing::warn!("Peer {from} sent invalid transaction {txid}: {reason:?}");
                     self.peer_manager.record_invalid_tx(from);
                 } else {
-                    tracing::debug!(
-                        "Transaction {txid} softly rejected (legitimate reason): {reason:?}"
-                    );
+                    tracing::debug!("Tx {txid} softly rejected: {reason:?}");
                 }
             }
         }
@@ -824,7 +817,7 @@ where
             let inv_msg = NetworkMessage::Inv(vec![Inventory::Transaction(txid)]);
 
             if let Err(err) = self.send(peer_id, inv_msg) {
-                tracing::warn!("Failed to send inv for tx {txid} to peer {peer_id}: {err}");
+                tracing::warn!(?err, "Failed to send inv for tx {txid} to peer {peer_id}");
             } else {
                 broadcast_count += 1;
             }

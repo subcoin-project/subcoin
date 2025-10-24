@@ -136,7 +136,11 @@ where
 
         // BIP 113
         let lock_time_cutoff = if block_number >= self.chain_params.csv_height {
-            let mtp = self.calculate_median_time_past(header);
+            let block_hash = header.block_hash();
+            let mtp = self
+                .client
+                .calculate_median_time_past(block_hash)
+                .expect("Block must exist; qed") as u32;
             if header.time <= mtp {
                 return Err(Error::TimeTooOld);
             }
@@ -160,14 +164,6 @@ where
         }
 
         header.validate_pow(target).is_ok()
-    }
-
-    /// Calculates the median time of the previous few blocks prior to the header (inclusive).
-    fn calculate_median_time_past(&self, header: &BitcoinHeader) -> u32 {
-        let block_hash = header.block_hash();
-        self.client
-            .calculate_median_time_past(block_hash)
-            .expect("Block must exist; qed") as u32
     }
 }
 

@@ -254,7 +254,7 @@ impl RunCmd {
                 task_manager.keep_alive(import_queue);
                 Arc::new(subcoin_network::NoNetwork)
             } else {
-                let tx_pool = Arc::new(subcoin_memory_pool::MemPool::new(client.clone()));
+                let tx_pool = Arc::new(subcoin_mempool::MemPool::new(client.clone()));
 
                 let network_handle = subcoin_network::build_network(
                     client.clone(),

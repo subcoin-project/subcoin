@@ -49,7 +49,7 @@ sp-runtime = { workspace = true }
 subcoin-crypto = { workspace = true }
 subcoin-indexer = { workspace = true }
 subcoin-informant = { workspace = true }
-subcoin-memory-pool = { workspace = true }
+subcoin-mempool = { workspace = true }
 subcoin-network = { workspace = true, features = ["cli"] }
 subcoin-primitives = { workspace = true }
 subcoin-rpc = { workspace = true }
