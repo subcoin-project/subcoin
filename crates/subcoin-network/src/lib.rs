@@ -534,6 +534,7 @@ where
                     peer_store: Arc::new(persistent_peer_store_handle),
                     sync_target,
                     memory_config: config.memory_config.clone(),
+                    tx_pool: Arc::new(subcoin_primitives::tx_pool::NoOpTxPool),
                 },
                 registry.as_ref(),
             )

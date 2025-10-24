@@ -55,7 +55,7 @@ impl Event {
 }
 
 /// Parameters for creating a [`NetworkProcessor`].
-pub struct Params<Block, Client> {
+pub struct Params<Block, Client, Pool = subcoin_primitives::tx_pool::NoOpTxPool> {
     pub client: Arc<Client>,
     pub header_verifier: HeaderVerifier<Block, Client>,
     pub network_event_receiver: UnboundedReceiver<Event>,
@@ -71,10 +71,12 @@ pub struct Params<Block, Client> {
     pub sync_target: Option<u32>,
     /// Memory management configuration.
     pub memory_config: MemoryConfig,
+    /// Bitcoin transaction pool for transaction validation and relay.
+    pub tx_pool: Arc<Pool>,
 }
 
 /// [`NetworkProcessor`] is responsible for processing the network events.
-pub struct NetworkProcessor<Block, Client> {
+pub struct NetworkProcessor<Block, Client, Pool = subcoin_primitives::tx_pool::NoOpTxPool> {
     config: Config,
     client: Arc<Client>,
     chain_sync: ChainSync<Block, Client>,
@@ -85,16 +87,19 @@ pub struct NetworkProcessor<Block, Client> {
     network_event_receiver: UnboundedReceiver<Event>,
     /// Broadcasted blocks that are being requested.
     requested_block_announce: HashMap<PeerId, HashSet<BlockHash>>,
+    /// Bitcoin transaction pool for validation and relay.
+    tx_pool: Arc<Pool>,
     metrics: Option<Metrics>,
 }
 
-impl<Block, Client> NetworkProcessor<Block, Client>
+impl<Block, Client, Pool> NetworkProcessor<Block, Client, Pool>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore,
+    Pool: subcoin_primitives::tx_pool::TxPool,
 {
     /// Constructs a new instance of [`NetworkProcessor`].
-    pub fn new(params: Params<Block, Client>, registry: Option<&Registry>) -> Self {
+    pub fn new(params: Params<Block, Client, Pool>, registry: Option<&Registry>) -> Self {
         let Params {
             client,
             header_verifier,
@@ -109,6 +114,7 @@ where
             peer_store,
             sync_target,
             memory_config,
+            tx_pool,
         } = params;
 
         let config = Config::new();
@@ -151,6 +157,7 @@ where
             transaction_manager: TransactionManager::new(),
             requested_block_announce: HashMap::new(),
             network_event_receiver,
+            tx_pool,
             metrics,
         }
     }
