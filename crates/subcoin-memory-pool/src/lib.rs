@@ -540,4 +540,257 @@ where
 
         Ok(result)
     }
+
+    // --- Helper methods for TxPool trait ---
+
+    /// Check if transaction exists in mempool.
+    pub fn contains_txid(&self, txid: &bitcoin::Txid) -> bool {
+        self.inner
+            .read()
+            .expect("MemPool lock poisoned")
+            .arena
+            .get_by_txid(txid)
+            .is_some()
+    }
+
+    /// Get transaction from mempool if present.
+    pub fn get_transaction(&self, txid: &bitcoin::Txid) -> Option<Arc<Transaction>> {
+        self.inner
+            .read()
+            .expect("MemPool lock poisoned")
+            .arena
+            .get_by_txid(txid)
+            .map(|entry_id| {
+                self.inner
+                    .read()
+                    .expect("MemPool lock poisoned")
+                    .arena
+                    .get(entry_id)
+                    .expect("Entry ID must be valid")
+                    .tx
+                    .clone()
+            })
+    }
+
+    /// Get transactions that haven't been broadcast yet with their fee rates.
+    pub fn get_unbroadcast_txs(&self) -> Vec<(bitcoin::Txid, u64)> {
+        let inner = self.inner.read().expect("MemPool lock poisoned");
+        inner
+            .unbroadcast
+            .iter()
+            .filter_map(|txid| {
+                inner.arena.get_by_txid(txid).and_then(|entry_id| {
+                    inner.arena.get(entry_id).map(|entry| {
+                        // Calculate fee rate: (fee * 1000) / vsize
+                        let vsize = (entry.tx_weight.to_wu() + 3) / 4; // Convert weight to vsize
+                        let fee_rate = (entry.fee.to_sat() * 1000) / vsize;
+                        (*txid, fee_rate)
+                    })
+                })
+            })
+            .collect()
+    }
+
+    /// Mark transactions as broadcast.
+    pub fn mark_broadcast_txs(&self, txids: &[bitcoin::Txid]) {
+        let mut inner = self.inner.write().expect("MemPool lock poisoned");
+        for txid in txids {
+            inner.unbroadcast.remove(txid);
+        }
+    }
+
+    /// Iterate over all transaction IDs with their fee rates, sorted by mining priority.
+    pub fn iter_txids_by_priority(&self) -> Vec<(bitcoin::Txid, u64)> {
+        let inner = self.inner.read().expect("MemPool lock poisoned");
+        // Already sorted by ancestor score (mining priority)
+        inner
+            .arena
+            .iter_by_ancestor_score()
+            .map(|(_, entry)| {
+                let txid = entry.tx.compute_txid();
+                // Calculate fee rate: (fee * 1000) / vsize
+                let vsize = (entry.tx_weight.to_wu() + 3) / 4;
+                let fee_rate = (entry.fee.to_sat() * 1000) / vsize;
+                (txid, fee_rate)
+            })
+            .collect()
+    }
+
+    /// Convert MempoolError to TxValidationResult for network integration.
+    fn into_validation_result(
+        &self,
+        txid: bitcoin::Txid,
+        result: Result<(), MempoolError>,
+    ) -> subcoin_primitives::tx_pool::TxValidationResult {
+        use subcoin_primitives::tx_pool::*;
+
+        match result {
+            Ok(()) => {
+                // Transaction accepted - get its fee rate
+                let inner = self.inner.read().expect("MemPool lock poisoned");
+                let fee_rate = inner
+                    .arena
+                    .get_by_txid(&txid)
+                    .and_then(|entry_id| {
+                        inner.arena.get(entry_id).map(|entry| {
+                            // Calculate fee rate: (fee * 1000) / vsize
+                            let vsize = (entry.tx_weight.to_wu() + 3) / 4;
+                            (entry.fee.to_sat() * 1000) / vsize
+                        })
+                    })
+                    .unwrap_or(0);
+
+                TxValidationResult::Accepted { txid, fee_rate }
+            }
+            Err(err) => {
+                let reason = match err {
+                    // Soft rejections (don't penalize peer)
+                    MempoolError::AlreadyInMempool => {
+                        RejectionReason::Soft(SoftRejection::AlreadyInMempool)
+                    }
+                    MempoolError::MissingInputs { parents } => {
+                        RejectionReason::Soft(SoftRejection::MissingInputs { parents })
+                    }
+                    MempoolError::FeeTooLow { min_kvb, actual_kvb } => {
+                        RejectionReason::Soft(SoftRejection::FeeTooLow { min_kvb, actual_kvb })
+                    }
+                    MempoolError::MempoolFull => RejectionReason::Soft(SoftRejection::MempoolFull),
+                    MempoolError::TooManyAncestors(count) => {
+                        RejectionReason::Soft(SoftRejection::TooManyAncestors(count))
+                    }
+                    MempoolError::TooManyDescendants(count) => {
+                        RejectionReason::Soft(SoftRejection::TooManyDescendants(count))
+                    }
+                    MempoolError::TxConflict(msg) => {
+                        RejectionReason::Soft(SoftRejection::TxConflict(msg))
+                    }
+                    MempoolError::NoConflictToReplace => {
+                        RejectionReason::Soft(SoftRejection::NoConflictToReplace)
+                    }
+                    MempoolError::TxNotReplaceable => {
+                        RejectionReason::Soft(SoftRejection::TxNotReplaceable)
+                    }
+                    MempoolError::TooManyReplacements(count) => {
+                        RejectionReason::Soft(SoftRejection::TooManyReplacements(count))
+                    }
+                    MempoolError::NewUnconfirmedInput => {
+                        RejectionReason::Soft(SoftRejection::NewUnconfirmedInput)
+                    }
+                    MempoolError::InsufficientFee(msg) => {
+                        RejectionReason::Soft(SoftRejection::InsufficientFee(msg))
+                    }
+                    MempoolError::PackageTooLarge(count, max) => {
+                        RejectionReason::Soft(SoftRejection::PackageTooLarge(count, max))
+                    }
+                    MempoolError::PackageSizeTooLarge(size) => {
+                        RejectionReason::Soft(SoftRejection::PackageSizeTooLarge(size))
+                    }
+                    MempoolError::PackageCyclicDependencies => {
+                        RejectionReason::Soft(SoftRejection::PackageCyclicDependencies)
+                    }
+                    MempoolError::PackageFeeTooLow(msg) => {
+                        RejectionReason::Soft(SoftRejection::PackageFeeTooLow(msg))
+                    }
+                    MempoolError::PackageTxValidationFailed(txid, msg) => {
+                        RejectionReason::Soft(SoftRejection::PackageTxValidationFailed(txid, msg))
+                    }
+                    MempoolError::PackageRelayDisabled => {
+                        RejectionReason::Soft(SoftRejection::PackageRelayDisabled)
+                    }
+
+                    // Hard rejections (penalize peer)
+                    MempoolError::Coinbase => RejectionReason::Hard(HardRejection::Coinbase),
+                    MempoolError::NotStandard(msg) => {
+                        RejectionReason::Hard(HardRejection::NotStandard(msg))
+                    }
+                    MempoolError::TxVersionNotStandard => {
+                        RejectionReason::Hard(HardRejection::TxVersionNotStandard)
+                    }
+                    MempoolError::TxSizeTooSmall => {
+                        RejectionReason::Hard(HardRejection::TxSizeTooSmall)
+                    }
+                    MempoolError::NonFinal => RejectionReason::Hard(HardRejection::NonFinal),
+                    MempoolError::NonBIP68Final => {
+                        RejectionReason::Hard(HardRejection::NonBIP68Final)
+                    }
+                    MempoolError::TooManySigops(count) => {
+                        RejectionReason::Hard(HardRejection::TooManySigops(count))
+                    }
+                    MempoolError::NegativeFee => RejectionReason::Hard(HardRejection::NegativeFee),
+                    MempoolError::FeeOverflow => RejectionReason::Hard(HardRejection::FeeOverflow),
+                    MempoolError::InvalidFeeRate(msg) => {
+                        RejectionReason::Hard(HardRejection::InvalidFeeRate(msg))
+                    }
+                    MempoolError::AncestorSizeTooLarge(size) => {
+                        RejectionReason::Hard(HardRejection::AncestorSizeTooLarge(size))
+                    }
+                    MempoolError::DescendantSizeTooLarge(size) => {
+                        RejectionReason::Hard(HardRejection::DescendantSizeTooLarge(size))
+                    }
+                    MempoolError::ScriptValidationFailed(msg) => {
+                        RejectionReason::Hard(HardRejection::ScriptValidationFailed(msg))
+                    }
+                    MempoolError::TxError(err) => {
+                        RejectionReason::Hard(HardRejection::TxError(err.to_string()))
+                    }
+                    MempoolError::RuntimeApi(msg) => {
+                        RejectionReason::Hard(HardRejection::RuntimeApi(msg))
+                    }
+                    MempoolError::MissingConflict => {
+                        // Internal error - treat as hard rejection
+                        RejectionReason::Hard(HardRejection::RuntimeApi(
+                            "Missing conflict transaction".to_string(),
+                        ))
+                    }
+                };
+
+                TxValidationResult::Rejected { txid, reason }
+            }
+        }
+    }
+}
+
+// --- TxPool trait implementation ---
+
+impl<Block, Client> subcoin_primitives::tx_pool::TxPool for MemPool<Block, Client>
+where
+    Block: BlockT + 'static,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore + Send + Sync + 'static,
+    Client::Api: SubcoinRuntimeApi<Block>,
+{
+    fn validate_transaction(&self, tx: Transaction) -> subcoin_primitives::tx_pool::TxValidationResult {
+        let txid = tx.compute_txid();
+        let result = self.accept_single_transaction(tx);
+        self.into_validation_result(txid, result)
+    }
+
+    fn contains(&self, txid: &bitcoin::Txid) -> bool {
+        self.contains_txid(txid)
+    }
+
+    fn get(&self, txid: &bitcoin::Txid) -> Option<Arc<Transaction>> {
+        self.get_transaction(txid)
+    }
+
+    fn get_unbroadcast(&self) -> Vec<(bitcoin::Txid, u64)> {
+        self.get_unbroadcast_txs()
+    }
+
+    fn mark_broadcast(&self, txids: &[bitcoin::Txid]) {
+        self.mark_broadcast_txs(txids)
+    }
+
+    fn iter_txids(&self) -> Box<dyn Iterator<Item = (bitcoin::Txid, u64)> + Send> {
+        Box::new(self.iter_txids_by_priority().into_iter())
+    }
+
+    fn info(&self) -> subcoin_primitives::tx_pool::TxPoolInfo {
+        let inner = self.inner.read().expect("MemPool lock poisoned");
+        subcoin_primitives::tx_pool::TxPoolInfo {
+            size: inner.size(),
+            bytes: inner.total_size(),
+            usage: inner.total_size(), // Same as bytes for now
+            min_fee_rate: self.options.min_relay_fee_rate().as_sat_per_kvb(),
+        }
+    }
 }

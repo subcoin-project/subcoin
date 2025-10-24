@@ -174,10 +174,16 @@ where
     let mut prev_outputs: HashMap<_, _> = HashMap::with_capacity(outpoints.len());
 
     // 8. Check all inputs are available
+    let mut missing = Vec::new();
     for outpoint in &outpoints {
         if !coins_cache.have_coin(outpoint) {
-            return Err(MempoolError::MissingInputs);
+            missing.push(outpoint.txid);
         }
+    }
+    if !missing.is_empty() {
+        missing.sort();
+        missing.dedup();
+        return Err(MempoolError::MissingInputs { parents: missing });
     }
 
     // 9. Calculate fees and check for negative fee
@@ -187,7 +193,9 @@ where
     for outpoint in &outpoints {
         let coin = coins_cache
             .get_coin(outpoint)?
-            .ok_or(MempoolError::MissingInputs)?;
+            .ok_or_else(|| MempoolError::MissingInputs {
+                parents: vec![outpoint.txid],
+            })?;
 
         input_value = input_value
             .checked_add(coin.output.value)
@@ -220,9 +228,16 @@ where
     let min_relay_fee_rate = options.min_relay_fee_rate();
     let min_fee = min_relay_fee_rate.get_fee(ws.vsize);
     if base_fee < min_fee {
-        return Err(MempoolError::FeeTooLow(format!(
-            "fee {base_fee} < min {min_fee}"
-        )));
+        use subcoin_primitives::tx_pool::fee_rate_from_amount_vsize;
+
+        let actual_kvb = fee_rate_from_amount_vsize(base_fee, ws.vsize)
+            .map_err(|e| MempoolError::InvalidFeeRate(e.to_string()))?;
+        let min_kvb = min_relay_fee_rate.as_sat_per_kvb();
+
+        return Err(MempoolError::FeeTooLow {
+            min_kvb,
+            actual_kvb,
+        });
     }
 
     // 11. Check finality (nLockTime only; BIP68 sequence locks deferred)
@@ -519,7 +534,9 @@ where
     for (input_index, txin) in tx.input.iter().enumerate() {
         let coin = coins_cache
             .get_coin(&txin.previous_output)?
-            .ok_or(MempoolError::MissingInputs)?;
+            .ok_or_else(|| MempoolError::MissingInputs {
+                parents: vec![txin.previous_output.txid],
+            })?;
 
         let mut checker =
             TransactionSignatureChecker::new(tx, input_index, coin.output.value.to_sat());
@@ -811,18 +828,24 @@ where
                 let parent = inner
                     .arena
                     .get(parent_id)
-                    .ok_or(MempoolError::MissingInputs)?;
+                    .ok_or_else(|| MempoolError::MissingInputs {
+                        parents: vec![outpoint.txid],
+                    })?;
                 parent
                     .tx
                     .output
                     .get(outpoint.vout as usize)
-                    .ok_or(MempoolError::MissingInputs)?
+                    .ok_or_else(|| MempoolError::MissingInputs {
+                        parents: vec![outpoint.txid],
+                    })?
                     .clone()
             } else {
                 // Spends UTXO
                 let coin = coins_cache
                     .get_coin(outpoint)?
-                    .ok_or(MempoolError::MissingInputs)?;
+                    .ok_or_else(|| MempoolError::MissingInputs {
+                        parents: vec![outpoint.txid],
+                    })?;
                 coin.output
             };
 
@@ -896,13 +919,19 @@ where
         best_block,
     ) {
         Ok(()) => {}
-        Err(MempoolError::FeeTooLow(msg)) => {
+        Err(MempoolError::FeeTooLow {
+            min_kvb,
+            actual_kvb,
+        }) => {
             // CPFP override: if package feerate meets minimum, allow low individual fee
             if package_feerate >= options.min_relay_fee_rate() {
                 // Override fee check - package sponsors this transaction
                 // Continue validation
             } else {
-                return Err(MempoolError::FeeTooLow(msg));
+                return Err(MempoolError::FeeTooLow {
+                    min_kvb,
+                    actual_kvb,
+                });
             }
         }
         Err(e) => return Err(e),
@@ -1106,7 +1135,9 @@ where
         // Get coin for this input
         let coin = coins_cache
             .get_coin(&input.previous_output)?
-            .ok_or(MempoolError::MissingInputs)?;
+            .ok_or_else(|| MempoolError::MissingInputs {
+                parents: vec![input.previous_output.txid],
+            })?;
 
         let sequence = input.sequence.0;
 

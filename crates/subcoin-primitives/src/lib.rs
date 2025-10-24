@@ -1,6 +1,7 @@
 //! Primitives for the client.
 
 pub mod consensus;
+pub mod tx_pool;
 
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::consensus::{Decodable, Encodable};

@@ -50,11 +50,14 @@ pub enum MempoolError {
     #[error("Coinbase transaction not allowed")]
     Coinbase,
 
-    #[error("Missing inputs")]
-    MissingInputs,
+    #[error("Missing inputs: {parents:?}")]
+    MissingInputs { parents: Vec<Txid> },
 
-    #[error("Fee too low: {0}")]
-    FeeTooLow(String),
+    #[error("Fee rate {actual_kvb} sat/kvB too low (min: {min_kvb})")]
+    FeeTooLow { min_kvb: u64, actual_kvb: u64 },
+
+    #[error("Invalid fee rate calculation: {0}")]
+    InvalidFeeRate(String),
 
     #[error("Too many sigops: {0}")]
     TooManySigops(i64),
