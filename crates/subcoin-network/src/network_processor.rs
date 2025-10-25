@@ -850,7 +850,7 @@ where
                     }
                 }
             }
-            TxAction::RecordInvalidTx(peer_id) => {
+            TxAction::PenalizePeer(peer_id) => {
                 self.peer_manager.record_invalid_tx(peer_id);
             }
             TxAction::DisconnectPeer(peer_id, reason) => {

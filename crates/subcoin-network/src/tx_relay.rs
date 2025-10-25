@@ -47,8 +47,8 @@ pub enum TxAction {
     /// Send full transactions to peers.
     /// Vec of (txid, peer_id).
     ServeTxs(Vec<(Txid, PeerId)>),
-    /// Record that a peer sent an invalid transaction.
-    RecordInvalidTx(PeerId),
+    /// Penalize a peer for sending an invalid transaction.
+    PenalizePeer(PeerId),
     /// Disconnect a peer due to protocol violation.
     DisconnectPeer(PeerId, Error),
 }
@@ -244,20 +244,16 @@ where
     ) -> TxAction {
         match result {
             TxValidationResult::Accepted { txid, .. } => {
-                // Remove from pending requests
                 self.requested_txs.remove(&txid);
-
                 // The transaction will be announced via on_tick when mempool returns
                 // it from pending_broadcast()
                 TxAction::None
             }
             TxValidationResult::Rejected { txid, reason } => {
-                // Remove from pending requests
                 self.requested_txs.remove(&txid);
-
                 // Penalize peer if this was a hard rejection (protocol violation)
                 if reason.should_penalize_peer() {
-                    TxAction::RecordInvalidTx(received_from)
+                    TxAction::PenalizePeer(received_from)
                 } else {
                     // Soft rejection - don't penalize
                     TxAction::None
@@ -797,9 +793,9 @@ mod tests {
         };
         let action = relay.on_validated_tx(result, peer);
 
-        // Should remove from requested and return RecordInvalidTx
+        // Should remove from requested and return PenalizePeer
         assert_eq!(relay.requested_txs.len(), 0);
-        assert!(matches!(action, TxAction::RecordInvalidTx(p) if p == peer));
+        assert!(matches!(action, TxAction::PenalizePeer(p) if p == peer));
     }
 
     #[test]
