@@ -1,6 +1,7 @@
 //! Subcoin service implementation. Specialized wrapper over substrate service.
 
 #![allow(deprecated)]
+#![allow(clippy::result_large_err)]
 
 pub mod chain_spec;
 mod finalizer;

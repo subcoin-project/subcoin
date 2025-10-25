@@ -54,6 +54,7 @@ pub struct ValidationWorkspace {
     pub spends_coinbase: bool,
 
     /// In-mempool ancestors (entry IDs).
+    #[allow(dead_code)]
     pub ancestors: HashSet<EntryId>,
 
     /// Conflicting mempool transactions (txids).
@@ -339,6 +340,7 @@ pub fn check_package_limits(
 ///
 /// Creates TxMemPoolEntry and adds it to arena, updating ancestor/descendant state.
 /// If conflict_set is present, removes conflicting transactions first (RBF).
+#[allow(clippy::too_many_arguments)]
 pub fn finalize_tx<Block, Client>(
     ws: ValidationWorkspace,
     inner: &mut MemPoolInner,
@@ -891,6 +893,7 @@ where
 /// Returns ValidationWorkspace with all computed state.
 ///
 /// IMPORTANT: Reuses Arc<Transaction> to avoid unnecessary cloning.
+#[allow(clippy::too_many_arguments)]
 pub fn pre_validate_package_tx<Block, Client>(
     tx: Arc<Transaction>,
     inner: &MemPoolInner,
@@ -955,6 +958,7 @@ where
 ///
 /// Phase 1: Pre-validate all transactions without modifying mempool
 /// Phase 2: Finalize all transactions if all validations passed
+#[allow(clippy::too_many_arguments)]
 pub fn validate_package<Block, Client>(
     package: &crate::types::Package,
     inner: &mut MemPoolInner,
@@ -1208,7 +1212,6 @@ where
 mod tests {
     use super::*;
     use bitcoin::absolute::LockTime;
-    use bitcoin::hashes::Hash;
     use bitcoin::{Amount, ScriptBuf, Sequence, TxIn, TxOut, transaction};
 
     fn create_test_tx(inputs: Vec<(Txid, u32)>, outputs: Vec<Amount>) -> Transaction {
@@ -1303,10 +1306,12 @@ mod tests {
     // TODO: BIP68 Sequence Lock Tests - Enable once MockClient ApiExt is implemented
     // The test infrastructure is ready but requires ApiExt<Block> implementation
     // which is complex. These tests validate calculate_lock_points_at_tip() comprehensively.
-    #[cfg(test_bip68_enabled)]
+    // TODO: Re-enable when MockClient ApiExt is implemented
+    // #[cfg(test)]
     mod bip68_tests {
         use super::*;
         use crate::coins_view::CoinsViewCache;
+        use bitcoin::hashes::Hash;
         use bitcoin::{OutPoint, ScriptBuf, TxOut};
         use sc_client_api::HeaderBackend;
         use sp_api::ProvideRuntimeApi;

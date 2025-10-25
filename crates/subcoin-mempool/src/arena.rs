@@ -446,6 +446,7 @@ fn compute_descendant_key(entry: &TxMemPoolEntry) -> DescendantScoreKey {
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
 
     // Tests will be added once we have the full entry construction logic

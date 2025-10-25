@@ -15,12 +15,15 @@ const MAX_STANDARD_SCRIPTSIG_SIZE: usize = 1650;
 pub const MIN_STANDARD_TX_NONWITNESS_SIZE: usize = 65;
 
 /// Maximum number of witness stack items in a standard P2WSH transaction
+#[allow(dead_code)]
 const MAX_STANDARD_P2WSH_STACK_ITEMS: usize = 100;
 
 /// Maximum size of a standard witness stack item
+#[allow(dead_code)]
 const MAX_STANDARD_P2WSH_STACK_ITEM_SIZE: usize = 80;
 
 /// Maximum number of sigops in a standard P2WSH transaction
+#[allow(dead_code)]
 const MAX_STANDARD_P2WSH_SIGOPS: usize = 15;
 
 #[derive(Debug)]
@@ -31,6 +34,7 @@ pub enum StandardTxError {
     ScriptsigSize,
     Dust,
     MultiOpReturn,
+    #[allow(dead_code)]
     NonStandardWitness,
     BareMultisig,
     ScriptsigNotPushonly,

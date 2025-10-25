@@ -191,6 +191,7 @@ impl TxPool for NoTxPool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bitcoin::hashes::Hash;
 
     #[test]
     fn test_noop_pool() {
@@ -210,6 +211,10 @@ mod tests {
                 ..
             }
         ));
+        assert!(!pool.contains(&Txid::all_zeros()));
+        assert!(pool.get(&Txid::all_zeros()).is_none());
+        assert_eq!(pool.pending_broadcast().len(), 0);
+        assert_eq!(pool.info().size, 0);
     }
 
     #[test]
@@ -228,23 +233,5 @@ mod tests {
 
         let hard = RejectionReason::Hard(HardRejection::Coinbase);
         assert!(hard.should_penalize_peer());
-    }
-
-    #[test]
-    fn test_noop_pool() {
-        let pool = NoTxPool;
-        let tx = Transaction {
-            version: bitcoin::transaction::Version::TWO,
-            lock_time: bitcoin::absolute::LockTime::ZERO,
-            input: vec![],
-            output: vec![],
-        };
-
-        let result = pool.validate_transaction(tx);
-        assert!(matches!(result, TxValidationResult::Rejected { .. }));
-        assert!(!pool.contains(&Txid::all_zeros()));
-        assert!(pool.get(&Txid::all_zeros()).is_none());
-        assert_eq!(pool.pending_broadcast().len(), 0);
-        assert_eq!(pool.info().size, 0);
     }
 }

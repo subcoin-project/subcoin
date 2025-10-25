@@ -124,7 +124,7 @@ impl<T: Config> Pallet<T> {
         outpoints
             .into_iter()
             .map(|outpoint| {
-                let txid: Txid = outpoint.txid.into();
+                let txid: Txid = outpoint.txid;
                 Coins::<T>::get(txid, outpoint.vout)
             })
             .collect()

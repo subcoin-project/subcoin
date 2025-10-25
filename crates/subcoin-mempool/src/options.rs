@@ -7,6 +7,7 @@ const DEFAULT_MAX_MEMPOOL_SIZE_MB: usize = 300;
 const DEFAULT_MEMPOOL_EXPIRY_HOURS: u32 = 336;
 
 /** Default for -acceptnonstdtxn */
+#[allow(dead_code)]
 const DEFAULT_ACCEPT_NON_STD_TXN: bool = false;
 
 /// Default setting for -datacarriersize.

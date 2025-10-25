@@ -52,10 +52,7 @@ pub fn solve(script_pubkey: &Script) -> TxoutType {
         }
 
         if version != WitnessVersion::V0 {
-            let mut res = Vec::with_capacity(2);
-            res.push(vec![version as u8]);
-            res.push(program.to_vec());
-            return TxoutType::WitnessUnknown(res);
+            return TxoutType::WitnessUnknown(vec![vec![version as u8], program.to_vec()]);
         }
 
         return TxoutType::NonStandard;

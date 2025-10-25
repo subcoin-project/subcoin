@@ -33,6 +33,8 @@
 //! UTXO snapshots, thereby reducing the reliance on centralized snapshot providers and enhancing the
 //! decentralization of Bitcoin's fast sync process.
 
+#![allow(clippy::result_large_err)]
+
 mod cli;
 mod params;
 mod snapshot_manager;

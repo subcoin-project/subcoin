@@ -850,6 +850,7 @@ where
     }
 
     /// Get count of invalid transactions received from a peer.
+    #[allow(dead_code)]
     pub fn get_invalid_tx_count(&self, peer: &PeerId) -> usize {
         self.connected_peers
             .get(peer)
@@ -858,6 +859,7 @@ where
     }
 
     /// Get all connected peer IDs.
+    #[allow(dead_code)]
     pub fn connected_peer_ids(&self) -> impl Iterator<Item = &PeerId> {
         self.connected_peers.keys()
     }

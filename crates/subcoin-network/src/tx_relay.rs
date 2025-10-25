@@ -50,6 +50,7 @@ pub enum TxAction {
     /// Penalize a peer for sending an invalid transaction.
     PenalizePeer(PeerId),
     /// Disconnect a peer due to protocol violation.
+    #[allow(dead_code)]
     DisconnectPeer(PeerId, Error),
 }
 
@@ -194,7 +195,7 @@ where
                 // Track announcement
                 self.peer_announcements
                     .entry(peer_id)
-                    .or_insert_with(HashSet::new)
+                    .or_default()
                     .insert(txid);
             }
         }

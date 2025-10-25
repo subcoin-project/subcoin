@@ -254,6 +254,7 @@ pub struct CacheStats {
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
 
     // Note: Full tests require a mock runtime API implementation.

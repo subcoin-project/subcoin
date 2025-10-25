@@ -16,6 +16,7 @@ pub struct MemPoolInner {
 
     /// Priority deltas (external to entries, applied via prioritise_transaction).
     /// Maps txid -> fee delta.
+    #[allow(dead_code)]
     pub(crate) map_deltas: HashMap<Txid, Amount>,
 
     /// Randomized list for transaction relay (getdata responses).
@@ -34,9 +35,11 @@ pub struct MemPoolInner {
 
     /// Rolling minimum fee rate for mempool acceptance.
     /// Updated when mempool is trimmed to size.
+    #[allow(dead_code)]
     pub(crate) rolling_minimum_feerate: u64,
 
     /// Last time rolling fee was updated.
+    #[allow(dead_code)]
     pub(crate) last_rolling_fee_update: i64,
 }
 
