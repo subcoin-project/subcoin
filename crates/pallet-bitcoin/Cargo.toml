@@ -21,6 +21,15 @@ subcoin-runtime-primitives = { workspace = true, default-features = false }
 
 [dev-dependencies]
 hex = { package = "hex-conservative", version = "0.2.0", features = ["alloc"] }
+criterion = { version = "0.5", features = ["html_reports"] }
+sp-io = { workspace = true }
+sp-core = { workspace = true }
+sp-state-machine = { workspace = true }
+sp-trie = { workspace = true }
+sp-runtime = { workspace = true }
+frame-support = { workspace = true }
+frame-system = { workspace = true }
+codec = { workspace = true }
 
 [features]
 default = ["std"]
@@ -41,3 +50,7 @@ try-runtime = [
     "frame-system/try-runtime",
     "sp-runtime/try-runtime",
 ]
+
+[[bench]]
+name = "utxo_storage"
+harness = false
