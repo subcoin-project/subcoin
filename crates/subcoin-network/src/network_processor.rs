@@ -278,8 +278,8 @@ where
             .connected_peers()
             .copied()
             .collect::<Vec<_>>();
-        let tx_actions = self.tx_relay.on_tick(&self.peer_manager, &connected_peers);
-        self.do_tx_actions(tx_actions);
+        let tx_action = self.tx_relay.on_tick(&self.peer_manager, &connected_peers);
+        self.do_tx_action(tx_action);
     }
 
     async fn handle_processor_message(
@@ -505,9 +505,9 @@ where
             .partition(|item| matches!(item, Inventory::Transaction(_)));
 
         // Handle transaction inventories via TxRelay
-        if !tx_inv.is_empty() {
-            let tx_actions = self.tx_relay.on_inv(tx_inv, from, &self.peer_manager);
-            self.do_tx_actions(tx_actions);
+        if !tx_inv.is_empty() && self.peer_manager.peer_wants_tx_relay(from) {
+            let tx_action = self.tx_relay.on_inv(tx_inv, from);
+            self.do_tx_action(tx_action);
         }
 
         // Handle block inventories
@@ -653,8 +653,8 @@ where
                     self.process_get_block_data(&inv);
                 }
                 Inventory::Transaction(_txid) => {
-                    let tx_actions = self.tx_relay.on_get_data(vec![inv], from);
-                    self.do_tx_actions(tx_actions);
+                    let tx_action = self.tx_relay.on_get_data(vec![inv], from);
+                    self.do_tx_action(tx_action);
                 }
                 Inventory::WTx(_)
                 | Inventory::WitnessTransaction(_)
@@ -770,23 +770,25 @@ where
             return;
         }
 
-        match self.tx_relay.validate_transaction(tx) {
+        let result = self.tx_relay.validate_transaction(tx);
+
+        // Log the result
+        match &result {
             TxValidationResult::Accepted { txid, .. } => {
                 tracing::info!("Tx {txid} accepted into mempool");
-
-                // Notify TxRelay that we've validated a transaction
-                let tx_actions = self.tx_relay.on_validated_tx(txid, from);
-                self.do_tx_actions(tx_actions);
             }
             TxValidationResult::Rejected { txid, reason } => {
                 if reason.should_penalize_peer() {
                     tracing::warn!("Peer {from} sent invalid transaction {txid}: {reason:?}");
-                    self.peer_manager.record_invalid_tx(from);
                 } else {
                     tracing::debug!("Tx {txid} softly rejected: {reason:?}");
                 }
             }
         }
+
+        // Handle the result and execute any actions
+        let tx_action = self.tx_relay.on_validated_tx(result, from);
+        self.do_tx_action(tx_action);
     }
 
     /// Handle fee filter message from peer (BIP133).
@@ -806,38 +808,39 @@ where
         self.peer_manager.set_fee_filter(from, min_fee_rate_u64);
     }
 
-    /// Execute transaction relay actions returned by TxRelay.
-    fn do_tx_actions(&mut self, actions: Vec<TxAction>) {
-        for action in actions {
-            match action {
-                TxAction::None => {}
-                TxAction::SendGetData(inv, peer_id) => {
-                    if let Err(err) = self.send(peer_id, NetworkMessage::GetData(inv)) {
-                        tracing::error!(?err, "Failed to send GetData to {peer_id}");
+    /// Execute a transaction relay action returned by TxRelay.
+    fn do_tx_action(&mut self, action: TxAction) {
+        match action {
+            TxAction::None => {}
+            TxAction::SendGetData(inv, peer_id) => {
+                if let Err(err) = self.send(peer_id, NetworkMessage::GetData(inv)) {
+                    tracing::error!(?err, "Failed to send GetData to {peer_id}");
+                }
+            }
+            TxAction::AnnounceToPeers(peer_txids) => {
+                let mut total_announced = 0;
+                for (peer_id, txids) in peer_txids {
+                    let inv_items: Vec<_> = txids
+                        .iter()
+                        .map(|&txid| Inventory::Transaction(txid))
+                        .collect();
+                    let inv_msg = NetworkMessage::Inv(inv_items);
+
+                    if let Err(err) = self.send(peer_id, inv_msg) {
+                        tracing::warn!(?err, "Failed to send inv to peer {peer_id}");
+                    } else {
+                        tracing::debug!("Announced {} txs to peer {peer_id}", txids.len());
+                        total_announced += txids.len();
+                        // Mark all as broadcast after successful announcement
+                        self.tx_relay.mark_broadcast(&txids);
                     }
                 }
-                TxAction::AnnounceTopeers(txid, peer_ids) => {
-                    let inv_msg = NetworkMessage::Inv(vec![Inventory::Transaction(txid)]);
-                    let mut broadcast_count = 0;
-
-                    for peer_id in peer_ids {
-                        if let Err(err) = self.send(peer_id, inv_msg.clone()) {
-                            tracing::warn!(
-                                ?err,
-                                "Failed to send inv for tx {txid} to peer {peer_id}"
-                            );
-                        } else {
-                            broadcast_count += 1;
-                        }
-                    }
-
-                    if broadcast_count > 0 {
-                        tracing::debug!("Broadcasted tx {txid} to {broadcast_count} peers");
-                        // Mark as broadcast after successful announcement
-                        self.tx_relay.mark_broadcast(&[txid]);
-                    }
+                if total_announced > 0 {
+                    tracing::debug!("Total announced: {total_announced} txs");
                 }
-                TxAction::ServeTx(txid, peer_id) => {
+            }
+            TxAction::ServeTxs(tx_requests) => {
+                for (txid, peer_id) in tx_requests {
                     if let Some(tx) = self.tx_relay.get_transaction(txid) {
                         if let Err(err) = self.send(peer_id, NetworkMessage::Tx((*tx).clone())) {
                             tracing::error!(?err, "Failed to send tx {txid} to {peer_id}");
@@ -846,12 +849,12 @@ where
                         tracing::warn!("Peer {peer_id} requested tx {txid} but we don't have it");
                     }
                 }
-                TxAction::RecordInvalidTx(peer_id) => {
-                    self.peer_manager.record_invalid_tx(peer_id);
-                }
-                TxAction::DisconnectPeer(peer_id, reason) => {
-                    self.peer_manager.disconnect(peer_id, reason);
-                }
+            }
+            TxAction::RecordInvalidTx(peer_id) => {
+                self.peer_manager.record_invalid_tx(peer_id);
+            }
+            TxAction::DisconnectPeer(peer_id, reason) => {
+                self.peer_manager.disconnect(peer_id, reason);
             }
         }
     }

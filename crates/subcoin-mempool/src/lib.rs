@@ -12,6 +12,7 @@
 
 mod arena;
 mod coins_view;
+mod error;
 mod inner;
 mod options;
 mod policy;
@@ -22,11 +23,12 @@ mod validation;
 
 pub use self::arena::{MemPoolArena, TxMemPoolEntry};
 pub use self::coins_view::CoinsViewCache;
+pub use self::error::MempoolError;
 pub use self::inner::MemPoolInner;
 pub use self::options::MemPoolOptions;
 pub use self::types::{
-    ConflictSet, EntryId, FeeRate, LockPoints, MempoolError, Package, PackageValidationResult,
-    RemovalReason, ValidationResult,
+    ConflictSet, EntryId, FeeRate, LockPoints, Package, PackageValidationResult, RemovalReason,
+    ValidationResult,
 };
 
 use bitcoin::Transaction;

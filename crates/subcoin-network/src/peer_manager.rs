@@ -870,3 +870,17 @@ where
             .unwrap_or(false)
     }
 }
+
+impl<Block, Client> crate::tx_relay::PeerTxRelayInfo for PeerManager<Block, Client>
+where
+    Block: sp_runtime::traits::Block,
+    Client: sc_client_api::HeaderBackend<Block> + sc_client_api::AuxStore,
+{
+    fn peer_wants_tx_relay(&self, peer: PeerId) -> bool {
+        self.peer_wants_tx_relay(peer)
+    }
+
+    fn get_fee_filter(&self, peer: PeerId) -> Option<u64> {
+        self.get_fee_filter(peer)
+    }
+}

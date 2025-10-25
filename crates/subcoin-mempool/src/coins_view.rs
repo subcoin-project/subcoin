@@ -4,7 +4,7 @@
 //! - Base layer: UTXOs from the blockchain (invalidated on block import)
 //! - Overlay: UTXOs created by pending mempool transactions (never cleared on block import)
 
-use crate::types::MempoolError;
+use crate::error::MempoolError;
 use bitcoin::{OutPoint as COutPoint, Transaction};
 use sc_client_api::HeaderBackend;
 use schnellru::{ByLength, LruMap};

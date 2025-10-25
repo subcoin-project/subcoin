@@ -8,10 +8,11 @@
 
 use crate::arena::TxMemPoolEntry;
 use crate::coins_view::CoinsViewCache;
+use crate::error::MempoolError;
 use crate::inner::MemPoolInner;
 use crate::options::MemPoolOptions;
 use crate::policy::is_standard_tx;
-use crate::types::{ConflictSet, EntryId, FeeRate, LockPoints, MempoolError};
+use crate::types::{ConflictSet, EntryId, FeeRate, LockPoints};
 use bitcoin::absolute::{LOCK_TIME_THRESHOLD, LockTime};
 use bitcoin::hashes::Hash;
 use bitcoin::{Transaction, Txid, Weight};
