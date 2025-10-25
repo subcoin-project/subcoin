@@ -553,8 +553,8 @@ where
             })
     }
 
-    /// Get transactions that haven't been broadcast yet with their fee rates.
-    pub fn get_unbroadcast_txs(&self) -> Vec<(bitcoin::Txid, u64)> {
+    /// Get transactions pending broadcast with their fee rates.
+    pub fn pending_broadcast_txs(&self) -> Vec<(bitcoin::Txid, u64)> {
         let inner = self.inner.read().expect("MemPool lock poisoned");
         inner
             .unbroadcast
@@ -758,8 +758,8 @@ where
         self.get_transaction(txid)
     }
 
-    fn get_unbroadcast(&self) -> Vec<(bitcoin::Txid, u64)> {
-        self.get_unbroadcast_txs()
+    fn pending_broadcast(&self) -> Vec<(bitcoin::Txid, u64)> {
+        self.pending_broadcast_txs()
     }
 
     fn mark_broadcast(&self, txids: &[bitcoin::Txid]) {

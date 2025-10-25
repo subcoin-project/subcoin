@@ -130,9 +130,9 @@ pub trait TxPool: Send + Sync + 'static {
     /// Get transaction from mempool if present.
     fn get(&self, txid: &Txid) -> Option<Arc<Transaction>>;
 
-    /// Get transactions that haven't been broadcast yet.
+    /// Get transactions pending broadcast to peers.
     /// Returns (txid, fee_rate) pairs.
-    fn get_unbroadcast(&self) -> Vec<(Txid, u64)>;
+    fn pending_broadcast(&self) -> Vec<(Txid, u64)>;
 
     /// Mark transactions as broadcast to peers.
     fn mark_broadcast(&self, txids: &[Txid]);
@@ -168,7 +168,7 @@ impl TxPool for NoTxPool {
         None
     }
 
-    fn get_unbroadcast(&self) -> Vec<(Txid, u64)> {
+    fn pending_broadcast(&self) -> Vec<(Txid, u64)> {
         Vec::new()
     }
 
@@ -244,7 +244,7 @@ mod tests {
         assert!(matches!(result, TxValidationResult::Rejected { .. }));
         assert!(!pool.contains(&Txid::all_zeros()));
         assert!(pool.get(&Txid::all_zeros()).is_none());
-        assert_eq!(pool.get_unbroadcast().len(), 0);
+        assert_eq!(pool.pending_broadcast().len(), 0);
         assert_eq!(pool.info().size, 0);
     }
 }

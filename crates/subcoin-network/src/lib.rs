@@ -37,7 +37,7 @@ mod peer_store;
 mod sync;
 #[cfg(test)]
 mod tests;
-mod transaction_manager;
+mod tx_relay;
 
 use crate::metrics::BandwidthMetrics;
 use crate::network_api::NetworkProcessorMessage;
