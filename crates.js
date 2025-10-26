@@ -1,2 +1,2 @@
-window.ALL_CRATES = ["pallet_bitcoin","pallet_executive","sc_consensus_nakamoto","subcoin_crypto","subcoin_indexer","subcoin_informant","subcoin_network","subcoin_node","subcoin_primitives","subcoin_rpc","subcoin_runtime","subcoin_runtime_primitives","subcoin_script","subcoin_service","subcoin_test_service","subcoin_utxo_snapshot"];
-//{"start":21,"fragment_lengths":[16,19,24,17,18,20,18,15,21,14,18,29,17,18,23,24]}
+window.ALL_CRATES = ["pallet_bitcoin","pallet_executive","sc_consensus_nakamoto","subcoin_crypto","subcoin_indexer","subcoin_informant","subcoin_mempool","subcoin_network","subcoin_node","subcoin_primitives","subcoin_rpc","subcoin_runtime","subcoin_runtime_primitives","subcoin_script","subcoin_service","subcoin_test_service","subcoin_utxo_snapshot"];
+//{"start":21,"fragment_lengths":[16,19,24,17,18,20,18,18,15,21,14,18,29,17,18,23,24]}

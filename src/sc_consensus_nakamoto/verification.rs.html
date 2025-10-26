@@ -40,679 +40,675 @@
 <a href=#40 id=40 data-nosnippet>40</a>    Amount, Block <span class="kw">as </span>BitcoinBlock, BlockHash, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid,
 <a href=#41 id=41 data-nosnippet>41</a>    VarInt, Weight,
 <a href=#42 id=42 data-nosnippet>42</a>};
-<a href=#43 id=43 data-nosnippet>43</a><span class="kw">use </span>sc_client_api::{AuxStore, Backend, StorageProvider};
-<a href=#44 id=44 data-nosnippet>44</a><span class="kw">use </span>sp_blockchain::HeaderBackend;
-<a href=#45 id=45 data-nosnippet>45</a><span class="kw">use </span>sp_runtime::traits::Block <span class="kw">as </span>BlockT;
-<a href=#46 id=46 data-nosnippet>46</a><span class="kw">use </span>std::collections::{HashMap, HashSet};
-<a href=#47 id=47 data-nosnippet>47</a><span class="kw">use </span>std::marker::PhantomData;
-<a href=#48 id=48 data-nosnippet>48</a><span class="kw">use </span>std::sync::Arc;
-<a href=#49 id=49 data-nosnippet>49</a><span class="kw">use </span>subcoin_primitives::CoinStorageKey;
-<a href=#50 id=50 data-nosnippet>50</a><span class="kw">use </span>subcoin_primitives::runtime::{Coin, bitcoin_block_subsidy};
-<a href=#51 id=51 data-nosnippet>51</a><span class="kw">use </span>tx_verify::{check_transaction_sanity, get_legacy_sig_op_count, is_final_tx};
-<a href=#52 id=52 data-nosnippet>52</a>
-<a href=#53 id=53 data-nosnippet>53</a><span class="kw">pub use </span>header_verify::{Error <span class="kw">as </span>HeaderError, HeaderVerifier};
-<a href=#54 id=54 data-nosnippet>54</a><span class="kw">pub use </span>tx_verify::Error <span class="kw">as </span>TxError;
-<a href=#55 id=55 data-nosnippet>55</a>
-<a href=#56 id=56 data-nosnippet>56</a><span class="doccomment">/// The maximum allowed weight for a block, see BIP 141 (network rule).
-<a href=#57 id=57 data-nosnippet>57</a></span><span class="kw">pub const </span>MAX_BLOCK_WEIGHT: Weight = Weight::MAX_BLOCK;
-<a href=#58 id=58 data-nosnippet>58</a>
-<a href=#59 id=59 data-nosnippet>59</a><span class="doccomment">/// Represents the Bitcoin script backend.
-<a href=#60 id=60 data-nosnippet>60</a></span><span class="attr">#[derive(Copy, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
-<a href=#61 id=61 data-nosnippet>61</a>#[cfg_attr(feature = <span class="string">"cli"</span>, derive(clap::ValueEnum))]
-<a href=#62 id=62 data-nosnippet>62</a></span><span class="kw">pub enum </span>ScriptEngine {
-<a href=#63 id=63 data-nosnippet>63</a>    <span class="doccomment">/// Uses the Bitcoin Core bindings for script verification.
-<a href=#64 id=64 data-nosnippet>64</a>    </span><span class="attr">#[default]
-<a href=#65 id=65 data-nosnippet>65</a>    </span>Core,
-<a href=#66 id=66 data-nosnippet>66</a>    <span class="doccomment">/// No script verification.
-<a href=#67 id=67 data-nosnippet>67</a>    </span><span class="prelude-val">None</span>,
-<a href=#68 id=68 data-nosnippet>68</a>    <span class="doccomment">/// Uses the Rust-based Bitcoin script interpreter (Subcoin) for script verification.
-<a href=#69 id=69 data-nosnippet>69</a>    /// This is an experimental feature, not yet fully validated for production use.
-<a href=#70 id=70 data-nosnippet>70</a>    </span>Subcoin,
-<a href=#71 id=71 data-nosnippet>71</a>}
-<a href=#72 id=72 data-nosnippet>72</a>
-<a href=#73 id=73 data-nosnippet>73</a><span class="doccomment">/// Represents the level of block verification.
-<a href=#74 id=74 data-nosnippet>74</a></span><span class="attr">#[derive(Copy, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
-<a href=#75 id=75 data-nosnippet>75</a>#[cfg_attr(feature = <span class="string">"cli"</span>, derive(clap::ValueEnum))]
-<a href=#76 id=76 data-nosnippet>76</a></span><span class="kw">pub enum </span>BlockVerification {
-<a href=#77 id=77 data-nosnippet>77</a>    <span class="doccomment">/// No verification performed.
-<a href=#78 id=78 data-nosnippet>78</a>    </span><span class="prelude-val">None</span>,
-<a href=#79 id=79 data-nosnippet>79</a>    <span class="doccomment">/// Full verification, including verifying the transactions.
-<a href=#80 id=80 data-nosnippet>80</a>    </span><span class="attr">#[default]
-<a href=#81 id=81 data-nosnippet>81</a>    </span>Full,
-<a href=#82 id=82 data-nosnippet>82</a>    <span class="doccomment">/// Verify the block header only, without the transaction veification.
-<a href=#83 id=83 data-nosnippet>83</a>    </span>HeaderOnly,
-<a href=#84 id=84 data-nosnippet>84</a>}
-<a href=#85 id=85 data-nosnippet>85</a>
-<a href=#86 id=86 data-nosnippet>86</a><span class="doccomment">/// Represents the context of a transaction within a block.
-<a href=#87 id=87 data-nosnippet>87</a></span><span class="attr">#[derive(Debug)]
-<a href=#88 id=88 data-nosnippet>88</a></span><span class="kw">pub struct </span>TransactionContext {
-<a href=#89 id=89 data-nosnippet>89</a>    <span class="doccomment">/// Block number containing the transaction.
-<a href=#90 id=90 data-nosnippet>90</a>    </span><span class="kw">pub </span>block_number: u32,
-<a href=#91 id=91 data-nosnippet>91</a>    <span class="doccomment">/// Index of the transaction in the block.
-<a href=#92 id=92 data-nosnippet>92</a>    </span><span class="kw">pub </span>tx_index: usize,
-<a href=#93 id=93 data-nosnippet>93</a>    <span class="doccomment">/// ID of the transaction.
-<a href=#94 id=94 data-nosnippet>94</a>    </span><span class="kw">pub </span>txid: Txid,
-<a href=#95 id=95 data-nosnippet>95</a>}
-<a href=#96 id=96 data-nosnippet>96</a>
-<a href=#97 id=97 data-nosnippet>97</a><span class="kw">impl </span>std::fmt::Display <span class="kw">for </span>TransactionContext {
-<a href=#98 id=98 data-nosnippet>98</a>    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>std::fmt::Formatter&lt;<span class="lifetime">'_</span>&gt;) -&gt; std::fmt::Result {
-<a href=#99 id=99 data-nosnippet>99</a>        <span class="macro">write!</span>(
-<a href=#100 id=100 data-nosnippet>100</a>            f,
-<a href=#101 id=101 data-nosnippet>101</a>            <span class="string">"Tx #{}:{}: {}"</span>,
-<a href=#102 id=102 data-nosnippet>102</a>            <span class="self">self</span>.block_number, <span class="self">self</span>.tx_index, <span class="self">self</span>.txid
-<a href=#103 id=103 data-nosnippet>103</a>        )
-<a href=#104 id=104 data-nosnippet>104</a>    }
-<a href=#105 id=105 data-nosnippet>105</a>}
-<a href=#106 id=106 data-nosnippet>106</a>
-<a href=#107 id=107 data-nosnippet>107</a><span class="doccomment">/// Block verification error.
-<a href=#108 id=108 data-nosnippet>108</a></span><span class="attr">#[derive(Debug, thiserror::Error)]
-<a href=#109 id=109 data-nosnippet>109</a></span><span class="kw">pub enum </span>Error {
-<a href=#110 id=110 data-nosnippet>110</a>    <span class="doccomment">/// The merkle root of the block is invalid.
-<a href=#111 id=111 data-nosnippet>111</a>    </span><span class="attr">#[error(<span class="string">"Invalid merkle root in block#{0}"</span>)]
-<a href=#112 id=112 data-nosnippet>112</a>    </span>BadMerkleRoot(BlockHash),
-<a href=#113 id=113 data-nosnippet>113</a>    <span class="doccomment">/// Block must contain at least one coinbase transaction.
-<a href=#114 id=114 data-nosnippet>114</a>    </span><span class="attr">#[error(<span class="string">"Block#{0} has an empty transaction list"</span>)]
-<a href=#115 id=115 data-nosnippet>115</a>    </span>EmptyTransactionList(BlockHash),
-<a href=#116 id=116 data-nosnippet>116</a>    <span class="doccomment">/// Block size exceeds the limit.
-<a href=#117 id=117 data-nosnippet>117</a>    </span><span class="attr">#[error(<span class="string">"Block#{0} exceeds maximum allowed size"</span>)]
-<a href=#118 id=118 data-nosnippet>118</a>    </span>BlockTooLarge(BlockHash),
-<a href=#119 id=119 data-nosnippet>119</a>    <span class="doccomment">/// First transaction must be a coinbase.
-<a href=#120 id=120 data-nosnippet>120</a>    </span><span class="attr">#[error(<span class="string">"First transaction in block#{0} is not a coinbase"</span>)]
-<a href=#121 id=121 data-nosnippet>121</a>    </span>FirstTransactionIsNotCoinbase(BlockHash),
-<a href=#122 id=122 data-nosnippet>122</a>    <span class="doccomment">/// A block must contain only one coinbase transaction.
-<a href=#123 id=123 data-nosnippet>123</a>    </span><span class="attr">#[error(<span class="string">"Block#{0} contains multiple coinbase transactions"</span>)]
-<a href=#124 id=124 data-nosnippet>124</a>    </span>MultipleCoinbase(BlockHash),
-<a href=#125 id=125 data-nosnippet>125</a>    <span class="attr">#[error(<span class="string">"Block#{block_hash} has incorrect coinbase height, (expected: {expected}, got: {got})"</span>)]
-<a href=#126 id=126 data-nosnippet>126</a>    </span>BadCoinbaseBlockHeight {
-<a href=#127 id=127 data-nosnippet>127</a>        block_hash: BlockHash,
-<a href=#128 id=128 data-nosnippet>128</a>        got: u32,
-<a href=#129 id=129 data-nosnippet>129</a>        expected: u32,
-<a href=#130 id=130 data-nosnippet>130</a>    },
-<a href=#131 id=131 data-nosnippet>131</a>    <span class="doccomment">/// Coinbase transaction is prematurely spent.
-<a href=#132 id=132 data-nosnippet>132</a>    </span><span class="attr">#[error(<span class="string">"Premature spend of coinbase transaction in block#{0}"</span>)]
-<a href=#133 id=133 data-nosnippet>133</a>    </span>PrematureSpendOfCoinbase(BlockHash),
-<a href=#134 id=134 data-nosnippet>134</a>
-<a href=#135 id=135 data-nosnippet>135</a>    <span class="doccomment">/// Block contains duplicate transactions.
-<a href=#136 id=136 data-nosnippet>136</a>    </span><span class="attr">#[error(<span class="string">"Block#{block_hash} contains duplicate transaction at index {index}"</span>)]
-<a href=#137 id=137 data-nosnippet>137</a>    </span>DuplicateTransaction { block_hash: BlockHash, index: usize },
-<a href=#138 id=138 data-nosnippet>138</a>    <span class="doccomment">/// A transaction is not finalized.
-<a href=#139 id=139 data-nosnippet>139</a>    </span><span class="attr">#[error(<span class="string">"Transaction in block#{0} is not finalized"</span>)]
-<a href=#140 id=140 data-nosnippet>140</a>    </span>TransactionNotFinal(BlockHash),
-<a href=#141 id=141 data-nosnippet>141</a>    <span class="doccomment">/// Transaction script contains too many signature operations.
-<a href=#142 id=142 data-nosnippet>142</a>    </span><span class="attr">#[error(
-<a href=#143 id=143 data-nosnippet>143</a>        <span class="string">"Transaction in block #{block_number},{block_hash} exceeds signature operation limit (max: {MAX_BLOCK_SIGOPS_COST})"
-<a href=#144 id=144 data-nosnippet>144</a>    </span>)]
-<a href=#145 id=145 data-nosnippet>145</a>    </span>TooManySigOps {
-<a href=#146 id=146 data-nosnippet>146</a>        block_hash: BlockHash,
-<a href=#147 id=147 data-nosnippet>147</a>        block_number: u32,
-<a href=#148 id=148 data-nosnippet>148</a>    },
-<a href=#149 id=149 data-nosnippet>149</a>    <span class="doccomment">/// Witness commitment in the block is invalid.
-<a href=#150 id=150 data-nosnippet>150</a>    </span><span class="attr">#[error(<span class="string">"Invalid witness commitment in block#{0}"</span>)]
-<a href=#151 id=151 data-nosnippet>151</a>    </span>BadWitnessCommitment(BlockHash),
-<a href=#152 id=152 data-nosnippet>152</a>
-<a href=#153 id=153 data-nosnippet>153</a>    <span class="doccomment">/// UTXO referenced by a transaction is missing
-<a href=#154 id=154 data-nosnippet>154</a>    </span><span class="attr">#[error(
-<a href=#155 id=155 data-nosnippet>155</a>        <span class="string">"Missing UTXO in state for transaction ({context}) in block {block_hash}. Missing UTXO: {missing_utxo:?}"
-<a href=#156 id=156 data-nosnippet>156</a>    </span>)]
-<a href=#157 id=157 data-nosnippet>157</a>    </span>MissingUtxoInState {
-<a href=#158 id=158 data-nosnippet>158</a>        block_hash: BlockHash,
-<a href=#159 id=159 data-nosnippet>159</a>        <span class="doccomment">/// Context of the transaction being processed.
-<a href=#160 id=160 data-nosnippet>160</a>        </span>context: TransactionContext,
-<a href=#161 id=161 data-nosnippet>161</a>        <span class="doccomment">/// UTXO missing from the UTXO set.
-<a href=#162 id=162 data-nosnippet>162</a>        </span>missing_utxo: OutPoint,
-<a href=#163 id=163 data-nosnippet>163</a>    },
-<a href=#164 id=164 data-nosnippet>164</a>    <span class="doccomment">/// UTXO has already been spent within the same block.
-<a href=#165 id=165 data-nosnippet>165</a>    </span><span class="attr">#[error(<span class="string">"UTXO already spent in current block (#{block_number},{block_hash}:{txid}: {utxo:?})"</span>)]
-<a href=#166 id=166 data-nosnippet>166</a>    </span>AlreadySpentInCurrentBlock {
-<a href=#167 id=167 data-nosnippet>167</a>        block_hash: BlockHash,
-<a href=#168 id=168 data-nosnippet>168</a>        block_number: u32,
-<a href=#169 id=169 data-nosnippet>169</a>        txid: Txid,
-<a href=#170 id=170 data-nosnippet>170</a>        utxo: OutPoint,
-<a href=#171 id=171 data-nosnippet>171</a>    },
-<a href=#172 id=172 data-nosnippet>172</a>    <span class="doccomment">/// Insufficient funds: total input amount is lower than the total output amount.
-<a href=#173 id=173 data-nosnippet>173</a>    </span><span class="attr">#[error(
-<a href=#174 id=174 data-nosnippet>174</a>        <span class="string">"Block#{block_hash} has an invalid transaction: total input {value_in} &lt; total output {value_out}"
-<a href=#175 id=175 data-nosnippet>175</a>    </span>)]
-<a href=#176 id=176 data-nosnippet>176</a>    </span>InsufficientFunds {
-<a href=#177 id=177 data-nosnippet>177</a>        block_hash: BlockHash,
-<a href=#178 id=178 data-nosnippet>178</a>        value_in: u64,
-<a href=#179 id=179 data-nosnippet>179</a>        value_out: u64,
-<a href=#180 id=180 data-nosnippet>180</a>    },
-<a href=#181 id=181 data-nosnippet>181</a>    <span class="doccomment">/// Block reward (coinbase value) exceeds the allowed subsidy + transaction fees.
-<a href=#182 id=182 data-nosnippet>182</a>    </span><span class="attr">#[error(<span class="string">"Block#{0} reward exceeds allowed amount (subsidy + fees)"</span>)]
-<a href=#183 id=183 data-nosnippet>183</a>    </span>InvalidBlockReward(BlockHash),
-<a href=#184 id=184 data-nosnippet>184</a>    <span class="doccomment">/// A transaction script failed verification.
-<a href=#185 id=185 data-nosnippet>185</a>    </span><span class="attr">#[error(
-<a href=#186 id=186 data-nosnippet>186</a>        <span class="string">"Script verification failure in block#{block_hash}. Context: {context}, input_index: {input_index}: {error:?}"
-<a href=#187 id=187 data-nosnippet>187</a>    </span>)]
-<a href=#188 id=188 data-nosnippet>188</a>    </span>InvalidScript {
-<a href=#189 id=189 data-nosnippet>189</a>        block_hash: BlockHash,
-<a href=#190 id=190 data-nosnippet>190</a>        context: TransactionContext,
-<a href=#191 id=191 data-nosnippet>191</a>        input_index: usize,
-<a href=#192 id=192 data-nosnippet>192</a>        error: Box&lt;subcoin_script::Error&gt;,
-<a href=#193 id=193 data-nosnippet>193</a>    },
-<a href=#194 id=194 data-nosnippet>194</a>    <span class="attr">#[error(<span class="string">"BIP34 error in block#{0}: {1:?}"</span>)]
-<a href=#195 id=195 data-nosnippet>195</a>    </span>Bip34(BlockHash, Bip34Error),
-<a href=#196 id=196 data-nosnippet>196</a>    <span class="attr">#[error(<span class="string">"Bitcoin codec error: {0:?}"</span>)]
-<a href=#197 id=197 data-nosnippet>197</a>    </span>BitcoinCodec(bitcoin::io::Error),
-<a href=#198 id=198 data-nosnippet>198</a>    <span class="attr">#[error(transparent)]
-<a href=#199 id=199 data-nosnippet>199</a>    </span>BitcoinConsensus(<span class="attr">#[from] </span>bitcoinconsensus::Error),
-<a href=#200 id=200 data-nosnippet>200</a>    <span class="doccomment">/// An error occurred in the client.
-<a href=#201 id=201 data-nosnippet>201</a>    </span><span class="attr">#[error(transparent)]
-<a href=#202 id=202 data-nosnippet>202</a>    </span>Client(<span class="attr">#[from] </span>sp_blockchain::Error),
-<a href=#203 id=203 data-nosnippet>203</a>    <span class="attr">#[error(transparent)]
-<a href=#204 id=204 data-nosnippet>204</a>    </span>Transaction(<span class="attr">#[from] </span>TxError),
-<a href=#205 id=205 data-nosnippet>205</a>    <span class="doccomment">/// Block header error.
-<a href=#206 id=206 data-nosnippet>206</a>    </span><span class="attr">#[error(transparent)]
-<a href=#207 id=207 data-nosnippet>207</a>    </span>Header(<span class="attr">#[from] </span>HeaderError),
-<a href=#208 id=208 data-nosnippet>208</a>}
-<a href=#209 id=209 data-nosnippet>209</a>
-<a href=#210 id=210 data-nosnippet>210</a><span class="doccomment">/// A struct responsible for verifying Bitcoin blocks.
-<a href=#211 id=211 data-nosnippet>211</a></span><span class="attr">#[derive(Clone)]
-<a href=#212 id=212 data-nosnippet>212</a></span><span class="kw">pub struct </span>BlockVerifier&lt;Block, Client, BE&gt; {
-<a href=#213 id=213 data-nosnippet>213</a>    client: Arc&lt;Client&gt;,
-<a href=#214 id=214 data-nosnippet>214</a>    chain_params: ChainParams,
-<a href=#215 id=215 data-nosnippet>215</a>    header_verifier: HeaderVerifier&lt;Block, Client&gt;,
-<a href=#216 id=216 data-nosnippet>216</a>    block_verification: BlockVerification,
-<a href=#217 id=217 data-nosnippet>217</a>    coin_storage_key: Arc&lt;<span class="kw">dyn </span>CoinStorageKey&gt;,
-<a href=#218 id=218 data-nosnippet>218</a>    script_engine: ScriptEngine,
-<a href=#219 id=219 data-nosnippet>219</a>    _phantom: PhantomData&lt;(Block, BE)&gt;,
-<a href=#220 id=220 data-nosnippet>220</a>}
-<a href=#221 id=221 data-nosnippet>221</a>
-<a href=#222 id=222 data-nosnippet>222</a><span class="kw">impl</span>&lt;Block, Client, BE&gt; BlockVerifier&lt;Block, Client, BE&gt; {
-<a href=#223 id=223 data-nosnippet>223</a>    <span class="doccomment">/// Constructs a new instance of [`BlockVerifier`].
-<a href=#224 id=224 data-nosnippet>224</a>    </span><span class="kw">pub fn </span>new(
-<a href=#225 id=225 data-nosnippet>225</a>        client: Arc&lt;Client&gt;,
-<a href=#226 id=226 data-nosnippet>226</a>        network: bitcoin::Network,
-<a href=#227 id=227 data-nosnippet>227</a>        block_verification: BlockVerification,
-<a href=#228 id=228 data-nosnippet>228</a>        coin_storage_key: Arc&lt;<span class="kw">dyn </span>CoinStorageKey&gt;,
-<a href=#229 id=229 data-nosnippet>229</a>        script_engine: ScriptEngine,
-<a href=#230 id=230 data-nosnippet>230</a>    ) -&gt; <span class="self">Self </span>{
-<a href=#231 id=231 data-nosnippet>231</a>        <span class="kw">let </span>chain_params = ChainParams::new(network);
-<a href=#232 id=232 data-nosnippet>232</a>        <span class="kw">let </span>header_verifier = HeaderVerifier::new(client.clone(), chain_params.clone());
-<a href=#233 id=233 data-nosnippet>233</a>        <span class="self">Self </span>{
-<a href=#234 id=234 data-nosnippet>234</a>            client,
-<a href=#235 id=235 data-nosnippet>235</a>            chain_params,
-<a href=#236 id=236 data-nosnippet>236</a>            header_verifier,
-<a href=#237 id=237 data-nosnippet>237</a>            block_verification,
-<a href=#238 id=238 data-nosnippet>238</a>            coin_storage_key,
-<a href=#239 id=239 data-nosnippet>239</a>            script_engine,
-<a href=#240 id=240 data-nosnippet>240</a>            _phantom: Default::default(),
-<a href=#241 id=241 data-nosnippet>241</a>        }
-<a href=#242 id=242 data-nosnippet>242</a>    }
-<a href=#243 id=243 data-nosnippet>243</a>}
-<a href=#244 id=244 data-nosnippet>244</a>
-<a href=#245 id=245 data-nosnippet>245</a><span class="kw">impl</span>&lt;Block, Client, BE&gt; BlockVerifier&lt;Block, Client, BE&gt;
-<a href=#246 id=246 data-nosnippet>246</a><span class="kw">where
-<a href=#247 id=247 data-nosnippet>247</a>    </span>Block: BlockT,
-<a href=#248 id=248 data-nosnippet>248</a>    BE: Backend&lt;Block&gt;,
-<a href=#249 id=249 data-nosnippet>249</a>    Client: HeaderBackend&lt;Block&gt; + StorageProvider&lt;Block, BE&gt; + AuxStore,
-<a href=#250 id=250 data-nosnippet>250</a>{
-<a href=#251 id=251 data-nosnippet>251</a>    <span class="doccomment">/// Performs full block verification.
-<a href=#252 id=252 data-nosnippet>252</a>    ///
-<a href=#253 id=253 data-nosnippet>253</a>    /// References:
-<a href=#254 id=254 data-nosnippet>254</a>    /// - &lt;https://en.bitcoin.it/wiki/Protocol_rules#.22block.22_messages&gt;
-<a href=#255 id=255 data-nosnippet>255</a>    </span><span class="kw">pub fn </span>verify_block(<span class="kw-2">&amp;</span><span class="self">self</span>, block_number: u32, block: <span class="kw-2">&amp;</span>BitcoinBlock) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
-<a href=#256 id=256 data-nosnippet>256</a>        <span class="kw">let </span>txids = <span class="self">self</span>.check_block_sanity(block_number, block)<span class="question-mark">?</span>;
-<a href=#257 id=257 data-nosnippet>257</a>
-<a href=#258 id=258 data-nosnippet>258</a>        <span class="self">self</span>.contextual_check_block(block_number, block.block_hash(), block, txids)
-<a href=#259 id=259 data-nosnippet>259</a>    }
-<a href=#260 id=260 data-nosnippet>260</a>
-<a href=#261 id=261 data-nosnippet>261</a>    <span class="kw">fn </span>contextual_check_block(
-<a href=#262 id=262 data-nosnippet>262</a>        <span class="kw-2">&amp;</span><span class="self">self</span>,
-<a href=#263 id=263 data-nosnippet>263</a>        block_number: u32,
-<a href=#264 id=264 data-nosnippet>264</a>        block_hash: BlockHash,
-<a href=#265 id=265 data-nosnippet>265</a>        block: <span class="kw-2">&amp;</span>BitcoinBlock,
-<a href=#266 id=266 data-nosnippet>266</a>        txids: HashMap&lt;usize, Txid&gt;,
-<a href=#267 id=267 data-nosnippet>267</a>    ) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
-<a href=#268 id=268 data-nosnippet>268</a>        <span class="kw">match </span><span class="self">self</span>.block_verification {
-<a href=#269 id=269 data-nosnippet>269</a>            BlockVerification::Full =&gt; {
-<a href=#270 id=270 data-nosnippet>270</a>                <span class="kw">let </span>lock_time_cutoff = <span class="self">self</span>.header_verifier.verify(<span class="kw-2">&amp;</span>block.header)<span class="question-mark">?</span>;
-<a href=#271 id=271 data-nosnippet>271</a>
-<a href=#272 id=272 data-nosnippet>272</a>                <span class="kw">if </span>block_number &gt;= <span class="self">self</span>.chain_params.segwit_height
-<a href=#273 id=273 data-nosnippet>273</a>                    &amp;&amp; !block.check_witness_commitment()
-<a href=#274 id=274 data-nosnippet>274</a>                {
-<a href=#275 id=275 data-nosnippet>275</a>                    <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadWitnessCommitment(block_hash));
-<a href=#276 id=276 data-nosnippet>276</a>                }
-<a href=#277 id=277 data-nosnippet>277</a>
-<a href=#278 id=278 data-nosnippet>278</a>                <span class="comment">// Check the block weight with witness data.
-<a href=#279 id=279 data-nosnippet>279</a>                </span><span class="kw">if </span>block.weight() &gt; MAX_BLOCK_WEIGHT {
-<a href=#280 id=280 data-nosnippet>280</a>                    <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BlockTooLarge(block_hash));
-<a href=#281 id=281 data-nosnippet>281</a>                }
-<a href=#282 id=282 data-nosnippet>282</a>
-<a href=#283 id=283 data-nosnippet>283</a>                <span class="self">self</span>.verify_transactions(block_number, block, txids, lock_time_cutoff)<span class="question-mark">?</span>;
-<a href=#284 id=284 data-nosnippet>284</a>            }
-<a href=#285 id=285 data-nosnippet>285</a>            BlockVerification::HeaderOnly =&gt; {
-<a href=#286 id=286 data-nosnippet>286</a>                <span class="self">self</span>.header_verifier.verify(<span class="kw-2">&amp;</span>block.header)<span class="question-mark">?</span>;
-<a href=#287 id=287 data-nosnippet>287</a>            }
-<a href=#288 id=288 data-nosnippet>288</a>            BlockVerification::None =&gt; {}
-<a href=#289 id=289 data-nosnippet>289</a>        }
-<a href=#290 id=290 data-nosnippet>290</a>
-<a href=#291 id=291 data-nosnippet>291</a>        <span class="prelude-val">Ok</span>(())
-<a href=#292 id=292 data-nosnippet>292</a>    }
-<a href=#293 id=293 data-nosnippet>293</a>
-<a href=#294 id=294 data-nosnippet>294</a>    <span class="doccomment">/// Performs preliminary checks.
-<a href=#295 id=295 data-nosnippet>295</a>    ///
-<a href=#296 id=296 data-nosnippet>296</a>    /// - Transaction list must be non-empty.
-<a href=#297 id=297 data-nosnippet>297</a>    /// - Block size must not exceed [`MAX_BLOCK_WEIGHT`].
-<a href=#298 id=298 data-nosnippet>298</a>    /// - First transaction must be coinbase, the rest must not be.
-<a href=#299 id=299 data-nosnippet>299</a>    /// - No duplicate transactions in the block.
-<a href=#300 id=300 data-nosnippet>300</a>    /// - Check the sum of transaction sig opcounts does not exceed [`MAX_BLOCK_SIGOPS_COST`].
-<a href=#301 id=301 data-nosnippet>301</a>    /// - Check the calculated merkle root of transactions matches the one declared in the header.
-<a href=#302 id=302 data-nosnippet>302</a>    ///
-<a href=#303 id=303 data-nosnippet>303</a>    /// &lt;https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccdCOIN787161bf2b87e03cc1f/src/validation.cpp#L3986&gt;
-<a href=#304 id=304 data-nosnippet>304</a>    </span><span class="kw">fn </span>check_block_sanity(
-<a href=#305 id=305 data-nosnippet>305</a>        <span class="kw-2">&amp;</span><span class="self">self</span>,
-<a href=#306 id=306 data-nosnippet>306</a>        block_number: u32,
-<a href=#307 id=307 data-nosnippet>307</a>        block: <span class="kw-2">&amp;</span>BitcoinBlock,
-<a href=#308 id=308 data-nosnippet>308</a>    ) -&gt; <span class="prelude-ty">Result</span>&lt;HashMap&lt;usize, Txid&gt;, Error&gt; {
-<a href=#309 id=309 data-nosnippet>309</a>        <span class="kw">let </span>block_hash = block.block_hash();
+<a href=#43 id=43 data-nosnippet>43</a><span class="kw">pub use </span>header_verify::{Error <span class="kw">as </span>HeaderError, HeaderVerifier};
+<a href=#44 id=44 data-nosnippet>44</a><span class="kw">use </span>sc_client_api::{AuxStore, Backend, StorageProvider};
+<a href=#45 id=45 data-nosnippet>45</a><span class="kw">use </span>sp_blockchain::HeaderBackend;
+<a href=#46 id=46 data-nosnippet>46</a><span class="kw">use </span>sp_runtime::traits::Block <span class="kw">as </span>BlockT;
+<a href=#47 id=47 data-nosnippet>47</a><span class="kw">use </span>std::collections::{HashMap, HashSet};
+<a href=#48 id=48 data-nosnippet>48</a><span class="kw">use </span>std::marker::PhantomData;
+<a href=#49 id=49 data-nosnippet>49</a><span class="kw">use </span>std::sync::Arc;
+<a href=#50 id=50 data-nosnippet>50</a><span class="kw">use </span>subcoin_primitives::consensus::{TxError, check_transaction_sanity};
+<a href=#51 id=51 data-nosnippet>51</a><span class="kw">use </span>subcoin_primitives::runtime::{Coin, bitcoin_block_subsidy};
+<a href=#52 id=52 data-nosnippet>52</a><span class="kw">use </span>subcoin_primitives::{CoinStorageKey, MAX_BLOCK_WEIGHT};
+<a href=#53 id=53 data-nosnippet>53</a><span class="kw">use </span>tx_verify::{get_legacy_sig_op_count, is_final_tx};
+<a href=#54 id=54 data-nosnippet>54</a>
+<a href=#55 id=55 data-nosnippet>55</a><span class="doccomment">/// Represents the Bitcoin script backend.
+<a href=#56 id=56 data-nosnippet>56</a></span><span class="attr">#[derive(Copy, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+<a href=#57 id=57 data-nosnippet>57</a>#[cfg_attr(feature = <span class="string">"cli"</span>, derive(clap::ValueEnum))]
+<a href=#58 id=58 data-nosnippet>58</a></span><span class="kw">pub enum </span>ScriptEngine {
+<a href=#59 id=59 data-nosnippet>59</a>    <span class="doccomment">/// Uses the Bitcoin Core bindings for script verification.
+<a href=#60 id=60 data-nosnippet>60</a>    </span><span class="attr">#[default]
+<a href=#61 id=61 data-nosnippet>61</a>    </span>Core,
+<a href=#62 id=62 data-nosnippet>62</a>    <span class="doccomment">/// No script verification.
+<a href=#63 id=63 data-nosnippet>63</a>    </span><span class="prelude-val">None</span>,
+<a href=#64 id=64 data-nosnippet>64</a>    <span class="doccomment">/// Uses the Rust-based Bitcoin script interpreter (Subcoin) for script verification.
+<a href=#65 id=65 data-nosnippet>65</a>    /// This is an experimental feature, not yet fully validated for production use.
+<a href=#66 id=66 data-nosnippet>66</a>    </span>Subcoin,
+<a href=#67 id=67 data-nosnippet>67</a>}
+<a href=#68 id=68 data-nosnippet>68</a>
+<a href=#69 id=69 data-nosnippet>69</a><span class="doccomment">/// Represents the level of block verification.
+<a href=#70 id=70 data-nosnippet>70</a></span><span class="attr">#[derive(Copy, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+<a href=#71 id=71 data-nosnippet>71</a>#[cfg_attr(feature = <span class="string">"cli"</span>, derive(clap::ValueEnum))]
+<a href=#72 id=72 data-nosnippet>72</a></span><span class="kw">pub enum </span>BlockVerification {
+<a href=#73 id=73 data-nosnippet>73</a>    <span class="doccomment">/// No verification performed.
+<a href=#74 id=74 data-nosnippet>74</a>    </span><span class="prelude-val">None</span>,
+<a href=#75 id=75 data-nosnippet>75</a>    <span class="doccomment">/// Full verification, including verifying the transactions.
+<a href=#76 id=76 data-nosnippet>76</a>    </span><span class="attr">#[default]
+<a href=#77 id=77 data-nosnippet>77</a>    </span>Full,
+<a href=#78 id=78 data-nosnippet>78</a>    <span class="doccomment">/// Verify the block header only, without the transaction veification.
+<a href=#79 id=79 data-nosnippet>79</a>    </span>HeaderOnly,
+<a href=#80 id=80 data-nosnippet>80</a>}
+<a href=#81 id=81 data-nosnippet>81</a>
+<a href=#82 id=82 data-nosnippet>82</a><span class="doccomment">/// Represents the context of a transaction within a block.
+<a href=#83 id=83 data-nosnippet>83</a></span><span class="attr">#[derive(Debug)]
+<a href=#84 id=84 data-nosnippet>84</a></span><span class="kw">pub struct </span>TransactionContext {
+<a href=#85 id=85 data-nosnippet>85</a>    <span class="doccomment">/// Block number containing the transaction.
+<a href=#86 id=86 data-nosnippet>86</a>    </span><span class="kw">pub </span>block_number: u32,
+<a href=#87 id=87 data-nosnippet>87</a>    <span class="doccomment">/// Index of the transaction in the block.
+<a href=#88 id=88 data-nosnippet>88</a>    </span><span class="kw">pub </span>tx_index: usize,
+<a href=#89 id=89 data-nosnippet>89</a>    <span class="doccomment">/// ID of the transaction.
+<a href=#90 id=90 data-nosnippet>90</a>    </span><span class="kw">pub </span>txid: Txid,
+<a href=#91 id=91 data-nosnippet>91</a>}
+<a href=#92 id=92 data-nosnippet>92</a>
+<a href=#93 id=93 data-nosnippet>93</a><span class="kw">impl </span>std::fmt::Display <span class="kw">for </span>TransactionContext {
+<a href=#94 id=94 data-nosnippet>94</a>    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>std::fmt::Formatter&lt;<span class="lifetime">'_</span>&gt;) -&gt; std::fmt::Result {
+<a href=#95 id=95 data-nosnippet>95</a>        <span class="macro">write!</span>(
+<a href=#96 id=96 data-nosnippet>96</a>            f,
+<a href=#97 id=97 data-nosnippet>97</a>            <span class="string">"Tx #{}:{}: {}"</span>,
+<a href=#98 id=98 data-nosnippet>98</a>            <span class="self">self</span>.block_number, <span class="self">self</span>.tx_index, <span class="self">self</span>.txid
+<a href=#99 id=99 data-nosnippet>99</a>        )
+<a href=#100 id=100 data-nosnippet>100</a>    }
+<a href=#101 id=101 data-nosnippet>101</a>}
+<a href=#102 id=102 data-nosnippet>102</a>
+<a href=#103 id=103 data-nosnippet>103</a><span class="doccomment">/// Block verification error.
+<a href=#104 id=104 data-nosnippet>104</a></span><span class="attr">#[derive(Debug, thiserror::Error)]
+<a href=#105 id=105 data-nosnippet>105</a></span><span class="kw">pub enum </span>Error {
+<a href=#106 id=106 data-nosnippet>106</a>    <span class="doccomment">/// The merkle root of the block is invalid.
+<a href=#107 id=107 data-nosnippet>107</a>    </span><span class="attr">#[error(<span class="string">"Invalid merkle root in block#{0}"</span>)]
+<a href=#108 id=108 data-nosnippet>108</a>    </span>BadMerkleRoot(BlockHash),
+<a href=#109 id=109 data-nosnippet>109</a>    <span class="doccomment">/// Block must contain at least one coinbase transaction.
+<a href=#110 id=110 data-nosnippet>110</a>    </span><span class="attr">#[error(<span class="string">"Block#{0} has an empty transaction list"</span>)]
+<a href=#111 id=111 data-nosnippet>111</a>    </span>EmptyTransactionList(BlockHash),
+<a href=#112 id=112 data-nosnippet>112</a>    <span class="doccomment">/// Block size exceeds the limit.
+<a href=#113 id=113 data-nosnippet>113</a>    </span><span class="attr">#[error(<span class="string">"Block#{0} exceeds maximum allowed size"</span>)]
+<a href=#114 id=114 data-nosnippet>114</a>    </span>BlockTooLarge(BlockHash),
+<a href=#115 id=115 data-nosnippet>115</a>    <span class="doccomment">/// First transaction must be a coinbase.
+<a href=#116 id=116 data-nosnippet>116</a>    </span><span class="attr">#[error(<span class="string">"First transaction in block#{0} is not a coinbase"</span>)]
+<a href=#117 id=117 data-nosnippet>117</a>    </span>FirstTransactionIsNotCoinbase(BlockHash),
+<a href=#118 id=118 data-nosnippet>118</a>    <span class="doccomment">/// A block must contain only one coinbase transaction.
+<a href=#119 id=119 data-nosnippet>119</a>    </span><span class="attr">#[error(<span class="string">"Block#{0} contains multiple coinbase transactions"</span>)]
+<a href=#120 id=120 data-nosnippet>120</a>    </span>MultipleCoinbase(BlockHash),
+<a href=#121 id=121 data-nosnippet>121</a>    <span class="attr">#[error(<span class="string">"Block#{block_hash} has incorrect coinbase height, (expected: {expected}, got: {got})"</span>)]
+<a href=#122 id=122 data-nosnippet>122</a>    </span>BadCoinbaseBlockHeight {
+<a href=#123 id=123 data-nosnippet>123</a>        block_hash: BlockHash,
+<a href=#124 id=124 data-nosnippet>124</a>        got: u32,
+<a href=#125 id=125 data-nosnippet>125</a>        expected: u32,
+<a href=#126 id=126 data-nosnippet>126</a>    },
+<a href=#127 id=127 data-nosnippet>127</a>    <span class="doccomment">/// Coinbase transaction is prematurely spent.
+<a href=#128 id=128 data-nosnippet>128</a>    </span><span class="attr">#[error(<span class="string">"Premature spend of coinbase transaction in block#{0}"</span>)]
+<a href=#129 id=129 data-nosnippet>129</a>    </span>PrematureSpendOfCoinbase(BlockHash),
+<a href=#130 id=130 data-nosnippet>130</a>
+<a href=#131 id=131 data-nosnippet>131</a>    <span class="doccomment">/// Block contains duplicate transactions.
+<a href=#132 id=132 data-nosnippet>132</a>    </span><span class="attr">#[error(<span class="string">"Block#{block_hash} contains duplicate transaction at index {index}"</span>)]
+<a href=#133 id=133 data-nosnippet>133</a>    </span>DuplicateTransaction { block_hash: BlockHash, index: usize },
+<a href=#134 id=134 data-nosnippet>134</a>    <span class="doccomment">/// A transaction is not finalized.
+<a href=#135 id=135 data-nosnippet>135</a>    </span><span class="attr">#[error(<span class="string">"Transaction in block#{0} is not finalized"</span>)]
+<a href=#136 id=136 data-nosnippet>136</a>    </span>TransactionNotFinal(BlockHash),
+<a href=#137 id=137 data-nosnippet>137</a>    <span class="doccomment">/// Transaction script contains too many signature operations.
+<a href=#138 id=138 data-nosnippet>138</a>    </span><span class="attr">#[error(
+<a href=#139 id=139 data-nosnippet>139</a>        <span class="string">"Transaction in block #{block_number},{block_hash} exceeds signature operation limit (max: {MAX_BLOCK_SIGOPS_COST})"
+<a href=#140 id=140 data-nosnippet>140</a>    </span>)]
+<a href=#141 id=141 data-nosnippet>141</a>    </span>TooManySigOps {
+<a href=#142 id=142 data-nosnippet>142</a>        block_hash: BlockHash,
+<a href=#143 id=143 data-nosnippet>143</a>        block_number: u32,
+<a href=#144 id=144 data-nosnippet>144</a>    },
+<a href=#145 id=145 data-nosnippet>145</a>    <span class="doccomment">/// Witness commitment in the block is invalid.
+<a href=#146 id=146 data-nosnippet>146</a>    </span><span class="attr">#[error(<span class="string">"Invalid witness commitment in block#{0}"</span>)]
+<a href=#147 id=147 data-nosnippet>147</a>    </span>BadWitnessCommitment(BlockHash),
+<a href=#148 id=148 data-nosnippet>148</a>
+<a href=#149 id=149 data-nosnippet>149</a>    <span class="doccomment">/// UTXO referenced by a transaction is missing
+<a href=#150 id=150 data-nosnippet>150</a>    </span><span class="attr">#[error(
+<a href=#151 id=151 data-nosnippet>151</a>        <span class="string">"Missing UTXO in state for transaction ({context}) in block {block_hash}. Missing UTXO: {missing_utxo:?}"
+<a href=#152 id=152 data-nosnippet>152</a>    </span>)]
+<a href=#153 id=153 data-nosnippet>153</a>    </span>MissingUtxoInState {
+<a href=#154 id=154 data-nosnippet>154</a>        block_hash: BlockHash,
+<a href=#155 id=155 data-nosnippet>155</a>        <span class="doccomment">/// Context of the transaction being processed.
+<a href=#156 id=156 data-nosnippet>156</a>        </span>context: TransactionContext,
+<a href=#157 id=157 data-nosnippet>157</a>        <span class="doccomment">/// UTXO missing from the UTXO set.
+<a href=#158 id=158 data-nosnippet>158</a>        </span>missing_utxo: OutPoint,
+<a href=#159 id=159 data-nosnippet>159</a>    },
+<a href=#160 id=160 data-nosnippet>160</a>    <span class="doccomment">/// UTXO has already been spent within the same block.
+<a href=#161 id=161 data-nosnippet>161</a>    </span><span class="attr">#[error(<span class="string">"UTXO already spent in current block (#{block_number},{block_hash}:{txid}: {utxo:?})"</span>)]
+<a href=#162 id=162 data-nosnippet>162</a>    </span>AlreadySpentInCurrentBlock {
+<a href=#163 id=163 data-nosnippet>163</a>        block_hash: BlockHash,
+<a href=#164 id=164 data-nosnippet>164</a>        block_number: u32,
+<a href=#165 id=165 data-nosnippet>165</a>        txid: Txid,
+<a href=#166 id=166 data-nosnippet>166</a>        utxo: OutPoint,
+<a href=#167 id=167 data-nosnippet>167</a>    },
+<a href=#168 id=168 data-nosnippet>168</a>    <span class="doccomment">/// Insufficient funds: total input amount is lower than the total output amount.
+<a href=#169 id=169 data-nosnippet>169</a>    </span><span class="attr">#[error(
+<a href=#170 id=170 data-nosnippet>170</a>        <span class="string">"Block#{block_hash} has an invalid transaction: total input {value_in} &lt; total output {value_out}"
+<a href=#171 id=171 data-nosnippet>171</a>    </span>)]
+<a href=#172 id=172 data-nosnippet>172</a>    </span>InsufficientFunds {
+<a href=#173 id=173 data-nosnippet>173</a>        block_hash: BlockHash,
+<a href=#174 id=174 data-nosnippet>174</a>        value_in: u64,
+<a href=#175 id=175 data-nosnippet>175</a>        value_out: u64,
+<a href=#176 id=176 data-nosnippet>176</a>    },
+<a href=#177 id=177 data-nosnippet>177</a>    <span class="doccomment">/// Block reward (coinbase value) exceeds the allowed subsidy + transaction fees.
+<a href=#178 id=178 data-nosnippet>178</a>    </span><span class="attr">#[error(<span class="string">"Block#{0} reward exceeds allowed amount (subsidy + fees)"</span>)]
+<a href=#179 id=179 data-nosnippet>179</a>    </span>InvalidBlockReward(BlockHash),
+<a href=#180 id=180 data-nosnippet>180</a>    <span class="doccomment">/// A transaction script failed verification.
+<a href=#181 id=181 data-nosnippet>181</a>    </span><span class="attr">#[error(
+<a href=#182 id=182 data-nosnippet>182</a>        <span class="string">"Script verification failure in block#{block_hash}. Context: {context}, input_index: {input_index}: {error:?}"
+<a href=#183 id=183 data-nosnippet>183</a>    </span>)]
+<a href=#184 id=184 data-nosnippet>184</a>    </span>InvalidScript {
+<a href=#185 id=185 data-nosnippet>185</a>        block_hash: BlockHash,
+<a href=#186 id=186 data-nosnippet>186</a>        context: TransactionContext,
+<a href=#187 id=187 data-nosnippet>187</a>        input_index: usize,
+<a href=#188 id=188 data-nosnippet>188</a>        error: Box&lt;subcoin_script::Error&gt;,
+<a href=#189 id=189 data-nosnippet>189</a>    },
+<a href=#190 id=190 data-nosnippet>190</a>    <span class="attr">#[error(<span class="string">"BIP34 error in block#{0}: {1:?}"</span>)]
+<a href=#191 id=191 data-nosnippet>191</a>    </span>Bip34(BlockHash, Bip34Error),
+<a href=#192 id=192 data-nosnippet>192</a>    <span class="attr">#[error(<span class="string">"Bitcoin codec error: {0:?}"</span>)]
+<a href=#193 id=193 data-nosnippet>193</a>    </span>BitcoinCodec(bitcoin::io::Error),
+<a href=#194 id=194 data-nosnippet>194</a>    <span class="attr">#[error(transparent)]
+<a href=#195 id=195 data-nosnippet>195</a>    </span>BitcoinConsensus(<span class="attr">#[from] </span>bitcoinconsensus::Error),
+<a href=#196 id=196 data-nosnippet>196</a>    <span class="doccomment">/// An error occurred in the client.
+<a href=#197 id=197 data-nosnippet>197</a>    </span><span class="attr">#[error(transparent)]
+<a href=#198 id=198 data-nosnippet>198</a>    </span>Client(<span class="attr">#[from] </span>sp_blockchain::Error),
+<a href=#199 id=199 data-nosnippet>199</a>    <span class="attr">#[error(transparent)]
+<a href=#200 id=200 data-nosnippet>200</a>    </span>Transaction(<span class="attr">#[from] </span>TxError),
+<a href=#201 id=201 data-nosnippet>201</a>    <span class="doccomment">/// Block header error.
+<a href=#202 id=202 data-nosnippet>202</a>    </span><span class="attr">#[error(transparent)]
+<a href=#203 id=203 data-nosnippet>203</a>    </span>Header(<span class="attr">#[from] </span>HeaderError),
+<a href=#204 id=204 data-nosnippet>204</a>}
+<a href=#205 id=205 data-nosnippet>205</a>
+<a href=#206 id=206 data-nosnippet>206</a><span class="doccomment">/// A struct responsible for verifying Bitcoin blocks.
+<a href=#207 id=207 data-nosnippet>207</a></span><span class="attr">#[derive(Clone)]
+<a href=#208 id=208 data-nosnippet>208</a></span><span class="kw">pub struct </span>BlockVerifier&lt;Block, Client, BE&gt; {
+<a href=#209 id=209 data-nosnippet>209</a>    client: Arc&lt;Client&gt;,
+<a href=#210 id=210 data-nosnippet>210</a>    chain_params: ChainParams,
+<a href=#211 id=211 data-nosnippet>211</a>    header_verifier: HeaderVerifier&lt;Block, Client&gt;,
+<a href=#212 id=212 data-nosnippet>212</a>    block_verification: BlockVerification,
+<a href=#213 id=213 data-nosnippet>213</a>    coin_storage_key: Arc&lt;<span class="kw">dyn </span>CoinStorageKey&gt;,
+<a href=#214 id=214 data-nosnippet>214</a>    script_engine: ScriptEngine,
+<a href=#215 id=215 data-nosnippet>215</a>    _phantom: PhantomData&lt;(Block, BE)&gt;,
+<a href=#216 id=216 data-nosnippet>216</a>}
+<a href=#217 id=217 data-nosnippet>217</a>
+<a href=#218 id=218 data-nosnippet>218</a><span class="kw">impl</span>&lt;Block, Client, BE&gt; BlockVerifier&lt;Block, Client, BE&gt; {
+<a href=#219 id=219 data-nosnippet>219</a>    <span class="doccomment">/// Constructs a new instance of [`BlockVerifier`].
+<a href=#220 id=220 data-nosnippet>220</a>    </span><span class="kw">pub fn </span>new(
+<a href=#221 id=221 data-nosnippet>221</a>        client: Arc&lt;Client&gt;,
+<a href=#222 id=222 data-nosnippet>222</a>        network: bitcoin::Network,
+<a href=#223 id=223 data-nosnippet>223</a>        block_verification: BlockVerification,
+<a href=#224 id=224 data-nosnippet>224</a>        coin_storage_key: Arc&lt;<span class="kw">dyn </span>CoinStorageKey&gt;,
+<a href=#225 id=225 data-nosnippet>225</a>        script_engine: ScriptEngine,
+<a href=#226 id=226 data-nosnippet>226</a>    ) -&gt; <span class="self">Self </span>{
+<a href=#227 id=227 data-nosnippet>227</a>        <span class="kw">let </span>chain_params = ChainParams::new(network);
+<a href=#228 id=228 data-nosnippet>228</a>        <span class="kw">let </span>header_verifier = HeaderVerifier::new(client.clone(), chain_params.clone());
+<a href=#229 id=229 data-nosnippet>229</a>        <span class="self">Self </span>{
+<a href=#230 id=230 data-nosnippet>230</a>            client,
+<a href=#231 id=231 data-nosnippet>231</a>            chain_params,
+<a href=#232 id=232 data-nosnippet>232</a>            header_verifier,
+<a href=#233 id=233 data-nosnippet>233</a>            block_verification,
+<a href=#234 id=234 data-nosnippet>234</a>            coin_storage_key,
+<a href=#235 id=235 data-nosnippet>235</a>            script_engine,
+<a href=#236 id=236 data-nosnippet>236</a>            _phantom: Default::default(),
+<a href=#237 id=237 data-nosnippet>237</a>        }
+<a href=#238 id=238 data-nosnippet>238</a>    }
+<a href=#239 id=239 data-nosnippet>239</a>}
+<a href=#240 id=240 data-nosnippet>240</a>
+<a href=#241 id=241 data-nosnippet>241</a><span class="kw">impl</span>&lt;Block, Client, BE&gt; BlockVerifier&lt;Block, Client, BE&gt;
+<a href=#242 id=242 data-nosnippet>242</a><span class="kw">where
+<a href=#243 id=243 data-nosnippet>243</a>    </span>Block: BlockT,
+<a href=#244 id=244 data-nosnippet>244</a>    BE: Backend&lt;Block&gt;,
+<a href=#245 id=245 data-nosnippet>245</a>    Client: HeaderBackend&lt;Block&gt; + StorageProvider&lt;Block, BE&gt; + AuxStore,
+<a href=#246 id=246 data-nosnippet>246</a>{
+<a href=#247 id=247 data-nosnippet>247</a>    <span class="doccomment">/// Performs full block verification.
+<a href=#248 id=248 data-nosnippet>248</a>    ///
+<a href=#249 id=249 data-nosnippet>249</a>    /// References:
+<a href=#250 id=250 data-nosnippet>250</a>    /// - &lt;https://en.bitcoin.it/wiki/Protocol_rules#.22block.22_messages&gt;
+<a href=#251 id=251 data-nosnippet>251</a>    </span><span class="kw">pub fn </span>verify_block(<span class="kw-2">&amp;</span><span class="self">self</span>, block_number: u32, block: <span class="kw-2">&amp;</span>BitcoinBlock) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
+<a href=#252 id=252 data-nosnippet>252</a>        <span class="kw">let </span>txids = <span class="self">self</span>.check_block_sanity(block_number, block)<span class="question-mark">?</span>;
+<a href=#253 id=253 data-nosnippet>253</a>
+<a href=#254 id=254 data-nosnippet>254</a>        <span class="self">self</span>.contextual_check_block(block_number, block.block_hash(), block, txids)
+<a href=#255 id=255 data-nosnippet>255</a>    }
+<a href=#256 id=256 data-nosnippet>256</a>
+<a href=#257 id=257 data-nosnippet>257</a>    <span class="kw">fn </span>contextual_check_block(
+<a href=#258 id=258 data-nosnippet>258</a>        <span class="kw-2">&amp;</span><span class="self">self</span>,
+<a href=#259 id=259 data-nosnippet>259</a>        block_number: u32,
+<a href=#260 id=260 data-nosnippet>260</a>        block_hash: BlockHash,
+<a href=#261 id=261 data-nosnippet>261</a>        block: <span class="kw-2">&amp;</span>BitcoinBlock,
+<a href=#262 id=262 data-nosnippet>262</a>        txids: HashMap&lt;usize, Txid&gt;,
+<a href=#263 id=263 data-nosnippet>263</a>    ) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
+<a href=#264 id=264 data-nosnippet>264</a>        <span class="kw">match </span><span class="self">self</span>.block_verification {
+<a href=#265 id=265 data-nosnippet>265</a>            BlockVerification::Full =&gt; {
+<a href=#266 id=266 data-nosnippet>266</a>                <span class="kw">let </span>lock_time_cutoff = <span class="self">self</span>.header_verifier.verify(<span class="kw-2">&amp;</span>block.header)<span class="question-mark">?</span>;
+<a href=#267 id=267 data-nosnippet>267</a>
+<a href=#268 id=268 data-nosnippet>268</a>                <span class="kw">if </span>block_number &gt;= <span class="self">self</span>.chain_params.segwit_height
+<a href=#269 id=269 data-nosnippet>269</a>                    &amp;&amp; !block.check_witness_commitment()
+<a href=#270 id=270 data-nosnippet>270</a>                {
+<a href=#271 id=271 data-nosnippet>271</a>                    <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadWitnessCommitment(block_hash));
+<a href=#272 id=272 data-nosnippet>272</a>                }
+<a href=#273 id=273 data-nosnippet>273</a>
+<a href=#274 id=274 data-nosnippet>274</a>                <span class="comment">// Check the block weight with witness data.
+<a href=#275 id=275 data-nosnippet>275</a>                </span><span class="kw">if </span>block.weight() &gt; MAX_BLOCK_WEIGHT {
+<a href=#276 id=276 data-nosnippet>276</a>                    <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BlockTooLarge(block_hash));
+<a href=#277 id=277 data-nosnippet>277</a>                }
+<a href=#278 id=278 data-nosnippet>278</a>
+<a href=#279 id=279 data-nosnippet>279</a>                <span class="self">self</span>.verify_transactions(block_number, block, txids, lock_time_cutoff)<span class="question-mark">?</span>;
+<a href=#280 id=280 data-nosnippet>280</a>            }
+<a href=#281 id=281 data-nosnippet>281</a>            BlockVerification::HeaderOnly =&gt; {
+<a href=#282 id=282 data-nosnippet>282</a>                <span class="self">self</span>.header_verifier.verify(<span class="kw-2">&amp;</span>block.header)<span class="question-mark">?</span>;
+<a href=#283 id=283 data-nosnippet>283</a>            }
+<a href=#284 id=284 data-nosnippet>284</a>            BlockVerification::None =&gt; {}
+<a href=#285 id=285 data-nosnippet>285</a>        }
+<a href=#286 id=286 data-nosnippet>286</a>
+<a href=#287 id=287 data-nosnippet>287</a>        <span class="prelude-val">Ok</span>(())
+<a href=#288 id=288 data-nosnippet>288</a>    }
+<a href=#289 id=289 data-nosnippet>289</a>
+<a href=#290 id=290 data-nosnippet>290</a>    <span class="doccomment">/// Performs preliminary checks.
+<a href=#291 id=291 data-nosnippet>291</a>    ///
+<a href=#292 id=292 data-nosnippet>292</a>    /// - Transaction list must be non-empty.
+<a href=#293 id=293 data-nosnippet>293</a>    /// - Block size must not exceed [`MAX_BLOCK_WEIGHT`].
+<a href=#294 id=294 data-nosnippet>294</a>    /// - First transaction must be coinbase, the rest must not be.
+<a href=#295 id=295 data-nosnippet>295</a>    /// - No duplicate transactions in the block.
+<a href=#296 id=296 data-nosnippet>296</a>    /// - Check the sum of transaction sig opcounts does not exceed [`MAX_BLOCK_SIGOPS_COST`].
+<a href=#297 id=297 data-nosnippet>297</a>    /// - Check the calculated merkle root of transactions matches the one declared in the header.
+<a href=#298 id=298 data-nosnippet>298</a>    ///
+<a href=#299 id=299 data-nosnippet>299</a>    /// &lt;https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccdCOIN787161bf2b87e03cc1f/src/validation.cpp#L3986&gt;
+<a href=#300 id=300 data-nosnippet>300</a>    </span><span class="kw">fn </span>check_block_sanity(
+<a href=#301 id=301 data-nosnippet>301</a>        <span class="kw-2">&amp;</span><span class="self">self</span>,
+<a href=#302 id=302 data-nosnippet>302</a>        block_number: u32,
+<a href=#303 id=303 data-nosnippet>303</a>        block: <span class="kw-2">&amp;</span>BitcoinBlock,
+<a href=#304 id=304 data-nosnippet>304</a>    ) -&gt; <span class="prelude-ty">Result</span>&lt;HashMap&lt;usize, Txid&gt;, Error&gt; {
+<a href=#305 id=305 data-nosnippet>305</a>        <span class="kw">let </span>block_hash = block.block_hash();
+<a href=#306 id=306 data-nosnippet>306</a>
+<a href=#307 id=307 data-nosnippet>307</a>        <span class="kw">if </span>block.txdata.is_empty() {
+<a href=#308 id=308 data-nosnippet>308</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::EmptyTransactionList(block_hash));
+<a href=#309 id=309 data-nosnippet>309</a>        }
 <a href=#310 id=310 data-nosnippet>310</a>
-<a href=#311 id=311 data-nosnippet>311</a>        <span class="kw">if </span>block.txdata.is_empty() {
-<a href=#312 id=312 data-nosnippet>312</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::EmptyTransactionList(block_hash));
-<a href=#313 id=313 data-nosnippet>313</a>        }
-<a href=#314 id=314 data-nosnippet>314</a>
-<a href=#315 id=315 data-nosnippet>315</a>        <span class="comment">// Size limits, without tx witness data.
-<a href=#316 id=316 data-nosnippet>316</a>        </span><span class="kw">if </span>Weight::from_wu((block.txdata.len() * WITNESS_SCALE_FACTOR) <span class="kw">as </span>u64) &gt; MAX_BLOCK_WEIGHT
-<a href=#317 id=317 data-nosnippet>317</a>            || Weight::from_wu((block_base_size(block) * WITNESS_SCALE_FACTOR) <span class="kw">as </span>u64)
-<a href=#318 id=318 data-nosnippet>318</a>                &gt; MAX_BLOCK_WEIGHT
-<a href=#319 id=319 data-nosnippet>319</a>        {
-<a href=#320 id=320 data-nosnippet>320</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BlockTooLarge(block_hash));
+<a href=#311 id=311 data-nosnippet>311</a>        <span class="comment">// Size limits, without tx witness data.
+<a href=#312 id=312 data-nosnippet>312</a>        </span><span class="kw">if </span>Weight::from_wu((block.txdata.len() * WITNESS_SCALE_FACTOR) <span class="kw">as </span>u64) &gt; MAX_BLOCK_WEIGHT
+<a href=#313 id=313 data-nosnippet>313</a>            || Weight::from_wu((block_base_size(block) * WITNESS_SCALE_FACTOR) <span class="kw">as </span>u64)
+<a href=#314 id=314 data-nosnippet>314</a>                &gt; MAX_BLOCK_WEIGHT
+<a href=#315 id=315 data-nosnippet>315</a>        {
+<a href=#316 id=316 data-nosnippet>316</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BlockTooLarge(block_hash));
+<a href=#317 id=317 data-nosnippet>317</a>        }
+<a href=#318 id=318 data-nosnippet>318</a>
+<a href=#319 id=319 data-nosnippet>319</a>        <span class="kw">if </span>!block.txdata[<span class="number">0</span>].is_coinbase() {
+<a href=#320 id=320 data-nosnippet>320</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::FirstTransactionIsNotCoinbase(block_hash));
 <a href=#321 id=321 data-nosnippet>321</a>        }
 <a href=#322 id=322 data-nosnippet>322</a>
-<a href=#323 id=323 data-nosnippet>323</a>        <span class="kw">if </span>!block.txdata[<span class="number">0</span>].is_coinbase() {
-<a href=#324 id=324 data-nosnippet>324</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::FirstTransactionIsNotCoinbase(block_hash));
-<a href=#325 id=325 data-nosnippet>325</a>        }
-<a href=#326 id=326 data-nosnippet>326</a>
-<a href=#327 id=327 data-nosnippet>327</a>        <span class="comment">// Check duplicate transactions
-<a href=#328 id=328 data-nosnippet>328</a>        </span><span class="kw">let </span>tx_count = block.txdata.len();
-<a href=#329 id=329 data-nosnippet>329</a>
-<a href=#330 id=330 data-nosnippet>330</a>        <span class="kw">let </span><span class="kw-2">mut </span>seen_transactions = HashSet::with_capacity(tx_count);
-<a href=#331 id=331 data-nosnippet>331</a>        <span class="kw">let </span><span class="kw-2">mut </span>txids = HashMap::with_capacity(tx_count);
-<a href=#332 id=332 data-nosnippet>332</a>
-<a href=#333 id=333 data-nosnippet>333</a>        <span class="kw">let </span><span class="kw-2">mut </span>sig_ops = <span class="number">0</span>;
-<a href=#334 id=334 data-nosnippet>334</a>
-<a href=#335 id=335 data-nosnippet>335</a>        <span class="kw">for </span>(index, tx) <span class="kw">in </span>block.txdata.iter().enumerate() {
-<a href=#336 id=336 data-nosnippet>336</a>            <span class="kw">if </span>index &gt; <span class="number">0 </span>&amp;&amp; tx.is_coinbase() {
-<a href=#337 id=337 data-nosnippet>337</a>                <span class="kw">return </span><span class="prelude-val">Err</span>(Error::MultipleCoinbase(block_hash));
-<a href=#338 id=338 data-nosnippet>338</a>            }
-<a href=#339 id=339 data-nosnippet>339</a>
-<a href=#340 id=340 data-nosnippet>340</a>            <span class="kw">let </span>txid = tx.compute_txid();
-<a href=#341 id=341 data-nosnippet>341</a>            <span class="kw">if </span>!seen_transactions.insert(txid) {
-<a href=#342 id=342 data-nosnippet>342</a>                <span class="comment">// If txid is already in the set, we've found a duplicate.
-<a href=#343 id=343 data-nosnippet>343</a>                </span><span class="kw">return </span><span class="prelude-val">Err</span>(Error::DuplicateTransaction { block_hash, index });
-<a href=#344 id=344 data-nosnippet>344</a>            }
+<a href=#323 id=323 data-nosnippet>323</a>        <span class="comment">// Check duplicate transactions
+<a href=#324 id=324 data-nosnippet>324</a>        </span><span class="kw">let </span>tx_count = block.txdata.len();
+<a href=#325 id=325 data-nosnippet>325</a>
+<a href=#326 id=326 data-nosnippet>326</a>        <span class="kw">let </span><span class="kw-2">mut </span>seen_transactions = HashSet::with_capacity(tx_count);
+<a href=#327 id=327 data-nosnippet>327</a>        <span class="kw">let </span><span class="kw-2">mut </span>txids = HashMap::with_capacity(tx_count);
+<a href=#328 id=328 data-nosnippet>328</a>
+<a href=#329 id=329 data-nosnippet>329</a>        <span class="kw">let </span><span class="kw-2">mut </span>sig_ops = <span class="number">0</span>;
+<a href=#330 id=330 data-nosnippet>330</a>
+<a href=#331 id=331 data-nosnippet>331</a>        <span class="kw">for </span>(index, tx) <span class="kw">in </span>block.txdata.iter().enumerate() {
+<a href=#332 id=332 data-nosnippet>332</a>            <span class="kw">if </span>index &gt; <span class="number">0 </span>&amp;&amp; tx.is_coinbase() {
+<a href=#333 id=333 data-nosnippet>333</a>                <span class="kw">return </span><span class="prelude-val">Err</span>(Error::MultipleCoinbase(block_hash));
+<a href=#334 id=334 data-nosnippet>334</a>            }
+<a href=#335 id=335 data-nosnippet>335</a>
+<a href=#336 id=336 data-nosnippet>336</a>            <span class="kw">let </span>txid = tx.compute_txid();
+<a href=#337 id=337 data-nosnippet>337</a>            <span class="kw">if </span>!seen_transactions.insert(txid) {
+<a href=#338 id=338 data-nosnippet>338</a>                <span class="comment">// If txid is already in the set, we've found a duplicate.
+<a href=#339 id=339 data-nosnippet>339</a>                </span><span class="kw">return </span><span class="prelude-val">Err</span>(Error::DuplicateTransaction { block_hash, index });
+<a href=#340 id=340 data-nosnippet>340</a>            }
+<a href=#341 id=341 data-nosnippet>341</a>
+<a href=#342 id=342 data-nosnippet>342</a>            check_transaction_sanity(tx)<span class="question-mark">?</span>;
+<a href=#343 id=343 data-nosnippet>343</a>
+<a href=#344 id=344 data-nosnippet>344</a>            sig_ops += get_legacy_sig_op_count(tx);
 <a href=#345 id=345 data-nosnippet>345</a>
-<a href=#346 id=346 data-nosnippet>346</a>            check_transaction_sanity(tx)<span class="question-mark">?</span>;
-<a href=#347 id=347 data-nosnippet>347</a>
-<a href=#348 id=348 data-nosnippet>348</a>            sig_ops += get_legacy_sig_op_count(tx);
-<a href=#349 id=349 data-nosnippet>349</a>
-<a href=#350 id=350 data-nosnippet>350</a>            txids.insert(index, txid);
-<a href=#351 id=351 data-nosnippet>351</a>        }
-<a href=#352 id=352 data-nosnippet>352</a>
-<a href=#353 id=353 data-nosnippet>353</a>        <span class="kw">if </span>sig_ops * WITNESS_SCALE_FACTOR &gt; MAX_BLOCK_SIGOPS_COST <span class="kw">as </span>usize {
-<a href=#354 id=354 data-nosnippet>354</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::TooManySigOps {
-<a href=#355 id=355 data-nosnippet>355</a>                block_hash,
-<a href=#356 id=356 data-nosnippet>356</a>                block_number,
-<a href=#357 id=357 data-nosnippet>357</a>            });
-<a href=#358 id=358 data-nosnippet>358</a>        }
-<a href=#359 id=359 data-nosnippet>359</a>
-<a href=#360 id=360 data-nosnippet>360</a>        <span class="comment">// Inline `Block::check_merkle_root()` to avoid redundantly computing txid.
-<a href=#361 id=361 data-nosnippet>361</a>        </span><span class="kw">let </span>hashes = block
-<a href=#362 id=362 data-nosnippet>362</a>            .txdata
-<a href=#363 id=363 data-nosnippet>363</a>            .iter()
-<a href=#364 id=364 data-nosnippet>364</a>            .enumerate()
-<a href=#365 id=365 data-nosnippet>365</a>            .filter_map(|(index, _obj)| txids.get(<span class="kw-2">&amp;</span>index).map(|txid| txid.to_raw_hash()));
-<a href=#366 id=366 data-nosnippet>366</a>
-<a href=#367 id=367 data-nosnippet>367</a>        <span class="kw">let </span>maybe_merkle_root: <span class="prelude-ty">Option</span>&lt;TxMerkleNode&gt; =
-<a href=#368 id=368 data-nosnippet>368</a>            bitcoin::merkle_tree::calculate_root(hashes).map(|h| h.into());
-<a href=#369 id=369 data-nosnippet>369</a>
-<a href=#370 id=370 data-nosnippet>370</a>        <span class="kw">if </span>!maybe_merkle_root
-<a href=#371 id=371 data-nosnippet>371</a>            .map(|merkle_root| block.header.merkle_root == merkle_root)
-<a href=#372 id=372 data-nosnippet>372</a>            .unwrap_or(<span class="bool-val">false</span>)
-<a href=#373 id=373 data-nosnippet>373</a>        {
-<a href=#374 id=374 data-nosnippet>374</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadMerkleRoot(block_hash));
-<a href=#375 id=375 data-nosnippet>375</a>        }
-<a href=#376 id=376 data-nosnippet>376</a>
-<a href=#377 id=377 data-nosnippet>377</a>        <span class="prelude-val">Ok</span>(txids)
-<a href=#378 id=378 data-nosnippet>378</a>    }
-<a href=#379 id=379 data-nosnippet>379</a>
-<a href=#380 id=380 data-nosnippet>380</a>    <span class="kw">fn </span>verify_transactions(
-<a href=#381 id=381 data-nosnippet>381</a>        <span class="kw-2">&amp;</span><span class="self">self</span>,
-<a href=#382 id=382 data-nosnippet>382</a>        block_number: u32,
-<a href=#383 id=383 data-nosnippet>383</a>        block: <span class="kw-2">&amp;</span>BitcoinBlock,
-<a href=#384 id=384 data-nosnippet>384</a>        txids: HashMap&lt;usize, Txid&gt;,
-<a href=#385 id=385 data-nosnippet>385</a>        lock_time_cutoff: u32,
-<a href=#386 id=386 data-nosnippet>386</a>    ) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
-<a href=#387 id=387 data-nosnippet>387</a>        <span class="kw">let </span>parent_number = block_number - <span class="number">1</span>;
-<a href=#388 id=388 data-nosnippet>388</a>        <span class="kw">let </span>parent_hash =
-<a href=#389 id=389 data-nosnippet>389</a>            <span class="self">self</span>.client
-<a href=#390 id=390 data-nosnippet>390</a>                .hash(parent_number.into())<span class="question-mark">?
-<a href=#391 id=391 data-nosnippet>391</a>                </span>.ok_or(sp_blockchain::Error::Backend(<span class="macro">format!</span>(
-<a href=#392 id=392 data-nosnippet>392</a>                    <span class="string">"Parent block #{parent_number} not found"
-<a href=#393 id=393 data-nosnippet>393</a>                </span>)))<span class="question-mark">?</span>;
-<a href=#394 id=394 data-nosnippet>394</a>
-<a href=#395 id=395 data-nosnippet>395</a>        <span class="kw">let </span>get_txid = |tx_index: usize| {
-<a href=#396 id=396 data-nosnippet>396</a>            txids
-<a href=#397 id=397 data-nosnippet>397</a>                .get(<span class="kw-2">&amp;</span>tx_index)
-<a href=#398 id=398 data-nosnippet>398</a>                .copied()
-<a href=#399 id=399 data-nosnippet>399</a>                .expect(<span class="string">"Txid must exist as initialized in `check_block_sanity()`; qed"</span>)
-<a href=#400 id=400 data-nosnippet>400</a>        };
-<a href=#401 id=401 data-nosnippet>401</a>
-<a href=#402 id=402 data-nosnippet>402</a>        <span class="kw">let </span>tx_context = |tx_index| TransactionContext {
-<a href=#403 id=403 data-nosnippet>403</a>            block_number,
-<a href=#404 id=404 data-nosnippet>404</a>            tx_index,
-<a href=#405 id=405 data-nosnippet>405</a>            txid: get_txid(tx_index),
-<a href=#406 id=406 data-nosnippet>406</a>        };
-<a href=#407 id=407 data-nosnippet>407</a>
-<a href=#408 id=408 data-nosnippet>408</a>        <span class="kw">let </span>flags = script_verify::get_block_script_flags(
-<a href=#409 id=409 data-nosnippet>409</a>            block_number,
-<a href=#410 id=410 data-nosnippet>410</a>            block.block_hash(),
-<a href=#411 id=411 data-nosnippet>411</a>            <span class="kw-2">&amp;</span><span class="self">self</span>.chain_params,
-<a href=#412 id=412 data-nosnippet>412</a>        );
-<a href=#413 id=413 data-nosnippet>413</a>
-<a href=#414 id=414 data-nosnippet>414</a>        <span class="kw">let </span>block_hash = block.block_hash();
-<a href=#415 id=415 data-nosnippet>415</a>
-<a href=#416 id=416 data-nosnippet>416</a>        <span class="kw">let </span><span class="kw-2">mut </span>block_fee = <span class="number">0</span>;
-<a href=#417 id=417 data-nosnippet>417</a>        <span class="kw">let </span><span class="kw-2">mut </span>spent_coins_in_block = HashSet::new();
-<a href=#418 id=418 data-nosnippet>418</a>
-<a href=#419 id=419 data-nosnippet>419</a>        <span class="comment">// Preallocated buffer for serializing tx when using the Core scripg engine.
-<a href=#420 id=420 data-nosnippet>420</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>tx_buffer = <span class="kw">if </span><span class="macro">matches!</span>(<span class="self">self</span>.script_engine, ScriptEngine::Core) {
-<a href=#421 id=421 data-nosnippet>421</a>            Vec::&lt;u8&gt;::with_capacity(<span class="number">4096</span>)
-<a href=#422 id=422 data-nosnippet>422</a>        } <span class="kw">else </span>{
-<a href=#423 id=423 data-nosnippet>423</a>            Vec::new()
-<a href=#424 id=424 data-nosnippet>424</a>        };
-<a href=#425 id=425 data-nosnippet>425</a>
-<a href=#426 id=426 data-nosnippet>426</a>        <span class="comment">// TODO: verify transactions in parallel.
-<a href=#427 id=427 data-nosnippet>427</a>        // https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L2611
-<a href=#428 id=428 data-nosnippet>428</a>        </span><span class="kw">for </span>(tx_index, tx) <span class="kw">in </span>block.txdata.iter().enumerate() {
-<a href=#429 id=429 data-nosnippet>429</a>            <span class="kw">if </span>tx_index == <span class="number">0 </span>{
-<a href=#430 id=430 data-nosnippet>430</a>                <span class="comment">// Enforce rule that the coinbase starts with serialized block height.
-<a href=#431 id=431 data-nosnippet>431</a>                </span><span class="kw">if </span>block_number &gt;= <span class="self">self</span>.chain_params.params.bip34_height {
-<a href=#432 id=432 data-nosnippet>432</a>                    <span class="kw">let </span>block_height_in_coinbase = block
-<a href=#433 id=433 data-nosnippet>433</a>                        .bip34_block_height()
-<a href=#434 id=434 data-nosnippet>434</a>                        .map_err(|err| Error::Bip34(block_hash, err))<span class="question-mark">?
-<a href=#435 id=435 data-nosnippet>435</a>                        </span><span class="kw">as </span>u32;
-<a href=#436 id=436 data-nosnippet>436</a>                    <span class="kw">if </span>block_height_in_coinbase != block_number {
-<a href=#437 id=437 data-nosnippet>437</a>                        <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadCoinbaseBlockHeight {
-<a href=#438 id=438 data-nosnippet>438</a>                            block_hash,
-<a href=#439 id=439 data-nosnippet>439</a>                            expected: block_number,
-<a href=#440 id=440 data-nosnippet>440</a>                            got: block_height_in_coinbase,
-<a href=#441 id=441 data-nosnippet>441</a>                        });
-<a href=#442 id=442 data-nosnippet>442</a>                    }
-<a href=#443 id=443 data-nosnippet>443</a>                }
-<a href=#444 id=444 data-nosnippet>444</a>
-<a href=#445 id=445 data-nosnippet>445</a>                <span class="kw">continue</span>;
+<a href=#346 id=346 data-nosnippet>346</a>            txids.insert(index, txid);
+<a href=#347 id=347 data-nosnippet>347</a>        }
+<a href=#348 id=348 data-nosnippet>348</a>
+<a href=#349 id=349 data-nosnippet>349</a>        <span class="kw">if </span>sig_ops * WITNESS_SCALE_FACTOR &gt; MAX_BLOCK_SIGOPS_COST <span class="kw">as </span>usize {
+<a href=#350 id=350 data-nosnippet>350</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::TooManySigOps {
+<a href=#351 id=351 data-nosnippet>351</a>                block_hash,
+<a href=#352 id=352 data-nosnippet>352</a>                block_number,
+<a href=#353 id=353 data-nosnippet>353</a>            });
+<a href=#354 id=354 data-nosnippet>354</a>        }
+<a href=#355 id=355 data-nosnippet>355</a>
+<a href=#356 id=356 data-nosnippet>356</a>        <span class="comment">// Inline `Block::check_merkle_root()` to avoid redundantly computing txid.
+<a href=#357 id=357 data-nosnippet>357</a>        </span><span class="kw">let </span>hashes = block
+<a href=#358 id=358 data-nosnippet>358</a>            .txdata
+<a href=#359 id=359 data-nosnippet>359</a>            .iter()
+<a href=#360 id=360 data-nosnippet>360</a>            .enumerate()
+<a href=#361 id=361 data-nosnippet>361</a>            .filter_map(|(index, _obj)| txids.get(<span class="kw-2">&amp;</span>index).map(|txid| txid.to_raw_hash()));
+<a href=#362 id=362 data-nosnippet>362</a>
+<a href=#363 id=363 data-nosnippet>363</a>        <span class="kw">let </span>maybe_merkle_root: <span class="prelude-ty">Option</span>&lt;TxMerkleNode&gt; =
+<a href=#364 id=364 data-nosnippet>364</a>            bitcoin::merkle_tree::calculate_root(hashes).map(|h| h.into());
+<a href=#365 id=365 data-nosnippet>365</a>
+<a href=#366 id=366 data-nosnippet>366</a>        <span class="kw">if </span>!maybe_merkle_root
+<a href=#367 id=367 data-nosnippet>367</a>            .map(|merkle_root| block.header.merkle_root == merkle_root)
+<a href=#368 id=368 data-nosnippet>368</a>            .unwrap_or(<span class="bool-val">false</span>)
+<a href=#369 id=369 data-nosnippet>369</a>        {
+<a href=#370 id=370 data-nosnippet>370</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadMerkleRoot(block_hash));
+<a href=#371 id=371 data-nosnippet>371</a>        }
+<a href=#372 id=372 data-nosnippet>372</a>
+<a href=#373 id=373 data-nosnippet>373</a>        <span class="prelude-val">Ok</span>(txids)
+<a href=#374 id=374 data-nosnippet>374</a>    }
+<a href=#375 id=375 data-nosnippet>375</a>
+<a href=#376 id=376 data-nosnippet>376</a>    <span class="kw">fn </span>verify_transactions(
+<a href=#377 id=377 data-nosnippet>377</a>        <span class="kw-2">&amp;</span><span class="self">self</span>,
+<a href=#378 id=378 data-nosnippet>378</a>        block_number: u32,
+<a href=#379 id=379 data-nosnippet>379</a>        block: <span class="kw-2">&amp;</span>BitcoinBlock,
+<a href=#380 id=380 data-nosnippet>380</a>        txids: HashMap&lt;usize, Txid&gt;,
+<a href=#381 id=381 data-nosnippet>381</a>        lock_time_cutoff: u32,
+<a href=#382 id=382 data-nosnippet>382</a>    ) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
+<a href=#383 id=383 data-nosnippet>383</a>        <span class="kw">let </span>parent_number = block_number - <span class="number">1</span>;
+<a href=#384 id=384 data-nosnippet>384</a>        <span class="kw">let </span>parent_hash =
+<a href=#385 id=385 data-nosnippet>385</a>            <span class="self">self</span>.client
+<a href=#386 id=386 data-nosnippet>386</a>                .hash(parent_number.into())<span class="question-mark">?
+<a href=#387 id=387 data-nosnippet>387</a>                </span>.ok_or(sp_blockchain::Error::Backend(<span class="macro">format!</span>(
+<a href=#388 id=388 data-nosnippet>388</a>                    <span class="string">"Parent block #{parent_number} not found"
+<a href=#389 id=389 data-nosnippet>389</a>                </span>)))<span class="question-mark">?</span>;
+<a href=#390 id=390 data-nosnippet>390</a>
+<a href=#391 id=391 data-nosnippet>391</a>        <span class="kw">let </span>get_txid = |tx_index: usize| {
+<a href=#392 id=392 data-nosnippet>392</a>            txids
+<a href=#393 id=393 data-nosnippet>393</a>                .get(<span class="kw-2">&amp;</span>tx_index)
+<a href=#394 id=394 data-nosnippet>394</a>                .copied()
+<a href=#395 id=395 data-nosnippet>395</a>                .expect(<span class="string">"Txid must exist as initialized in `check_block_sanity()`; qed"</span>)
+<a href=#396 id=396 data-nosnippet>396</a>        };
+<a href=#397 id=397 data-nosnippet>397</a>
+<a href=#398 id=398 data-nosnippet>398</a>        <span class="kw">let </span>tx_context = |tx_index| TransactionContext {
+<a href=#399 id=399 data-nosnippet>399</a>            block_number,
+<a href=#400 id=400 data-nosnippet>400</a>            tx_index,
+<a href=#401 id=401 data-nosnippet>401</a>            txid: get_txid(tx_index),
+<a href=#402 id=402 data-nosnippet>402</a>        };
+<a href=#403 id=403 data-nosnippet>403</a>
+<a href=#404 id=404 data-nosnippet>404</a>        <span class="kw">let </span>flags = script_verify::get_block_script_flags(
+<a href=#405 id=405 data-nosnippet>405</a>            block_number,
+<a href=#406 id=406 data-nosnippet>406</a>            block.block_hash(),
+<a href=#407 id=407 data-nosnippet>407</a>            <span class="kw-2">&amp;</span><span class="self">self</span>.chain_params,
+<a href=#408 id=408 data-nosnippet>408</a>        );
+<a href=#409 id=409 data-nosnippet>409</a>
+<a href=#410 id=410 data-nosnippet>410</a>        <span class="kw">let </span>block_hash = block.block_hash();
+<a href=#411 id=411 data-nosnippet>411</a>
+<a href=#412 id=412 data-nosnippet>412</a>        <span class="kw">let </span><span class="kw-2">mut </span>block_fee = <span class="number">0</span>;
+<a href=#413 id=413 data-nosnippet>413</a>        <span class="kw">let </span><span class="kw-2">mut </span>spent_coins_in_block = HashSet::new();
+<a href=#414 id=414 data-nosnippet>414</a>
+<a href=#415 id=415 data-nosnippet>415</a>        <span class="comment">// Preallocated buffer for serializing tx when using the Core scripg engine.
+<a href=#416 id=416 data-nosnippet>416</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>tx_buffer = <span class="kw">if </span><span class="macro">matches!</span>(<span class="self">self</span>.script_engine, ScriptEngine::Core) {
+<a href=#417 id=417 data-nosnippet>417</a>            Vec::&lt;u8&gt;::with_capacity(<span class="number">4096</span>)
+<a href=#418 id=418 data-nosnippet>418</a>        } <span class="kw">else </span>{
+<a href=#419 id=419 data-nosnippet>419</a>            Vec::new()
+<a href=#420 id=420 data-nosnippet>420</a>        };
+<a href=#421 id=421 data-nosnippet>421</a>
+<a href=#422 id=422 data-nosnippet>422</a>        <span class="comment">// TODO: verify transactions in parallel.
+<a href=#423 id=423 data-nosnippet>423</a>        // https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L2611
+<a href=#424 id=424 data-nosnippet>424</a>        </span><span class="kw">for </span>(tx_index, tx) <span class="kw">in </span>block.txdata.iter().enumerate() {
+<a href=#425 id=425 data-nosnippet>425</a>            <span class="kw">if </span>tx_index == <span class="number">0 </span>{
+<a href=#426 id=426 data-nosnippet>426</a>                <span class="comment">// Enforce rule that the coinbase starts with serialized block height.
+<a href=#427 id=427 data-nosnippet>427</a>                </span><span class="kw">if </span>block_number &gt;= <span class="self">self</span>.chain_params.params.bip34_height {
+<a href=#428 id=428 data-nosnippet>428</a>                    <span class="kw">let </span>block_height_in_coinbase = block
+<a href=#429 id=429 data-nosnippet>429</a>                        .bip34_block_height()
+<a href=#430 id=430 data-nosnippet>430</a>                        .map_err(|err| Error::Bip34(block_hash, err))<span class="question-mark">?
+<a href=#431 id=431 data-nosnippet>431</a>                        </span><span class="kw">as </span>u32;
+<a href=#432 id=432 data-nosnippet>432</a>                    <span class="kw">if </span>block_height_in_coinbase != block_number {
+<a href=#433 id=433 data-nosnippet>433</a>                        <span class="kw">return </span><span class="prelude-val">Err</span>(Error::BadCoinbaseBlockHeight {
+<a href=#434 id=434 data-nosnippet>434</a>                            block_hash,
+<a href=#435 id=435 data-nosnippet>435</a>                            expected: block_number,
+<a href=#436 id=436 data-nosnippet>436</a>                            got: block_height_in_coinbase,
+<a href=#437 id=437 data-nosnippet>437</a>                        });
+<a href=#438 id=438 data-nosnippet>438</a>                    }
+<a href=#439 id=439 data-nosnippet>439</a>                }
+<a href=#440 id=440 data-nosnippet>440</a>
+<a href=#441 id=441 data-nosnippet>441</a>                <span class="kw">continue</span>;
+<a href=#442 id=442 data-nosnippet>442</a>            }
+<a href=#443 id=443 data-nosnippet>443</a>
+<a href=#444 id=444 data-nosnippet>444</a>            <span class="kw">if </span>!is_final_tx(tx, block_number, lock_time_cutoff) {
+<a href=#445 id=445 data-nosnippet>445</a>                <span class="kw">return </span><span class="prelude-val">Err</span>(Error::TransactionNotFinal(block_hash));
 <a href=#446 id=446 data-nosnippet>446</a>            }
 <a href=#447 id=447 data-nosnippet>447</a>
-<a href=#448 id=448 data-nosnippet>448</a>            <span class="kw">if </span>!is_final_tx(tx, block_number, lock_time_cutoff) {
-<a href=#449 id=449 data-nosnippet>449</a>                <span class="kw">return </span><span class="prelude-val">Err</span>(Error::TransactionNotFinal(block_hash));
-<a href=#450 id=450 data-nosnippet>450</a>            }
+<a href=#448 id=448 data-nosnippet>448</a>            tx_buffer.clear();
+<a href=#449 id=449 data-nosnippet>449</a>            tx.consensus_encode(<span class="kw-2">&amp;mut </span>tx_buffer)
+<a href=#450 id=450 data-nosnippet>450</a>                .map_err(Error::BitcoinCodec)<span class="question-mark">?</span>;
 <a href=#451 id=451 data-nosnippet>451</a>
-<a href=#452 id=452 data-nosnippet>452</a>            tx_buffer.clear();
-<a href=#453 id=453 data-nosnippet>453</a>            tx.consensus_encode(<span class="kw-2">&amp;mut </span>tx_buffer)
-<a href=#454 id=454 data-nosnippet>454</a>                .map_err(Error::BitcoinCodec)<span class="question-mark">?</span>;
-<a href=#455 id=455 data-nosnippet>455</a>
-<a href=#456 id=456 data-nosnippet>456</a>            <span class="kw">let </span>spending_transaction = tx_buffer.as_slice();
-<a href=#457 id=457 data-nosnippet>457</a>
-<a href=#458 id=458 data-nosnippet>458</a>            <span class="kw">let </span>access_coin = |out_point: OutPoint| -&gt; <span class="prelude-ty">Result</span>&lt;(TxOut, bool, u32), Error&gt; {
-<a href=#459 id=459 data-nosnippet>459</a>                <span class="kw">let </span>maybe_coin = <span class="kw">match </span><span class="self">self</span>.find_utxo_in_state(parent_hash, out_point) {
-<a href=#460 id=460 data-nosnippet>460</a>                    <span class="prelude-val">Some</span>(coin) =&gt; {
-<a href=#461 id=461 data-nosnippet>461</a>                        <span class="kw">let </span>Coin {
-<a href=#462 id=462 data-nosnippet>462</a>                            is_coinbase,
-<a href=#463 id=463 data-nosnippet>463</a>                            amount,
-<a href=#464 id=464 data-nosnippet>464</a>                            height,
-<a href=#465 id=465 data-nosnippet>465</a>                            script_pubkey,
-<a href=#466 id=466 data-nosnippet>466</a>                        } = coin;
-<a href=#467 id=467 data-nosnippet>467</a>
-<a href=#468 id=468 data-nosnippet>468</a>                        <span class="kw">let </span>txout = TxOut {
-<a href=#469 id=469 data-nosnippet>469</a>                            value: Amount::from_sat(amount),
-<a href=#470 id=470 data-nosnippet>470</a>                            script_pubkey: ScriptBuf::from_bytes(script_pubkey),
-<a href=#471 id=471 data-nosnippet>471</a>                        };
-<a href=#472 id=472 data-nosnippet>472</a>
-<a href=#473 id=473 data-nosnippet>473</a>                        <span class="prelude-val">Some</span>((txout, is_coinbase, height))
-<a href=#474 id=474 data-nosnippet>474</a>                    }
-<a href=#475 id=475 data-nosnippet>475</a>                    <span class="prelude-val">None </span>=&gt; find_utxo_in_current_block(block, out_point, tx_index, get_txid)
-<a href=#476 id=476 data-nosnippet>476</a>                        .map(|(txout, is_coinbase)| (txout, is_coinbase, block_number)),
-<a href=#477 id=477 data-nosnippet>477</a>                };
-<a href=#478 id=478 data-nosnippet>478</a>
-<a href=#479 id=479 data-nosnippet>479</a>                maybe_coin.ok_or_else(|| Error::MissingUtxoInState {
-<a href=#480 id=480 data-nosnippet>480</a>                    block_hash,
-<a href=#481 id=481 data-nosnippet>481</a>                    context: tx_context(tx_index),
-<a href=#482 id=482 data-nosnippet>482</a>                    missing_utxo: out_point,
-<a href=#483 id=483 data-nosnippet>483</a>                })
-<a href=#484 id=484 data-nosnippet>484</a>            };
+<a href=#452 id=452 data-nosnippet>452</a>            <span class="kw">let </span>spending_transaction = tx_buffer.as_slice();
+<a href=#453 id=453 data-nosnippet>453</a>
+<a href=#454 id=454 data-nosnippet>454</a>            <span class="kw">let </span>access_coin = |out_point: OutPoint| -&gt; <span class="prelude-ty">Result</span>&lt;(TxOut, bool, u32), Error&gt; {
+<a href=#455 id=455 data-nosnippet>455</a>                <span class="kw">let </span>maybe_coin = <span class="kw">match </span><span class="self">self</span>.find_utxo_in_state(parent_hash, out_point) {
+<a href=#456 id=456 data-nosnippet>456</a>                    <span class="prelude-val">Some</span>(coin) =&gt; {
+<a href=#457 id=457 data-nosnippet>457</a>                        <span class="kw">let </span>Coin {
+<a href=#458 id=458 data-nosnippet>458</a>                            is_coinbase,
+<a href=#459 id=459 data-nosnippet>459</a>                            amount,
+<a href=#460 id=460 data-nosnippet>460</a>                            height,
+<a href=#461 id=461 data-nosnippet>461</a>                            script_pubkey,
+<a href=#462 id=462 data-nosnippet>462</a>                        } = coin;
+<a href=#463 id=463 data-nosnippet>463</a>
+<a href=#464 id=464 data-nosnippet>464</a>                        <span class="kw">let </span>txout = TxOut {
+<a href=#465 id=465 data-nosnippet>465</a>                            value: Amount::from_sat(amount),
+<a href=#466 id=466 data-nosnippet>466</a>                            script_pubkey: ScriptBuf::from_bytes(script_pubkey),
+<a href=#467 id=467 data-nosnippet>467</a>                        };
+<a href=#468 id=468 data-nosnippet>468</a>
+<a href=#469 id=469 data-nosnippet>469</a>                        <span class="prelude-val">Some</span>((txout, is_coinbase, height))
+<a href=#470 id=470 data-nosnippet>470</a>                    }
+<a href=#471 id=471 data-nosnippet>471</a>                    <span class="prelude-val">None </span>=&gt; find_utxo_in_current_block(block, out_point, tx_index, get_txid)
+<a href=#472 id=472 data-nosnippet>472</a>                        .map(|(txout, is_coinbase)| (txout, is_coinbase, block_number)),
+<a href=#473 id=473 data-nosnippet>473</a>                };
+<a href=#474 id=474 data-nosnippet>474</a>
+<a href=#475 id=475 data-nosnippet>475</a>                maybe_coin.ok_or_else(|| Error::MissingUtxoInState {
+<a href=#476 id=476 data-nosnippet>476</a>                    block_hash,
+<a href=#477 id=477 data-nosnippet>477</a>                    context: tx_context(tx_index),
+<a href=#478 id=478 data-nosnippet>478</a>                    missing_utxo: out_point,
+<a href=#479 id=479 data-nosnippet>479</a>                })
+<a href=#480 id=480 data-nosnippet>480</a>            };
+<a href=#481 id=481 data-nosnippet>481</a>
+<a href=#482 id=482 data-nosnippet>482</a>            <span class="comment">// CheckTxInputs.
+<a href=#483 id=483 data-nosnippet>483</a>            </span><span class="kw">let </span><span class="kw-2">mut </span>value_in = <span class="number">0</span>;
+<a href=#484 id=484 data-nosnippet>484</a>            <span class="kw">let </span><span class="kw-2">mut </span>sig_ops_cost = <span class="number">0</span>;
 <a href=#485 id=485 data-nosnippet>485</a>
-<a href=#486 id=486 data-nosnippet>486</a>            <span class="comment">// CheckTxInputs.
-<a href=#487 id=487 data-nosnippet>487</a>            </span><span class="kw">let </span><span class="kw-2">mut </span>value_in = <span class="number">0</span>;
-<a href=#488 id=488 data-nosnippet>488</a>            <span class="kw">let </span><span class="kw-2">mut </span>sig_ops_cost = <span class="number">0</span>;
+<a href=#486 id=486 data-nosnippet>486</a>            <span class="comment">// TODO: Check input in parallel.
+<a href=#487 id=487 data-nosnippet>487</a>            </span><span class="kw">for </span>(input_index, input) <span class="kw">in </span>tx.input.iter().enumerate() {
+<a href=#488 id=488 data-nosnippet>488</a>                <span class="kw">let </span>coin = input.previous_output;
 <a href=#489 id=489 data-nosnippet>489</a>
-<a href=#490 id=490 data-nosnippet>490</a>            <span class="comment">// TODO: Check input in parallel.
-<a href=#491 id=491 data-nosnippet>491</a>            </span><span class="kw">for </span>(input_index, input) <span class="kw">in </span>tx.input.iter().enumerate() {
-<a href=#492 id=492 data-nosnippet>492</a>                <span class="kw">let </span>coin = input.previous_output;
-<a href=#493 id=493 data-nosnippet>493</a>
-<a href=#494 id=494 data-nosnippet>494</a>                <span class="kw">if </span>spent_coins_in_block.contains(<span class="kw-2">&amp;</span>coin) {
-<a href=#495 id=495 data-nosnippet>495</a>                    <span class="kw">return </span><span class="prelude-val">Err</span>(Error::AlreadySpentInCurrentBlock {
-<a href=#496 id=496 data-nosnippet>496</a>                        block_hash,
-<a href=#497 id=497 data-nosnippet>497</a>                        block_number,
-<a href=#498 id=498 data-nosnippet>498</a>                        txid: get_txid(tx_index),
-<a href=#499 id=499 data-nosnippet>499</a>                        utxo: coin,
-<a href=#500 id=500 data-nosnippet>500</a>                    });
-<a href=#501 id=501 data-nosnippet>501</a>                }
-<a href=#502 id=502 data-nosnippet>502</a>
-<a href=#503 id=503 data-nosnippet>503</a>                <span class="comment">// Access coin.
-<a href=#504 id=504 data-nosnippet>504</a>                </span><span class="kw">let </span>(spent_output, is_coinbase, coin_height) = access_coin(coin)<span class="question-mark">?</span>;
-<a href=#505 id=505 data-nosnippet>505</a>
-<a href=#506 id=506 data-nosnippet>506</a>                <span class="comment">// If coin is coinbase, check that it's matured.
-<a href=#507 id=507 data-nosnippet>507</a>                </span><span class="kw">if </span>is_coinbase &amp;&amp; block_number - coin_height &lt; COINBASE_MATURITY {
-<a href=#508 id=508 data-nosnippet>508</a>                    <span class="kw">return </span><span class="prelude-val">Err</span>(Error::PrematureSpendOfCoinbase(block_hash));
-<a href=#509 id=509 data-nosnippet>509</a>                }
-<a href=#510 id=510 data-nosnippet>510</a>
-<a href=#511 id=511 data-nosnippet>511</a>                <span class="comment">// tracing::debug!(
-<a href=#512 id=512 data-nosnippet>512</a>                // target: "subcoin_script",
-<a href=#513 id=513 data-nosnippet>513</a>                // block_number,
-<a href=#514 id=514 data-nosnippet>514</a>                // tx_index,
-<a href=#515 id=515 data-nosnippet>515</a>                // txid = ?get_txid(tx_index),
-<a href=#516 id=516 data-nosnippet>516</a>                // input_index,
-<a href=#517 id=517 data-nosnippet>517</a>                // "Verifying input script"
-<a href=#518 id=518 data-nosnippet>518</a>                // );
-<a href=#519 id=519 data-nosnippet>519</a>                </span><span class="kw">match </span><span class="self">self</span>.script_engine {
-<a href=#520 id=520 data-nosnippet>520</a>                    ScriptEngine::Core =&gt; {
-<a href=#521 id=521 data-nosnippet>521</a>                        script_verify::verify_input_script(
-<a href=#522 id=522 data-nosnippet>522</a>                            <span class="kw-2">&amp;</span>spent_output,
-<a href=#523 id=523 data-nosnippet>523</a>                            spending_transaction,
-<a href=#524 id=524 data-nosnippet>524</a>                            input_index,
-<a href=#525 id=525 data-nosnippet>525</a>                            flags,
-<a href=#526 id=526 data-nosnippet>526</a>                        )<span class="question-mark">?</span>;
-<a href=#527 id=527 data-nosnippet>527</a>                    }
-<a href=#528 id=528 data-nosnippet>528</a>                    ScriptEngine::None =&gt; {
-<a href=#529 id=529 data-nosnippet>529</a>                        <span class="comment">// Skip script verification.
-<a href=#530 id=530 data-nosnippet>530</a>                    </span>}
-<a href=#531 id=531 data-nosnippet>531</a>                    ScriptEngine::Subcoin =&gt; {
-<a href=#532 id=532 data-nosnippet>532</a>                        <span class="kw">let </span><span class="kw-2">mut </span>checker = subcoin_script::TransactionSignatureChecker::new(
-<a href=#533 id=533 data-nosnippet>533</a>                            tx,
-<a href=#534 id=534 data-nosnippet>534</a>                            input_index,
-<a href=#535 id=535 data-nosnippet>535</a>                            spent_output.value.to_sat(),
-<a href=#536 id=536 data-nosnippet>536</a>                        );
-<a href=#537 id=537 data-nosnippet>537</a>
-<a href=#538 id=538 data-nosnippet>538</a>                        <span class="kw">let </span>verify_flags =
-<a href=#539 id=539 data-nosnippet>539</a>                            subcoin_script::VerifyFlags::from_bits(flags).expect(<span class="string">"Invalid flags"</span>);
-<a href=#540 id=540 data-nosnippet>540</a>
-<a href=#541 id=541 data-nosnippet>541</a>                        <span class="kw">let </span>script_result = subcoin_script::verify_script(
-<a href=#542 id=542 data-nosnippet>542</a>                            <span class="kw-2">&amp;</span>input.script_sig,
-<a href=#543 id=543 data-nosnippet>543</a>                            <span class="kw-2">&amp;</span>spent_output.script_pubkey,
-<a href=#544 id=544 data-nosnippet>544</a>                            <span class="kw-2">&amp;</span>input.witness,
-<a href=#545 id=545 data-nosnippet>545</a>                            <span class="kw-2">&amp;</span>verify_flags,
-<a href=#546 id=546 data-nosnippet>546</a>                            <span class="kw-2">&amp;mut </span>checker,
-<a href=#547 id=547 data-nosnippet>547</a>                        );
-<a href=#548 id=548 data-nosnippet>548</a>
-<a href=#549 id=549 data-nosnippet>549</a>                        <span class="kw">if let </span><span class="prelude-val">Err</span>(script_err) = script_result {
-<a href=#550 id=550 data-nosnippet>550</a>                            <span class="kw">let </span>context = tx_context(tx_index);
-<a href=#551 id=551 data-nosnippet>551</a>                            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::InvalidScript {
-<a href=#552 id=552 data-nosnippet>552</a>                                block_hash,
-<a href=#553 id=553 data-nosnippet>553</a>                                context,
-<a href=#554 id=554 data-nosnippet>554</a>                                input_index,
-<a href=#555 id=555 data-nosnippet>555</a>                                error: Box::new(script_err),
-<a href=#556 id=556 data-nosnippet>556</a>                            });
-<a href=#557 id=557 data-nosnippet>557</a>                        }
-<a href=#558 id=558 data-nosnippet>558</a>                    }
-<a href=#559 id=559 data-nosnippet>559</a>                }
+<a href=#490 id=490 data-nosnippet>490</a>                <span class="kw">if </span>spent_coins_in_block.contains(<span class="kw-2">&amp;</span>coin) {
+<a href=#491 id=491 data-nosnippet>491</a>                    <span class="kw">return </span><span class="prelude-val">Err</span>(Error::AlreadySpentInCurrentBlock {
+<a href=#492 id=492 data-nosnippet>492</a>                        block_hash,
+<a href=#493 id=493 data-nosnippet>493</a>                        block_number,
+<a href=#494 id=494 data-nosnippet>494</a>                        txid: get_txid(tx_index),
+<a href=#495 id=495 data-nosnippet>495</a>                        utxo: coin,
+<a href=#496 id=496 data-nosnippet>496</a>                    });
+<a href=#497 id=497 data-nosnippet>497</a>                }
+<a href=#498 id=498 data-nosnippet>498</a>
+<a href=#499 id=499 data-nosnippet>499</a>                <span class="comment">// Access coin.
+<a href=#500 id=500 data-nosnippet>500</a>                </span><span class="kw">let </span>(spent_output, is_coinbase, coin_height) = access_coin(coin)<span class="question-mark">?</span>;
+<a href=#501 id=501 data-nosnippet>501</a>
+<a href=#502 id=502 data-nosnippet>502</a>                <span class="comment">// If coin is coinbase, check that it's matured.
+<a href=#503 id=503 data-nosnippet>503</a>                </span><span class="kw">if </span>is_coinbase &amp;&amp; block_number - coin_height &lt; COINBASE_MATURITY {
+<a href=#504 id=504 data-nosnippet>504</a>                    <span class="kw">return </span><span class="prelude-val">Err</span>(Error::PrematureSpendOfCoinbase(block_hash));
+<a href=#505 id=505 data-nosnippet>505</a>                }
+<a href=#506 id=506 data-nosnippet>506</a>
+<a href=#507 id=507 data-nosnippet>507</a>                <span class="comment">// tracing::debug!(
+<a href=#508 id=508 data-nosnippet>508</a>                // target: "subcoin_script",
+<a href=#509 id=509 data-nosnippet>509</a>                // block_number,
+<a href=#510 id=510 data-nosnippet>510</a>                // tx_index,
+<a href=#511 id=511 data-nosnippet>511</a>                // txid = ?get_txid(tx_index),
+<a href=#512 id=512 data-nosnippet>512</a>                // input_index,
+<a href=#513 id=513 data-nosnippet>513</a>                // "Verifying input script"
+<a href=#514 id=514 data-nosnippet>514</a>                // );
+<a href=#515 id=515 data-nosnippet>515</a>                </span><span class="kw">match </span><span class="self">self</span>.script_engine {
+<a href=#516 id=516 data-nosnippet>516</a>                    ScriptEngine::Core =&gt; {
+<a href=#517 id=517 data-nosnippet>517</a>                        script_verify::verify_input_script(
+<a href=#518 id=518 data-nosnippet>518</a>                            <span class="kw-2">&amp;</span>spent_output,
+<a href=#519 id=519 data-nosnippet>519</a>                            spending_transaction,
+<a href=#520 id=520 data-nosnippet>520</a>                            input_index,
+<a href=#521 id=521 data-nosnippet>521</a>                            flags,
+<a href=#522 id=522 data-nosnippet>522</a>                        )<span class="question-mark">?</span>;
+<a href=#523 id=523 data-nosnippet>523</a>                    }
+<a href=#524 id=524 data-nosnippet>524</a>                    ScriptEngine::None =&gt; {
+<a href=#525 id=525 data-nosnippet>525</a>                        <span class="comment">// Skip script verification.
+<a href=#526 id=526 data-nosnippet>526</a>                    </span>}
+<a href=#527 id=527 data-nosnippet>527</a>                    ScriptEngine::Subcoin =&gt; {
+<a href=#528 id=528 data-nosnippet>528</a>                        <span class="kw">let </span><span class="kw-2">mut </span>checker = subcoin_script::TransactionSignatureChecker::new(
+<a href=#529 id=529 data-nosnippet>529</a>                            tx,
+<a href=#530 id=530 data-nosnippet>530</a>                            input_index,
+<a href=#531 id=531 data-nosnippet>531</a>                            spent_output.value.to_sat(),
+<a href=#532 id=532 data-nosnippet>532</a>                        );
+<a href=#533 id=533 data-nosnippet>533</a>
+<a href=#534 id=534 data-nosnippet>534</a>                        <span class="kw">let </span>verify_flags =
+<a href=#535 id=535 data-nosnippet>535</a>                            subcoin_script::VerifyFlags::from_bits(flags).expect(<span class="string">"Invalid flags"</span>);
+<a href=#536 id=536 data-nosnippet>536</a>
+<a href=#537 id=537 data-nosnippet>537</a>                        <span class="kw">let </span>script_result = subcoin_script::verify_script(
+<a href=#538 id=538 data-nosnippet>538</a>                            <span class="kw-2">&amp;</span>input.script_sig,
+<a href=#539 id=539 data-nosnippet>539</a>                            <span class="kw-2">&amp;</span>spent_output.script_pubkey,
+<a href=#540 id=540 data-nosnippet>540</a>                            <span class="kw-2">&amp;</span>input.witness,
+<a href=#541 id=541 data-nosnippet>541</a>                            <span class="kw-2">&amp;</span>verify_flags,
+<a href=#542 id=542 data-nosnippet>542</a>                            <span class="kw-2">&amp;mut </span>checker,
+<a href=#543 id=543 data-nosnippet>543</a>                        );
+<a href=#544 id=544 data-nosnippet>544</a>
+<a href=#545 id=545 data-nosnippet>545</a>                        <span class="kw">if let </span><span class="prelude-val">Err</span>(script_err) = script_result {
+<a href=#546 id=546 data-nosnippet>546</a>                            <span class="kw">let </span>context = tx_context(tx_index);
+<a href=#547 id=547 data-nosnippet>547</a>                            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::InvalidScript {
+<a href=#548 id=548 data-nosnippet>548</a>                                block_hash,
+<a href=#549 id=549 data-nosnippet>549</a>                                context,
+<a href=#550 id=550 data-nosnippet>550</a>                                input_index,
+<a href=#551 id=551 data-nosnippet>551</a>                                error: Box::new(script_err),
+<a href=#552 id=552 data-nosnippet>552</a>                            });
+<a href=#553 id=553 data-nosnippet>553</a>                        }
+<a href=#554 id=554 data-nosnippet>554</a>                    }
+<a href=#555 id=555 data-nosnippet>555</a>                }
+<a href=#556 id=556 data-nosnippet>556</a>
+<a href=#557 id=557 data-nosnippet>557</a>                spent_coins_in_block.insert(coin);
+<a href=#558 id=558 data-nosnippet>558</a>                value_in += spent_output.value.to_sat();
+<a href=#559 id=559 data-nosnippet>559</a>            }
 <a href=#560 id=560 data-nosnippet>560</a>
-<a href=#561 id=561 data-nosnippet>561</a>                spent_coins_in_block.insert(coin);
-<a href=#562 id=562 data-nosnippet>562</a>                value_in += spent_output.value.to_sat();
-<a href=#563 id=563 data-nosnippet>563</a>            }
-<a href=#564 id=564 data-nosnippet>564</a>
-<a href=#565 id=565 data-nosnippet>565</a>            <span class="comment">// &gt; GetTransactionSigOpCost counts 3 types of sigops:
-<a href=#566 id=566 data-nosnippet>566</a>            // &gt; * legacy (always)
-<a href=#567 id=567 data-nosnippet>567</a>            // &gt; * p2sh (when P2SH enabled in flags and excludes coinbase)
-<a href=#568 id=568 data-nosnippet>568</a>            // &gt; * witness (when witness enabled in flags and excludes coinbase)
-<a href=#569 id=569 data-nosnippet>569</a>            </span>sig_ops_cost += tx.total_sigop_cost(|out_point: <span class="kw-2">&amp;</span>OutPoint| {
-<a href=#570 id=570 data-nosnippet>570</a>                access_coin(<span class="kw-2">*</span>out_point).map(|(txout, <span class="kw">_</span>, <span class="kw">_</span>)| txout).ok()
-<a href=#571 id=571 data-nosnippet>571</a>            });
-<a href=#572 id=572 data-nosnippet>572</a>
-<a href=#573 id=573 data-nosnippet>573</a>            <span class="kw">if </span>sig_ops_cost &gt; MAX_BLOCK_SIGOPS_COST <span class="kw">as </span>usize {
-<a href=#574 id=574 data-nosnippet>574</a>                <span class="kw">return </span><span class="prelude-val">Err</span>(Error::TooManySigOps {
-<a href=#575 id=575 data-nosnippet>575</a>                    block_hash,
-<a href=#576 id=576 data-nosnippet>576</a>                    block_number,
-<a href=#577 id=577 data-nosnippet>577</a>                });
-<a href=#578 id=578 data-nosnippet>578</a>            }
-<a href=#579 id=579 data-nosnippet>579</a>
-<a href=#580 id=580 data-nosnippet>580</a>            <span class="kw">let </span>value_out = tx
-<a href=#581 id=581 data-nosnippet>581</a>                .output
-<a href=#582 id=582 data-nosnippet>582</a>                .iter()
-<a href=#583 id=583 data-nosnippet>583</a>                .map(|output| output.value.to_sat())
-<a href=#584 id=584 data-nosnippet>584</a>                .sum::&lt;u64&gt;();
-<a href=#585 id=585 data-nosnippet>585</a>
-<a href=#586 id=586 data-nosnippet>586</a>            <span class="comment">// Total input value must be no less than total output value.
-<a href=#587 id=587 data-nosnippet>587</a>            // Tx fee is the difference between inputs and outputs.
-<a href=#588 id=588 data-nosnippet>588</a>            </span><span class="kw">let </span>tx_fee = value_in
-<a href=#589 id=589 data-nosnippet>589</a>                .checked_sub(value_out)
-<a href=#590 id=590 data-nosnippet>590</a>                .ok_or(Error::InsufficientFunds {
-<a href=#591 id=591 data-nosnippet>591</a>                    block_hash,
-<a href=#592 id=592 data-nosnippet>592</a>                    value_in,
-<a href=#593 id=593 data-nosnippet>593</a>                    value_out,
-<a href=#594 id=594 data-nosnippet>594</a>                })<span class="question-mark">?</span>;
-<a href=#595 id=595 data-nosnippet>595</a>
-<a href=#596 id=596 data-nosnippet>596</a>            block_fee += tx_fee;
-<a href=#597 id=597 data-nosnippet>597</a>        }
-<a href=#598 id=598 data-nosnippet>598</a>
-<a href=#599 id=599 data-nosnippet>599</a>        <span class="kw">let </span>coinbase_value = block.txdata[<span class="number">0</span>]
-<a href=#600 id=600 data-nosnippet>600</a>            .output
-<a href=#601 id=601 data-nosnippet>601</a>            .iter()
-<a href=#602 id=602 data-nosnippet>602</a>            .map(|output| output.value.to_sat())
-<a href=#603 id=603 data-nosnippet>603</a>            .sum::&lt;u64&gt;();
-<a href=#604 id=604 data-nosnippet>604</a>
-<a href=#605 id=605 data-nosnippet>605</a>        <span class="kw">let </span>subsidy = bitcoin_block_subsidy(block_number);
-<a href=#606 id=606 data-nosnippet>606</a>
-<a href=#607 id=607 data-nosnippet>607</a>        <span class="comment">// Ensures no inflation.
-<a href=#608 id=608 data-nosnippet>608</a>        </span><span class="kw">if </span>coinbase_value &gt; block_fee + subsidy {
-<a href=#609 id=609 data-nosnippet>609</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::InvalidBlockReward(block_hash));
-<a href=#610 id=610 data-nosnippet>610</a>        }
-<a href=#611 id=611 data-nosnippet>611</a>
-<a href=#612 id=612 data-nosnippet>612</a>        <span class="prelude-val">Ok</span>(())
-<a href=#613 id=613 data-nosnippet>613</a>    }
+<a href=#561 id=561 data-nosnippet>561</a>            <span class="comment">// &gt; GetTransactionSigOpCost counts 3 types of sigops:
+<a href=#562 id=562 data-nosnippet>562</a>            // &gt; * legacy (always)
+<a href=#563 id=563 data-nosnippet>563</a>            // &gt; * p2sh (when P2SH enabled in flags and excludes coinbase)
+<a href=#564 id=564 data-nosnippet>564</a>            // &gt; * witness (when witness enabled in flags and excludes coinbase)
+<a href=#565 id=565 data-nosnippet>565</a>            </span>sig_ops_cost += tx.total_sigop_cost(|out_point: <span class="kw-2">&amp;</span>OutPoint| {
+<a href=#566 id=566 data-nosnippet>566</a>                access_coin(<span class="kw-2">*</span>out_point).map(|(txout, <span class="kw">_</span>, <span class="kw">_</span>)| txout).ok()
+<a href=#567 id=567 data-nosnippet>567</a>            });
+<a href=#568 id=568 data-nosnippet>568</a>
+<a href=#569 id=569 data-nosnippet>569</a>            <span class="kw">if </span>sig_ops_cost &gt; MAX_BLOCK_SIGOPS_COST <span class="kw">as </span>usize {
+<a href=#570 id=570 data-nosnippet>570</a>                <span class="kw">return </span><span class="prelude-val">Err</span>(Error::TooManySigOps {
+<a href=#571 id=571 data-nosnippet>571</a>                    block_hash,
+<a href=#572 id=572 data-nosnippet>572</a>                    block_number,
+<a href=#573 id=573 data-nosnippet>573</a>                });
+<a href=#574 id=574 data-nosnippet>574</a>            }
+<a href=#575 id=575 data-nosnippet>575</a>
+<a href=#576 id=576 data-nosnippet>576</a>            <span class="kw">let </span>value_out = tx
+<a href=#577 id=577 data-nosnippet>577</a>                .output
+<a href=#578 id=578 data-nosnippet>578</a>                .iter()
+<a href=#579 id=579 data-nosnippet>579</a>                .map(|output| output.value.to_sat())
+<a href=#580 id=580 data-nosnippet>580</a>                .sum::&lt;u64&gt;();
+<a href=#581 id=581 data-nosnippet>581</a>
+<a href=#582 id=582 data-nosnippet>582</a>            <span class="comment">// Total input value must be no less than total output value.
+<a href=#583 id=583 data-nosnippet>583</a>            // Tx fee is the difference between inputs and outputs.
+<a href=#584 id=584 data-nosnippet>584</a>            </span><span class="kw">let </span>tx_fee = value_in
+<a href=#585 id=585 data-nosnippet>585</a>                .checked_sub(value_out)
+<a href=#586 id=586 data-nosnippet>586</a>                .ok_or(Error::InsufficientFunds {
+<a href=#587 id=587 data-nosnippet>587</a>                    block_hash,
+<a href=#588 id=588 data-nosnippet>588</a>                    value_in,
+<a href=#589 id=589 data-nosnippet>589</a>                    value_out,
+<a href=#590 id=590 data-nosnippet>590</a>                })<span class="question-mark">?</span>;
+<a href=#591 id=591 data-nosnippet>591</a>
+<a href=#592 id=592 data-nosnippet>592</a>            block_fee += tx_fee;
+<a href=#593 id=593 data-nosnippet>593</a>        }
+<a href=#594 id=594 data-nosnippet>594</a>
+<a href=#595 id=595 data-nosnippet>595</a>        <span class="kw">let </span>coinbase_value = block.txdata[<span class="number">0</span>]
+<a href=#596 id=596 data-nosnippet>596</a>            .output
+<a href=#597 id=597 data-nosnippet>597</a>            .iter()
+<a href=#598 id=598 data-nosnippet>598</a>            .map(|output| output.value.to_sat())
+<a href=#599 id=599 data-nosnippet>599</a>            .sum::&lt;u64&gt;();
+<a href=#600 id=600 data-nosnippet>600</a>
+<a href=#601 id=601 data-nosnippet>601</a>        <span class="kw">let </span>subsidy = bitcoin_block_subsidy(block_number);
+<a href=#602 id=602 data-nosnippet>602</a>
+<a href=#603 id=603 data-nosnippet>603</a>        <span class="comment">// Ensures no inflation.
+<a href=#604 id=604 data-nosnippet>604</a>        </span><span class="kw">if </span>coinbase_value &gt; block_fee + subsidy {
+<a href=#605 id=605 data-nosnippet>605</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::InvalidBlockReward(block_hash));
+<a href=#606 id=606 data-nosnippet>606</a>        }
+<a href=#607 id=607 data-nosnippet>607</a>
+<a href=#608 id=608 data-nosnippet>608</a>        <span class="prelude-val">Ok</span>(())
+<a href=#609 id=609 data-nosnippet>609</a>    }
+<a href=#610 id=610 data-nosnippet>610</a>
+<a href=#611 id=611 data-nosnippet>611</a>    <span class="doccomment">/// Finds a UTXO in the state backend.
+<a href=#612 id=612 data-nosnippet>612</a>    </span><span class="kw">fn </span>find_utxo_in_state(<span class="kw-2">&amp;</span><span class="self">self</span>, block_hash: Block::Hash, out_point: OutPoint) -&gt; <span class="prelude-ty">Option</span>&lt;Coin&gt; {
+<a href=#613 id=613 data-nosnippet>613</a>        <span class="kw">use </span>codec::Decode;
 <a href=#614 id=614 data-nosnippet>614</a>
-<a href=#615 id=615 data-nosnippet>615</a>    <span class="doccomment">/// Finds a UTXO in the state backend.
-<a href=#616 id=616 data-nosnippet>616</a>    </span><span class="kw">fn </span>find_utxo_in_state(<span class="kw-2">&amp;</span><span class="self">self</span>, block_hash: Block::Hash, out_point: OutPoint) -&gt; <span class="prelude-ty">Option</span>&lt;Coin&gt; {
-<a href=#617 id=617 data-nosnippet>617</a>        <span class="kw">use </span>codec::Decode;
-<a href=#618 id=618 data-nosnippet>618</a>
-<a href=#619 id=619 data-nosnippet>619</a>        <span class="comment">// Read state from the backend
-<a href=#620 id=620 data-nosnippet>620</a>        //
-<a href=#621 id=621 data-nosnippet>621</a>        // TODO: optimizations:
-<a href=#622 id=622 data-nosnippet>622</a>        // - Read the state from the in memory backend.
-<a href=#623 id=623 data-nosnippet>623</a>        // - Maintain a flat in-memory UTXO cache and try to read from cache first.
-<a href=#624 id=624 data-nosnippet>624</a>        </span><span class="kw">let </span>OutPoint { txid, vout } = out_point;
-<a href=#625 id=625 data-nosnippet>625</a>        <span class="kw">let </span>storage_key = <span class="self">self</span>.coin_storage_key.storage_key(txid, vout);
-<a href=#626 id=626 data-nosnippet>626</a>
-<a href=#627 id=627 data-nosnippet>627</a>        <span class="kw">let </span>maybe_storage_data = <span class="self">self
-<a href=#628 id=628 data-nosnippet>628</a>            </span>.client
-<a href=#629 id=629 data-nosnippet>629</a>            .storage(block_hash, <span class="kw-2">&amp;</span>sc_client_api::StorageKey(storage_key))
-<a href=#630 id=630 data-nosnippet>630</a>            .ok()
-<a href=#631 id=631 data-nosnippet>631</a>            .flatten();
+<a href=#615 id=615 data-nosnippet>615</a>        <span class="comment">// Read state from the backend
+<a href=#616 id=616 data-nosnippet>616</a>        //
+<a href=#617 id=617 data-nosnippet>617</a>        // TODO: optimizations:
+<a href=#618 id=618 data-nosnippet>618</a>        // - Read the state from the in memory backend.
+<a href=#619 id=619 data-nosnippet>619</a>        // - Maintain a flat in-memory UTXO cache and try to read from cache first.
+<a href=#620 id=620 data-nosnippet>620</a>        </span><span class="kw">let </span>OutPoint { txid, vout } = out_point;
+<a href=#621 id=621 data-nosnippet>621</a>        <span class="kw">let </span>storage_key = <span class="self">self</span>.coin_storage_key.storage_key(txid, vout);
+<a href=#622 id=622 data-nosnippet>622</a>
+<a href=#623 id=623 data-nosnippet>623</a>        <span class="kw">let </span>maybe_storage_data = <span class="self">self
+<a href=#624 id=624 data-nosnippet>624</a>            </span>.client
+<a href=#625 id=625 data-nosnippet>625</a>            .storage(block_hash, <span class="kw-2">&amp;</span>sc_client_api::StorageKey(storage_key))
+<a href=#626 id=626 data-nosnippet>626</a>            .ok()
+<a href=#627 id=627 data-nosnippet>627</a>            .flatten();
+<a href=#628 id=628 data-nosnippet>628</a>
+<a href=#629 id=629 data-nosnippet>629</a>        maybe_storage_data.and_then(|data| Coin::decode(<span class="kw-2">&amp;mut </span>data.<span class="number">0</span>.as_slice()).ok())
+<a href=#630 id=630 data-nosnippet>630</a>    }
+<a href=#631 id=631 data-nosnippet>631</a>}
 <a href=#632 id=632 data-nosnippet>632</a>
-<a href=#633 id=633 data-nosnippet>633</a>        maybe_storage_data.and_then(|data| Coin::decode(<span class="kw-2">&amp;mut </span>data.<span class="number">0</span>.as_slice()).ok())
-<a href=#634 id=634 data-nosnippet>634</a>    }
-<a href=#635 id=635 data-nosnippet>635</a>}
-<a href=#636 id=636 data-nosnippet>636</a>
-<a href=#637 id=637 data-nosnippet>637</a><span class="comment">// Find a UTXO from the previous transactions in current block.
-<a href=#638 id=638 data-nosnippet>638</a></span><span class="kw">fn </span>find_utxo_in_current_block(
-<a href=#639 id=639 data-nosnippet>639</a>    block: <span class="kw-2">&amp;</span>BitcoinBlock,
-<a href=#640 id=640 data-nosnippet>640</a>    out_point: OutPoint,
-<a href=#641 id=641 data-nosnippet>641</a>    tx_index: usize,
-<a href=#642 id=642 data-nosnippet>642</a>    get_txid: <span class="kw">impl </span>Fn(usize) -&gt; Txid,
-<a href=#643 id=643 data-nosnippet>643</a>) -&gt; <span class="prelude-ty">Option</span>&lt;(TxOut, bool)&gt; {
-<a href=#644 id=644 data-nosnippet>644</a>    <span class="kw">let </span>OutPoint { txid, vout } = out_point;
-<a href=#645 id=645 data-nosnippet>645</a>    block
-<a href=#646 id=646 data-nosnippet>646</a>        .txdata
-<a href=#647 id=647 data-nosnippet>647</a>        .iter()
-<a href=#648 id=648 data-nosnippet>648</a>        .take(tx_index)
-<a href=#649 id=649 data-nosnippet>649</a>        .enumerate()
-<a href=#650 id=650 data-nosnippet>650</a>        .find_map(|(index, tx)| (get_txid(index) == txid).then_some((tx, index == <span class="number">0</span>)))
-<a href=#651 id=651 data-nosnippet>651</a>        .and_then(|(tx, is_coinbase)| {
-<a href=#652 id=652 data-nosnippet>652</a>            tx.output
-<a href=#653 id=653 data-nosnippet>653</a>                .get(vout <span class="kw">as </span>usize)
-<a href=#654 id=654 data-nosnippet>654</a>                .cloned()
-<a href=#655 id=655 data-nosnippet>655</a>                .map(|txout| (txout, is_coinbase))
-<a href=#656 id=656 data-nosnippet>656</a>        })
-<a href=#657 id=657 data-nosnippet>657</a>}
-<a href=#658 id=658 data-nosnippet>658</a>
-<a href=#659 id=659 data-nosnippet>659</a><span class="doccomment">/// Returns the base block size.
-<a href=#660 id=660 data-nosnippet>660</a>///
-<a href=#661 id=661 data-nosnippet>661</a>/// &gt; Base size is the block size in bytes with the original transaction serialization without
-<a href=#662 id=662 data-nosnippet>662</a>/// &gt; any witness-related data, as seen by a non-upgraded node.
-<a href=#663 id=663 data-nosnippet>663</a></span><span class="comment">// TODO: copied from rust-bitcoin, send a patch upstream to make this API public?
-<a href=#664 id=664 data-nosnippet>664</a></span><span class="kw">fn </span>block_base_size(block: <span class="kw-2">&amp;</span>BitcoinBlock) -&gt; usize {
-<a href=#665 id=665 data-nosnippet>665</a>    <span class="kw">let </span><span class="kw-2">mut </span>size = BitcoinHeader::SIZE;
-<a href=#666 id=666 data-nosnippet>666</a>
-<a href=#667 id=667 data-nosnippet>667</a>    size += VarInt::from(block.txdata.len()).size();
-<a href=#668 id=668 data-nosnippet>668</a>    size += block.txdata.iter().map(|tx| tx.base_size()).sum::&lt;usize&gt;();
-<a href=#669 id=669 data-nosnippet>669</a>
-<a href=#670 id=670 data-nosnippet>670</a>    size
-<a href=#671 id=671 data-nosnippet>671</a>}
-<a href=#672 id=672 data-nosnippet>672</a>
-<a href=#673 id=673 data-nosnippet>673</a><span class="attr">#[cfg(test)]
-<a href=#674 id=674 data-nosnippet>674</a></span><span class="kw">mod </span>tests {
-<a href=#675 id=675 data-nosnippet>675</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
-<a href=#676 id=676 data-nosnippet>676</a>    <span class="kw">use </span>bitcoin::consensus::encode::deserialize_hex;
-<a href=#677 id=677 data-nosnippet>677</a>
-<a href=#678 id=678 data-nosnippet>678</a>    <span class="attr">#[test]
-<a href=#679 id=679 data-nosnippet>679</a>    </span><span class="kw">fn </span>test_find_utxo_in_current_block() {
-<a href=#680 id=680 data-nosnippet>680</a>        <span class="kw">let </span>test_block = std::env::current_dir()
+<a href=#633 id=633 data-nosnippet>633</a><span class="comment">// Find a UTXO from the previous transactions in current block.
+<a href=#634 id=634 data-nosnippet>634</a></span><span class="kw">fn </span>find_utxo_in_current_block(
+<a href=#635 id=635 data-nosnippet>635</a>    block: <span class="kw-2">&amp;</span>BitcoinBlock,
+<a href=#636 id=636 data-nosnippet>636</a>    out_point: OutPoint,
+<a href=#637 id=637 data-nosnippet>637</a>    tx_index: usize,
+<a href=#638 id=638 data-nosnippet>638</a>    get_txid: <span class="kw">impl </span>Fn(usize) -&gt; Txid,
+<a href=#639 id=639 data-nosnippet>639</a>) -&gt; <span class="prelude-ty">Option</span>&lt;(TxOut, bool)&gt; {
+<a href=#640 id=640 data-nosnippet>640</a>    <span class="kw">let </span>OutPoint { txid, vout } = out_point;
+<a href=#641 id=641 data-nosnippet>641</a>    block
+<a href=#642 id=642 data-nosnippet>642</a>        .txdata
+<a href=#643 id=643 data-nosnippet>643</a>        .iter()
+<a href=#644 id=644 data-nosnippet>644</a>        .take(tx_index)
+<a href=#645 id=645 data-nosnippet>645</a>        .enumerate()
+<a href=#646 id=646 data-nosnippet>646</a>        .find_map(|(index, tx)| (get_txid(index) == txid).then_some((tx, index == <span class="number">0</span>)))
+<a href=#647 id=647 data-nosnippet>647</a>        .and_then(|(tx, is_coinbase)| {
+<a href=#648 id=648 data-nosnippet>648</a>            tx.output
+<a href=#649 id=649 data-nosnippet>649</a>                .get(vout <span class="kw">as </span>usize)
+<a href=#650 id=650 data-nosnippet>650</a>                .cloned()
+<a href=#651 id=651 data-nosnippet>651</a>                .map(|txout| (txout, is_coinbase))
+<a href=#652 id=652 data-nosnippet>652</a>        })
+<a href=#653 id=653 data-nosnippet>653</a>}
+<a href=#654 id=654 data-nosnippet>654</a>
+<a href=#655 id=655 data-nosnippet>655</a><span class="doccomment">/// Returns the base block size.
+<a href=#656 id=656 data-nosnippet>656</a>///
+<a href=#657 id=657 data-nosnippet>657</a>/// &gt; Base size is the block size in bytes with the original transaction serialization without
+<a href=#658 id=658 data-nosnippet>658</a>/// &gt; any witness-related data, as seen by a non-upgraded node.
+<a href=#659 id=659 data-nosnippet>659</a></span><span class="comment">// TODO: copied from rust-bitcoin, send a patch upstream to make this API public?
+<a href=#660 id=660 data-nosnippet>660</a></span><span class="kw">fn </span>block_base_size(block: <span class="kw-2">&amp;</span>BitcoinBlock) -&gt; usize {
+<a href=#661 id=661 data-nosnippet>661</a>    <span class="kw">let </span><span class="kw-2">mut </span>size = BitcoinHeader::SIZE;
+<a href=#662 id=662 data-nosnippet>662</a>
+<a href=#663 id=663 data-nosnippet>663</a>    size += VarInt::from(block.txdata.len()).size();
+<a href=#664 id=664 data-nosnippet>664</a>    size += block.txdata.iter().map(|tx| tx.base_size()).sum::&lt;usize&gt;();
+<a href=#665 id=665 data-nosnippet>665</a>
+<a href=#666 id=666 data-nosnippet>666</a>    size
+<a href=#667 id=667 data-nosnippet>667</a>}
+<a href=#668 id=668 data-nosnippet>668</a>
+<a href=#669 id=669 data-nosnippet>669</a><span class="attr">#[cfg(test)]
+<a href=#670 id=670 data-nosnippet>670</a></span><span class="kw">mod </span>tests {
+<a href=#671 id=671 data-nosnippet>671</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#672 id=672 data-nosnippet>672</a>    <span class="kw">use </span>bitcoin::consensus::encode::deserialize_hex;
+<a href=#673 id=673 data-nosnippet>673</a>
+<a href=#674 id=674 data-nosnippet>674</a>    <span class="attr">#[test]
+<a href=#675 id=675 data-nosnippet>675</a>    </span><span class="kw">fn </span>test_find_utxo_in_current_block() {
+<a href=#676 id=676 data-nosnippet>676</a>        <span class="kw">let </span>test_block = std::env::current_dir()
+<a href=#677 id=677 data-nosnippet>677</a>            .unwrap()
+<a href=#678 id=678 data-nosnippet>678</a>            .parent()
+<a href=#679 id=679 data-nosnippet>679</a>            .unwrap()
+<a href=#680 id=680 data-nosnippet>680</a>            .parent()
 <a href=#681 id=681 data-nosnippet>681</a>            .unwrap()
-<a href=#682 id=682 data-nosnippet>682</a>            .parent()
-<a href=#683 id=683 data-nosnippet>683</a>            .unwrap()
-<a href=#684 id=684 data-nosnippet>684</a>            .parent()
-<a href=#685 id=685 data-nosnippet>685</a>            .unwrap()
-<a href=#686 id=686 data-nosnippet>686</a>            .join(<span class="string">"test_data"</span>)
-<a href=#687 id=687 data-nosnippet>687</a>            .join(<span class="string">"btc_mainnet_385044.data"</span>);
-<a href=#688 id=688 data-nosnippet>688</a>        <span class="kw">let </span>raw_block = std::fs::read_to_string(test_block).unwrap();
-<a href=#689 id=689 data-nosnippet>689</a>        <span class="kw">let </span>block = deserialize_hex::&lt;BitcoinBlock&gt;(raw_block.trim()).unwrap();
-<a href=#690 id=690 data-nosnippet>690</a>
-<a href=#691 id=691 data-nosnippet>691</a>        <span class="kw">let </span>txids = block
-<a href=#692 id=692 data-nosnippet>692</a>            .txdata
-<a href=#693 id=693 data-nosnippet>693</a>            .iter()
-<a href=#694 id=694 data-nosnippet>694</a>            .enumerate()
-<a href=#695 id=695 data-nosnippet>695</a>            .map(|(index, tx)| (index, tx.compute_txid()))
-<a href=#696 id=696 data-nosnippet>696</a>            .collect::&lt;HashMap&lt;<span class="kw">_</span>, <span class="kw">_</span>&gt;&gt;();
-<a href=#697 id=697 data-nosnippet>697</a>
-<a href=#698 id=698 data-nosnippet>698</a>        <span class="comment">// 385044:35:1
-<a href=#699 id=699 data-nosnippet>699</a>        </span><span class="kw">let </span>out_point = OutPoint {
-<a href=#700 id=700 data-nosnippet>700</a>            txid: <span class="string">"2b102a19161e5c93f71e16f9e8c9b2438f362c51ecc8f2a62e3c31d7615dd17d"
-<a href=#701 id=701 data-nosnippet>701</a>                </span>.parse()
-<a href=#702 id=702 data-nosnippet>702</a>                .unwrap(),
-<a href=#703 id=703 data-nosnippet>703</a>            vout: <span class="number">1</span>,
-<a href=#704 id=704 data-nosnippet>704</a>        };
-<a href=#705 id=705 data-nosnippet>705</a>
-<a href=#706 id=706 data-nosnippet>706</a>        <span class="comment">// The input of block 385044:36 is from the previous transaction 385044:35:1.
-<a href=#707 id=707 data-nosnippet>707</a>        // https://www.blockchain.com/explorer/transactions/btc/5645cb0a3953b7766836919566b25321a976d06c958e69ff270358233a8c82d6
-<a href=#708 id=708 data-nosnippet>708</a>        </span><span class="macro">assert_eq!</span>(
-<a href=#709 id=709 data-nosnippet>709</a>            find_utxo_in_current_block(<span class="kw-2">&amp;</span>block, out_point, <span class="number">36</span>, |index| txids
-<a href=#710 id=710 data-nosnippet>710</a>                .get(<span class="kw-2">&amp;</span>index)
-<a href=#711 id=711 data-nosnippet>711</a>                .copied()
-<a href=#712 id=712 data-nosnippet>712</a>                .unwrap())
-<a href=#713 id=713 data-nosnippet>713</a>            .map(|(txout, is_coinbase)| (txout.value.to_sat(), is_coinbase))
-<a href=#714 id=714 data-nosnippet>714</a>            .unwrap(),
-<a href=#715 id=715 data-nosnippet>715</a>            (<span class="number">295600000</span>, <span class="bool-val">false</span>)
-<a href=#716 id=716 data-nosnippet>716</a>        );
-<a href=#717 id=717 data-nosnippet>717</a>    }
-<a href=#718 id=718 data-nosnippet>718</a>}</code></pre></div></section></main></body></html>
+<a href=#682 id=682 data-nosnippet>682</a>            .join(<span class="string">"test_data"</span>)
+<a href=#683 id=683 data-nosnippet>683</a>            .join(<span class="string">"btc_mainnet_385044.data"</span>);
+<a href=#684 id=684 data-nosnippet>684</a>        <span class="kw">let </span>raw_block = std::fs::read_to_string(test_block).unwrap();
+<a href=#685 id=685 data-nosnippet>685</a>        <span class="kw">let </span>block = deserialize_hex::&lt;BitcoinBlock&gt;(raw_block.trim()).unwrap();
+<a href=#686 id=686 data-nosnippet>686</a>
+<a href=#687 id=687 data-nosnippet>687</a>        <span class="kw">let </span>txids = block
+<a href=#688 id=688 data-nosnippet>688</a>            .txdata
+<a href=#689 id=689 data-nosnippet>689</a>            .iter()
+<a href=#690 id=690 data-nosnippet>690</a>            .enumerate()
+<a href=#691 id=691 data-nosnippet>691</a>            .map(|(index, tx)| (index, tx.compute_txid()))
+<a href=#692 id=692 data-nosnippet>692</a>            .collect::&lt;HashMap&lt;<span class="kw">_</span>, <span class="kw">_</span>&gt;&gt;();
+<a href=#693 id=693 data-nosnippet>693</a>
+<a href=#694 id=694 data-nosnippet>694</a>        <span class="comment">// 385044:35:1
+<a href=#695 id=695 data-nosnippet>695</a>        </span><span class="kw">let </span>out_point = OutPoint {
+<a href=#696 id=696 data-nosnippet>696</a>            txid: <span class="string">"2b102a19161e5c93f71e16f9e8c9b2438f362c51ecc8f2a62e3c31d7615dd17d"
+<a href=#697 id=697 data-nosnippet>697</a>                </span>.parse()
+<a href=#698 id=698 data-nosnippet>698</a>                .unwrap(),
+<a href=#699 id=699 data-nosnippet>699</a>            vout: <span class="number">1</span>,
+<a href=#700 id=700 data-nosnippet>700</a>        };
+<a href=#701 id=701 data-nosnippet>701</a>
+<a href=#702 id=702 data-nosnippet>702</a>        <span class="comment">// The input of block 385044:36 is from the previous transaction 385044:35:1.
+<a href=#703 id=703 data-nosnippet>703</a>        // https://www.blockchain.com/explorer/transactions/btc/5645cb0a3953b7766836919566b25321a976d06c958e69ff270358233a8c82d6
+<a href=#704 id=704 data-nosnippet>704</a>        </span><span class="macro">assert_eq!</span>(
+<a href=#705 id=705 data-nosnippet>705</a>            find_utxo_in_current_block(<span class="kw-2">&amp;</span>block, out_point, <span class="number">36</span>, |index| txids
+<a href=#706 id=706 data-nosnippet>706</a>                .get(<span class="kw-2">&amp;</span>index)
+<a href=#707 id=707 data-nosnippet>707</a>                .copied()
+<a href=#708 id=708 data-nosnippet>708</a>                .unwrap())
+<a href=#709 id=709 data-nosnippet>709</a>            .map(|(txout, is_coinbase)| (txout.value.to_sat(), is_coinbase))
+<a href=#710 id=710 data-nosnippet>710</a>            .unwrap(),
+<a href=#711 id=711 data-nosnippet>711</a>            (<span class="number">295600000</span>, <span class="bool-val">false</span>)
+<a href=#712 id=712 data-nosnippet>712</a>        );
+<a href=#713 id=713 data-nosnippet>713</a>    }
+<a href=#714 id=714 data-nosnippet>714</a>}</code></pre></div></section></main></body></html>

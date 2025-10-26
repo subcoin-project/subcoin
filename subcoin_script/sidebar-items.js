@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["Error","SigVersion","SignatureError"],"fn":["verify_script"],"struct":["EcdsaSignature","NoSignatureCheck","ScriptExecutionData","TransactionSignatureChecker","VerifyFlags"],"trait":["SignatureChecker"],"type":["H256","SchnorrSignature"]};
+window.SIDEBAR_ITEMS = {"enum":["Error","SigVersion","SignatureError"],"fn":["verify_script"],"mod":["solver"],"struct":["EcdsaSignature","NoSignatureCheck","ScriptExecutionData","TransactionSignatureChecker","VerifyFlags"],"trait":["SignatureChecker"],"type":["H256","SchnorrSignature"]};

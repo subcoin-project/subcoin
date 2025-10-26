@@ -179,7 +179,7 @@
 <a href=#179 id=179 data-nosnippet>179</a>                )
 <a href=#180 id=180 data-nosnippet>180</a>                .expect(<span class="string">"Key type of `Coins` must be correct; qed"</span>);
 <a href=#181 id=181 data-nosnippet>181</a>
-<a href=#182 id=182 data-nosnippet>182</a>                <span class="kw">let </span>txid = txid.into_bitcoin_txid();
+<a href=#182 id=182 data-nosnippet>182</a>                <span class="kw">let </span>txid: bitcoin::Txid = txid.into();
 <a href=#183 id=183 data-nosnippet>183</a>
 <a href=#184 id=184 data-nosnippet>184</a>                <span class="comment">// output in genesis tx is excluded in the UTXO set.
 <a href=#185 id=185 data-nosnippet>185</a>                </span><span class="kw">let </span>coin = Coin::decode(<span class="kw-2">&amp;mut </span>value.<span class="number">0</span>.as_slice())
