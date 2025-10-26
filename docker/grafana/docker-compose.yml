@@ -4,6 +4,8 @@ services:
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
@@ -18,12 +20,16 @@ services:
     image: grafana/grafana:latest
     container_name: grafana
     ports:
-      - '3000:3000' # Expose Grafana UI on port 3000
+      - '3001:3000' # Expose Grafana UI on port 3001
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./dashboard.json:/etc/grafana/provisioning/dashboards/dashboard.json
     depends_on:
       - prometheus
     restart: unless-stopped

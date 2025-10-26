@@ -5,7 +5,6 @@ scrape_configs:
     scrape_interval: 5s
 
     static_configs:
-      # Notes:
-      # - Replace localhost as the public IP address if deployed on the cloud.
-      # - Change to `targets: ["host.docker.internal:9615"]` if running from Docker on macOS.
-      - targets: ["localhost:9615"]
+      # Using host.docker.internal which is mapped to host-gateway in docker-compose.yml
+      # This allows the container to reach services running on the host machine
+      - targets: ["host.docker.internal:9615"]
