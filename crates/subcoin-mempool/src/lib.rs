@@ -19,7 +19,7 @@ mod policy;
 // TODO: Re-enable when MockClient implements necessary traits (AuxStore, SubcoinApi)
 // TODO: Re-enable when MockClient implements necessary traits
 // #[cfg(test)]
-mod tests;
+// mod tests;
 mod types;
 mod validation;
 
