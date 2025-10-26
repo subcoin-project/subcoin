@@ -59,6 +59,7 @@ pub enum SendTransactionResult {
 /// An incoming transaction from RPC or network.
 #[derive(Debug)]
 pub(crate) struct IncomingTransaction {
+    #[allow(dead_code)]
     pub(crate) txid: Txid,
     pub(crate) transaction: Transaction,
 }

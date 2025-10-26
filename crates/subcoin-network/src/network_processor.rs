@@ -1,12 +1,10 @@
 use crate::metrics::Metrics;
-use crate::network_api::{
-    IncomingTransaction, NetworkProcessorMessage, NetworkStatus, SendTransactionResult,
-};
+use crate::network_api::{NetworkProcessorMessage, NetworkStatus, SendTransactionResult};
 use crate::peer_connection::{ConnectionInitiator, Direction, NewConnection};
 use crate::peer_manager::{Config, NewPeer, PEER_LATENCY_THRESHOLD, PeerManager, SlowPeer};
 use crate::peer_store::PeerStore;
 use crate::sync::{ChainSync, LocatorRequest, RestartReason, SyncAction, SyncRequest};
-use crate::transaction_manager::TransactionManager;
+use crate::tx_relay::{TxAction, TxRelay};
 use crate::{Bandwidth, Error, MemoryConfig, PeerId, SyncStrategy};
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::p2p::message::{MAX_INV_SIZE, NetworkMessage};
@@ -22,6 +20,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+use subcoin_primitives::tx_pool::TxValidationResult;
 use subcoin_primitives::{BackendExt, ClientExt};
 use substrate_prometheus_endpoint::Registry;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -55,7 +54,7 @@ impl Event {
 }
 
 /// Parameters for creating a [`NetworkProcessor`].
-pub struct Params<Block, Client> {
+pub struct Params<Block, Client, Pool> {
     pub client: Arc<Client>,
     pub header_verifier: HeaderVerifier<Block, Client>,
     pub network_event_receiver: UnboundedReceiver<Event>,
@@ -71,30 +70,33 @@ pub struct Params<Block, Client> {
     pub sync_target: Option<u32>,
     /// Memory management configuration.
     pub memory_config: MemoryConfig,
+    /// Bitcoin transaction pool for transaction validation and relay.
+    pub tx_pool: Arc<Pool>,
 }
 
 /// [`NetworkProcessor`] is responsible for processing the network events.
-pub struct NetworkProcessor<Block, Client> {
+pub struct NetworkProcessor<Block, Client, Pool> {
     config: Config,
     client: Arc<Client>,
     chain_sync: ChainSync<Block, Client>,
     peer_store: Arc<dyn PeerStore>,
     peer_manager: PeerManager<Block, Client>,
     header_verifier: HeaderVerifier<Block, Client>,
-    transaction_manager: TransactionManager,
+    tx_relay: TxRelay<Block, Client, Pool>,
     network_event_receiver: UnboundedReceiver<Event>,
     /// Broadcasted blocks that are being requested.
     requested_block_announce: HashMap<PeerId, HashSet<BlockHash>>,
     metrics: Option<Metrics>,
 }
 
-impl<Block, Client> NetworkProcessor<Block, Client>
+impl<Block, Client, Pool> NetworkProcessor<Block, Client, Pool>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore,
+    Pool: subcoin_primitives::tx_pool::TxPool,
 {
     /// Constructs a new instance of [`NetworkProcessor`].
-    pub fn new(params: Params<Block, Client>, registry: Option<&Registry>) -> Self {
+    pub fn new(params: Params<Block, Client, Pool>, registry: Option<&Registry>) -> Self {
         let Params {
             client,
             header_verifier,
@@ -109,6 +111,7 @@ where
             peer_store,
             sync_target,
             memory_config,
+            tx_pool,
         } = params;
 
         let config = Config::new();
@@ -148,7 +151,7 @@ where
             peer_store,
             peer_manager,
             header_verifier,
-            transaction_manager: TransactionManager::new(),
+            tx_relay: TxRelay::new(tx_pool),
             requested_block_announce: HashMap::new(),
             network_event_receiver,
             metrics,
@@ -211,6 +214,7 @@ where
             Event::DisconnectPeer { peer_addr, reason } => {
                 self.peer_manager.disconnect(peer_addr, reason);
                 self.chain_sync.disconnect(peer_addr);
+                self.tx_relay.on_peer_disconnected(peer_addr);
                 self.peer_store.remove_peer(peer_addr);
             }
             Event::PeerMessage {
@@ -253,6 +257,7 @@ where
         for peer in self.chain_sync.unreliable_peers() {
             self.peer_manager.disconnect(peer, Error::UnreliablePeer);
             self.chain_sync.disconnect(peer);
+            self.tx_relay.on_peer_disconnected(peer);
             self.peer_store.remove_peer(peer);
         }
 
@@ -260,21 +265,21 @@ where
         timeout_peers.into_iter().for_each(|peer_id| {
             self.peer_manager.disconnect(peer_id, Error::PingTimeout);
             self.chain_sync.disconnect(peer_id);
+            self.tx_relay.on_peer_disconnected(peer_id);
         });
         if let Some(SlowPeer { peer_id, latency }) = maybe_slow_peer {
             self.peer_manager.evict(peer_id, Error::SlowPeer(latency));
             self.chain_sync.disconnect(peer_id);
+            self.tx_relay.on_peer_disconnected(peer_id);
         }
 
-        let connected_peers = self.peer_manager.connected_peers();
-
-        for (peer, txids) in self.transaction_manager.on_tick(connected_peers) {
-            tracing::debug!("Broadcasting transaction IDs {txids:?} to {peer:?}");
-            let msg = NetworkMessage::Inv(txids.into_iter().map(Inventory::Transaction).collect());
-            if let Err(err) = self.send(peer, msg) {
-                self.peer_manager.disconnect(peer, err);
-            }
-        }
+        let connected_peers = self
+            .peer_manager
+            .connected_peers()
+            .copied()
+            .collect::<Vec<_>>();
+        let tx_action = self.tx_relay.on_tick(&self.peer_manager, &connected_peers);
+        self.do_tx_action(tx_action);
     }
 
     async fn handle_processor_message(
@@ -300,15 +305,20 @@ where
                 let _ = result_sender.send(self.peer_manager.inbound_peers_count());
             }
             NetworkProcessorMessage::RequestTransaction(txid, result_sender) => {
-                let _ = result_sender.send(self.transaction_manager.get_transaction(&txid));
+                let _ =
+                    result_sender.send(self.tx_relay.get_transaction(txid).map(|tx| (*tx).clone()));
             }
             NetworkProcessorMessage::SendTransaction((incoming_transaction, result_sender)) => {
                 let send_transaction_result = match self
-                    .transaction_manager
-                    .add_transaction(incoming_transaction)
+                    .tx_relay
+                    .validate_transaction(incoming_transaction.transaction)
                 {
-                    Ok(txid) => SendTransactionResult::Success(txid),
-                    Err(error_msg) => SendTransactionResult::Failure(error_msg),
+                    TxValidationResult::Accepted { txid, .. } => {
+                        SendTransactionResult::Success(txid)
+                    }
+                    TxValidationResult::Rejected { reason, .. } => {
+                        SendTransactionResult::Failure(format!("{reason:?}"))
+                    }
                 };
                 let _ = result_sender.send(send_transaction_result);
             }
@@ -353,6 +363,7 @@ where
                     .on_version(from, direction, version_message)
                 {
                     self.peer_manager.disconnect(from, err);
+                    self.tx_relay.on_peer_disconnected(from);
                 }
                 Ok(SyncAction::None)
             }
@@ -363,6 +374,7 @@ where
                 }
                 if let Err(err) = self.peer_manager.on_verack(from, direction) {
                     self.peer_manager.disconnect(from, err);
+                    self.tx_relay.on_peer_disconnected(from);
                 }
                 Ok(SyncAction::None)
             }
@@ -371,17 +383,7 @@ where
                 Ok(SyncAction::None)
             }
             NetworkMessage::Tx(tx) => {
-                // TODO: Check has relay permission.
-                let incoming_transaction = IncomingTransaction {
-                    txid: tx.compute_txid(),
-                    transaction: tx,
-                };
-                if let Err(err_msg) = self
-                    .transaction_manager
-                    .add_transaction(incoming_transaction)
-                {
-                    tracing::debug!(?from, "Failed to add transaction: {err_msg}");
-                }
+                self.handle_tx_message(from, tx);
                 Ok(SyncAction::None)
             }
             NetworkMessage::GetData(inv) => {
@@ -417,8 +419,8 @@ where
                 self.peer_manager.set_prefer_headers(from);
                 Ok(SyncAction::None)
             }
-            NetworkMessage::FeeFilter(_) => {
-                self.send(from, NetworkMessage::FeeFilter(1000))?;
+            NetworkMessage::FeeFilter(min_fee_rate) => {
+                self.handle_fee_filter(from, min_fee_rate);
                 Ok(SyncAction::None)
             }
             NetworkMessage::Inv(inv) => self.process_inv(from, inv),
@@ -455,6 +457,7 @@ where
                     self.peer_manager
                         .disconnect(from, Error::PingLatencyTooHigh(avg_latency));
                     self.chain_sync.disconnect(from);
+                    self.tx_relay.on_peer_disconnected(from);
                     self.peer_store.remove_peer(from);
                 } else {
                     self.peer_store.try_add_peer(from, avg_latency);
@@ -480,6 +483,7 @@ where
             Err(err) => {
                 self.peer_manager.disconnect(from, err);
                 self.chain_sync.disconnect(from);
+                self.tx_relay.on_peer_disconnected(from);
                 self.peer_store.remove_peer(from);
             }
         }
@@ -495,11 +499,27 @@ where
             ));
         }
 
-        if inv.len() == 1
-            && let Inventory::Block(block_hash) = inv[0]
+        // Separate transaction and block inventories
+        let (tx_inv, block_inv): (Vec<_>, Vec<_>) = inv
+            .into_iter()
+            .partition(|item| matches!(item, Inventory::Transaction(_)));
+
+        // Handle transaction inventories via TxRelay
+        if !tx_inv.is_empty() && self.peer_manager.peer_wants_tx_relay(from) {
+            let tx_action = self.tx_relay.on_inv(tx_inv, from);
+            self.do_tx_action(tx_action);
+        }
+
+        // Handle block inventories
+        if block_inv.is_empty() {
+            return Ok(SyncAction::None);
+        }
+
+        if block_inv.len() == 1
+            && let Inventory::Block(block_hash) = block_inv[0]
         {
             if self.client.block_number(block_hash).is_none() {
-                tracing::debug!("Recv block announcement {inv:?} from {from:?}");
+                tracing::debug!("Recv block announcement {block_inv:?} from {from:?}");
 
                 let mut is_new_block_announce = false;
 
@@ -516,13 +536,13 @@ where
                 // A new block is broadcasted via `inv` message.
                 if is_new_block_announce {
                     tracing::debug!("Requesting announced block {block_hash} from {from:?}");
-                    return Ok(SyncAction::get_data(inv, from));
+                    return Ok(SyncAction::get_data(block_inv, from));
                 }
             }
             return Ok(SyncAction::None);
         }
 
-        Ok(self.chain_sync.on_inv(inv, from))
+        Ok(self.chain_sync.on_inv(block_inv, from))
     }
 
     fn process_block(&mut self, from: PeerId, block: BitcoinBlock) -> Result<SyncAction, Error> {
@@ -624,7 +644,7 @@ where
         Ok(self.chain_sync.on_headers(headers, from))
     }
 
-    fn process_get_data(&self, from: PeerId, get_data_requests: Vec<Inventory>) {
+    fn process_get_data(&mut self, from: PeerId, get_data_requests: Vec<Inventory>) {
         // TODO: process tx as many as possible.
         for inv in get_data_requests {
             match inv {
@@ -632,13 +652,9 @@ where
                     // TODO: process one BLOCK item per call, as Bitcore Core does.
                     self.process_get_block_data(&inv);
                 }
-                Inventory::Transaction(txid) => {
-                    tracing::debug!("Recv transaction request: {txid:?} from {from:?}");
-                    if let Some(transaction) = self.transaction_manager.get_transaction(&txid)
-                        && let Err(err) = self.send(from, NetworkMessage::Tx(transaction))
-                    {
-                        tracing::error!(?err, "Failed to send transaction {txid} to {from:?}");
-                    }
+                Inventory::Transaction(_txid) => {
+                    let tx_action = self.tx_relay.on_get_data(vec![inv], from);
+                    self.do_tx_action(tx_action);
                 }
                 Inventory::WTx(_)
                 | Inventory::WitnessTransaction(_)
@@ -697,6 +713,7 @@ where
             SyncAction::DisconnectPeer(peer_id, reason) => {
                 self.peer_manager.disconnect(peer_id, reason);
                 self.chain_sync.disconnect(peer_id);
+                self.tx_relay.on_peer_disconnected(peer_id);
             }
             SyncAction::None => {}
         }
@@ -728,5 +745,117 @@ where
             metrics.messages_sent.with_label_values(&[msg_cmd]).inc();
         }
         Ok(())
+    }
+
+    // --- Transaction relay handlers ---
+
+    /// Handle incoming transaction message from peer.
+    ///
+    /// Validates the transaction using the mempool and broadcasts to other peers
+    /// if accepted. Penalizes the peer if the transaction is invalid.
+    fn handle_tx_message(&mut self, from: PeerId, tx: bitcoin::Transaction) {
+        // Check if peer has relay permission (from version handshake)
+        if !self.peer_manager.peer_wants_tx_relay(from) {
+            tracing::debug!("Peer {from} sent tx but doesn't have relay permission");
+            return;
+        }
+
+        let txid = tx.compute_txid();
+
+        tracing::debug!("Received tx {txid} from peer {from}");
+
+        // Check if we already have this transaction
+        if self.tx_relay.contains(txid) {
+            tracing::trace!("Tx {txid} already in mempool");
+            return;
+        }
+
+        let result = self.tx_relay.validate_transaction(tx);
+
+        // Log the result
+        match &result {
+            TxValidationResult::Accepted { txid, .. } => {
+                tracing::info!("Tx {txid} accepted into mempool");
+            }
+            TxValidationResult::Rejected { txid, reason } => {
+                if reason.should_penalize_peer() {
+                    tracing::warn!("Peer {from} sent invalid transaction {txid}: {reason:?}");
+                } else {
+                    tracing::debug!("Tx {txid} softly rejected: {reason:?}");
+                }
+            }
+        }
+
+        // Handle the result and execute any actions
+        let tx_action = self.tx_relay.on_validated_tx(result, from);
+        self.do_tx_action(tx_action);
+    }
+
+    /// Handle fee filter message from peer (BIP133).
+    ///
+    /// Updates the peer's minimum fee rate preference. We should not relay
+    /// transactions to this peer if their fee rate is below this threshold.
+    fn handle_fee_filter(&mut self, from: PeerId, min_fee_rate: i64) {
+        if min_fee_rate < 0 {
+            tracing::warn!("Peer {from} sent negative fee filter: {min_fee_rate}");
+            return;
+        }
+
+        let min_fee_rate_u64 = min_fee_rate as u64;
+
+        tracing::debug!("Peer {from} set fee filter to {min_fee_rate_u64} sat/kvB");
+
+        self.peer_manager.set_fee_filter(from, min_fee_rate_u64);
+    }
+
+    /// Execute a transaction relay action returned by TxRelay.
+    fn do_tx_action(&mut self, action: TxAction) {
+        match action {
+            TxAction::None => {}
+            TxAction::SendGetData(inv, peer_id) => {
+                if let Err(err) = self.send(peer_id, NetworkMessage::GetData(inv)) {
+                    tracing::error!(?err, "Failed to send GetData to {peer_id}");
+                }
+            }
+            TxAction::AnnounceToPeers(peer_txids) => {
+                let mut total_announced = 0;
+                for (peer_id, txids) in peer_txids {
+                    let inv_items: Vec<_> = txids
+                        .iter()
+                        .map(|&txid| Inventory::Transaction(txid))
+                        .collect();
+                    let inv_msg = NetworkMessage::Inv(inv_items);
+
+                    if let Err(err) = self.send(peer_id, inv_msg) {
+                        tracing::warn!(?err, "Failed to send inv to peer {peer_id}");
+                    } else {
+                        tracing::debug!("Announced {} txs to peer {peer_id}", txids.len());
+                        total_announced += txids.len();
+                        // Mark all as broadcast after successful announcement
+                        self.tx_relay.mark_broadcast(&txids);
+                    }
+                }
+                if total_announced > 0 {
+                    tracing::debug!("Total announced: {total_announced} txs");
+                }
+            }
+            TxAction::ServeTxs(tx_requests) => {
+                for (txid, peer_id) in tx_requests {
+                    if let Some(tx) = self.tx_relay.get_transaction(txid) {
+                        if let Err(err) = self.send(peer_id, NetworkMessage::Tx((*tx).clone())) {
+                            tracing::error!(?err, "Failed to send tx {txid} to {peer_id}");
+                        }
+                    } else {
+                        tracing::warn!("Peer {peer_id} requested tx {txid} but we don't have it");
+                    }
+                }
+            }
+            TxAction::PenalizePeer(peer_id) => {
+                self.peer_manager.record_invalid_tx(peer_id);
+            }
+            TxAction::DisconnectPeer(peer_id, reason) => {
+                self.peer_manager.disconnect(peer_id, reason);
+            }
+        }
     }
 }

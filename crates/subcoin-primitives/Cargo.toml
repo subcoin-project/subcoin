@@ -16,4 +16,5 @@ sp-runtime = { workspace = true }
 # We need to explicitly enable the default-features, otherwise `default-features = false`
 # will be inherited from the workspace config, compiling this crate soly may fail.
 subcoin-runtime-primitives = { workspace = true, default-features = true }
+thiserror = { workspace = true }
 tracing = { workspace = true }

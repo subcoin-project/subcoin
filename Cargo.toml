@@ -25,6 +25,7 @@ members = [
     "crates/subcoin-service",
     "crates/subcoin-snapcake",
     "crates/subcoin-test-service",
+    "crates/subcoin-mempool",
     "crates/subcoin-utxo-snapshot",
 ]
 
@@ -46,6 +47,7 @@ chrono = "0.4.37"
 clap = { version = "4", features = ["derive"] }
 codec = { package = "parity-scale-codec", version = "3.0.0", default-features = false }
 console = "0.15.8"
+criterion = "0.5"
 csv = "1.3.0"
 fastrand = "2.0.2"
 futures = "0.3"
@@ -141,6 +143,7 @@ subcoin-runtime-primitives = { path = "crates/subcoin-runtime-primitives", defau
 subcoin-script = { path = "crates/subcoin-script" }
 subcoin-service = { path = "crates/subcoin-service" }
 subcoin-test-service = { path = "crates/subcoin-test-service" }
+subcoin-mempool = { path = "crates/subcoin-mempool" }
 subcoin-utxo-snapshot = { path = "crates/subcoin-utxo-snapshot" }
 
 [profile.release]

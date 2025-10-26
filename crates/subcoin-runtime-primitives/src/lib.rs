@@ -5,8 +5,10 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use codec::{Decode, Encode, MaxEncodedLen};
+use bitcoin::consensus::Encodable;
+use codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
+use sp_core::H256;
 use sp_runtime::ConsensusEngineId;
 
 /// The `ConsensusEngineId` of Bitcoin block hash.
@@ -45,6 +47,75 @@ impl MaxEncodedLen for Coin {
     }
 }
 
+/// Wrapper type for representing [`bitcoin::Txid`] in runtime, stored in reversed byte order.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    TypeInfo,
+    Encode,
+    Decode,
+    DecodeWithMemTracking,
+    MaxEncodedLen,
+    PartialEq,
+    Eq,
+)]
+pub struct Txid(H256);
+
+impl From<bitcoin::Txid> for Txid {
+    fn from(txid: bitcoin::Txid) -> Self {
+        let mut bytes = Vec::with_capacity(32);
+        txid.consensus_encode(&mut bytes)
+            .expect("txid must be encoded correctly; qed");
+
+        bytes.reverse();
+
+        let bytes: [u8; 32] = bytes
+            .try_into()
+            .expect("Bitcoin txid is sha256 hash which must fit into [u8; 32]; qed");
+
+        Self(H256::from(bytes))
+    }
+}
+
+impl From<Txid> for bitcoin::Txid {
+    fn from(txid: Txid) -> Self {
+        let mut bytes = txid.encode();
+        bytes.reverse();
+        bitcoin::consensus::Decodable::consensus_decode(&mut bytes.as_slice())
+            .expect("Decode must succeed as txid was guaranteed to be encoded correctly; qed")
+    }
+}
+
+/// A reference to a transaction output.
+#[derive(
+    Debug, Clone, Encode, Decode, DecodeWithMemTracking, TypeInfo, PartialEq, Eq, MaxEncodedLen,
+)]
+pub struct OutPoint {
+    /// The transaction ID of the referenced output.
+    pub txid: Txid,
+    /// The index of the output within the referenced transaction.
+    pub vout: u32,
+}
+
+impl From<bitcoin::OutPoint> for OutPoint {
+    fn from(out_point: bitcoin::OutPoint) -> Self {
+        Self {
+            txid: out_point.txid.into(),
+            vout: out_point.vout,
+        }
+    }
+}
+
+impl From<OutPoint> for bitcoin::OutPoint {
+    fn from(val: OutPoint) -> Self {
+        bitcoin::OutPoint {
+            txid: val.txid.into(),
+            vout: val.vout,
+        }
+    }
+}
+
 /// Returns the amount of subsidy in satoshis at given height.
 pub fn bitcoin_block_subsidy(height: u32) -> u64 {
     block_subsidy(height, HALVING_INTERVAL)
@@ -79,5 +150,11 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the number of total coins (i.e., the size of UTXO set).
         fn coins_count() -> u64;
+
+        /// Query UTXOs by outpoints.
+        ///
+        /// Returns a vector of the same length as the input, with `Some(Coin)` for
+        /// UTXOs that exist and `None` for those that don't.
+        fn get_utxos(outpoints: Vec<OutPoint>) -> Vec<Option<Coin>>;
     }
 }

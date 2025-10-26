@@ -254,10 +254,13 @@ impl RunCmd {
                 task_manager.keep_alive(import_queue);
                 Arc::new(subcoin_network::NoNetwork)
             } else {
+                let tx_pool = Arc::new(subcoin_mempool::MemPool::new(client.clone()));
+
                 let network_handle = subcoin_network::build_network(
                     client.clone(),
                     subcoin_network_config,
                     import_queue,
+                    tx_pool,
                     &task_manager,
                     config.prometheus_registry().cloned(),
                     Some(substrate_sync_service.clone()),

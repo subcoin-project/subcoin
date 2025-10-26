@@ -2,6 +2,8 @@
 //!
 //! The main feature of this library is to start and run the node as a CLI application.
 
+#![allow(clippy::result_large_err)]
+
 mod cli;
 mod commands;
 mod rpc;

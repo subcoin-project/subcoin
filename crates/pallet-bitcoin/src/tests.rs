@@ -7,14 +7,18 @@ fn test_runtime_txid_type() {
     let genesis_block = bitcoin::constants::genesis_block(bitcoin::Network::Bitcoin);
     let txid = genesis_block.txdata[0].compute_txid();
 
-    let runtime_txid = crate::Txid::from_bitcoin_txid(txid);
-    assert_eq!(format!("{txid:?}"), format!("{runtime_txid:?}"));
+    let runtime_txid: crate::Txid = txid.into();
 
+    // Verify encoding matches (bitcoin txid is in reverse order)
     let mut d = Vec::new();
     txid.consensus_encode(&mut d)
         .expect("txid must be encoded correctly; qed");
     d.reverse();
     assert_eq!(d, runtime_txid.encode());
+
+    // Verify round-trip conversion
+    let txid_back: bitcoin::Txid = runtime_txid.into();
+    assert_eq!(txid, txid_back);
 }
 
 #[test]

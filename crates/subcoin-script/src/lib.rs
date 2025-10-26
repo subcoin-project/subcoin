@@ -25,6 +25,7 @@ mod interpreter;
 mod num;
 mod opcode;
 mod signature_checker;
+pub mod solver;
 mod stack;
 #[cfg(test)]
 mod tests;

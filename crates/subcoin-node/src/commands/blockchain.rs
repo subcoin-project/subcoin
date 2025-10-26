@@ -179,7 +179,7 @@ fn fetch_utxo_set_at(
                 )
                 .expect("Key type of `Coins` must be correct; qed");
 
-                let txid = txid.into_bitcoin_txid();
+                let txid: bitcoin::Txid = txid.into();
 
                 // output in genesis tx is excluded in the UTXO set.
                 let coin = Coin::decode(&mut value.0.as_slice())

@@ -9,7 +9,7 @@ use bitcoin::p2p::message::NetworkMessage;
 use bitcoin::p2p::message_network::VersionMessage;
 use bitcoin::p2p::{Address, ServiceFlags};
 use chrono::prelude::Local;
-use sc_client_api::HeaderBackend;
+use sc_client_api::{AuxStore, HeaderBackend};
 use sp_runtime::traits::Block as BlockT;
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -240,6 +240,10 @@ pub struct PeerInfo {
     pub has_sent_ping: bool,
     /// Inbound or outbound peer?
     pub direction: Direction,
+    /// Minimum fee rate (in sat/kvB) this peer wants to receive (BIP133).
+    pub fee_filter: Option<u64>,
+    /// Count of invalid transactions received from this peer.
+    pub invalid_tx_count: usize,
 }
 
 impl PeerInfo {
@@ -259,6 +263,8 @@ impl PeerInfo {
             ping_state: PingState::idle(),
             has_sent_ping: false,
             direction,
+            fee_filter: None,
+            invalid_tx_count: 0,
         }
     }
 }
@@ -289,7 +295,7 @@ pub struct PeerManager<Block, Client> {
 impl<Block, Client> PeerManager<Block, Client>
 where
     Block: BlockT,
-    Client: HeaderBackend<Block>,
+    Client: HeaderBackend<Block> + AuxStore,
 {
     /// Constructs a new instance of [`PeerManager`].
     pub(crate) fn new(
@@ -799,5 +805,84 @@ where
         tracing::trace!("Received pong from {peer_id} (Avg. Latency: {avg_latency}ms)");
 
         Ok(avg_latency)
+    }
+
+    // --- Transaction relay helpers ---
+
+    /// Get the fee filter for a peer (BIP133).
+    ///
+    /// Returns the minimum fee rate (in sat/kvB) this peer wants to receive,
+    /// or None if no filter is set.
+    pub fn get_fee_filter(&self, peer: PeerId) -> Option<u64> {
+        self.connected_peers
+            .get(&peer)
+            .and_then(|info| info.fee_filter)
+    }
+
+    /// Update the fee filter for a peer (from BIP133 feefilter message).
+    pub fn set_fee_filter(&mut self, peer: PeerId, min_fee_rate: u64) {
+        if let Some(info) = self.connected_peers.get_mut(&peer) {
+            info.fee_filter = Some(min_fee_rate);
+            tracing::debug!("Peer {peer} set fee filter to {min_fee_rate} sat/kvB");
+        }
+    }
+
+    /// Record an invalid transaction received from a peer.
+    ///
+    /// This increments the peer's invalid transaction counter, which can be
+    /// used to decide whether to disconnect misbehaving peers.
+    pub fn record_invalid_tx(&mut self, peer: PeerId) {
+        if let Some(info) = self.connected_peers.get_mut(&peer) {
+            info.invalid_tx_count += 1;
+            tracing::warn!(
+                "Peer {peer} sent invalid transaction (count: {})",
+                info.invalid_tx_count
+            );
+
+            // TODO: Consider disconnecting peer if count exceeds threshold
+            const MAX_INVALID_TX: usize = 100;
+            if info.invalid_tx_count >= MAX_INVALID_TX {
+                tracing::error!(
+                    "Peer {peer} exceeded maximum invalid transactions ({MAX_INVALID_TX}), should be disconnected"
+                );
+            }
+        }
+    }
+
+    /// Get count of invalid transactions received from a peer.
+    #[allow(dead_code)]
+    pub fn get_invalid_tx_count(&self, peer: &PeerId) -> usize {
+        self.connected_peers
+            .get(peer)
+            .map(|info| info.invalid_tx_count)
+            .unwrap_or(0)
+    }
+
+    /// Get all connected peer IDs.
+    #[allow(dead_code)]
+    pub fn connected_peer_ids(&self) -> impl Iterator<Item = &PeerId> {
+        self.connected_peers.keys()
+    }
+
+    /// Check if a peer wants transaction relay (from version handshake).
+    pub fn peer_wants_tx_relay(&self, peer: PeerId) -> bool {
+        self.connected_peers
+            .get(&peer)
+            .map(|info| info.relay)
+            .unwrap_or(false)
+    }
+}
+
+impl<Block, Client> crate::tx_relay::PeerTxRelayInfo for PeerManager<Block, Client>
+where
+    Block: sp_runtime::traits::Block,
+    Client: sc_client_api::HeaderBackend<Block> + sc_client_api::AuxStore,
+{
+    fn peer_wants_tx_relay(&self, peer: PeerId) -> bool {
+        self.peer_wants_tx_relay(peer)
+    }
+
+    fn get_fee_filter(&self, peer: PeerId) -> Option<u64> {
+        self.get_fee_filter(peer)
     }
 }

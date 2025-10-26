@@ -299,6 +299,7 @@ impl TestNode {
                 memory_config: crate::MemoryConfig::default(),
             },
             import_queue,
+            Arc::new(subcoin_primitives::tx_pool::NoTxPool),
             &self.task_manager,
             None,
             None,

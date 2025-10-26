@@ -85,7 +85,7 @@ where
                 if let Ok((txid, vout)) =
                     <(pallet_bitcoin::types::Txid, u32)>::decode(&mut &key.as_slice()[32..])
                 {
-                    let txid = txid.into_bitcoin_txid();
+                    let txid: bitcoin::Txid = txid.into();
 
                     let coin = Coin::decode(&mut value.as_slice())
                         .expect("Coin in state response must be decoded successfully; qed");

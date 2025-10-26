@@ -1,16 +1,15 @@
-use crate::chain_params::{ChainParams, MEDIAN_TIME_SPAN};
+use crate::chain_params::ChainParams;
+use bitcoin::Target;
 use bitcoin::blockdata::block::{Header as BitcoinHeader, ValidationError};
 use bitcoin::consensus::Params;
-use bitcoin::hashes::Hash;
 use bitcoin::pow::U256;
-use bitcoin::{BlockHash, Target};
 use sc_client_api::AuxStore;
 use sp_blockchain::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use subcoin_primitives::BackendExt;
+use subcoin_primitives::{BackendExt, ClientExt};
 
 // 2 hours
 const MAX_FUTURE_BLOCK_TIME: u32 = 2 * 60 * 60;
@@ -137,7 +136,11 @@ where
 
         // BIP 113
         let lock_time_cutoff = if block_number >= self.chain_params.csv_height {
-            let mtp = self.calculate_median_time_past(header);
+            let block_hash = header.block_hash();
+            let mtp = self
+                .client
+                .calculate_median_time_past(block_hash)
+                .expect("Block must exist; qed") as u32;
             if header.time <= mtp {
                 return Err(Error::TimeTooOld);
             }
@@ -161,40 +164,6 @@ where
         }
 
         header.validate_pow(target).is_ok()
-    }
-
-    /// Calculates the median time of the previous few blocks prior to the header (inclusive).
-    fn calculate_median_time_past(&self, header: &BitcoinHeader) -> u32 {
-        let mut timestamps = Vec::with_capacity(MEDIAN_TIME_SPAN);
-
-        timestamps.push(header.time);
-
-        let zero_hash = BlockHash::all_zeros();
-
-        let mut block_hash = header.prev_blockhash;
-
-        for _ in 0..MEDIAN_TIME_SPAN - 1 {
-            // Genesis block
-            if block_hash == zero_hash {
-                break;
-            }
-
-            let header = self
-                .client
-                .block_header(block_hash)
-                .expect("Parent header must exist; qed");
-
-            timestamps.push(header.time);
-
-            block_hash = header.prev_blockhash;
-        }
-
-        timestamps.sort_unstable();
-
-        timestamps
-            .get(timestamps.len() / 2)
-            .copied()
-            .expect("Timestamps must be non-empty; qed")
     }
 }
 

@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+
 use bitcoin::Block;
 use bitcoin::consensus::Decodable;
 use bitcoin::hex::FromHex;
