@@ -269,6 +269,14 @@ where
         matches!(self.syncing, Syncing::Idle)
     }
 
+    /// Check if a peer is currently the active sync peer.
+    pub(super) fn is_active_sync_peer(&self, peer_id: PeerId) -> bool {
+        self.peers
+            .get(&peer_id)
+            .map(|peer| matches!(peer.state, PeerSyncState::DownloadingNew { .. }))
+            .unwrap_or(false)
+    }
+
     pub(super) fn on_tick(&mut self) -> SyncAction {
         match &mut self.syncing {
             Syncing::Idle => SyncAction::None,
@@ -349,6 +357,15 @@ where
                 metrics
                     .sync_target_height
                     .set(strategy.target_block_number().into());
+
+                // Update prefetch metrics
+                let prefetch_stats = strategy.take_prefetch_stats();
+                if prefetch_stats.hits > 0 {
+                    metrics.header_prefetch_hits.inc_by(prefetch_stats.hits);
+                }
+                if prefetch_stats.misses > 0 {
+                    metrics.header_prefetch_misses.inc_by(prefetch_stats.misses);
+                }
             }
         }
     }

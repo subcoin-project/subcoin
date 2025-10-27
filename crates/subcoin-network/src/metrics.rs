@@ -40,6 +40,10 @@ pub struct Metrics {
     // Sync progress metrics
     pub(crate) sync_target_height: Gauge<U64>,
     pub(crate) blocks_imported_total: IntCounter,
+
+    // Header prefetch metrics
+    pub(crate) header_prefetch_hits: IntCounter,
+    pub(crate) header_prefetch_misses: IntCounter,
 }
 
 impl Metrics {
@@ -118,6 +122,22 @@ impl Metrics {
                 IntCounter::new(
                     "subcoin_blocks_imported_total",
                     "Total blocks imported since start",
+                )?,
+                registry,
+            )?,
+
+            // Header prefetch metrics
+            header_prefetch_hits: register(
+                IntCounter::new(
+                    "subcoin_header_prefetch_hits_total",
+                    "Number of times block download started immediately because headers were prefetched",
+                )?,
+                registry,
+            )?,
+            header_prefetch_misses: register(
+                IntCounter::new(
+                    "subcoin_header_prefetch_misses_total",
+                    "Number of times block download had to wait for headers",
                 )?,
                 registry,
             )?,
