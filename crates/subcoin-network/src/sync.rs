@@ -268,6 +268,14 @@ where
         matches!(self.syncing, Syncing::Idle)
     }
 
+    /// Check if a peer is currently the active sync peer.
+    pub(super) fn is_active_sync_peer(&self, peer_id: PeerId) -> bool {
+        self.peers
+            .get(&peer_id)
+            .map(|peer| matches!(peer.state, PeerSyncState::DownloadingNew { .. }))
+            .unwrap_or(false)
+    }
+
     pub(super) fn on_tick(&mut self) -> SyncAction {
         match &mut self.syncing {
             Syncing::Idle => SyncAction::None,
@@ -812,6 +820,7 @@ where
             Syncing::BlocksFirst(strategy) => strategy.block_downloader(),
             Syncing::HeadersFirst(strategy) => strategy.block_downloader(),
         };
+
         block_downloader.handle_processed_blocks(results);
     }
 

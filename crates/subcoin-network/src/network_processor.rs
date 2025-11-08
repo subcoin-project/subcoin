@@ -453,12 +453,19 @@ where
         match self.peer_manager.on_pong(from, nonce) {
             Ok(avg_latency) => {
                 // DisconnectPeer the peer directly if the latency is higher than the threshold.
+                // However, don't disconnect the active sync peer to avoid wasting work in progress.
                 if avg_latency > PEER_LATENCY_THRESHOLD {
-                    self.peer_manager
-                        .disconnect(from, Error::PingLatencyTooHigh(avg_latency));
-                    self.chain_sync.disconnect(from);
-                    self.tx_relay.on_peer_disconnected(from);
-                    self.peer_store.remove_peer(from);
+                    if self.chain_sync.is_active_sync_peer(from) {
+                        tracing::warn!(
+                            "Sync peer {from:?} has high latency ({avg_latency}ms) but keeping it to avoid wasting sync progress"
+                        );
+                    } else {
+                        self.peer_manager
+                            .disconnect(from, Error::PingLatencyTooHigh(avg_latency));
+                        self.chain_sync.disconnect(from);
+                        self.tx_relay.on_peer_disconnected(from);
+                        self.peer_store.remove_peer(from);
+                    }
                 } else {
                     self.peer_store.try_add_peer(from, avg_latency);
 
@@ -772,7 +779,6 @@ where
 
         let result = self.tx_relay.validate_transaction(tx);
 
-        // Log the result
         match &result {
             TxValidationResult::Accepted { txid, .. } => {
                 tracing::info!("Tx {txid} accepted into mempool");
@@ -786,7 +792,6 @@ where
             }
         }
 
-        // Handle the result and execute any actions
         let tx_action = self.tx_relay.on_validated_tx(result, from);
         self.do_tx_action(tx_action);
     }
