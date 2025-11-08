@@ -335,41 +335,6 @@ where
         }
     }
 
-    /// Update Prometheus metrics for the current sync strategy.
-    pub(super) fn update_metrics(&mut self, metrics: &Metrics) {
-        let best_number = self.client.best_number();
-        match &mut self.syncing {
-            Syncing::Idle => {}
-            Syncing::BlocksFirst(strategy) => {
-                strategy.block_downloader().sample_queue_metrics();
-                strategy
-                    .block_downloader()
-                    .update_metrics(metrics, best_number);
-                metrics
-                    .sync_target_height
-                    .set(strategy.target_block_number().into());
-            }
-            Syncing::HeadersFirst(strategy) => {
-                strategy.block_downloader().sample_queue_metrics();
-                strategy
-                    .block_downloader()
-                    .update_metrics(metrics, best_number);
-                metrics
-                    .sync_target_height
-                    .set(strategy.target_block_number().into());
-
-                // Update prefetch metrics
-                let prefetch_stats = strategy.take_prefetch_stats();
-                if prefetch_stats.hits > 0 {
-                    metrics.header_prefetch_hits.inc_by(prefetch_stats.hits);
-                }
-                if prefetch_stats.misses > 0 {
-                    metrics.header_prefetch_misses.inc_by(prefetch_stats.misses);
-                }
-            }
-        }
-    }
-
     /// Attempt to find the best available peer using a composite scoring algorithm
     /// that considers both latency and reliability.
     fn select_next_peer_for_sync(
@@ -850,26 +815,14 @@ where
         }
     }
 
-    pub(super) fn on_blocks_processed(
-        &mut self,
-        results: ImportManyBlocksResult,
-        metrics: Option<&Metrics>,
-    ) {
+    pub(super) fn on_blocks_processed(&mut self, results: ImportManyBlocksResult) {
         let block_downloader = match &mut self.syncing {
             Syncing::Idle => return,
             Syncing::BlocksFirst(strategy) => strategy.block_downloader(),
             Syncing::HeadersFirst(strategy) => strategy.block_downloader(),
         };
 
-        // Count successfully imported blocks
-        let imported_count = results.imported as u64;
-
         block_downloader.handle_processed_blocks(results);
-
-        // Increment blocks imported counter
-        if let Some(metrics) = metrics {
-            metrics.blocks_imported_total.inc_by(imported_count);
-        }
     }
 
     pub(super) fn import_pending_blocks(&mut self) {

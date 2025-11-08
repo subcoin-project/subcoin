@@ -200,10 +200,6 @@ where
         &mut self.block_downloader
     }
 
-    pub(crate) fn target_block_number(&self) -> u32 {
-        self.target_block_number
-    }
-
     pub(crate) fn on_tick(&mut self) -> SyncAction {
         if matches!(self.state, State::Restarting) {
             return self.inventory_request_action();

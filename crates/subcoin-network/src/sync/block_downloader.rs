@@ -1,5 +1,4 @@
 use super::orphan_blocks_pool::OrphanBlocksPool;
-use crate::metrics::Metrics;
 use crate::peer_store::PeerStore;
 use crate::sync::SyncAction;
 use crate::{MemoryConfig, PeerId};
@@ -119,17 +118,6 @@ impl ImportQueueStatus {
     }
 }
 
-/// Lightweight queue metrics for Prometheus reporting.
-#[derive(Default, Debug, Clone)]
-pub(crate) struct QueueMetrics {
-    /// Number of times queue was sampled as saturated.
-    pub(crate) saturated_samples: u32,
-    /// Number of times queue was sampled as ready.
-    pub(crate) ready_samples: u32,
-    /// Last time metrics were sampled.
-    last_sample_time: Option<Instant>,
-}
-
 /// Responsible for downloading blocks from a specific peer.
 ///
 /// This struct keeps track of:
@@ -181,8 +169,6 @@ pub(crate) struct BlockDownloader {
     pub(super) memory_config: MemoryConfig,
     /// Current memory usage for downloaded blocks in bytes.
     pub(super) downloaded_blocks_memory: usize,
-    /// Queue metrics for Prometheus reporting.
-    pub(super) queue_metrics: QueueMetrics,
 }
 
 impl BlockDownloader {
@@ -208,7 +194,6 @@ impl BlockDownloader {
             downloaded_blocks_count: 0,
             memory_config,
             downloaded_blocks_memory: 0,
-            queue_metrics: QueueMetrics::default(),
         }
     }
 
@@ -338,52 +323,6 @@ impl BlockDownloader {
         }
 
         self.queue_status
-    }
-
-    /// Sample queue metrics for Prometheus reporting.
-    ///
-    /// Call this once per tick (~5s) to update saturation ratio.
-    /// Reuses the queue_status already computed by evaluate_queue_status().
-    pub(crate) fn sample_queue_metrics(&mut self) {
-        let now = Instant::now();
-
-        // Only sample once per second to avoid overhead
-        if let Some(last_sample) = self.queue_metrics.last_sample_time {
-            if now.duration_since(last_sample) < Duration::from_secs(1) {
-                return;
-            }
-        }
-
-        match self.queue_status {
-            ImportQueueStatus::Saturated => {
-                self.queue_metrics.saturated_samples += 1;
-            }
-            ImportQueueStatus::Ready => {
-                self.queue_metrics.ready_samples += 1;
-            }
-        }
-
-        self.queue_metrics.last_sample_time = Some(now);
-    }
-
-    /// Update Prometheus metrics (call once per tick, ~5s).
-    pub(crate) fn update_metrics(&self, metrics: &Metrics, best_number: u32) {
-        // Queue saturation ratio (as percentage 0-100)
-        let total_samples = self.queue_metrics.saturated_samples + self.queue_metrics.ready_samples;
-        if total_samples > 0 {
-            let saturation_percentage =
-                (self.queue_metrics.saturated_samples as u64 * 100) / total_samples as u64;
-            metrics.queue_saturation_ratio.set(saturation_percentage);
-        }
-
-        // Queue block count
-        let queued_blocks = self.best_queued_number.saturating_sub(best_number);
-        metrics.queue_block_count.set(queued_blocks.into());
-
-        // Queue memory usage
-        metrics
-            .queue_memory_bytes
-            .set(self.downloaded_blocks_memory as u64);
     }
 
     /// Prepares the next block data request, ensuring the request size aligns with the current

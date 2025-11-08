@@ -179,7 +179,7 @@ where
         loop {
             tokio::select! {
                 results = self.chain_sync.wait_for_block_import_results() => {
-                    self.chain_sync.on_blocks_processed(results, self.metrics.as_ref());
+                    self.chain_sync.on_blocks_processed(results);
                 }
                 maybe_event = self.network_event_receiver.recv() => {
                     let Some(event) = maybe_event else {
@@ -253,11 +253,6 @@ where
     fn execute_periodic_tasks(&mut self) {
         let sync_action = self.chain_sync.on_tick();
         self.do_sync_action(sync_action);
-
-        // Update sync metrics if available
-        if let Some(ref metrics) = self.metrics {
-            self.chain_sync.update_metrics(metrics);
-        }
 
         for peer in self.chain_sync.unreliable_peers() {
             self.peer_manager.disconnect(peer, Error::UnreliablePeer);
