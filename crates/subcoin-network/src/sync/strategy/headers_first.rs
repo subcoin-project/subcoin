@@ -376,14 +376,6 @@ where
         &mut self.block_downloader
     }
 
-    pub(crate) fn target_block_number(&self) -> u32 {
-        self.target_block_number
-    }
-
-    pub(crate) fn take_prefetch_stats(&mut self) -> PrefetchStats {
-        std::mem::take(&mut self.prefetch_stats)
-    }
-
     pub(crate) fn on_tick(&mut self) -> SyncAction {
         if matches!(self.state, State::RestartingHeaders) {
             return self.header_request_action();

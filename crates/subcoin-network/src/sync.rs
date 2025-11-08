@@ -3,7 +3,6 @@ mod orphan_blocks_pool;
 mod strategy;
 
 use self::strategy::{BlocksFirstStrategy, HeadersFirstStrategy};
-use crate::metrics::Metrics;
 use crate::peer_manager::NewPeer;
 use crate::peer_store::PeerStore;
 use crate::{Error, Latency, MemoryConfig, PeerId, SyncStatus, SyncStrategy};
