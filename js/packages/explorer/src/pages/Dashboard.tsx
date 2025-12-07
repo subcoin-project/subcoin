@@ -244,6 +244,14 @@ export function Dashboard() {
             )}
           </table>
         </div>
+        <div className="px-4 py-3 border-t border-gray-800">
+          <Link
+            to="/blocks"
+            className="text-bitcoin-orange hover:underline text-sm"
+          >
+            View all blocks &rarr;
+          </Link>
+        </div>
       </div>
     </div>
   );

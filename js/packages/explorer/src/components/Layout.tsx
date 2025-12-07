@@ -41,6 +41,16 @@ export function Layout({ children }: LayoutProps) {
                 >
                   Dashboard
                 </Link>
+                <Link
+                  to="/blocks"
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    isActive("/blocks")
+                      ? "bg-bitcoin-orange text-white"
+                      : "text-gray-300 hover:bg-gray-800"
+                  }`}
+                >
+                  Blocks
+                </Link>
               </nav>
             </div>
 
@@ -90,6 +100,17 @@ export function Layout({ children }: LayoutProps) {
                   }`}
                 >
                   Dashboard
+                </Link>
+                <Link
+                  to="/blocks"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    isActive("/blocks")
+                      ? "bg-bitcoin-orange text-white"
+                      : "text-gray-300 hover:bg-gray-800"
+                  }`}
+                >
+                  Blocks
                 </Link>
               </nav>
               <div className="mb-4">
