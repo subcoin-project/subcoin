@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { blockchainApi } from "@subcoin/shared";
+import { blockchainApi, systemApi } from "@subcoin/shared";
 import type { Block, Transaction } from "@subcoin/shared";
+import { BlockDetailSkeleton } from "../components/Skeleton";
+import { CopyButton } from "../components/CopyButton";
 
 export function BlockDetail() {
   const { hashOrHeight } = useParams<{ hashOrHeight: string }>();
   const [block, setBlock] = useState<Block | null>(null);
   const [blockHash, setBlockHash] = useState<string>("");
   const [blockHeight, setBlockHeight] = useState<number | null>(null);
+  const [currentHeight, setCurrentHeight] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,6 +24,10 @@ export function BlockDetail() {
 
         // Determine if it's a height or hash
         const isHeight = /^\d+$/.test(hashOrHeight);
+
+        // Fetch current height for confirmations
+        const syncState = await systemApi.syncState();
+        setCurrentHeight(syncState.currentBlock);
 
         if (isHeight) {
           const height = parseInt(hashOrHeight, 10);
@@ -47,11 +54,7 @@ export function BlockDetail() {
   }, [hashOrHeight]);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-400">Loading block...</div>
-      </div>
-    );
+    return <BlockDetailSkeleton />;
   }
 
   if (error || !block) {
@@ -63,14 +66,31 @@ export function BlockDetail() {
     );
   }
 
+  const confirmations = blockHeight !== null && currentHeight !== null
+    ? currentHeight - blockHeight + 1
+    : null;
+
   return (
     <div className="space-y-6">
       {/* Block Header */}
       <div className="bg-bitcoin-dark rounded-lg border border-gray-800 p-4">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-xl font-bold text-gray-100">
-            Block #{blockHeight?.toLocaleString()}
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-bold text-gray-100">
+              Block #{blockHeight?.toLocaleString()}
+            </h1>
+            {confirmations !== null && (
+              <span className={`text-xs px-2 py-1 rounded ${
+                confirmations >= 6
+                  ? "bg-green-900/30 text-green-400"
+                  : confirmations >= 1
+                  ? "bg-yellow-900/30 text-yellow-400"
+                  : "bg-gray-700 text-gray-400"
+              }`}>
+                {confirmations.toLocaleString()} confirmation{confirmations !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
           <div className="flex space-x-2">
             {blockHeight !== null && blockHeight > 0 && (
               <Link
@@ -90,7 +110,7 @@ export function BlockDetail() {
         </div>
 
         <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <InfoRow label="Hash" value={blockHash} mono />
+          <InfoRow label="Hash" value={blockHash} mono copyable />
           <InfoRow
             label="Timestamp"
             value={new Date(block.header.time * 1000).toLocaleString()}
@@ -99,8 +119,8 @@ export function BlockDetail() {
           <InfoRow label="Nonce" value={block.header.nonce.toLocaleString()} />
           <InfoRow label="Bits" value={`0x${block.header.bits.toString(16)}`} />
           <InfoRow label="Transactions" value={block.txdata.length.toString()} />
-          <InfoRow label="Merkle Root" value={block.header.merkle_root} mono fullWidth />
-          <InfoRow label="Previous Block" value={block.header.prev_blockhash} mono fullWidth link={`/block/${block.header.prev_blockhash}`} />
+          <InfoRow label="Merkle Root" value={block.header.merkle_root} mono fullWidth copyable />
+          <InfoRow label="Previous Block" value={block.header.prev_blockhash} mono fullWidth link={`/block/${block.header.prev_blockhash}`} copyable />
         </dl>
       </div>
 
@@ -127,12 +147,14 @@ function InfoRow({
   mono,
   fullWidth,
   link,
+  copyable,
 }: {
   label: string;
   value: string;
   mono?: boolean;
   fullWidth?: boolean;
   link?: string;
+  copyable?: boolean;
 }) {
   const content = link ? (
     <Link to={link} className="text-bitcoin-orange hover:underline">
@@ -146,9 +168,10 @@ function InfoRow({
     <div className={fullWidth ? "md:col-span-2" : ""}>
       <dt className="text-gray-400 text-sm">{label}</dt>
       <dd
-        className={`text-gray-100 mt-1 break-all ${mono ? "font-mono text-sm" : ""}`}
+        className={`text-gray-100 mt-1 break-all flex items-start gap-1 ${mono ? "font-mono text-sm" : ""}`}
       >
-        {content}
+        <span className="flex-1">{content}</span>
+        {copyable && <CopyButton text={value} />}
       </dd>
     </div>
   );

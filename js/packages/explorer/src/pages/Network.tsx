@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { networkApi, systemApi } from "@subcoin/shared";
 import type { NetworkStatus, SyncPeers, PeerSync } from "@subcoin/shared";
+import { NetworkPageSkeleton } from "../components/Skeleton";
 
 export function NetworkPage() {
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus | null>(null);
@@ -48,11 +49,7 @@ export function NetworkPage() {
   };
 
   if (loading && !networkStatus) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-400">Loading network status...</div>
-      </div>
-    );
+    return <NetworkPageSkeleton />;
   }
 
   if (error) {

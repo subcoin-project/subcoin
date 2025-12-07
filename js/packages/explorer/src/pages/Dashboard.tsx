@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { blockchainApi, networkApi, systemApi } from "@subcoin/shared";
 import type { NetworkStatus } from "@subcoin/shared";
 import { useNewBlockSubscription, useConnection } from "../contexts/ConnectionContext";
+import { StatCardSkeleton, BlockTableSkeleton } from "../components/Skeleton";
 
 interface BlockInfo {
   height: number;
@@ -94,13 +95,7 @@ export function Dashboard() {
     return `${hash.slice(0, 8)}...${hash.slice(-8)}`;
   };
 
-  if (loading && latestBlocks.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-400">Loading...</div>
-      </div>
-    );
-  }
+  const isInitialLoading = loading && latestBlocks.length === 0;
 
   if (error) {
     return (
@@ -122,23 +117,34 @@ export function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard
-          title="Block Height"
-          value={syncState?.current?.toLocaleString() ?? "-"}
-        />
-        <StatCard
-          title="Connected Peers"
-          value={networkStatus?.numConnectedPeers?.toString() ?? "-"}
-        />
-        <StatCard
-          title="Sync Target"
-          value={syncState?.highest?.toLocaleString() ?? "Synced"}
-        />
-        <StatCard
-          title="Network"
-          value={getSyncStatusText(networkStatus?.syncStatus)}
-        />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        {isInitialLoading ? (
+          <>
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+          </>
+        ) : (
+          <>
+            <StatCard
+              title="Block Height"
+              value={syncState?.current?.toLocaleString() ?? "-"}
+            />
+            <StatCard
+              title="Connected Peers"
+              value={networkStatus?.numConnectedPeers?.toString() ?? "-"}
+            />
+            <StatCard
+              title="Sync Target"
+              value={syncState?.highest?.toLocaleString() ?? "Synced"}
+            />
+            <StatCard
+              title="Network"
+              value={getSyncStatusText(networkStatus?.syncStatus)}
+            />
+          </>
+        )}
       </div>
 
       {/* Latest Blocks */}
@@ -163,48 +169,53 @@ export function Dashboard() {
           <table className="w-full">
             <thead className="bg-gray-800/50">
               <tr>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase">
+                <th className="px-2 md:px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase">
                   Height
                 </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase">
+                <th className="px-2 md:px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase hidden sm:table-cell">
                   Hash
                 </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase">
+                <th className="px-2 md:px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase hidden md:table-cell">
                   Timestamp
                 </th>
-                <th className="px-4 py-2 text-right text-xs font-medium text-gray-400 uppercase">
-                  Transactions
+                <th className="px-2 md:px-4 py-2 text-right text-xs font-medium text-gray-400 uppercase">
+                  <span className="hidden sm:inline">Transactions</span>
+                  <span className="sm:hidden">Txs</span>
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
-              {latestBlocks.map((block) => (
-                <tr key={block.height} className="hover:bg-gray-800/30">
-                  <td className="px-4 py-3">
-                    <Link
-                      to={`/block/${block.height}`}
-                      className="text-bitcoin-orange hover:underline font-mono"
-                    >
-                      {block.height.toLocaleString()}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Link
-                      to={`/block/${block.hash}`}
-                      className="text-gray-300 hover:text-bitcoin-orange font-mono text-sm"
-                    >
-                      {formatHash(block.hash)}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 text-gray-400 text-sm">
-                    {formatTimestamp(block.timestamp)}
-                  </td>
-                  <td className="px-4 py-3 text-right text-gray-300">
-                    {block.txCount}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+            {isInitialLoading ? (
+              <BlockTableSkeleton rows={10} />
+            ) : (
+              <tbody className="divide-y divide-gray-800">
+                {latestBlocks.map((block) => (
+                  <tr key={block.height} className="hover:bg-gray-800/30">
+                    <td className="px-2 md:px-4 py-3">
+                      <Link
+                        to={`/block/${block.height}`}
+                        className="text-bitcoin-orange hover:underline font-mono text-sm"
+                      >
+                        {block.height.toLocaleString()}
+                      </Link>
+                    </td>
+                    <td className="px-2 md:px-4 py-3 hidden sm:table-cell">
+                      <Link
+                        to={`/block/${block.hash}`}
+                        className="text-gray-300 hover:text-bitcoin-orange font-mono text-sm"
+                      >
+                        {formatHash(block.hash)}
+                      </Link>
+                    </td>
+                    <td className="px-2 md:px-4 py-3 text-gray-400 text-sm hidden md:table-cell">
+                      {formatTimestamp(block.timestamp)}
+                    </td>
+                    <td className="px-2 md:px-4 py-3 text-right text-gray-300">
+                      {block.txCount}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            )}
           </table>
         </div>
       </div>
@@ -214,9 +225,9 @@ export function Dashboard() {
 
 function StatCard({ title, value }: { title: string; value: string }) {
   return (
-    <div className="bg-bitcoin-dark rounded-lg border border-gray-800 p-4">
-      <p className="text-gray-400 text-sm">{title}</p>
-      <p className="text-2xl font-bold text-gray-100 mt-1">{value}</p>
+    <div className="bg-bitcoin-dark rounded-lg border border-gray-800 p-3 md:p-4">
+      <p className="text-gray-400 text-xs md:text-sm truncate">{title}</p>
+      <p className="text-lg md:text-2xl font-bold text-gray-100 mt-1 truncate">{value}</p>
     </div>
   );
 }

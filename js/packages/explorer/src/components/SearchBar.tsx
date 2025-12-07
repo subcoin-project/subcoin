@@ -71,8 +71,8 @@ export function SearchBar() {
             setQuery(e.target.value);
             setError(null);
           }}
-          placeholder="Search by block height, hash, or txid..."
-          className="w-64 lg:w-96 px-4 py-2 bg-gray-800 border border-gray-700 rounded-l-md text-gray-200 text-sm placeholder-gray-500 focus:outline-none focus:border-bitcoin-orange"
+          placeholder="Search block, hash, or txid..."
+          className="w-full sm:w-64 lg:w-96 px-3 py-2 bg-gray-800 border border-gray-700 rounded-l-md text-gray-200 text-sm placeholder-gray-500 focus:outline-none focus:border-bitcoin-orange"
           disabled={searching}
         />
         <button

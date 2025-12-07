@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { blockchainApi } from "@subcoin/shared";
 import type { Transaction } from "@subcoin/shared";
+import { TransactionDetailSkeleton } from "../components/Skeleton";
+import { CopyButton } from "../components/CopyButton";
 
 export function TransactionDetail() {
   const { txid } = useParams<{ txid: string }>();
@@ -30,11 +32,7 @@ export function TransactionDetail() {
   }, [txid]);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-400">Loading transaction...</div>
-      </div>
-    );
+    return <TransactionDetailSkeleton />;
   }
 
   if (error || !transaction) {
@@ -69,8 +67,9 @@ export function TransactionDetail() {
         <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="md:col-span-2">
             <dt className="text-gray-400 text-sm">Transaction ID</dt>
-            <dd className="text-gray-100 font-mono text-sm break-all mt-1">
-              {txid}
+            <dd className="text-gray-100 font-mono text-sm break-all mt-1 flex items-start gap-1">
+              <span className="flex-1">{txid}</span>
+              <CopyButton text={txid || ""} />
             </dd>
           </div>
           <div>
