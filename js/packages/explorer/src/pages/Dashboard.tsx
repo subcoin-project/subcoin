@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { blockchainApi, networkApi, systemApi } from "@subcoin/shared";
-import type { Block, NetworkStatus } from "@subcoin/shared";
+import type { NetworkStatus } from "@subcoin/shared";
+import { useNewBlockSubscription, useConnection } from "../contexts/ConnectionContext";
 
 interface BlockInfo {
   height: number;
@@ -16,54 +17,73 @@ export function Dashboard() {
   const [syncState, setSyncState] = useState<{ current: number; highest?: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const { isConnected } = useConnection();
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        setLoading(true);
-        setError(null);
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        // Fetch network status
-        const status = await networkApi.getStatus();
-        setNetworkStatus(status);
+      // Fetch network status
+      const status = await networkApi.getStatus();
+      setNetworkStatus(status);
 
-        // Fetch sync state
-        const sync = await systemApi.syncState();
-        setSyncState({ current: sync.currentBlock, highest: sync.highestBlock });
+      // Fetch sync state
+      const sync = await systemApi.syncState();
+      setSyncState({ current: sync.currentBlock, highest: sync.highestBlock });
 
-        // Fetch latest blocks
-        const blocks: BlockInfo[] = [];
-        const currentHeight = sync.currentBlock;
+      // Fetch latest blocks
+      const blocks: BlockInfo[] = [];
+      const currentHeight = sync.currentBlock;
 
-        // Fetch last 10 blocks
-        for (let i = 0; i < 10 && currentHeight - i >= 0; i++) {
-          const height = currentHeight - i;
-          const block = await blockchainApi.getBlockByNumber(height);
-          if (block) {
-            const hash = await blockchainApi.getBlockHash(height);
-            blocks.push({
-              height,
-              hash: hash || "",
-              timestamp: block.header.time,
-              txCount: block.txdata.length,
-            });
-          }
+      // Fetch last 10 blocks
+      for (let i = 0; i < 10 && currentHeight - i >= 0; i++) {
+        const height = currentHeight - i;
+        const block = await blockchainApi.getBlockByNumber(height);
+        if (block) {
+          const hash = await blockchainApi.getBlockHash(height);
+          blocks.push({
+            height,
+            hash: hash || "",
+            timestamp: block.header.time,
+            txCount: block.txdata.length,
+          });
         }
-
-        setLatestBlocks(blocks);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to fetch data");
-      } finally {
-        setLoading(false);
       }
+
+      setLatestBlocks(blocks);
+      setLastUpdate(new Date());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch data");
+    } finally {
+      setLoading(false);
     }
-
-    fetchData();
-
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
   }, []);
+
+  // Initial fetch
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Subscribe to new blocks via WebSocket
+  useNewBlockSubscription(
+    useCallback(
+      (blockNumber: number) => {
+        // Refresh data when a new block arrives
+        fetchData();
+      },
+      [fetchData]
+    )
+  );
+
+  // Fallback: poll every 60 seconds if WebSocket is not connected
+  useEffect(() => {
+    if (!isConnected) {
+      const interval = setInterval(fetchData, 60000);
+      return () => clearInterval(interval);
+    }
+  }, [isConnected, fetchData]);
 
   const formatTimestamp = (timestamp: number) => {
     return new Date(timestamp * 1000).toLocaleString();
@@ -94,6 +114,11 @@ export function Dashboard() {
     );
   }
 
+  const formatLastUpdate = () => {
+    if (!lastUpdate) return "";
+    return lastUpdate.toLocaleTimeString();
+  };
+
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
@@ -118,8 +143,21 @@ export function Dashboard() {
 
       {/* Latest Blocks */}
       <div className="bg-bitcoin-dark rounded-lg border border-gray-800">
-        <div className="px-4 py-3 border-b border-gray-800">
+        <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
           <h2 className="text-lg font-medium text-gray-100">Latest Blocks</h2>
+          <div className="flex items-center space-x-2">
+            {isConnected && (
+              <span className="text-xs text-green-500 flex items-center">
+                <span className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1 animate-pulse" />
+                Live
+              </span>
+            )}
+            {lastUpdate && (
+              <span className="text-xs text-gray-500">
+                Updated {formatLastUpdate()}
+              </span>
+            )}
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">

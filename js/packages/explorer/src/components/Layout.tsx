@@ -1,5 +1,7 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { ConnectionStatus } from "./ConnectionStatus";
+import { SearchBar } from "./SearchBar";
 
 interface LayoutProps {
   children: ReactNode;
@@ -48,8 +50,12 @@ export function Layout({ children }: LayoutProps) {
               </nav>
             </div>
 
-            <div className="text-gray-500 text-sm">
-              Node: localhost:9944
+            <div className="flex items-center space-x-4">
+              <SearchBar />
+              <span className="text-gray-600">|</span>
+              <ConnectionStatus />
+              <span className="text-gray-600">|</span>
+              <span className="text-gray-500 text-sm">localhost:9944</span>
             </div>
           </div>
         </div>
