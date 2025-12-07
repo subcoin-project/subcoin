@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { blockchainApi, systemApi } from "@subcoin/shared";
-import type { Block, Transaction } from "@subcoin/shared";
+import type { BlockWithTxids, Transaction } from "@subcoin/shared";
 import { BlockDetailSkeleton } from "../components/Skeleton";
 import { CopyButton } from "../components/CopyButton";
 
 export function BlockDetail() {
   const { hashOrHeight } = useParams<{ hashOrHeight: string }>();
-  const [block, setBlock] = useState<Block | null>(null);
+  const [block, setBlock] = useState<BlockWithTxids | null>(null);
   const [blockHash, setBlockHash] = useState<string>("");
   const [blockHeight, setBlockHeight] = useState<number | null>(null);
   const [currentHeight, setCurrentHeight] = useState<number | null>(null);
@@ -31,13 +31,13 @@ export function BlockDetail() {
 
         if (isHeight) {
           const height = parseInt(hashOrHeight, 10);
-          const fetchedBlock = await blockchainApi.getBlockByNumber(height);
+          const fetchedBlock = await blockchainApi.getBlockWithTxidsByNumber(height);
           const hash = await blockchainApi.getBlockHash(height);
           setBlock(fetchedBlock);
           setBlockHash(hash || "");
           setBlockHeight(height);
         } else {
-          const fetchedBlock = await blockchainApi.getBlock(hashOrHeight);
+          const fetchedBlock = await blockchainApi.getBlockWithTxids(hashOrHeight);
           const height = await blockchainApi.getBlockNumber(hashOrHeight);
           setBlock(fetchedBlock);
           setBlockHash(hashOrHeight);
@@ -133,7 +133,7 @@ export function BlockDetail() {
         </div>
         <div className="divide-y divide-gray-800">
           {block.txdata.map((tx, index) => (
-            <TransactionRow key={index} tx={tx} index={index} />
+            <TransactionRow key={block.txids[index]} tx={tx} txid={block.txids[index]} index={index} />
           ))}
         </div>
       </div>
@@ -177,29 +177,36 @@ function InfoRow({
   );
 }
 
-function TransactionRow({ tx, index }: { tx: Transaction; index: number }) {
+function TransactionRow({ tx, txid, index }: { tx: Transaction; txid: string; index: number }) {
   const [expanded, setExpanded] = useState(false);
 
-  // Calculate txid (simplified - in reality would need proper hash)
   const isCoinbase = tx.input.length === 1 && tx.input[0].previous_output.txid === "0000000000000000000000000000000000000000000000000000000000000000";
 
   const totalOutput = tx.output.reduce((sum, out) => sum + out.value, 0);
 
   return (
     <div className="px-4 py-3">
-      <div
-        className="flex items-center justify-between cursor-pointer"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="flex items-center space-x-3">
-          <span className="text-gray-500 text-sm">#{index}</span>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="flex items-center space-x-3 min-w-0">
+          <span className="text-gray-500 text-sm flex-shrink-0">#{index}</span>
           {isCoinbase && (
-            <span className="bg-bitcoin-orange/20 text-bitcoin-orange text-xs px-2 py-0.5 rounded">
+            <span className="bg-bitcoin-orange/20 text-bitcoin-orange text-xs px-2 py-0.5 rounded flex-shrink-0">
               Coinbase
             </span>
           )}
+          <Link
+            to={`/tx/${txid}`}
+            className="font-mono text-sm text-bitcoin-orange hover:underline truncate"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {txid.slice(0, 16)}...{txid.slice(-8)}
+          </Link>
+          <CopyButton text={txid} />
         </div>
-        <div className="flex items-center space-x-4">
+        <div
+          className="flex items-center space-x-4 cursor-pointer flex-shrink-0"
+          onClick={() => setExpanded(!expanded)}
+        >
           <span className="text-gray-300 text-sm">
             {tx.input.length} input{tx.input.length !== 1 ? "s" : ""} →{" "}
             {tx.output.length} output{tx.output.length !== 1 ? "s" : ""}

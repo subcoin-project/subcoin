@@ -39,11 +39,12 @@ export interface SyncPeers {
 
 /**
  * Current sync status of the node
+ * Note: The RPC returns lowercase keys like { idle: null } or { downloading: { target, peers } }
  */
 export type SyncStatus =
-  | { type: "Idle" }
-  | { type: "Downloading"; target: number; peers: string[] }
-  | { type: "Importing"; target: number; peers: string[] };
+  | { idle: null }
+  | { downloading: { target: number; peers: string[] } }
+  | { importing: { target: number; peers: string[] } };
 
 /**
  * Overall network status

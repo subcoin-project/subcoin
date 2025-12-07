@@ -2,7 +2,7 @@
  * Blockchain API - wraps blockchain_* RPC methods
  */
 
-import type { Block, BlockHash, BlockHeader, Transaction, Txid } from "../types/block";
+import type { Block, BlockHash, BlockHeader, BlockWithTxids, Transaction, Txid } from "../types/block";
 import { getDefaultClient, SubcoinRpcClient } from "./client";
 
 export class BlockchainApi {
@@ -28,6 +28,26 @@ export class BlockchainApi {
   async getBlockByNumber(height?: number): Promise<Block | null> {
     return this.client.request<Block | null>(
       "blockchain_getBlockByNumber",
+      height !== undefined ? [height] : []
+    );
+  }
+
+  /**
+   * Get full block with transaction IDs by hash
+   */
+  async getBlockWithTxids(hash?: BlockHash): Promise<BlockWithTxids | null> {
+    return this.client.request<BlockWithTxids | null>(
+      "blockchain_getBlockWithTxids",
+      hash ? [hash] : []
+    );
+  }
+
+  /**
+   * Get full block with transaction IDs by height
+   */
+  async getBlockWithTxidsByNumber(height?: number): Promise<BlockWithTxids | null> {
+    return this.client.request<BlockWithTxids | null>(
+      "blockchain_getBlockWithTxidsByNumber",
       height !== undefined ? [height] : []
     );
   }

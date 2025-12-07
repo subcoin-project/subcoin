@@ -2,6 +2,7 @@ import { ReactNode, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { SearchBar } from "./SearchBar";
+import { EndpointSettings } from "./EndpointSettings";
 
 interface LayoutProps {
   children: ReactNode;
@@ -40,16 +41,6 @@ export function Layout({ children }: LayoutProps) {
                 >
                   Dashboard
                 </Link>
-                <Link
-                  to="/network"
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${
-                    isActive("/network")
-                      ? "bg-bitcoin-orange text-white"
-                      : "text-gray-300 hover:bg-gray-800"
-                  }`}
-                >
-                  Network
-                </Link>
               </nav>
             </div>
 
@@ -59,7 +50,7 @@ export function Layout({ children }: LayoutProps) {
               <span className="text-gray-600">|</span>
               <ConnectionStatus />
               <span className="text-gray-600">|</span>
-              <span className="text-gray-500 text-sm">localhost:9944</span>
+              <EndpointSettings />
             </div>
 
             {/* Tablet: just connection status */}
@@ -100,24 +91,13 @@ export function Layout({ children }: LayoutProps) {
                 >
                   Dashboard
                 </Link>
-                <Link
-                  to="/network"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${
-                    isActive("/network")
-                      ? "bg-bitcoin-orange text-white"
-                      : "text-gray-300 hover:bg-gray-800"
-                  }`}
-                >
-                  Network
-                </Link>
               </nav>
               <div className="mb-4">
                 <SearchBar />
               </div>
               <div className="flex items-center justify-between text-sm">
                 <ConnectionStatus />
-                <span className="text-gray-500">localhost:9944</span>
+                <EndpointSettings />
               </div>
             </div>
           )}

@@ -4,13 +4,25 @@ use bitcoin::consensus::Encodable;
 use bitcoin::{Block as BitcoinBlock, BlockHash, Transaction, Txid};
 use jsonrpsee::proc_macros::rpc;
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
+use serde::{Deserialize, Serialize};
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subcoin_primitives::{
-    BackendExt, BitcoinTransactionAdapter, TransactionIndex, TxPosition, convert_to_bitcoin_block,
-    extract_bitcoin_block_header,
+    convert_to_bitcoin_block, extract_bitcoin_block_header, BackendExt, BitcoinTransactionAdapter,
+    TransactionIndex, TxPosition,
 };
+
+/// Block data with transaction IDs included for easier client-side processing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockWithTxids {
+    /// Block header.
+    pub header: BitcoinHeader,
+    /// List of transaction IDs in the block.
+    pub txids: Vec<Txid>,
+    /// Full transaction data.
+    pub txdata: Vec<Transaction>,
+}
 
 /// Bitcoin blockchain API.
 #[rpc(client, server)]
@@ -26,6 +38,17 @@ pub trait BlockchainApi {
     /// Get a full block by its number.
     #[method(name = "blockchain_getBlockByNumber", blocking)]
     fn block_by_number(&self, number: Option<u32>) -> Result<Option<BitcoinBlock>, Error>;
+
+    /// Get a full block with transaction IDs by its hash.
+    #[method(name = "blockchain_getBlockWithTxids", blocking)]
+    fn block_with_txids(&self, hash: Option<BlockHash>) -> Result<Option<BlockWithTxids>, Error>;
+
+    /// Get a full block with transaction IDs by its number.
+    #[method(name = "blockchain_getBlockWithTxidsByNumber", blocking)]
+    fn block_with_txids_by_number(
+        &self,
+        number: Option<u32>,
+    ) -> Result<Option<BlockWithTxids>, Error>;
 
     /// Get a raw block in hex format by its hash.
     #[method(name = "blockchain_getRawBlock", blocking)]
@@ -131,6 +154,32 @@ where
         };
 
         self.block(block_hash)
+    }
+
+    fn block_with_txids(&self, hash: Option<BlockHash>) -> Result<Option<BlockWithTxids>, Error> {
+        match self.block(hash)? {
+            Some(block) => {
+                let txids = block.txdata.iter().map(|tx| tx.compute_txid()).collect();
+                Ok(Some(BlockWithTxids {
+                    header: block.header,
+                    txids,
+                    txdata: block.txdata,
+                }))
+            }
+            None => Ok(None),
+        }
+    }
+
+    fn block_with_txids_by_number(
+        &self,
+        number: Option<u32>,
+    ) -> Result<Option<BlockWithTxids>, Error> {
+        let block_hash = match number {
+            Some(number) => Some(self.client.block_hash(number).ok_or(Error::BlockNotFound)?),
+            None => None,
+        };
+
+        self.block_with_txids(block_hash)
     }
 
     fn raw_block(&self, hash: Option<BlockHash>) -> Result<Option<String>, Error> {

@@ -9,15 +9,28 @@ import {
 import {
   getWebSocketClient,
   connectWebSocket,
+  setRpcTarget,
   ConnectionState,
   ConnectionStatus,
 } from "@subcoin/shared";
 
+const STORAGE_KEY = "subcoin-endpoint";
+const DEFAULT_ENDPOINT = "localhost:9944";
+
+function getStoredEndpoint(): string {
+  if (typeof window !== "undefined") {
+    return localStorage.getItem(STORAGE_KEY) || DEFAULT_ENDPOINT;
+  }
+  return DEFAULT_ENDPOINT;
+}
+
 interface ConnectionContextValue {
   state: ConnectionState;
   isConnected: boolean;
+  endpoint: string;
   connect: () => void;
   disconnect: () => void;
+  setEndpoint: (endpoint: string) => void;
 }
 
 const ConnectionContext = createContext<ConnectionContextValue | null>(null);
@@ -26,6 +39,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<ConnectionState>({
     status: "disconnected",
   });
+  const [endpoint, setEndpointState] = useState<string>(getStoredEndpoint);
 
   useEffect(() => {
     const ws = getWebSocketClient();
@@ -35,7 +49,12 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       setState(newState);
     });
 
-    // Auto-connect on mount
+    // Configure endpoints and connect
+    const storedEndpoint = getStoredEndpoint();
+    // Set RPC target for HTTP proxy (Vite routes /rpc?target=host:port)
+    setRpcTarget(storedEndpoint);
+    // Set WebSocket endpoint
+    ws.setEndpoint(`ws://${storedEndpoint}`);
     connectWebSocket();
 
     return () => {
@@ -51,11 +70,26 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     getWebSocketClient().disconnect();
   }, []);
 
+  const setEndpoint = useCallback((newEndpoint: string) => {
+    // Store in localStorage
+    localStorage.setItem(STORAGE_KEY, newEndpoint);
+    setEndpointState(newEndpoint);
+
+    // Update RPC target for HTTP proxy
+    setRpcTarget(newEndpoint);
+
+    // Update WebSocket client
+    const ws = getWebSocketClient();
+    ws.setEndpoint(`ws://${newEndpoint}`);
+  }, []);
+
   const value: ConnectionContextValue = {
     state,
     isConnected: state.status === "connected",
+    endpoint,
     connect,
     disconnect,
+    setEndpoint,
   };
 
   return (

@@ -10,6 +10,9 @@ export interface RpcClientConfig {
   endpoint: string;
 }
 
+// The target host:port for dynamic proxy routing
+let rpcTarget: string | null = null;
+
 export class SubcoinRpcClient {
   private endpoint: string;
   private requestId = 0;
@@ -24,7 +27,13 @@ export class SubcoinRpcClient {
   async request<T>(method: string, params: unknown[] = []): Promise<T> {
     const id = ++this.requestId;
 
-    const response = await fetch(this.endpoint, {
+    // Build endpoint with optional target param for dynamic proxy routing
+    let endpoint = this.endpoint;
+    if (rpcTarget && endpoint === "/rpc") {
+      endpoint = `/rpc?target=${encodeURIComponent(rpcTarget)}`;
+    }
+
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -77,11 +86,26 @@ let defaultClient: SubcoinRpcClient | null = null;
 export function getDefaultClient(): SubcoinRpcClient {
   if (!defaultClient) {
     defaultClient = new SubcoinRpcClient({
-      // Use proxy path - Vite will forward to localhost:9944
+      // Use proxy path - Vite will forward to the target
       endpoint: "/rpc",
     });
   }
   return defaultClient;
+}
+
+/**
+ * Set the RPC target host:port for dynamic proxy routing
+ * This is used by the Vite proxy to route requests to different nodes
+ */
+export function setRpcTarget(target: string | null): void {
+  rpcTarget = target;
+}
+
+/**
+ * Get the current RPC target
+ */
+export function getRpcTarget(): string | null {
+  return rpcTarget;
 }
 
 /**

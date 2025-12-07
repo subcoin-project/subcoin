@@ -30,9 +30,35 @@ export function Dashboard() {
       const status = await networkApi.getStatus();
       setNetworkStatus(status);
 
-      // Fetch sync state
+      // Fetch sync state from system API
       const sync = await systemApi.syncState();
-      setSyncState({ current: sync.currentBlock, highest: sync.highestBlock });
+
+      // Get sync target from multiple sources (prefer network status target)
+      let highestBlock = sync.highestBlock;
+
+      // Try to get from syncStatus target (more accurate during active sync)
+      // RPC returns { downloading: { target, peers } } or { importing: { target, peers } }
+      if (status?.syncStatus) {
+        if ("downloading" in status.syncStatus && status.syncStatus.downloading) {
+          highestBlock = status.syncStatus.downloading.target;
+        } else if ("importing" in status.syncStatus && status.syncStatus.importing) {
+          highestBlock = status.syncStatus.importing.target;
+        }
+      }
+
+      // Fallback: try to get from sync peers
+      if (!highestBlock || highestBlock === sync.currentBlock) {
+        try {
+          const syncPeers = await networkApi.getSyncPeers();
+          if (syncPeers.bestKnownBlock) {
+            highestBlock = syncPeers.bestKnownBlock;
+          }
+        } catch {
+          // Ignore if this call fails
+        }
+      }
+
+      setSyncState({ current: sync.currentBlock, highest: highestBlock });
 
       // Fetch latest blocks
       const blocks: BlockInfo[] = [];
@@ -234,15 +260,8 @@ function StatCard({ title, value }: { title: string; value: string }) {
 
 function getSyncStatusText(status: NetworkStatus["syncStatus"] | undefined): string {
   if (!status) return "-";
-  if ("type" in status) {
-    switch (status.type) {
-      case "Idle":
-        return "Idle";
-      case "Downloading":
-        return "Downloading";
-      case "Importing":
-        return "Importing";
-    }
-  }
+  if ("idle" in status) return "Idle";
+  if ("downloading" in status) return "Downloading";
+  if ("importing" in status) return "Importing";
   return "Unknown";
 }

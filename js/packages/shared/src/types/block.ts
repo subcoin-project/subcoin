@@ -68,6 +68,18 @@ export interface Block {
 }
 
 /**
+ * Block with transaction IDs for easier client-side processing
+ */
+export interface BlockWithTxids {
+  /** Block header */
+  header: BlockHeader;
+  /** List of transaction IDs in the block */
+  txids: Txid[];
+  /** Full transaction data */
+  txdata: Transaction[];
+}
+
+/**
  * Computed transaction ID from a transaction
  */
 export type Txid = string;

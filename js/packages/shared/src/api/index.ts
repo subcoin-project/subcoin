@@ -1,4 +1,4 @@
-export { SubcoinRpcClient, getDefaultClient, setDefaultEndpoint } from "./client";
+export { SubcoinRpcClient, getDefaultClient, setDefaultEndpoint, setRpcTarget, getRpcTarget } from "./client";
 export type { RpcClientConfig } from "./client";
 
 export { BlockchainApi, blockchainApi } from "./blockchain";
