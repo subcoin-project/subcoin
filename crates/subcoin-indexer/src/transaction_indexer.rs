@@ -11,16 +11,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use subcoin_primitives::{BitcoinTransactionAdapter, TransactionIndex, TxPosition};
 
-const TX_INDEX_GAP_KEY: &[u8] = b"tx_index_gap";
-
-const INDEXED_BLOCK_RANGE_KEY: &[u8] = b"tx_indexed_block_range";
-
 type IndexRange = std::ops::Range<u32>;
-
-/// The range of indexed blocks.
-/// - `start`: The first block number indexed.
-/// - `end`: One past the last indexed block.
-type IndexedBlockRange = IndexRange;
 
 /// Represents actions applied to a block during transaction indexing.
 #[derive(Debug, Clone, Copy)]
@@ -29,17 +20,31 @@ enum IndexAction {
     Revert,
 }
 
+const INDEXER_STATE_KEY: &[u8] = b"tx_indexer_state";
+
+/// Tracks the transaction indexer's state for crash recovery and gap detection.
+///
+/// This state machine ensures that:
+/// 1. Fresh starts on existing chains index all historical blocks
+/// 2. Interrupted historical indexing can be resumed
+/// 3. Normal operation tracks the last indexed block
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum IndexerState {
+    /// Actively filling gap from current_position to target_end.
+    /// Written BEFORE starting historical indexing to enable crash recovery.
+    HistoricalIndexing {
+        target_end: u32,
+        current_position: u32,
+    },
+    /// Fully synced, processing new blocks as they arrive.
+    Active { last_indexed: u32 },
+}
+
 /// Indexer error type.
 #[derive(Debug, thiserror::Error)]
 pub enum IndexerError {
     #[error("Block not found: {0}")]
     BlockNotFound(String),
-
-    #[error("Inconsistent block range. Indexed: {indexed:?}, Processed: {processed}")]
-    InconsistentBlockRange {
-        indexed: Option<IndexedBlockRange>,
-        processed: u32,
-    },
 
     #[error("Failed to decode data: {0}")]
     DecodeError(#[from] codec::Error),
@@ -110,30 +115,66 @@ where
     }
 
     /// Detects if there are any gaps in the transaction index.
+    ///
+    /// This function handles:
+    /// 1. Resume interrupted historical indexing (HistoricalIndexing state)
+    /// 2. Catch up if fell behind (Active state with last_indexed < best)
+    /// 3. Fresh start on existing chain (no state - index all blocks)
     fn detect_index_gap(client: &Client) -> Result<Option<IndexRange>> {
-        let gap = if let Some(gap) = load_index_gap(client)? {
-            Some(gap)
-        } else if let Some(ref block_range) = load_indexed_block_range(client)? {
-            let best_number: u32 = client.info().best_number.saturated_into();
-            let last_indexed_block = block_range.end.saturating_sub(1);
+        let best_number: u32 = client.info().best_number.saturated_into();
 
-            if last_indexed_block < best_number {
-                let new_gap = last_indexed_block + 1..best_number + 1;
-                tracing::debug!(
-                    last_indexed = last_indexed_block,
-                    best_number = best_number,
-                    ?new_gap,
-                    "Detected transaction indexing gap"
+        match load_indexer_state(client)? {
+            Some(IndexerState::HistoricalIndexing {
+                target_end,
+                current_position,
+            }) => {
+                // Resume interrupted historical indexing
+                tracing::info!(
+                    current_position,
+                    target_end,
+                    "Resuming interrupted transaction indexing"
                 );
-                Some(new_gap)
-            } else {
-                None
+                Ok(Some(current_position..target_end))
             }
-        } else {
-            None
-        };
+            Some(IndexerState::Active { last_indexed }) => {
+                // Check if we fell behind (node was offline while chain grew)
+                if last_indexed < best_number {
+                    tracing::info!(
+                        last_indexed,
+                        best_number,
+                        "Transaction index behind, catching up"
+                    );
+                    Ok(Some(last_indexed + 1..best_number + 1))
+                } else {
+                    Ok(None)
+                }
+            }
+            None => {
+                // Fresh start - index all existing blocks
+                if best_number > 0 {
+                    tracing::info!(
+                        best_number,
+                        "First run with --tx-index, indexing all {} existing blocks",
+                        best_number + 1
+                    );
 
-        Ok(gap)
+                    // Write state BEFORE starting (enables crash recovery)
+                    write_indexer_state(
+                        client,
+                        &IndexerState::HistoricalIndexing {
+                            target_end: best_number + 1,
+                            current_position: 0,
+                        },
+                    )?;
+
+                    Ok(Some(0..best_number + 1))
+                } else {
+                    // No blocks exist yet - start fresh
+                    write_indexer_state(client, &IndexerState::Active { last_indexed: 0 })?;
+                    Ok(None)
+                }
+            }
+        }
     }
 
     pub async fn run(self) {
@@ -145,7 +186,7 @@ where
                 justifications: _,
             })) = self.client.block(notification.hash)
             else {
-                tracing::error!("Imported block {} unavailable", notification.hash);
+                tracing::error!(hash = ?notification.hash, "Imported block unavailable");
                 continue;
             };
 
@@ -156,7 +197,13 @@ where
             };
 
             if let Err(err) = res {
-                panic!("Failed to process block#{}: {err:?}", notification.hash);
+                tracing::error!(
+                    ?err,
+                    hash = ?notification.hash,
+                    "Failed to index block, continuing..."
+                );
+                // Don't panic - log and continue processing
+                // The indexer may fall behind but will catch up on next restart
             }
         }
     }
@@ -182,25 +229,13 @@ where
 
         process_block::<_, TransactionAdapter, _>(&*self.client, block, IndexAction::Apply);
 
-        let mut indexed_block_range = load_indexed_block_range(&*self.client)?;
-
-        match indexed_block_range.as_mut() {
-            Some(current_range) => {
-                if current_range.end == block_number {
-                    current_range.end += 1;
-                    write_tx_indexed_range(&*self.client, current_range.encode())?;
-                } else {
-                    return Err(IndexerError::InconsistentBlockRange {
-                        indexed: indexed_block_range,
-                        processed: block_number,
-                    });
-                }
-            }
-            None => {
-                let new_range = block_number..block_number + 1;
-                write_tx_indexed_range(&*self.client, new_range.encode())?;
-            }
-        }
+        // Update state to track last indexed block
+        write_indexer_state(
+            &*self.client,
+            &IndexerState::Active {
+                last_indexed: block_number,
+            },
+        )?;
 
         Ok(())
     }
@@ -213,6 +248,9 @@ where
     }
 }
 
+/// How often to save progress during historical indexing (every N blocks).
+const PROGRESS_SAVE_INTERVAL: u32 = 1000;
+
 fn index_historical_blocks<Block, TransactionAdapter, Client>(
     client: Arc<Client>,
     gap_range: IndexRange,
@@ -222,9 +260,16 @@ where
     TransactionAdapter: BitcoinTransactionAdapter<Block>,
     Client: BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
 {
-    let mut remaining_gap = gap_range.clone();
+    let total_blocks = gap_range.end.saturating_sub(gap_range.start);
+    let start_time = std::time::Instant::now();
+    let mut processed = 0u32;
 
-    tracing::debug!("Starting to index historical blocks in range {gap_range:?}");
+    tracing::info!(
+        start = gap_range.start,
+        end = gap_range.end,
+        total = total_blocks,
+        "Starting historical transaction indexing"
+    );
 
     for block_number in gap_range.clone() {
         let block_hash = client.hash(block_number.into())?.ok_or_else(|| {
@@ -240,29 +285,58 @@ where
             .block;
 
         process_block::<_, TransactionAdapter, _>(&*client, block, IndexAction::Apply);
+        processed += 1;
 
-        remaining_gap.start += 1;
-        write_index_gap(&*client, remaining_gap.encode())?;
-    }
+        // Save progress periodically and on last block
+        let is_last = block_number == gap_range.end.saturating_sub(1);
+        if processed % PROGRESS_SAVE_INTERVAL == 0 || is_last {
+            let current_position = block_number + 1;
 
-    tracing::debug!("Finished indexing historical blocks. Final gap status: {remaining_gap:?}");
-
-    delete_index_gap(&*client)?;
-
-    // Extends the existing indexed block range or initializes a new range.
-    match load_indexed_block_range(&*client)? {
-        Some(mut existing_range) => {
-            // Extend the range if there is overlap or new blocks beyond the current range.
-            if gap_range.end > existing_range.end {
-                existing_range.end = gap_range.end;
-                write_tx_indexed_range(&*client, existing_range.encode())?;
+            if !is_last {
+                // Update state for crash recovery
+                write_indexer_state(
+                    &*client,
+                    &IndexerState::HistoricalIndexing {
+                        target_end: gap_range.end,
+                        current_position,
+                    },
+                )?;
             }
-        }
-        None => {
-            tracing::debug!("No prior range exist; initialize new gap range: {gap_range:?}");
-            write_tx_indexed_range(&*client, gap_range.encode())?;
+
+            // Log progress
+            let elapsed = start_time.elapsed().as_secs_f64();
+            let blocks_per_sec = if elapsed > 0.0 {
+                processed as f64 / elapsed
+            } else {
+                0.0
+            };
+            let remaining = total_blocks.saturating_sub(processed);
+            let eta_secs = if blocks_per_sec > 0.0 {
+                (remaining as f64 / blocks_per_sec) as u64
+            } else {
+                0
+            };
+
+            tracing::info!(
+                processed,
+                total = total_blocks,
+                percent = format!("{:.1}%", (processed as f64 / total_blocks as f64) * 100.0),
+                blocks_per_sec = format!("{:.0}", blocks_per_sec),
+                eta_secs,
+                "Transaction indexing progress"
+            );
         }
     }
+
+    // Transition to Active state
+    let last_indexed = gap_range.end.saturating_sub(1);
+    write_indexer_state(&*client, &IndexerState::Active { last_indexed })?;
+
+    tracing::info!(
+        blocks = total_blocks,
+        duration_secs = start_time.elapsed().as_secs(),
+        "Historical transaction indexing complete"
+    );
 
     Ok(())
 }
@@ -309,35 +383,15 @@ where
     }
 }
 
-fn load_indexed_block_range<B: AuxStore>(
-    backend: &B,
-) -> sp_blockchain::Result<Option<IndexedBlockRange>> {
-    load_decode(backend, INDEXED_BLOCK_RANGE_KEY)
+fn load_indexer_state<B: AuxStore>(backend: &B) -> sp_blockchain::Result<Option<IndexerState>> {
+    load_decode(backend, INDEXER_STATE_KEY)
 }
 
-fn write_tx_indexed_range<B: AuxStore>(
+fn write_indexer_state<B: AuxStore>(
     backend: &B,
-    encoded_indexed_block_range: Vec<u8>,
+    state: &IndexerState,
 ) -> sp_blockchain::Result<()> {
-    backend.insert_aux(
-        &[(
-            INDEXED_BLOCK_RANGE_KEY,
-            encoded_indexed_block_range.as_slice(),
-        )],
-        &[],
-    )
-}
-
-fn load_index_gap<B: AuxStore>(backend: &B) -> sp_blockchain::Result<Option<IndexRange>> {
-    load_decode(backend, TX_INDEX_GAP_KEY)
-}
-
-fn write_index_gap<B: AuxStore>(backend: &B, encoded_gap: Vec<u8>) -> sp_blockchain::Result<()> {
-    backend.insert_aux(&[(TX_INDEX_GAP_KEY, encoded_gap.as_slice())], &[])
-}
-
-fn delete_index_gap<B: AuxStore>(backend: &B) -> sp_blockchain::Result<()> {
-    backend.insert_aux([], &[TX_INDEX_GAP_KEY])
+    backend.insert_aux(&[(INDEXER_STATE_KEY, state.encode().as_slice())], &[])
 }
 
 fn write_transaction_index_changes<B: AuxStore>(

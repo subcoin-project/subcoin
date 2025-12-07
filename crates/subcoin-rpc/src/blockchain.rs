@@ -9,8 +9,8 @@ use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subcoin_primitives::{
-    convert_to_bitcoin_block, extract_bitcoin_block_header, BackendExt, BitcoinTransactionAdapter,
-    TransactionIndex, TxPosition,
+    BackendExt, BitcoinTransactionAdapter, TransactionIndex, TxPosition, convert_to_bitcoin_block,
+    extract_bitcoin_block_header,
 };
 
 /// Block data with transaction IDs included for easier client-side processing.
