@@ -1,18 +1,24 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useSearchParams } from "react-router-dom";
 import { blockchainApi, systemApi } from "@subcoin/shared";
 import type { BlockWithTxids, Transaction } from "@subcoin/shared";
 import { BlockDetailSkeleton } from "../components/Skeleton";
 import { CopyButton } from "../components/CopyButton";
 
+const TXS_PER_PAGE = 25;
+
 export function BlockDetail() {
   const { hashOrHeight } = useParams<{ hashOrHeight: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [block, setBlock] = useState<BlockWithTxids | null>(null);
   const [blockHash, setBlockHash] = useState<string>("");
   const [blockHeight, setBlockHeight] = useState<number | null>(null);
   const [currentHeight, setCurrentHeight] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Get page from URL params, default to 1
+  const page = parseInt(searchParams.get("page") || "1", 10);
 
   useEffect(() => {
     async function fetchBlock() {
@@ -70,6 +76,22 @@ export function BlockDetail() {
     ? currentHeight - blockHeight + 1
     : null;
 
+  // Pagination calculations
+  const totalTxs = block.txdata.length;
+  const totalPages = Math.ceil(totalTxs / TXS_PER_PAGE);
+  const startIndex = (page - 1) * TXS_PER_PAGE;
+  const endIndex = Math.min(startIndex + TXS_PER_PAGE, totalTxs);
+  const paginatedTxs = block.txdata.slice(startIndex, endIndex);
+  const paginatedTxids = block.txids.slice(startIndex, endIndex);
+
+  const goToPage = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setSearchParams({ page: newPage.toString() });
+      // Scroll to transactions section
+      document.getElementById("transactions")?.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Block Header */}
@@ -118,27 +140,138 @@ export function BlockDetail() {
           <InfoRow label="Version" value={`0x${block.header.version.toString(16)}`} />
           <InfoRow label="Nonce" value={block.header.nonce.toLocaleString()} />
           <InfoRow label="Bits" value={`0x${block.header.bits.toString(16)}`} />
-          <InfoRow label="Transactions" value={block.txdata.length.toString()} />
+          <InfoRow label="Transactions" value={block.txdata.length.toLocaleString()} />
           <InfoRow label="Merkle Root" value={block.header.merkle_root} mono fullWidth copyable />
           <InfoRow label="Previous Block" value={block.header.prev_blockhash} mono fullWidth link={`/block/${block.header.prev_blockhash}`} copyable />
         </dl>
       </div>
 
       {/* Transactions */}
-      <div className="bg-bitcoin-dark rounded-lg border border-gray-800">
-        <div className="px-4 py-3 border-b border-gray-800">
+      <div id="transactions" className="bg-bitcoin-dark rounded-lg border border-gray-800">
+        <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
           <h2 className="text-lg font-medium text-gray-100">
-            Transactions ({block.txdata.length})
+            Transactions ({totalTxs.toLocaleString()})
           </h2>
+          {totalPages > 1 && (
+            <span className="text-gray-400 text-sm">
+              Page {page}/{totalPages}
+            </span>
+          )}
         </div>
         <div className="divide-y divide-gray-800">
-          {block.txdata.map((tx, index) => (
-            <TransactionRow key={block.txids[index]} tx={tx} txid={block.txids[index]} index={index} />
-          ))}
+          {paginatedTxs.map((tx, localIndex) => {
+            const globalIndex = startIndex + localIndex;
+            return (
+              <TransactionRow
+                key={paginatedTxids[localIndex]}
+                tx={tx}
+                txid={paginatedTxids[localIndex]}
+                index={globalIndex}
+              />
+            );
+          })}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="px-4 py-3 border-t border-gray-800 flex items-center justify-between">
+            <div className="text-gray-400 text-sm">
+              Showing {(startIndex + 1).toLocaleString()} to {endIndex.toLocaleString()} of {totalTxs.toLocaleString()} transactions
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => goToPage(1)}
+                disabled={page === 1}
+                className="px-3 py-1 rounded text-sm bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                First
+              </button>
+              <button
+                onClick={() => goToPage(page - 1)}
+                disabled={page === 1}
+                className="px-3 py-1 rounded text-sm bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Prev
+              </button>
+
+              {/* Page numbers */}
+              <div className="hidden sm:flex items-center space-x-1">
+                {getPageNumbers(page, totalPages).map((pageNum, idx) => (
+                  pageNum === '...' ? (
+                    <span key={`ellipsis-${idx}`} className="px-2 text-gray-500">...</span>
+                  ) : (
+                    <button
+                      key={pageNum}
+                      onClick={() => goToPage(pageNum as number)}
+                      className={`px-3 py-1 rounded text-sm ${
+                        page === pageNum
+                          ? "bg-bitcoin-orange text-white"
+                          : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  )
+                ))}
+              </div>
+
+              <button
+                onClick={() => goToPage(page + 1)}
+                disabled={page >= totalPages}
+                className="px-3 py-1 rounded text-sm bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+              <button
+                onClick={() => goToPage(totalPages)}
+                disabled={page >= totalPages}
+                className="px-3 py-1 rounded text-sm bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Last
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
+}
+
+// Helper function to generate page numbers with ellipsis
+function getPageNumbers(currentPage: number, totalPages: number): (number | string)[] {
+  const pages: (number | string)[] = [];
+  const showPages = 5; // Number of page buttons to show
+
+  if (totalPages <= showPages + 2) {
+    // Show all pages if total is small
+    for (let i = 1; i <= totalPages; i++) {
+      pages.push(i);
+    }
+  } else {
+    // Always show first page
+    pages.push(1);
+
+    if (currentPage > 3) {
+      pages.push('...');
+    }
+
+    // Show pages around current page
+    const start = Math.max(2, currentPage - 1);
+    const end = Math.min(totalPages - 1, currentPage + 1);
+
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+
+    if (currentPage < totalPages - 2) {
+      pages.push('...');
+    }
+
+    // Always show last page
+    pages.push(totalPages);
+  }
+
+  return pages;
 }
 
 function InfoRow({
