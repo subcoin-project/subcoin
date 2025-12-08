@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { blockchainApi, systemApi } from "@subcoin/shared";
 import type { BlockWithTxids, Transaction } from "@subcoin/shared";
@@ -6,6 +6,89 @@ import { BlockDetailSkeleton } from "../components/Skeleton";
 import { CopyButton } from "../components/CopyButton";
 
 const TXS_PER_PAGE = 25;
+
+// Block header is always 80 bytes
+const BLOCK_HEADER_SIZE = 80;
+
+/**
+ * Estimate transaction size from transaction data.
+ * This is an approximation since we don't have the raw serialized data.
+ */
+function estimateTxSize(tx: Transaction): { size: number; weight: number; hasWitness: boolean } {
+  // Check if any input has witness data
+  const hasWitness = tx.input.some(inp => inp.witness && inp.witness.length > 0);
+
+  // Base transaction overhead: version (4) + locktime (4) + input count (1-3) + output count (1-3)
+  let baseSize = 4 + 4 + varIntSize(tx.input.length) + varIntSize(tx.output.length);
+
+  // Inputs: each input has outpoint (36) + scriptSig length (1-3) + scriptSig + sequence (4)
+  for (const inp of tx.input) {
+    const scriptSigLen = inp.script_sig.length / 2; // hex string to bytes
+    baseSize += 36 + varIntSize(scriptSigLen) + scriptSigLen + 4;
+  }
+
+  // Outputs: each output has value (8) + scriptPubKey length (1-3) + scriptPubKey
+  for (const out of tx.output) {
+    const scriptPubKeyLen = out.script_pubkey.length / 2;
+    baseSize += 8 + varIntSize(scriptPubKeyLen) + scriptPubKeyLen;
+  }
+
+  let witnessSize = 0;
+  if (hasWitness) {
+    // Marker (1) + flag (1) for SegWit
+    baseSize += 2;
+
+    // Witness data for each input
+    for (const inp of tx.input) {
+      if (inp.witness && inp.witness.length > 0) {
+        witnessSize += varIntSize(inp.witness.length);
+        for (const w of inp.witness) {
+          const wLen = w.length / 2;
+          witnessSize += varIntSize(wLen) + wLen;
+        }
+      } else {
+        witnessSize += 1; // empty witness stack
+      }
+    }
+  }
+
+  const totalSize = baseSize + witnessSize;
+  // Weight = base_size * 4 + witness_size (BIP 141)
+  // For non-witness tx: weight = size * 4
+  const weight = hasWitness
+    ? (baseSize - 2) * 4 + 2 + witnessSize  // -2 for marker/flag which count as witness
+    : baseSize * 4;
+
+  return { size: totalSize, weight, hasWitness };
+}
+
+/**
+ * Calculate variable integer size (Bitcoin's CompactSize)
+ */
+function varIntSize(n: number): number {
+  if (n < 0xfd) return 1;
+  if (n <= 0xffff) return 3;
+  if (n <= 0xffffffff) return 5;
+  return 9;
+}
+
+/**
+ * Format bytes to human readable string
+ */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+/**
+ * Format weight units
+ */
+function formatWeight(wu: number): string {
+  if (wu < 1000) return `${wu} WU`;
+  if (wu < 1000000) return `${(wu / 1000).toFixed(2)} kWU`;
+  return `${(wu / 1000000).toFixed(2)} MWU`;
+}
 
 export function BlockDetail() {
   const { hashOrHeight } = useParams<{ hashOrHeight: string }>();
@@ -58,6 +141,33 @@ export function BlockDetail() {
 
     fetchBlock();
   }, [hashOrHeight]);
+
+  // Calculate block size and weight (must be before conditional returns)
+  const blockStats = useMemo(() => {
+    if (!block) return null;
+
+    let totalSize = BLOCK_HEADER_SIZE + varIntSize(block.txdata.length);
+    let totalWeight = BLOCK_HEADER_SIZE * 4 + varIntSize(block.txdata.length) * 4;
+    let witnessCount = 0;
+
+    for (const tx of block.txdata) {
+      const txStats = estimateTxSize(tx);
+      totalSize += txStats.size;
+      totalWeight += txStats.weight;
+      if (txStats.hasWitness) witnessCount++;
+    }
+
+    // Virtual size (vsize) = (weight + 3) / 4
+    const vsize = Math.ceil(totalWeight / 4);
+
+    return {
+      size: totalSize,
+      weight: totalWeight,
+      vsize,
+      witnessCount,
+      hasSegWit: witnessCount > 0,
+    };
+  }, [block]);
 
   if (loading) {
     return <BlockDetailSkeleton />;
@@ -141,6 +251,19 @@ export function BlockDetail() {
           <InfoRow label="Nonce" value={block.header.nonce.toLocaleString()} />
           <InfoRow label="Bits" value={`0x${block.header.bits.toString(16)}`} />
           <InfoRow label="Transactions" value={block.txdata.length.toLocaleString()} />
+          {blockStats && (
+            <>
+              <InfoRow label="Size" value={formatBytes(blockStats.size)} />
+              <InfoRow label="Weight" value={formatWeight(blockStats.weight)} />
+              <InfoRow label="Virtual Size" value={formatBytes(blockStats.vsize)} />
+              {blockStats.hasSegWit && (
+                <InfoRow
+                  label="SegWit Transactions"
+                  value={`${blockStats.witnessCount} of ${block.txdata.length} (${Math.round((blockStats.witnessCount / block.txdata.length) * 100)}%)`}
+                />
+              )}
+            </>
+          )}
           <InfoRow label="Merkle Root" value={block.header.merkle_root} mono fullWidth copyable />
           <InfoRow label="Previous Block" value={block.header.prev_blockhash} mono fullWidth link={`/block/${block.header.prev_blockhash}`} copyable />
         </dl>
