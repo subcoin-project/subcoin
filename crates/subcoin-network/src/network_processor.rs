@@ -1,7 +1,10 @@
 use crate::metrics::Metrics;
 use crate::network_api::{NetworkProcessorMessage, NetworkStatus, SendTransactionResult};
 use crate::peer_connection::{ConnectionInitiator, Direction, NewConnection};
-use crate::peer_manager::{Config, NewPeer, PEER_LATENCY_THRESHOLD, PeerManager, SlowPeer};
+use crate::peer_manager::{
+    Config, NewPeer, PEER_LATENCY_THRESHOLD, PEER_LATENCY_THRESHOLD_INITIAL_SYNC, PeerManager,
+    SlowPeer,
+};
 use crate::peer_store::PeerStore;
 use crate::sync::{ChainSync, LocatorRequest, RestartReason, SyncAction, SyncRequest};
 use crate::tx_relay::{TxAction, TxRelay};
@@ -86,6 +89,8 @@ pub struct NetworkProcessor<Block, Client, Pool> {
     network_event_receiver: UnboundedReceiver<Event>,
     /// Broadcasted blocks that are being requested.
     requested_block_announce: HashMap<PeerId, HashSet<BlockHash>>,
+    /// Whether we're in major syncing mode (initial block download).
+    is_major_syncing: Arc<AtomicBool>,
     metrics: Option<Metrics>,
 }
 
@@ -136,7 +141,7 @@ where
             header_verifier.clone(),
             import_queue,
             sync_strategy,
-            is_major_syncing,
+            is_major_syncing.clone(),
             enable_block_sync,
             peer_store.clone(),
             sync_target,
@@ -154,6 +159,7 @@ where
             tx_relay: TxRelay::new(tx_pool),
             requested_block_announce: HashMap::new(),
             network_event_receiver,
+            is_major_syncing,
             metrics,
         }
     }
@@ -452,9 +458,18 @@ where
     fn process_pong(&mut self, from: PeerId, nonce: u64) -> Result<SyncAction, Error> {
         match self.peer_manager.on_pong(from, nonce) {
             Ok(avg_latency) => {
-                // DisconnectPeer the peer directly if the latency is higher than the threshold.
+                // Use a higher latency threshold during initial sync (IBD) because:
+                // 1. Bulk data transfer doesn't require low latency
+                // 2. Disconnecting peers causes sync restarts which waste progress
+                let latency_threshold = if self.is_major_syncing.load(Ordering::Relaxed) {
+                    PEER_LATENCY_THRESHOLD_INITIAL_SYNC
+                } else {
+                    PEER_LATENCY_THRESHOLD
+                };
+
+                // Disconnect the peer if the latency exceeds the threshold.
                 // However, don't disconnect the active sync peer to avoid wasting work in progress.
-                if avg_latency > PEER_LATENCY_THRESHOLD {
+                if avg_latency > latency_threshold {
                     if self.chain_sync.is_active_sync_peer(from) {
                         tracing::warn!(
                             "Sync peer {from:?} has high latency ({avg_latency}ms) but keeping it to avoid wasting sync progress"

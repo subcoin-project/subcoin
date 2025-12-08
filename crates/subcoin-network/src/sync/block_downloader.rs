@@ -89,6 +89,7 @@ impl QueuedBlocks {
         self.block_memory.remove(hash);
     }
 
+    #[cfg(test)]
     fn clear(&mut self) {
         self.hash2number.clear();
         self.number2hash.clear();
@@ -169,6 +170,11 @@ pub(crate) struct BlockDownloader {
     pub(super) memory_config: MemoryConfig,
     /// Current memory usage for downloaded blocks in bytes.
     pub(super) downloaded_blocks_memory: usize,
+    /// Size of the last requested batch (for pipelining).
+    ///
+    /// Used to determine when to request the next batch before all blocks
+    /// in the current batch are received.
+    last_batch_size: usize,
 }
 
 impl BlockDownloader {
@@ -194,6 +200,7 @@ impl BlockDownloader {
             downloaded_blocks_count: 0,
             memory_config,
             downloaded_blocks_memory: 0,
+            last_batch_size: 0,
         }
     }
 
@@ -232,9 +239,48 @@ impl BlockDownloader {
             || self.downloaded_blocks.len() > self.memory_config.max_blocks_in_memory
     }
 
+    /// Checks if we should request the next batch of blocks (pipelining).
+    ///
+    /// Returns `true` when we've received enough blocks from the current batch
+    /// to justify requesting the next batch. This reduces idle time waiting
+    /// for the last few blocks in a batch.
+    ///
+    /// Pipelining is triggered when:
+    /// - There are more blocks to download (`missing_blocks` not empty)
+    /// - We've received at least 50% of the current batch
+    /// - We haven't already started pipelining (requested_blocks not empty)
+    pub(crate) fn should_pipeline(&self) -> bool {
+        // Only pipeline if there are more blocks to download
+        if self.missing_blocks.is_empty() {
+            return false;
+        }
+
+        // Don't pipeline if we've already sent another request (requested_blocks would be full again)
+        // This is detected by checking if requested_blocks is less than half the original batch
+        if self.last_batch_size == 0 {
+            return false;
+        }
+
+        let received_count = self
+            .last_batch_size
+            .saturating_sub(self.requested_blocks.len());
+        let pipeline_threshold = self.last_batch_size / 2;
+
+        // Pipeline when we've received at least 50% of the batch
+        received_count >= pipeline_threshold && !self.requested_blocks.is_empty()
+    }
+
     pub(super) fn on_block_response(&mut self, block_hash: BlockHash) -> bool {
         self.last_progress_time = Instant::now();
         self.requested_blocks.remove(&block_hash)
+    }
+
+    /// Update the last progress time to prevent stall detection during header download.
+    ///
+    /// This should be called when headers are received to indicate that progress is being made
+    /// even though no blocks have been downloaded yet.
+    pub(super) fn touch_progress(&mut self) {
+        self.last_progress_time = Instant::now();
     }
 
     pub(super) fn set_missing_blocks(&mut self, new: Vec<BlockHash>) {
@@ -387,16 +433,18 @@ impl BlockDownloader {
 
         self.missing_blocks = new_missing_blocks;
 
-        self.requested_blocks = blocks_to_download
-            .clone()
-            .into_iter()
-            .collect::<HashSet<_>>();
+        // Track batch size for pipelining
+        let batch_size = blocks_to_download.len();
+        self.last_batch_size = batch_size;
+
+        // Extend requested_blocks instead of replacing (for pipelining support)
+        self.requested_blocks
+            .extend(blocks_to_download.iter().copied());
 
         tracing::debug!(
             from = ?self.peer_id,
             pending_blocks_to_download = self.missing_blocks.len(),
-            "📦 Downloading {} blocks",
-            self.requested_blocks.len(),
+            "📦 Downloading {batch_size} blocks",
         );
 
         let block_data_request = blocks_to_download
@@ -407,17 +455,33 @@ impl BlockDownloader {
         SyncAction::get_data(block_data_request, self.peer_id)
     }
 
+    /// Restarts the block downloader with a new peer.
+    ///
+    /// This preserves already-downloaded blocks to avoid wasting bandwidth.
+    /// Only clears pending requests that won't be fulfilled by the new peer.
     pub(super) fn restart(&mut self, new_peer: PeerId) {
+        let preserved_blocks = self.downloaded_blocks.len();
+        let preserved_memory = self.downloaded_blocks_memory;
+
         self.peer_id = new_peer;
         self.downloaded_blocks_count = 0;
+        // Clear only pending requests - these won't be fulfilled by the new peer
         self.requested_blocks.clear();
-        self.downloaded_blocks.clear();
-        self.blocks_in_queue.clear();
-        self.queued_blocks.clear();
+        // Preserve downloaded_blocks - they're still valid and ready for import
+        // Preserve blocks_in_queue - they're being processed
+        // Preserve queued_blocks - they track block numbers for downloaded blocks
         self.orphan_blocks_pool.clear();
         self.last_progress_time = Instant::now();
         self.queue_status = ImportQueueStatus::Ready;
-        self.downloaded_blocks_memory = 0; // Reset memory tracking
+        // Don't reset downloaded_blocks_memory - we preserved the blocks
+
+        if preserved_blocks > 0 {
+            tracing::debug!(
+                preserved_blocks,
+                preserved_memory_kb = preserved_memory / 1024,
+                "Preserved downloaded blocks during peer switch"
+            );
+        }
     }
 
     /// Handles blocks that have been processed.
