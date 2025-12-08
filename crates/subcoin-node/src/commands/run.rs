@@ -60,6 +60,13 @@ pub struct Run {
     #[clap(long)]
     pub tx_index: bool,
 
+    /// Enable Bitcoin Core compatible RPC methods.
+    ///
+    /// This enables RPC methods with Bitcoin Core-style names like `getblock`, `getblockhash`,
+    /// `getrawtransaction`, etc. This is required for compatibility with tools like electrs.
+    #[clap(long)]
+    pub bitcoind_rpc: bool,
+
     /// Specify the Subcoin network behavior.
     #[clap(long, default_value = "full")]
     pub subcoin_network: SubcoinNetworkOption,
@@ -292,6 +299,7 @@ impl RunCmd {
         };
 
         // Start JSON-RPC server.
+        let enable_bitcoind_rpc = run.bitcoind_rpc;
         let gen_rpc_module = || {
             let system_info = sc_rpc::system::SystemInfo {
                 chain_name: config.chain_spec.name().into(),
@@ -302,6 +310,11 @@ impl RunCmd {
             };
             let system_rpc_tx = system_rpc_tx.clone();
 
+            let rpc_config = crate::rpc::RpcConfig {
+                bitcoin_network,
+                enable_bitcoind_rpc,
+            };
+
             crate::rpc::gen_rpc_module(
                 system_info,
                 client.clone(),
@@ -309,6 +322,7 @@ impl RunCmd {
                 system_rpc_tx,
                 network_api.clone(),
                 transaction_indexer.clone(),
+                rpc_config,
             )
         };
 

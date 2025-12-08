@@ -9344,6 +9344,7 @@ dependencies = [
  "subcoin-network",
  "subcoin-primitives",
  "subcoin-rpc",
+ "subcoin-rpc-bitcoind",
  "subcoin-runtime",
  "subcoin-service",
  "subcoin-test-service",
@@ -9389,6 +9390,25 @@ dependencies = [
  "subcoin-network",
  "subcoin-primitives",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "subcoin-rpc-bitcoind"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bitcoin 0.32.2",
+ "hex",
+ "jsonrpsee",
+ "sc-client-api",
+ "serde",
+ "serde_json",
+ "sp-blockchain",
+ "sp-runtime",
+ "subcoin-network",
+ "subcoin-primitives",
+ "thiserror 1.0.69",
+ "tracing",
 ]
 
 [[package]]

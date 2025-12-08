@@ -53,6 +53,7 @@ subcoin-mempool = { workspace = true }
 subcoin-network = { workspace = true, features = ["cli"] }
 subcoin-primitives = { workspace = true }
 subcoin-rpc = { workspace = true }
+subcoin-rpc-bitcoind = { workspace = true }
 subcoin-runtime = { workspace = true }
 subcoin-service = { workspace = true }
 subcoin-utxo-snapshot = { workspace = true }

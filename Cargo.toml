@@ -19,6 +19,7 @@ members = [
     "crates/subcoin-node",
     "crates/subcoin-primitives",
     "crates/subcoin-rpc",
+    "crates/subcoin-rpc-bitcoind",
     "crates/subcoin-runtime",
     "crates/subcoin-runtime-primitives",
     "crates/subcoin-script",
@@ -138,6 +139,7 @@ subcoin-network = { path = "crates/subcoin-network" }
 subcoin-node = { path = "crates/subcoin-node" }
 subcoin-primitives = { path = "crates/subcoin-primitives" }
 subcoin-rpc = { path = "crates/subcoin-rpc" }
+subcoin-rpc-bitcoind = { path = "crates/subcoin-rpc-bitcoind" }
 subcoin-runtime = { path = "crates/subcoin-runtime" }
 subcoin-runtime-primitives = { path = "crates/subcoin-runtime-primitives", default-features = false }
 subcoin-script = { path = "crates/subcoin-script" }
