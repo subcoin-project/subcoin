@@ -92,30 +92,24 @@ export function TransactionSankey({
 
   // SVG dimensions - compact layout with wider nodes for txids
   const width = 600;
-  const maxNodes = Math.max(inputNodes.length, outputNodes.length);
-  const minNodeHeight = 36; // Minimum height to fit content
+  const nodeHeight = 36; // Fixed height for each node
   const nodeGap = 6;
-  // Calculate height based on nodes needed
-  const height = Math.max(140, maxNodes * (minNodeHeight + nodeGap) + 30);
   const nodeWidth = 150;
   const leftX = 10;
   const rightX = width - nodeWidth - 10;
 
-  // Calculate node heights based on values
-  const availableHeight = height - 30;
+  // Calculate total heights for each side independently
+  const inputsTotalHeight = inputNodes.length * nodeHeight + (inputNodes.length - 1) * nodeGap;
+  const outputsTotalHeight = outputNodes.length * nodeHeight + (outputNodes.length - 1) * nodeGap;
+  const height = Math.max(inputsTotalHeight, outputsTotalHeight) + 40; // padding for labels
 
-  const calculateNodeHeights = (nodes: { value: number }[], total: number) => {
-    if (nodes.length === 0) return [];
-    const baseHeight = (availableHeight - (nodes.length - 1) * nodeGap) / nodes.length;
-    return nodes.map(() => Math.max(minNodeHeight, baseHeight));
-  };
+  // Fixed heights for all nodes
+  const inputHeights = inputNodes.map(() => nodeHeight);
+  const outputHeights = outputNodes.map(() => nodeHeight);
 
-  const inputHeights = calculateNodeHeights(inputNodes, totalOutput);
-  const outputHeights = calculateNodeHeights(outputNodes, totalOutput);
-
-  // Calculate Y positions
+  // Calculate Y positions - center each side independently
   const calculateYPositions = (heights: number[]) => {
-    const totalHeight = heights.reduce((sum, h) => sum + h + nodeGap, 0) - nodeGap;
+    const totalHeight = heights.reduce((sum, h) => sum + h + nodeGap, 0) - (heights.length > 0 ? nodeGap : 0);
     let startY = (height - totalHeight) / 2;
     const positions: number[] = [];
     heights.forEach((h) => {
@@ -174,7 +168,7 @@ export function TransactionSankey({
 
         const flowHeight = Math.max(
           4,
-          totalOutput > 0 ? (flowValue / totalOutput) * availableHeight * 0.5 : 8
+          totalOutput > 0 ? (flowValue / totalOutput) * height * 0.4 : 8
         );
 
         result.push({
