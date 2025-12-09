@@ -18,6 +18,7 @@ serde_json = { workspace = true }
 sp-blockchain = { workspace = true }
 sp-rpc = { workspace = true }
 sp-runtime = { workspace = true }
+subcoin-indexer = { workspace = true }
 subcoin-primitives = { workspace = true }
 subcoin-network = { workspace = true }
 thiserror = { workspace = true }

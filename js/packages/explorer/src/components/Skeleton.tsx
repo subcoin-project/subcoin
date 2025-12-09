@@ -185,3 +185,44 @@ export function NetworkPageSkeleton() {
     </div>
   );
 }
+
+export function AddressDetailSkeleton() {
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <Skeleton className="h-8 w-48" />
+
+      {/* Address info card */}
+      <div className="bg-bitcoin-dark rounded-lg border border-gray-800 p-6">
+        <Skeleton className="h-4 w-24 mb-2" />
+        <Skeleton className="h-5 w-full max-w-2xl mb-4" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i}>
+              <Skeleton className="h-4 w-20 mb-2" />
+              <Skeleton className="h-6 w-32" />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Transaction history */}
+      <div className="bg-bitcoin-dark rounded-lg border border-gray-800">
+        <div className="px-4 py-3 border-b border-gray-800">
+          <Skeleton className="h-6 w-48" />
+        </div>
+        <div className="divide-y divide-gray-800">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="px-4 py-3">
+              <div className="flex justify-between mb-2">
+                <Skeleton className="h-5 w-64" />
+                <Skeleton className="h-5 w-24" />
+              </div>
+              <Skeleton className="h-4 w-32" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -96,6 +96,15 @@ export class BlockchainApi {
   async getBlockNumber(hash: BlockHash): Promise<number | null> {
     return this.client.request<number | null>("blockchain_getBlockNumber", [hash]);
   }
+
+  /**
+   * Decode a script_pubkey (hex) to a Bitcoin address.
+   * Returns null if the script cannot be converted to an address
+   * (e.g., OP_RETURN outputs, non-standard scripts).
+   */
+  async decodeScriptPubkey(scriptPubkeyHex: string): Promise<string | null> {
+    return this.client.request<string | null>("blockchain_decodeScriptPubkey", [scriptPubkeyHex]);
+  }
 }
 
 /**

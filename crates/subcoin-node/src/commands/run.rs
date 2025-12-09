@@ -278,24 +278,31 @@ impl RunCmd {
                 Arc::new(network_handle)
             };
 
-        let transaction_indexer: Arc<dyn TransactionIndex + Send + Sync> = if run.tx_index {
-            let transaction_indexer = subcoin_indexer::TransactionIndexer::<
-                _,
-                _,
-                _,
-                subcoin_service::TransactionAdapter,
-            >::new(
-                bitcoin_network,
-                client.clone(),
-                task_manager.spawn_handle(),
+        let (transaction_indexer, indexer_query): (
+            Arc<dyn TransactionIndex + Send + Sync>,
+            Option<Arc<subcoin_indexer::IndexerQuery>>,
+        ) = if run.tx_index {
+            let index_db_path = base_path_or_default(
+                run.common_params.base_path.clone().map(Into::into),
+                &crate::substrate_cli::SubstrateCli::executable_name(),
             )
-            .map_err(|err| sp_blockchain::Error::Application(Box::new(err)))?;
-            spawn_handle.spawn("tx-index", None, transaction_indexer.run());
-            Arc::new(subcoin_indexer::TransactionIndexProvider::new(
-                client.clone(),
-            ))
+            .path()
+            .to_path_buf();
+
+            let indexer =
+                subcoin_indexer::Indexer::<_, _, subcoin_service::TransactionAdapter>::new(
+                    &index_db_path,
+                    bitcoin_network,
+                    client.clone(),
+                )
+                .await
+                .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
+
+            let query = Arc::new(indexer.query());
+            spawn_handle.spawn("indexer", None, indexer.run());
+            (query.clone(), Some(query))
         } else {
-            Arc::new(subcoin_primitives::NoTransactionIndex)
+            (Arc::new(subcoin_primitives::NoTransactionIndex), None)
         };
 
         // Start JSON-RPC server.
@@ -322,6 +329,7 @@ impl RunCmd {
                 system_rpc_tx,
                 network_api.clone(),
                 transaction_indexer.clone(),
+                indexer_query.clone(),
                 rpc_config,
             )
         };

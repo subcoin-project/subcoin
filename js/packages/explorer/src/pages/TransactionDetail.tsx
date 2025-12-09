@@ -1,9 +1,133 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
-import { blockchainApi } from "@subcoin/shared";
-import type { Transaction } from "@subcoin/shared";
+import { Link, useParams } from "react-router-dom";
+import { addressApi, blockchainApi } from "@subcoin/shared";
+import type { IndexerStatus, Transaction } from "@subcoin/shared";
 import { TransactionDetailSkeleton } from "../components/Skeleton";
 import { CopyButton } from "../components/CopyButton";
+
+// Component to decode and display address from script_pubkey
+function OutputAddress({ scriptPubkey }: { scriptPubkey: string }) {
+  const [address, setAddress] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    async function decodeAddress() {
+      try {
+        const decoded = await blockchainApi.decodeScriptPubkey(scriptPubkey);
+        setAddress(decoded);
+      } catch {
+        setAddress(null);
+      }
+    }
+    decodeAddress();
+  }, [scriptPubkey]);
+
+  if (address === undefined) {
+    return <span className="text-gray-500 text-sm">Decoding...</span>;
+  }
+
+  if (address === null) {
+    return <span className="text-gray-500 text-sm">(non-standard)</span>;
+  }
+
+  return (
+    <Link
+      to={`/address/${address}`}
+      className="text-blue-400 hover:text-blue-300 font-mono text-sm break-all"
+    >
+      {address}
+    </Link>
+  );
+}
+
+// Component to show when transaction is not found (with indexer status)
+function TransactionNotFound({ txid, error }: { txid?: string; error: string | null }) {
+  const [indexerStatus, setIndexerStatus] = useState<IndexerStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchIndexerStatus() {
+      try {
+        const status = await addressApi.getIndexerStatus();
+        setIndexerStatus(status);
+      } catch {
+        // Indexer might not be enabled
+        setIndexerStatus(null);
+      } finally {
+        setStatusLoading(false);
+      }
+    }
+    fetchIndexerStatus();
+  }, []);
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-yellow-900/20 border border-yellow-800 rounded-lg p-4">
+        <h3 className="text-yellow-400 font-medium">Transaction Not Found</h3>
+        <p className="text-yellow-300 text-sm mt-1">
+          {error || "The requested transaction could not be found."}
+        </p>
+        {txid && (
+          <p className="text-gray-400 font-mono text-xs mt-2 break-all">
+            TXID: {txid}
+          </p>
+        )}
+      </div>
+
+      {/* Indexer Status */}
+      {!statusLoading && indexerStatus && (
+        <div className="bg-bitcoin-dark rounded-lg border border-gray-800 p-4">
+          <h3 className="text-gray-100 font-medium mb-3">Transaction Index Status</h3>
+
+          {indexerStatus.is_syncing ? (
+            <div className="space-y-3">
+              <p className="text-gray-400 text-sm">
+                The transaction index is currently syncing. This transaction may become available once indexing catches up.
+              </p>
+
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">Progress</span>
+                  <span className="text-gray-100">
+                    {indexerStatus.progress_percent.toFixed(1)}%
+                  </span>
+                </div>
+
+                {/* Progress bar */}
+                <div className="w-full bg-gray-700 rounded-full h-2">
+                  <div
+                    className="bg-bitcoin-orange h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${Math.min(indexerStatus.progress_percent, 100)}%` }}
+                  />
+                </div>
+
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">Indexed Height</span>
+                  <span className="text-gray-100 font-mono">
+                    {indexerStatus.indexed_height.toLocaleString()}
+                  </span>
+                </div>
+
+                {indexerStatus.target_height && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-400">Target Height</span>
+                    <span className="text-gray-100 font-mono">
+                      {indexerStatus.target_height.toLocaleString()}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-gray-400 text-sm">
+              The transaction index is fully synced (height {indexerStatus.indexed_height.toLocaleString()}).
+              If this transaction exists, it should be in the index.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function TransactionDetail() {
   const { txid } = useParams<{ txid: string }>();
@@ -36,12 +160,7 @@ export function TransactionDetail() {
   }
 
   if (error || !transaction) {
-    return (
-      <div className="bg-red-900/20 border border-red-800 rounded-lg p-4">
-        <h3 className="text-red-400 font-medium">Error</h3>
-        <p className="text-red-300 text-sm mt-1">{error || "Transaction not found"}</p>
-      </div>
-    );
+    return <TransactionNotFound txid={txid} error={error} />;
   }
 
   const isCoinbase =
@@ -117,7 +236,13 @@ export function TransactionDetail() {
                 <>
                   <div className="text-gray-400 text-sm">Previous Output</div>
                   <div className="font-mono text-sm text-gray-300 break-all">
-                    {input.previous_output.txid}:{input.previous_output.vout}
+                    <Link
+                      to={`/tx/${input.previous_output.txid}`}
+                      className="text-blue-400 hover:text-blue-300"
+                    >
+                      {input.previous_output.txid}
+                    </Link>
+                    :{input.previous_output.vout}
                   </div>
                 </>
               )}
@@ -151,10 +276,18 @@ export function TransactionDetail() {
                   {(output.value / 100_000_000).toFixed(8)} BTC
                 </span>
               </div>
-              <div className="text-gray-400 text-sm">Script PubKey</div>
-              <div className="font-mono text-xs text-gray-500 break-all mt-1">
-                {output.script_pubkey}
+              <div className="text-gray-400 text-sm mb-1">Address</div>
+              <div className="mb-2">
+                <OutputAddress scriptPubkey={output.script_pubkey} />
               </div>
+              <details className="text-gray-500">
+                <summary className="text-gray-400 text-sm cursor-pointer hover:text-gray-300">
+                  Script PubKey
+                </summary>
+                <div className="font-mono text-xs break-all mt-1 pl-2">
+                  {output.script_pubkey}
+                </div>
+              </details>
             </div>
           ))}
         </div>

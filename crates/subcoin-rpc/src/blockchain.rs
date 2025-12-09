@@ -1,7 +1,7 @@
 use crate::error::Error;
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::consensus::Encodable;
-use bitcoin::{Block as BitcoinBlock, BlockHash, Transaction, Txid};
+use bitcoin::{Block as BitcoinBlock, BlockHash, Network, ScriptBuf, Transaction, Txid};
 use jsonrpsee::proc_macros::rpc;
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 use serde::{Deserialize, Serialize};
@@ -73,12 +73,20 @@ pub trait BlockchainApi {
     // Get block height by hash.
     #[method(name = "blockchain_getBlockNumber", blocking)]
     fn block_number(&self, block_hash: BlockHash) -> Result<Option<u32>, Error>;
+
+    /// Decode a script_pubkey (hex) to a Bitcoin address.
+    ///
+    /// Returns `None` if the script cannot be converted to an address
+    /// (e.g., OP_RETURN outputs, non-standard scripts).
+    #[method(name = "blockchain_decodeScriptPubkey", blocking)]
+    fn decode_script_pubkey(&self, script_pubkey_hex: String) -> Result<Option<String>, Error>;
 }
 
 /// This struct provides the Bitcoin Blockchain API.
 pub struct Blockchain<Block, Client, TransactionAdapter> {
     client: Arc<Client>,
     transaction_indexer: Arc<dyn TransactionIndex + Send + Sync>,
+    network: Network,
     _phantom: PhantomData<(Block, TransactionAdapter)>,
 }
 
@@ -91,10 +99,12 @@ where
     pub fn new(
         client: Arc<Client>,
         transaction_indexer: Arc<dyn TransactionIndex + Send + Sync>,
+        network: Network,
     ) -> Self {
         Self {
             client,
             transaction_indexer,
+            network,
             _phantom: Default::default(),
         }
     }
@@ -239,6 +249,19 @@ where
 
     fn block_number(&self, block_hash: BlockHash) -> Result<Option<u32>, Error> {
         Ok(self.client.block_number(block_hash))
+    }
+
+    fn decode_script_pubkey(&self, script_pubkey_hex: String) -> Result<Option<String>, Error> {
+        let script_bytes = hex::decode(&script_pubkey_hex)
+            .map_err(|e| Error::Other(format!("Invalid hex: {e}")))?;
+
+        let script = ScriptBuf::from_bytes(script_bytes);
+
+        // Try to extract address from the script
+        match bitcoin::Address::from_script(&script, self.network) {
+            Ok(address) => Ok(Some(address.to_string())),
+            Err(_) => Ok(None), // Script doesn't represent a standard address (e.g., OP_RETURN)
+        }
     }
 }
 

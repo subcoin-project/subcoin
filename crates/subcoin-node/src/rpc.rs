@@ -2,6 +2,7 @@ use jsonrpsee::RpcModule;
 use sc_service::SpawnTaskHandle;
 use sc_utils::mpsc::TracingUnboundedSender;
 use std::sync::Arc;
+use subcoin_indexer::IndexerQuery;
 use subcoin_network::NetworkApi;
 use subcoin_primitives::TransactionIndex;
 use subcoin_runtime::interface::OpaqueBlock;
@@ -17,6 +18,7 @@ pub struct RpcConfig {
 }
 
 /// Instantiate all full RPC extensions.
+#[allow(clippy::too_many_arguments)]
 pub fn gen_rpc_module(
     system_info: sc_rpc::system::SystemInfo,
     client: Arc<FullClient>,
@@ -24,6 +26,7 @@ pub fn gen_rpc_module(
     system_rpc_tx: TracingUnboundedSender<sc_rpc::system::Request<OpaqueBlock>>,
     network_api: Arc<dyn NetworkApi>,
     transaction_indexer: Arc<dyn TransactionIndex + Send + Sync>,
+    indexer_query: Option<Arc<IndexerQuery>>,
     rpc_config: RpcConfig,
 ) -> Result<RpcModule<()>, sc_service::Error> {
     use sc_rpc::chain::ChainApiServer;
@@ -59,6 +62,8 @@ pub fn gen_rpc_module(
         client.clone(),
         network_api.clone(),
         transaction_indexer.clone(),
+        indexer_query,
+        rpc_config.bitcoin_network,
     )
     .merge_into(&mut module)
     .map_err(into_service_error)?;
