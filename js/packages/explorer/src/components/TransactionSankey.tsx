@@ -34,7 +34,7 @@ function formatBtc(satoshis: number): string {
 }
 
 function shortenTxid(txid: string): string {
-  return `${txid.slice(0, 8)}...${txid.slice(-8)}`;
+  return `${txid.slice(0, 12)}...${txid.slice(-6)}`;
 }
 
 /**
@@ -90,14 +90,14 @@ export function TransactionSankey({
 
   const { inputNodes, outputNodes, totalOutput } = layout;
 
-  // SVG dimensions - compact layout
-  const width = 500;
+  // SVG dimensions - compact layout with wider nodes for txids
+  const width = 600;
   const maxNodes = Math.max(inputNodes.length, outputNodes.length);
   const height = Math.min(
     250,
     Math.max(120, maxNodes * 36 + 30)
   );
-  const nodeWidth = 100;
+  const nodeWidth = 150;
   const nodeGap = 4;
   const leftX = 10;
   const rightX = width - nodeWidth - 10;
