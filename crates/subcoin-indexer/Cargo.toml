@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 bitcoin = { workspace = true }
 futures = { workspace = true }
+rayon = { workspace = true }
 sc-client-api = { workspace = true }
 sp-blockchain = { workspace = true }
 sp-runtime = { workspace = true }

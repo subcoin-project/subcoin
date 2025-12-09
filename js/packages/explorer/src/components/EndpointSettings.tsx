@@ -63,14 +63,19 @@ export function EndpointSettings() {
         setInputValue(endpoint);
         setIsEditing(true);
       }}
-      className="text-gray-500 text-sm hover:text-gray-300 flex items-center gap-1 group"
-      title="Click to change endpoint"
+      className="flex items-center gap-1.5 px-2 py-1 rounded border border-gray-700 bg-gray-800/50 hover:border-gray-600 hover:bg-gray-800 transition-colors group"
+      title="Click to change RPC endpoint"
     >
-      <span className={isConnected ? "text-gray-500" : "text-red-400"}>
+      {/* Connection status indicator */}
+      <span
+        className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"}`}
+        title={isConnected ? "Connected" : "Disconnected"}
+      />
+      <span className="text-gray-400 text-sm">
         {endpoint}
       </span>
       <svg
-        className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity"
+        className="w-3 h-3 text-gray-500 group-hover:text-gray-300 transition-colors"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"

@@ -1,7 +1,9 @@
 //! Query functions for the indexer.
 
 use crate::db::{IndexerDatabase, Result};
-use crate::types::{AddressBalance, AddressHistory, IndexerState, IndexerStatus, Utxo};
+use crate::types::{
+    AddressBalance, AddressHistory, AddressStats, IndexerState, IndexerStatus, Utxo,
+};
 use bitcoin::Txid;
 use subcoin_primitives::TxPosition;
 
@@ -156,6 +158,80 @@ impl IndexerQuery {
                 .fetch_optional(self.db.pool())
                 .await?;
         Ok(count.map(|(v,)| v as u64).unwrap_or(0))
+    }
+
+    /// Get address statistics (first/last seen, largest tx, etc).
+    pub async fn get_address_stats(&self, address: &str) -> Result<AddressStats> {
+        // Get first seen (earliest transaction)
+        let first_seen: Option<(i64, i64)> = sqlx::query_as(
+            r#"
+            SELECT ah.block_height, b.timestamp
+            FROM address_history ah
+            JOIN blocks b ON b.height = ah.block_height
+            WHERE ah.address = ?
+            ORDER BY ah.block_height ASC
+            LIMIT 1
+            "#,
+        )
+        .bind(address)
+        .fetch_optional(self.db.pool())
+        .await?;
+
+        // Get last seen (most recent transaction)
+        let last_seen: Option<(i64, i64)> = sqlx::query_as(
+            r#"
+            SELECT ah.block_height, b.timestamp
+            FROM address_history ah
+            JOIN blocks b ON b.height = ah.block_height
+            WHERE ah.address = ?
+            ORDER BY ah.block_height DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(address)
+        .fetch_optional(self.db.pool())
+        .await?;
+
+        // Get largest receive (max positive delta)
+        let largest_receive: Option<(i64,)> = sqlx::query_as(
+            "SELECT COALESCE(MAX(delta), 0) FROM address_history WHERE address = ? AND delta > 0",
+        )
+        .bind(address)
+        .fetch_optional(self.db.pool())
+        .await?;
+
+        // Get largest send (max absolute negative delta)
+        let largest_send: Option<(i64,)> = sqlx::query_as(
+            "SELECT COALESCE(MAX(ABS(delta)), 0) FROM address_history WHERE address = ? AND delta < 0",
+        )
+        .bind(address)
+        .fetch_optional(self.db.pool())
+        .await?;
+
+        // Get receive count (transactions with positive delta)
+        let receive_count: Option<(i64,)> =
+            sqlx::query_as("SELECT COUNT(*) FROM address_history WHERE address = ? AND delta > 0")
+                .bind(address)
+                .fetch_optional(self.db.pool())
+                .await?;
+
+        // Get send count (transactions with negative delta)
+        let send_count: Option<(i64,)> =
+            sqlx::query_as("SELECT COUNT(*) FROM address_history WHERE address = ? AND delta < 0")
+                .bind(address)
+                .fetch_optional(self.db.pool())
+                .await?;
+
+        Ok(AddressStats {
+            first_seen_height: first_seen.map(|(h, _)| h as u32),
+            first_seen_timestamp: first_seen.map(|(_, t)| t as u32),
+            last_seen_height: last_seen.map(|(h, _)| h as u32),
+            last_seen_timestamp: last_seen.map(|(_, t)| t as u32),
+            largest_receive: largest_receive.map(|(v,)| v as u64).unwrap_or(0),
+            largest_send: largest_send.map(|(v,)| v as u64).unwrap_or(0),
+            receive_count: receive_count.map(|(v,)| v as u64).unwrap_or(0),
+            send_count: send_count.map(|(v,)| v as u64).unwrap_or(0),
+        })
     }
 
     /// Get the current indexer status.

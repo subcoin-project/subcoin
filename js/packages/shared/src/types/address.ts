@@ -57,3 +57,25 @@ export interface IndexerStatus {
   /** Sync progress as percentage (0.0 - 100.0) */
   progress_percent: number;
 }
+
+/**
+ * Address statistics and summary information
+ */
+export interface AddressStats {
+  /** Block height when address first received funds */
+  first_seen_height: number | null;
+  /** Timestamp when address first received funds */
+  first_seen_timestamp: number | null;
+  /** Block height of most recent transaction */
+  last_seen_height: number | null;
+  /** Timestamp of most recent transaction */
+  last_seen_timestamp: number | null;
+  /** Largest single receive amount in satoshis */
+  largest_receive: number;
+  /** Largest single send amount in satoshis (absolute value) */
+  largest_send: number;
+  /** Total number of receive transactions */
+  receive_count: number;
+  /** Total number of send transactions */
+  send_count: number;
+}

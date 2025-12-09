@@ -65,6 +65,27 @@ pub struct IndexerStatus {
     pub progress_percent: f64,
 }
 
+/// Address statistics and summary information.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddressStats {
+    /// Block height when address first received funds.
+    pub first_seen_height: Option<u32>,
+    /// Timestamp when address first received funds.
+    pub first_seen_timestamp: Option<u32>,
+    /// Block height of most recent transaction.
+    pub last_seen_height: Option<u32>,
+    /// Timestamp of most recent transaction.
+    pub last_seen_timestamp: Option<u32>,
+    /// Largest single receive amount in satoshis.
+    pub largest_receive: u64,
+    /// Largest single send amount in satoshis (absolute value).
+    pub largest_send: u64,
+    /// Total number of receive transactions.
+    pub receive_count: u64,
+    /// Total number of send transactions.
+    pub send_count: u64,
+}
+
 /// Address API.
 #[rpc(client, server)]
 pub trait AddressApi {
@@ -92,6 +113,10 @@ pub trait AddressApi {
     /// Get indexer status (sync progress).
     #[method(name = "address_indexerStatus")]
     async fn indexer_status(&self) -> Result<IndexerStatus, Error>;
+
+    /// Get address statistics (first/last seen, largest tx, etc).
+    #[method(name = "address_getStats")]
+    async fn get_stats(&self, address: String) -> Result<AddressStats, Error>;
 }
 
 /// Address RPC implementation.
@@ -200,6 +225,25 @@ where
             indexed_height: status.indexed_height,
             target_height: status.target_height,
             progress_percent: status.progress_percent,
+        })
+    }
+
+    async fn get_stats(&self, address: String) -> Result<AddressStats, Error> {
+        let stats = self
+            .indexer_query
+            .get_address_stats(&address)
+            .await
+            .map_err(|e| Error::Other(e.to_string()))?;
+
+        Ok(AddressStats {
+            first_seen_height: stats.first_seen_height,
+            first_seen_timestamp: stats.first_seen_timestamp,
+            last_seen_height: stats.last_seen_height,
+            last_seen_timestamp: stats.last_seen_timestamp,
+            largest_receive: stats.largest_receive,
+            largest_send: stats.largest_send,
+            receive_count: stats.receive_count,
+            send_count: stats.send_count,
         })
     }
 }

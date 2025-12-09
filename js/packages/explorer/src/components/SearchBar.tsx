@@ -25,6 +25,13 @@ export function SearchBar() {
         return;
       }
 
+      // Check if it's a Bitcoin address
+      if (isBitcoinAddress(trimmedQuery)) {
+        navigate(`/address/${trimmedQuery}`);
+        setQuery("");
+        return;
+      }
+
       // Check if it's a 64-character hex string (could be block hash or txid)
       if (isHex64(trimmedQuery)) {
         // Try to fetch as a block first
@@ -55,7 +62,7 @@ export function SearchBar() {
         return;
       }
 
-      setError("Invalid input. Enter a block height, block hash, or transaction ID.");
+      setError("Invalid input. Enter a block height, block/tx hash, or address.");
     } finally {
       setSearching(false);
     }
@@ -71,7 +78,7 @@ export function SearchBar() {
             setQuery(e.target.value);
             setError(null);
           }}
-          placeholder="Search block, hash, or txid..."
+          placeholder="Search block, tx, or address..."
           className="w-full sm:w-64 lg:w-96 px-3 py-2 bg-gray-800 border border-gray-700 rounded-l-md text-gray-200 text-sm placeholder-gray-500 focus:outline-none focus:border-bitcoin-orange"
           disabled={searching}
         />
@@ -147,4 +154,32 @@ function isBlockHeight(input: string): boolean {
  */
 function isHex64(input: string): boolean {
   return /^[0-9a-fA-F]{64}$/.test(input);
+}
+
+/**
+ * Check if the input looks like a Bitcoin address.
+ * Supports:
+ * - Legacy P2PKH addresses starting with '1' (25-34 chars)
+ * - P2SH addresses starting with '3' (25-34 chars)
+ * - Bech32 SegWit addresses starting with 'bc1q' (42-62 chars)
+ * - Bech32m Taproot addresses starting with 'bc1p' (62 chars)
+ * - Testnet addresses starting with 'm', 'n', '2', 'tb1'
+ */
+function isBitcoinAddress(input: string): boolean {
+  // Legacy P2PKH (mainnet: 1, testnet: m or n)
+  if (/^[1mn][a-km-zA-HJ-NP-Z1-9]{24,33}$/.test(input)) {
+    return true;
+  }
+
+  // P2SH (mainnet: 3, testnet: 2)
+  if (/^[32][a-km-zA-HJ-NP-Z1-9]{24,33}$/.test(input)) {
+    return true;
+  }
+
+  // Bech32/Bech32m (mainnet: bc1, testnet: tb1)
+  if (/^(bc1|tb1)[a-z0-9]{38,58}$/i.test(input)) {
+    return true;
+  }
+
+  return false;
 }

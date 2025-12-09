@@ -1,6 +1,5 @@
 import { ReactNode, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { ConnectionStatus } from "./ConnectionStatus";
 import { SearchBar } from "./SearchBar";
 import { EndpointSettings } from "./EndpointSettings";
 
@@ -57,15 +56,12 @@ export function Layout({ children }: LayoutProps) {
             {/* Desktop right section */}
             <div className="hidden lg:flex items-center space-x-4">
               <SearchBar />
-              <span className="text-gray-600">|</span>
-              <ConnectionStatus />
-              <span className="text-gray-600">|</span>
               <EndpointSettings />
             </div>
 
-            {/* Tablet: just connection status */}
+            {/* Tablet: just endpoint settings */}
             <div className="hidden md:flex lg:hidden items-center space-x-3">
-              <ConnectionStatus />
+              <EndpointSettings />
             </div>
 
             {/* Mobile menu button */}
@@ -116,8 +112,7 @@ export function Layout({ children }: LayoutProps) {
               <div className="mb-4">
                 <SearchBar />
               </div>
-              <div className="flex items-center justify-between text-sm">
-                <ConnectionStatus />
+              <div className="flex items-center justify-end text-sm">
                 <EndpointSettings />
               </div>
             </div>

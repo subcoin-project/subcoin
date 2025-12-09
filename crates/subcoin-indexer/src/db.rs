@@ -387,7 +387,12 @@ impl IndexerDatabase {
     }
 
     /// Index a single block in a database transaction (for live sync).
-    pub async fn index_block(&self, height: u32, block: &bitcoin::Block, network: Network) -> Result<()> {
+    pub async fn index_block(
+        &self,
+        height: u32,
+        block: &bitcoin::Block,
+        network: Network,
+    ) -> Result<()> {
         self.index_blocks_batch(&[(height, block.clone())], network)
             .await
     }

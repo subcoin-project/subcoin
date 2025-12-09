@@ -9407,6 +9407,7 @@ version = "0.1.0"
 dependencies = [
  "bitcoin 0.32.2",
  "futures",
+ "rayon",
  "sc-client-api",
  "sp-blockchain",
  "sp-runtime",

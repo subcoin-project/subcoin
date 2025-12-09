@@ -75,3 +75,24 @@ pub struct IndexerStatus {
     /// Sync progress as percentage (0.0 - 100.0).
     pub progress_percent: f64,
 }
+
+/// Address statistics for RPC queries.
+#[derive(Debug, Clone, Default)]
+pub struct AddressStats {
+    /// Block height when address first received funds.
+    pub first_seen_height: Option<u32>,
+    /// Timestamp when address first received funds.
+    pub first_seen_timestamp: Option<u32>,
+    /// Block height of most recent transaction.
+    pub last_seen_height: Option<u32>,
+    /// Timestamp of most recent transaction.
+    pub last_seen_timestamp: Option<u32>,
+    /// Largest single receive amount in satoshis.
+    pub largest_receive: u64,
+    /// Largest single send amount in satoshis (absolute value).
+    pub largest_send: u64,
+    /// Total number of receive transactions.
+    pub receive_count: u64,
+    /// Total number of send transactions.
+    pub send_count: u64,
+}

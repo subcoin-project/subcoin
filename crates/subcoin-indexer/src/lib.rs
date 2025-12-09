@@ -15,4 +15,4 @@ mod types;
 pub use db::IndexerDatabase;
 pub use indexer::Indexer;
 pub use queries::IndexerQuery;
-pub use types::{AddressBalance, AddressHistory, IndexerStatus, Utxo};
+pub use types::{AddressBalance, AddressHistory, AddressStats, IndexerStatus, Utxo};

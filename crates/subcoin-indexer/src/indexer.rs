@@ -5,6 +5,7 @@ use crate::queries::IndexerQuery;
 use crate::types::IndexerState;
 use bitcoin::{Block as BitcoinBlock, Network};
 use futures::StreamExt;
+use rayon::prelude::*;
 use sc_client_api::{BlockBackend, BlockchainEvents, HeaderBackend};
 use sp_runtime::traits::{Block as BlockT, Header, SaturatedConversion};
 use std::marker::PhantomData;
@@ -29,8 +30,8 @@ pub struct Indexer<Block, Client, TransactionAdapter> {
 impl<Block, Client, TransactionAdapter> Indexer<Block, Client, TransactionAdapter>
 where
     Block: BlockT,
-    Client: BlockchainEvents<Block> + HeaderBackend<Block> + BlockBackend<Block> + 'static,
-    TransactionAdapter: BitcoinTransactionAdapter<Block>,
+    Client: BlockchainEvents<Block> + HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
+    TransactionAdapter: BitcoinTransactionAdapter<Block> + Send + Sync,
 {
     /// Create a new indexer.
     pub async fn new(db_path: &Path, network: Network, client: Arc<Client>) -> Result<Self> {
@@ -193,12 +194,20 @@ where
 
     /// Index a batch of blocks in a single database transaction.
     async fn index_block_batch(&self, start: u32, end: u32) -> Result<()> {
-        // Collect all block data first
-        let mut blocks_data = Vec::with_capacity((end - start) as usize);
-        for height in start..end {
-            let block = self.get_bitcoin_block_at_height(height)?;
-            blocks_data.push((height, block));
-        }
+        // Read blocks in parallel using rayon
+        let heights: Vec<u32> = (start..end).collect();
+        let blocks_result: std::result::Result<Vec<_>, _> = heights
+            .par_iter()
+            .map(|&height| {
+                self.get_bitcoin_block_at_height(height)
+                    .map(|block| (height, block))
+            })
+            .collect();
+
+        let mut blocks_data = blocks_result?;
+
+        // Sort by height to ensure correct order for DB insertion
+        blocks_data.sort_by_key(|(height, _)| *height);
 
         // Now index all blocks in a single transaction
         self.db
