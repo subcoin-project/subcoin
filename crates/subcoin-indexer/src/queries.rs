@@ -2,8 +2,9 @@
 
 use crate::db::{IndexerDatabase, Result};
 use crate::types::{
-    AddressBalance, AddressHistory, AddressStats, IndexerState, IndexerStatus, Utxo,
+    AddressBalance, AddressHistory, AddressStats, IndexerState, IndexerStatus, OutputStatus, Utxo,
 };
+use bitcoin::hashes::Hash;
 use bitcoin::Txid;
 use subcoin_primitives::TxPosition;
 
@@ -232,6 +233,34 @@ impl IndexerQuery {
             receive_count: receive_count.map(|(v,)| v as u64).unwrap_or(0),
             send_count: send_count.map(|(v,)| v as u64).unwrap_or(0),
         })
+    }
+
+    /// Get output spending status.
+    pub async fn get_output_status(&self, txid: &Txid, vout: u32) -> Result<Option<OutputStatus>> {
+        let row: Option<(Option<Vec<u8>>, Option<i64>, Option<i64>)> = sqlx::query_as(
+            "SELECT spent_txid, spent_vout, spent_block_height FROM outputs WHERE txid = ? AND vout = ?",
+        )
+        .bind(txid.as_byte_array().as_slice())
+        .bind(vout as i64)
+        .fetch_optional(self.db.pool())
+        .await?;
+
+        match row {
+            Some((spent_txid_bytes, spent_vout, spent_block_height)) => {
+                let spent = spent_txid_bytes.is_some();
+                let spent_by_txid = match spent_txid_bytes {
+                    Some(bytes) => Some(IndexerDatabase::parse_txid(&bytes)?),
+                    None => None,
+                };
+                Ok(Some(OutputStatus {
+                    spent,
+                    spent_by_txid,
+                    spent_by_vin: spent_vout.map(|v| v as u32),
+                    spent_at_height: spent_block_height.map(|h| h as u32),
+                }))
+            }
+            None => Ok(None),
+        }
     }
 
     /// Get the current indexer status.

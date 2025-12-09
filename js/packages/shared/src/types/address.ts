@@ -79,3 +79,17 @@ export interface AddressStats {
   /** Total number of send transactions */
   send_count: number;
 }
+
+/**
+ * Output spending status
+ */
+export interface OutputStatus {
+  /** Whether the output has been spent */
+  spent: boolean;
+  /** Transaction ID that spent this output (if spent) */
+  spent_by_txid: string | null;
+  /** Input index in the spending transaction (if spent) */
+  spent_by_vin: number | null;
+  /** Block height where the output was spent (if spent) */
+  spent_at_height: number | null;
+}

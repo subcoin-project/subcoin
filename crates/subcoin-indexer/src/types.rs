@@ -96,3 +96,16 @@ pub struct AddressStats {
     /// Total number of send transactions.
     pub send_count: u64,
 }
+
+/// Output spending status.
+#[derive(Debug, Clone)]
+pub struct OutputStatus {
+    /// Whether the output has been spent.
+    pub spent: bool,
+    /// Transaction ID that spent this output (if spent).
+    pub spent_by_txid: Option<Txid>,
+    /// Input index in the spending transaction (if spent).
+    pub spent_by_vin: Option<u32>,
+    /// Block height where the output was spent (if spent).
+    pub spent_at_height: Option<u32>,
+}

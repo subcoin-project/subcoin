@@ -2,7 +2,7 @@
  * Address API - wraps address_* RPC methods
  */
 
-import type { AddressBalance, AddressStats, AddressTransaction, AddressUtxo, IndexerStatus } from "../types/address";
+import type { AddressBalance, AddressStats, AddressTransaction, AddressUtxo, IndexerStatus, OutputStatus } from "../types/address";
 import { getDefaultClient, SubcoinRpcClient } from "./client";
 
 export class AddressApi {
@@ -56,6 +56,13 @@ export class AddressApi {
    */
   async getStats(address: string): Promise<AddressStats> {
     return this.client.request<AddressStats>("address_getStats", [address]);
+  }
+
+  /**
+   * Get output spending status
+   */
+  async getOutputStatus(txid: string, vout: number): Promise<OutputStatus | null> {
+    return this.client.request<OutputStatus | null>("address_getOutputStatus", [txid, vout]);
   }
 }
 

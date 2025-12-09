@@ -86,6 +86,19 @@ pub struct AddressStats {
     pub send_count: u64,
 }
 
+/// Output spending status.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutputStatus {
+    /// Whether the output has been spent.
+    pub spent: bool,
+    /// Transaction ID that spent this output (if spent).
+    pub spent_by_txid: Option<Txid>,
+    /// Input index in the spending transaction (if spent).
+    pub spent_by_vin: Option<u32>,
+    /// Block height where the output was spent (if spent).
+    pub spent_at_height: Option<u32>,
+}
+
 /// Address API.
 #[rpc(client, server)]
 pub trait AddressApi {
@@ -117,6 +130,10 @@ pub trait AddressApi {
     /// Get address statistics (first/last seen, largest tx, etc).
     #[method(name = "address_getStats")]
     async fn get_stats(&self, address: String) -> Result<AddressStats, Error>;
+
+    /// Get output spending status.
+    #[method(name = "address_getOutputStatus")]
+    async fn get_output_status(&self, txid: Txid, vout: u32) -> Result<Option<OutputStatus>, Error>;
 }
 
 /// Address RPC implementation.
@@ -245,5 +262,20 @@ where
             receive_count: stats.receive_count,
             send_count: stats.send_count,
         })
+    }
+
+    async fn get_output_status(&self, txid: Txid, vout: u32) -> Result<Option<OutputStatus>, Error> {
+        let status = self
+            .indexer_query
+            .get_output_status(&txid, vout)
+            .await
+            .map_err(|e| Error::Other(e.to_string()))?;
+
+        Ok(status.map(|s| OutputStatus {
+            spent: s.spent,
+            spent_by_txid: s.spent_by_txid,
+            spent_by_vin: s.spent_by_vin,
+            spent_at_height: s.spent_at_height,
+        }))
     }
 }

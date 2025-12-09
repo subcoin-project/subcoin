@@ -1,15 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import type { TxIn, TxOut } from "@subcoin/shared";
-import { detectScriptType } from "@subcoin/shared";
+import type { OutputStatus, TxIn, TxOut } from "@subcoin/shared";
+import { addressApi, detectScriptType } from "@subcoin/shared";
 
 interface TransactionSankeyProps {
+  /** Transaction ID for fetching output statuses */
+  txid: string;
   inputs: TxIn[];
   outputs: TxOut[];
   inputValues?: number[]; // Values for inputs (if available from previous outputs)
   isCoinbase?: boolean;
-  /** Callback to resolve input addresses */
-  resolveInputAddress?: (txid: string, vout: number) => Promise<string | null>;
 }
 
 interface InputNode {
@@ -29,24 +29,74 @@ interface OutputNode {
   colorClass: string;
 }
 
+interface OutputSpentInfo {
+  spent: boolean;
+  spentByTxid?: string;
+  spentByVin?: number;
+  spentAtHeight?: number;
+}
+
 function formatBtc(satoshis: number): string {
   return (satoshis / 100_000_000).toFixed(8);
 }
 
 function shortenTxid(txid: string): string {
-  return `${txid.slice(0, 12)}...${txid.slice(-6)}`;
+  return `${txid.slice(0, 7)}...${txid.slice(-7)}`;
 }
 
 /**
  * Pure SVG Sankey diagram for Bitcoin transaction visualization
  */
 export function TransactionSankey({
+  txid,
   inputs,
   outputs,
   inputValues,
   isCoinbase = false,
 }: TransactionSankeyProps) {
   const [hoveredFlow, setHoveredFlow] = useState<number | null>(null);
+  const [outputStatuses, setOutputStatuses] = useState<Map<number, OutputSpentInfo>>(new Map());
+
+  // Fetch output spending statuses
+  useEffect(() => {
+    const fetchOutputStatuses = async () => {
+      // Fetch all output statuses in parallel
+      const results = await Promise.all(
+        outputs.map(async (_, vout) => {
+          try {
+            const status = await addressApi.getOutputStatus(txid, vout);
+            if (status) {
+              return {
+                vout,
+                info: {
+                  spent: status.spent,
+                  spentByTxid: status.spent_by_txid ?? undefined,
+                  spentByVin: status.spent_by_vin ?? undefined,
+                  spentAtHeight: status.spent_at_height ?? undefined,
+                } as OutputSpentInfo,
+              };
+            }
+          } catch (err) {
+            console.error(`Error fetching output status for ${txid}:${vout}:`, err);
+          }
+          return null;
+        })
+      );
+
+      // Build a new Map from results
+      const newStatuses = new Map<number, OutputSpentInfo>();
+      for (const result of results) {
+        if (result) {
+          newStatuses.set(result.vout, result.info);
+        }
+      }
+      setOutputStatuses(newStatuses);
+    };
+
+    if (txid && outputs.length > 0) {
+      fetchOutputStatuses();
+    }
+  }, [txid, outputs.length]);
 
   // Calculate layout
   const layout = useMemo(() => {
@@ -91,12 +141,14 @@ export function TransactionSankey({
   const { inputNodes, outputNodes, totalOutput } = layout;
 
   // SVG dimensions - adaptive layout
-  const width = 600;
-  const targetHeight = 180; // Target total height for the diagram
+  const width = 820;
+  // Dynamic height based on number of nodes
+  const maxNodes = Math.max(inputNodes.length, outputNodes.length);
+  const targetHeight = Math.max(180, maxNodes * 50); // Scale with node count
   const nodeGap = 8;
-  const minNodeHeight = 36;
-  const maxNodeHeight = 60;
-  const nodeWidth = 150;
+  const minNodeHeight = 44;
+  const maxNodeHeight = 68;
+  const nodeWidth = 290;
   const leftX = 10;
   const rightX = width - nodeWidth - 10;
 
@@ -274,25 +326,30 @@ export function TransactionSankey({
             {/* Node label */}
             <foreignObject
               x={leftX + 4}
-              y={inputYs[idx] + 4}
+              y={inputYs[idx] + 2}
               width={nodeWidth - 8}
-              height={inputHeights[idx] - 8}
+              height={inputHeights[idx] - 4}
+              xmlns="http://www.w3.org/1999/xhtml"
             >
-              <div className="h-full flex flex-col justify-center text-xs">
+              <div style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', fontSize: '10px' }}>
                 {node.isCoinbase ? (
-                  <span className="text-bitcoin-orange font-medium truncate">
+                  <span style={{ color: '#f97316', fontWeight: 500 }}>
                     Coinbase
                   </span>
                 ) : (
-                  <Link
-                    to={`/tx/${node.txid}`}
-                    className="text-blue-400 hover:text-blue-300 font-mono truncate"
+                  <a
+                    href={`/tx/${node.txid}`}
+                    style={{ color: '#60a5fa', fontFamily: 'monospace', textDecoration: 'none' }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      window.location.href = `/tx/${node.txid}`;
+                    }}
                   >
-                    {shortenTxid(node.txid || "")}
-                  </Link>
+                    {shortenTxid(node.txid || "")}:{node.vout}
+                  </a>
                 )}
                 {node.value > 0 && (
-                  <span className="text-gray-400 font-mono text-[10px]">
+                  <span style={{ color: '#9ca3af', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
                     {formatBtc(node.value)} BTC
                   </span>
                 )}
@@ -305,6 +362,20 @@ export function TransactionSankey({
         {outputNodes.map((node, idx) => {
           const scriptInfo = detectScriptType(outputs[idx].script_pubkey);
           const isOpReturn = scriptInfo.type === "OP_RETURN";
+          const spentInfo = outputStatuses.get(idx);
+          const isSpent = spentInfo?.spent ?? false;
+
+          // Colors: spent outputs get red/orange tint, unspent stay green
+          const getFillColor = () => {
+            if (isOpReturn) return "rgba(107, 114, 128, 0.3)";
+            if (isSpent) return "rgba(239, 68, 68, 0.2)"; // red-500 with opacity
+            return "rgba(34, 197, 94, 0.3)"; // green
+          };
+          const getStrokeColor = () => {
+            if (isOpReturn) return "rgb(107, 114, 128)";
+            if (isSpent) return "rgb(239, 68, 68)"; // red-500
+            return "rgb(34, 197, 94)"; // green
+          };
 
           return (
             <g key={`output-${idx}`}>
@@ -315,8 +386,8 @@ export function TransactionSankey({
                 width={nodeWidth}
                 height={outputHeights[idx]}
                 rx={4}
-                fill={isOpReturn ? "rgba(107, 114, 128, 0.3)" : "rgba(34, 197, 94, 0.3)"}
-                stroke={isOpReturn ? "rgb(107, 114, 128)" : "rgb(34, 197, 94)"}
+                fill={getFillColor()}
+                stroke={getStrokeColor()}
                 strokeWidth={1}
                 className="transition-all"
               />
@@ -324,26 +395,58 @@ export function TransactionSankey({
               {/* Node label */}
               <foreignObject
                 x={rightX + 4}
-                y={outputYs[idx] + 4}
+                y={outputYs[idx] + 2}
                 width={nodeWidth - 8}
-                height={outputHeights[idx] - 8}
+                height={outputHeights[idx] - 4}
+                xmlns="http://www.w3.org/1999/xhtml"
               >
-                <div className="h-full flex flex-col justify-center text-xs">
-                  <div className="flex items-center gap-1">
-                    <span className="text-gray-300">#{idx}</span>
+                <div style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', fontSize: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                    <span style={{ color: '#d1d5db' }}>#{idx}</span>
                     <span
-                      className={`px-1 py-0.5 rounded text-[10px] ${scriptInfo.colorClass}`}
+                      className={`px-0.5 rounded ${scriptInfo.colorClass}`}
                     >
                       {scriptInfo.label}
                     </span>
+                    {/* Spent/Unspent indicator */}
+                    {!isOpReturn && (
+                      <span
+                        style={{
+                          padding: '0 2px',
+                          borderRadius: '2px',
+                          backgroundColor: isSpent ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
+                          color: isSpent ? '#f87171' : '#4ade80',
+                        }}
+                      >
+                        {isSpent ? "spent" : "unspent"}
+                      </span>
+                    )}
+                    {/* Link to spending transaction - after spent label */}
+                    {isSpent && spentInfo?.spentByTxid && (
+                      <a
+                        href={`/tx/${spentInfo.spentByTxid}`}
+                        style={{ color: '#f87171', fontFamily: 'monospace', textDecoration: 'none' }}
+                        title={`Spent by ${spentInfo.spentByTxid}:${spentInfo.spentByVin}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          window.location.href = `/tx/${spentInfo.spentByTxid}`;
+                        }}
+                      >
+                        → {shortenTxid(spentInfo.spentByTxid)}:{spentInfo.spentByVin}
+                      </a>
+                    )}
                   </div>
-                  <span
-                    className={`font-mono text-[10px] ${
-                      isOpReturn ? "text-gray-500" : "text-green-400"
-                    }`}
-                  >
-                    {formatBtc(node.value)} BTC
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span
+                      style={{
+                        fontFamily: 'monospace',
+                        whiteSpace: 'nowrap',
+                        color: isOpReturn ? '#6b7280' : isSpent ? '#f87171' : '#4ade80',
+                      }}
+                    >
+                      {formatBtc(node.value)} BTC
+                    </span>
+                  </div>
                 </div>
               </foreignObject>
             </g>
@@ -367,7 +470,11 @@ export function TransactionSankey({
         </div>
         <div className="flex items-center gap-1">
           <div className="w-2 h-2 rounded bg-green-500/30 border border-green-500" />
-          <span>Output</span>
+          <span>Unspent</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-2 h-2 rounded bg-red-500/20 border border-red-500" />
+          <span>Spent</span>
         </div>
         <div className="flex items-center gap-1">
           <div className="w-2 h-2 rounded bg-bitcoin-orange/30 border border-bitcoin-orange" />
@@ -375,7 +482,7 @@ export function TransactionSankey({
         </div>
         <div className="flex items-center gap-1">
           <div className="w-2 h-2 rounded bg-gray-500/30 border border-gray-500" />
-          <span>OP_RETURN (data)</span>
+          <span>OP_RETURN</span>
         </div>
       </div>
     </div>

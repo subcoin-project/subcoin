@@ -399,87 +399,143 @@ impl IndexerDatabase {
 
     /// Index multiple blocks in a single database transaction for better performance.
     /// Used during historical sync for batching, and indirectly for single blocks during live sync.
+    ///
+    /// Optimized with:
+    /// 1. Bulk pre-fetch of outputs (eliminates N+1 queries)
+    /// 2. Collect all data in memory first, then bulk insert by table
+    /// 3. Pre-aggregate address history deltas (avoids ON CONFLICT overhead)
     pub async fn index_blocks_batch(
         &self,
         blocks: &[(u32, bitcoin::Block)],
         network: Network,
     ) -> Result<()> {
+        use std::collections::{HashMap, HashSet};
+
+        if blocks.is_empty() {
+            return Ok(());
+        }
+
+        // ========== Phase 1: Collect all outpoints that need lookup ==========
+        let mut outpoints_to_fetch: HashSet<OutPoint> = HashSet::new();
+        for (_height, block) in blocks {
+            for btc_tx in &block.txdata {
+                for input in &btc_tx.input {
+                    if !input.previous_output.is_null() {
+                        outpoints_to_fetch.insert(input.previous_output);
+                    }
+                }
+            }
+        }
+
+        // ========== Phase 2: Bulk fetch outputs ==========
+        let mut output_cache: HashMap<OutPoint, (String, u64)> = HashMap::new();
+        let outpoints_vec: Vec<_> = outpoints_to_fetch.into_iter().collect();
+
         let mut tx = self.pool.begin().await?;
+
+        const FETCH_BATCH_SIZE: usize = 500;
+        for chunk in outpoints_vec.chunks(FETCH_BATCH_SIZE) {
+            if chunk.is_empty() {
+                continue;
+            }
+
+            let placeholders: Vec<String> = chunk
+                .iter()
+                .map(|_| "(txid = ? AND vout = ?)".to_string())
+                .collect();
+            let query = format!(
+                "SELECT txid, vout, address, value FROM outputs WHERE address IS NOT NULL AND ({})",
+                placeholders.join(" OR ")
+            );
+
+            let mut query_builder = sqlx::query_as::<_, (Vec<u8>, i64, String, i64)>(&query);
+            for outpoint in chunk {
+                query_builder = query_builder
+                    .bind(outpoint.txid.as_byte_array().as_slice())
+                    .bind(outpoint.vout as i64);
+            }
+
+            let rows = query_builder.fetch_all(&mut *tx).await?;
+
+            for (txid_bytes, vout, address, value) in rows {
+                let txid = Self::parse_txid(&txid_bytes)?;
+                let outpoint = OutPoint {
+                    txid,
+                    vout: vout as u32,
+                };
+                output_cache.insert(outpoint, (address, value as u64));
+            }
+        }
+
+        // ========== Phase 3: Collect all data into memory buffers ==========
+
+        // Block records: (height, hash, timestamp)
+        let mut blocks_data: Vec<(i64, Vec<u8>, i64)> = Vec::new();
+
+        // Transaction records: (txid, block_height, tx_index)
+        let mut transactions_data: Vec<(Vec<u8>, i64, i64)> = Vec::new();
+
+        // Output records: (txid, vout, address, value, script_pubkey, block_height)
+        let mut outputs_data: Vec<(Vec<u8>, i64, Option<String>, i64, Vec<u8>, i64)> = Vec::new();
+
+        // Spent output updates: (spent_txid, spent_vout, spent_block_height, orig_txid, orig_vout)
+        let mut spent_updates: Vec<(Vec<u8>, i64, i64, Vec<u8>, i64)> = Vec::new();
+
+        // Address history: HashMap<(address, txid_bytes, block_height), delta> - pre-aggregated
+        let mut address_history_map: HashMap<(String, Vec<u8>, i64), i64> = HashMap::new();
+
+        // Track outputs created within this batch (for intra-batch spending)
+        // Key: OutPoint, Value: (address, value)
+        let mut batch_outputs: HashMap<OutPoint, (Option<String>, u64)> = HashMap::new();
 
         for (height, block) in blocks {
             let block_hash = block.block_hash();
             let timestamp = block.header.time;
 
-            // Insert block
-            sqlx::query("INSERT OR REPLACE INTO blocks (height, hash, timestamp) VALUES (?, ?, ?)")
-                .bind(*height as i64)
-                .bind(block_hash.as_byte_array().as_slice())
-                .bind(timestamp as i64)
-                .execute(&mut *tx)
-                .await?;
+            blocks_data.push((
+                *height as i64,
+                block_hash.as_byte_array().to_vec(),
+                timestamp as i64,
+            ));
 
-            // Process each transaction
             for (tx_index, btc_tx) in block.txdata.iter().enumerate() {
                 let txid = btc_tx.compute_txid();
+                let txid_bytes = txid.as_byte_array().to_vec();
 
-                // Insert transaction record
-                sqlx::query(
-                    "INSERT OR REPLACE INTO transactions (txid, block_height, tx_index) VALUES (?, ?, ?)",
-                )
-                .bind(txid.as_byte_array().as_slice())
-                .bind(*height as i64)
-                .bind(tx_index as i64)
-                .execute(&mut *tx)
-                .await?;
+                transactions_data.push((txid_bytes.clone(), *height as i64, tx_index as i64));
 
-                // Process inputs (mark outputs as spent, record address history)
+                // Process inputs - check both database cache and batch-local outputs
                 for (vin, input) in btc_tx.input.iter().enumerate() {
                     if input.previous_output.is_null() {
-                        // Coinbase input, skip
                         continue;
                     }
 
-                    // Get the spent output's address and value
-                    let row: Option<(String, i64)> = sqlx::query_as(
-                        "SELECT address, value FROM outputs WHERE txid = ? AND vout = ? AND address IS NOT NULL",
-                    )
-                    .bind(input.previous_output.txid.as_byte_array().as_slice())
-                    .bind(input.previous_output.vout as i64)
-                    .fetch_optional(&mut *tx)
-                    .await?;
+                    // Try database cache first, then batch-local outputs
+                    let output_info: Option<(String, u64)> = output_cache
+                        .get(&input.previous_output)
+                        .cloned()
+                        .or_else(|| {
+                            batch_outputs
+                                .get(&input.previous_output)
+                                .and_then(|(addr, val)| addr.clone().map(|a| (a, *val)))
+                        });
 
-                    if let Some((address, value)) = row {
-                        // Mark the output as spent
-                        sqlx::query(
-                            "UPDATE outputs SET spent_txid = ?, spent_vout = ?, spent_block_height = ? WHERE txid = ? AND vout = ?",
-                        )
-                        .bind(txid.as_byte_array().as_slice())
-                        .bind(vin as i64)
-                        .bind(*height as i64)
-                        .bind(input.previous_output.txid.as_byte_array().as_slice())
-                        .bind(input.previous_output.vout as i64)
-                        .execute(&mut *tx)
-                        .await?;
+                    if let Some((address, value)) = output_info {
+                        spent_updates.push((
+                            txid_bytes.clone(),
+                            vin as i64,
+                            *height as i64,
+                            input.previous_output.txid.as_byte_array().to_vec(),
+                            input.previous_output.vout as i64,
+                        ));
 
-                        // Record negative delta in address history (spending)
-                        sqlx::query(
-                            r#"
-                            INSERT INTO address_history (address, txid, block_height, delta)
-                            VALUES (?, ?, ?, ?)
-                            ON CONFLICT(address, block_height, txid) DO UPDATE SET
-                                delta = address_history.delta + excluded.delta
-                            "#,
-                        )
-                        .bind(&address)
-                        .bind(txid.as_byte_array().as_slice())
-                        .bind(*height as i64)
-                        .bind(-value)
-                        .execute(&mut *tx)
-                        .await?;
+                        // Accumulate negative delta
+                        let key = (address.clone(), txid_bytes.clone(), *height as i64);
+                        *address_history_map.entry(key).or_insert(0) -= value as i64;
                     }
                 }
 
-                // Process outputs (create UTXOs, record address history)
+                // Process outputs
                 for (vout, output) in btc_tx.output.iter().enumerate() {
                     let script = &output.script_pubkey;
                     let value = output.value.to_sat();
@@ -488,38 +544,118 @@ impl IndexerDatabase {
                         .ok()
                         .map(|a| a.to_string());
 
-                    // Insert output
-                    sqlx::query(
-                        "INSERT OR REPLACE INTO outputs (txid, vout, address, value, script_pubkey, block_height) VALUES (?, ?, ?, ?, ?, ?)",
-                    )
-                    .bind(txid.as_byte_array().as_slice())
-                    .bind(vout as i64)
-                    .bind(&address)
-                    .bind(value as i64)
-                    .bind(script.as_bytes())
-                    .bind(*height as i64)
-                    .execute(&mut *tx)
-                    .await?;
+                    outputs_data.push((
+                        txid_bytes.clone(),
+                        vout as i64,
+                        address.clone(),
+                        value as i64,
+                        script.as_bytes().to_vec(),
+                        *height as i64,
+                    ));
 
-                    // If we can derive an address, record history
-                    if let Some(ref addr) = address {
-                        sqlx::query(
-                            r#"
-                            INSERT INTO address_history (address, txid, block_height, delta)
-                            VALUES (?, ?, ?, ?)
-                            ON CONFLICT(address, block_height, txid) DO UPDATE SET
-                                delta = address_history.delta + excluded.delta
-                            "#,
-                        )
-                        .bind(addr)
-                        .bind(txid.as_byte_array().as_slice())
-                        .bind(*height as i64)
-                        .bind(value as i64)
-                        .execute(&mut *tx)
-                        .await?;
+                    // Track this output for potential intra-batch spending
+                    let outpoint = OutPoint {
+                        txid,
+                        vout: vout as u32,
+                    };
+                    batch_outputs.insert(outpoint, (address.clone(), value));
+
+                    // Accumulate positive delta
+                    if let Some(addr) = address {
+                        let key = (addr, txid_bytes.clone(), *height as i64);
+                        *address_history_map.entry(key).or_insert(0) += value as i64;
                     }
                 }
             }
+        }
+
+        // ========== Phase 4: Bulk insert by table ==========
+
+        // 4a: Insert blocks (multi-row INSERT)
+        const INSERT_BATCH_SIZE: usize = 100;
+
+        for chunk in blocks_data.chunks(INSERT_BATCH_SIZE) {
+            let placeholders: Vec<&str> = chunk.iter().map(|_| "(?, ?, ?)").collect();
+            let query = format!(
+                "INSERT OR REPLACE INTO blocks (height, hash, timestamp) VALUES {}",
+                placeholders.join(", ")
+            );
+
+            let mut query_builder = sqlx::query(&query);
+            for (height, hash, timestamp) in chunk {
+                query_builder = query_builder.bind(height).bind(hash).bind(timestamp);
+            }
+            query_builder.execute(&mut *tx).await?;
+        }
+
+        // 4b: Insert transactions (multi-row INSERT)
+        for chunk in transactions_data.chunks(INSERT_BATCH_SIZE) {
+            let placeholders: Vec<&str> = chunk.iter().map(|_| "(?, ?, ?)").collect();
+            let query = format!(
+                "INSERT OR REPLACE INTO transactions (txid, block_height, tx_index) VALUES {}",
+                placeholders.join(", ")
+            );
+
+            let mut query_builder = sqlx::query(&query);
+            for (txid, height, idx) in chunk {
+                query_builder = query_builder.bind(txid).bind(height).bind(idx);
+            }
+            query_builder.execute(&mut *tx).await?;
+        }
+
+        // 4c: Insert outputs (multi-row INSERT)
+        for chunk in outputs_data.chunks(INSERT_BATCH_SIZE) {
+            let placeholders: Vec<&str> = chunk.iter().map(|_| "(?, ?, ?, ?, ?, ?)").collect();
+            let query = format!(
+                "INSERT OR REPLACE INTO outputs (txid, vout, address, value, script_pubkey, block_height) VALUES {}",
+                placeholders.join(", ")
+            );
+
+            let mut query_builder = sqlx::query(&query);
+            for (txid, vout, address, value, script, height) in chunk {
+                query_builder = query_builder
+                    .bind(txid)
+                    .bind(vout)
+                    .bind(address)
+                    .bind(value)
+                    .bind(script)
+                    .bind(height);
+            }
+            query_builder.execute(&mut *tx).await?;
+        }
+
+        // 4d: Update spent outputs (batch UPDATE using CASE WHEN)
+        // SQLite doesn't support multi-row UPDATE directly, so we use individual updates
+        // but they're still within the same transaction
+        for chunk in spent_updates.chunks(INSERT_BATCH_SIZE) {
+            for (spent_txid, spent_vout, spent_height, orig_txid, orig_vout) in chunk {
+                sqlx::query(
+                    "UPDATE outputs SET spent_txid = ?, spent_vout = ?, spent_block_height = ? WHERE txid = ? AND vout = ?",
+                )
+                .bind(spent_txid)
+                .bind(spent_vout)
+                .bind(spent_height)
+                .bind(orig_txid)
+                .bind(orig_vout)
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+
+        // 4e: Insert address history (multi-row INSERT with pre-aggregated deltas)
+        let history_entries: Vec<_> = address_history_map.into_iter().collect();
+        for chunk in history_entries.chunks(INSERT_BATCH_SIZE) {
+            let placeholders: Vec<&str> = chunk.iter().map(|_| "(?, ?, ?, ?)").collect();
+            let query = format!(
+                "INSERT OR REPLACE INTO address_history (address, txid, block_height, delta) VALUES {}",
+                placeholders.join(", ")
+            );
+
+            let mut query_builder = sqlx::query(&query);
+            for ((address, txid, height), delta) in chunk {
+                query_builder = query_builder.bind(address).bind(txid).bind(height).bind(delta);
+            }
+            query_builder.execute(&mut *tx).await?;
         }
 
         tx.commit().await?;
