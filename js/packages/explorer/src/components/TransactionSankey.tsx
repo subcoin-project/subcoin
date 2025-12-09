@@ -93,27 +93,21 @@ export function TransactionSankey({
   // SVG dimensions - compact layout with wider nodes for txids
   const width = 600;
   const maxNodes = Math.max(inputNodes.length, outputNodes.length);
-  const height = Math.min(
-    250,
-    Math.max(120, maxNodes * 36 + 30)
-  );
+  const minNodeHeight = 36; // Minimum height to fit content
+  const nodeGap = 6;
+  // Calculate height based on nodes needed
+  const height = Math.max(140, maxNodes * (minNodeHeight + nodeGap) + 30);
   const nodeWidth = 150;
-  const nodeGap = 4;
   const leftX = 10;
   const rightX = width - nodeWidth - 10;
 
   // Calculate node heights based on values
   const availableHeight = height - 30;
-  const minNodeHeight = 24;
 
   const calculateNodeHeights = (nodes: { value: number }[], total: number) => {
     if (nodes.length === 0) return [];
-    const baseHeight = availableHeight / nodes.length - nodeGap;
-    return nodes.map((n) => {
-      if (total === 0) return Math.max(minNodeHeight, baseHeight);
-      const proportionalHeight = (n.value / total) * availableHeight * 0.8;
-      return Math.max(minNodeHeight, Math.min(baseHeight, proportionalHeight));
-    });
+    const baseHeight = (availableHeight - (nodes.length - 1) * nodeGap) / nodes.length;
+    return nodes.map(() => Math.max(minNodeHeight, baseHeight));
   };
 
   const inputHeights = calculateNodeHeights(inputNodes, totalOutput);
