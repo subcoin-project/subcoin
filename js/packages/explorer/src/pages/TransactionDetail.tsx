@@ -5,6 +5,7 @@ import type { IndexerStatus, Transaction } from "@subcoin/shared";
 import { TransactionDetailSkeleton } from "../components/Skeleton";
 import { CopyButton } from "../components/CopyButton";
 import { ScriptTypeBadge, OpReturnData } from "../components/ScriptTypeBadge";
+import { TransactionSankey } from "../components/TransactionSankey";
 
 // Component to decode and display address from script_pubkey
 function OutputAddress({ scriptPubkey }: { scriptPubkey: string }) {
@@ -216,6 +217,13 @@ export function TransactionDetail() {
           </div>
         </dl>
       </div>
+
+      {/* Transaction Flow Visualization */}
+      <TransactionSankey
+        inputs={transaction.input}
+        outputs={transaction.output}
+        isCoinbase={isCoinbase}
+      />
 
       {/* Inputs */}
       <div className="bg-bitcoin-dark rounded-lg border border-gray-800">
