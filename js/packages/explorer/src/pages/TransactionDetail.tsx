@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { addressApi, blockchainApi } from "@subcoin/shared";
+import { addressApi, blockchainApi, detectScriptType } from "@subcoin/shared";
 import type { IndexerStatus, Transaction } from "@subcoin/shared";
 import { TransactionDetailSkeleton } from "../components/Skeleton";
 import { CopyButton } from "../components/CopyButton";
+import { ScriptTypeBadge, OpReturnData } from "../components/ScriptTypeBadge";
 
 // Component to decode and display address from script_pubkey
 function OutputAddress({ scriptPubkey }: { scriptPubkey: string }) {
@@ -268,28 +269,47 @@ export function TransactionDetail() {
           </h2>
         </div>
         <div className="divide-y divide-gray-800">
-          {transaction.output.map((output, index) => (
-            <div key={index} className="px-4 py-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-gray-500 text-sm">#{index}</span>
-                <span className="font-mono text-bitcoin-orange">
-                  {(output.value / 100_000_000).toFixed(8)} BTC
-                </span>
-              </div>
-              <div className="text-gray-400 text-sm mb-1">Address</div>
-              <div className="mb-2">
-                <OutputAddress scriptPubkey={output.script_pubkey} />
-              </div>
-              <details className="text-gray-500">
-                <summary className="text-gray-400 text-sm cursor-pointer hover:text-gray-300">
-                  Script PubKey
-                </summary>
-                <div className="font-mono text-xs break-all mt-1 pl-2">
-                  {output.script_pubkey}
+          {transaction.output.map((output, index) => {
+            const scriptInfo = detectScriptType(output.script_pubkey);
+            const isOpReturn = scriptInfo.type === "OP_RETURN";
+
+            return (
+              <div key={index} className="px-4 py-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500 text-sm">#{index}</span>
+                    <ScriptTypeBadge scriptPubkey={output.script_pubkey} />
+                  </div>
+                  <span className={`font-mono ${isOpReturn ? "text-gray-500" : "text-bitcoin-orange"}`}>
+                    {(output.value / 100_000_000).toFixed(8)} BTC
+                  </span>
                 </div>
-              </details>
-            </div>
-          ))}
+
+                {isOpReturn ? (
+                  <div className="text-gray-400 text-sm">
+                    <span className="text-gray-500">Unspendable data output</span>
+                    <OpReturnData scriptPubkey={output.script_pubkey} />
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-gray-400 text-sm mb-1">Address</div>
+                    <div className="mb-2">
+                      <OutputAddress scriptPubkey={output.script_pubkey} />
+                    </div>
+                  </>
+                )}
+
+                <details className="text-gray-500 mt-2">
+                  <summary className="text-gray-400 text-sm cursor-pointer hover:text-gray-300">
+                    Script PubKey
+                  </summary>
+                  <div className="font-mono text-xs break-all mt-1 pl-2">
+                    {output.script_pubkey}
+                  </div>
+                </details>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

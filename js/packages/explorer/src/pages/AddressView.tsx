@@ -9,6 +9,7 @@ import type {
 } from "@subcoin/shared";
 import { AddressDetailSkeleton } from "../components/Skeleton";
 import { CopyButton } from "../components/CopyButton";
+import { ScriptTypeBadge } from "../components/ScriptTypeBadge";
 
 type TabType = "transactions" | "utxos";
 
@@ -378,13 +379,14 @@ export function AddressView() {
                     <div className="flex items-center gap-2">
                       <Link
                         to={`/tx/${utxo.txid}`}
-                        className="font-mono text-sm text-blue-400 hover:text-blue-300 truncate max-w-[60%]"
+                        className="font-mono text-sm text-blue-400 hover:text-blue-300 truncate max-w-[50%]"
                       >
                         {utxo.txid}
                       </Link>
                       <span className="text-gray-500 text-sm">
                         :{utxo.vout}
                       </span>
+                      <ScriptTypeBadge scriptPubkey={utxo.script_pubkey} />
                     </div>
                     <span className="font-mono text-sm text-green-400">
                       {formatBtc(utxo.value)} BTC
@@ -397,9 +399,6 @@ export function AddressView() {
                     >
                       Block #{utxo.block_height}
                     </Link>
-                    <span className="font-mono text-xs text-gray-500 truncate max-w-[40%]">
-                      {utxo.script_pubkey.slice(0, 20)}...
-                    </span>
                   </div>
                 </div>
               ))}
