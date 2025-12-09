@@ -90,22 +90,39 @@ export function TransactionSankey({
 
   const { inputNodes, outputNodes, totalOutput } = layout;
 
-  // SVG dimensions - compact layout with wider nodes for txids
+  // SVG dimensions - adaptive layout
   const width = 600;
-  const nodeHeight = 36; // Fixed height for each node
-  const nodeGap = 6;
+  const targetHeight = 180; // Target total height for the diagram
+  const nodeGap = 8;
+  const minNodeHeight = 36;
+  const maxNodeHeight = 60;
   const nodeWidth = 150;
   const leftX = 10;
   const rightX = width - nodeWidth - 10;
 
-  // Calculate total heights for each side independently
-  const inputsTotalHeight = inputNodes.length * nodeHeight + (inputNodes.length - 1) * nodeGap;
-  const outputsTotalHeight = outputNodes.length * nodeHeight + (outputNodes.length - 1) * nodeGap;
-  const height = Math.max(inputsTotalHeight, outputsTotalHeight) + 40; // padding for labels
+  // Calculate node heights to fill available space, respecting min/max
+  const calculateNodeHeight = (nodeCount: number) => {
+    if (nodeCount === 0) return minNodeHeight;
+    const availableForNodes = targetHeight - 30 - (nodeCount - 1) * nodeGap;
+    const idealHeight = availableForNodes / nodeCount;
+    return Math.min(maxNodeHeight, Math.max(minNodeHeight, idealHeight));
+  };
 
-  // Fixed heights for all nodes
-  const inputHeights = inputNodes.map(() => nodeHeight);
-  const outputHeights = outputNodes.map(() => nodeHeight);
+  const inputNodeHeight = calculateNodeHeight(inputNodes.length);
+  const outputNodeHeight = calculateNodeHeight(outputNodes.length);
+
+  // Calculate actual heights needed for each side
+  const inputsTotalHeight = inputNodes.length > 0
+    ? inputNodes.length * inputNodeHeight + (inputNodes.length - 1) * nodeGap
+    : 0;
+  const outputsTotalHeight = outputNodes.length > 0
+    ? outputNodes.length * outputNodeHeight + (outputNodes.length - 1) * nodeGap
+    : 0;
+  const height = Math.max(inputsTotalHeight, outputsTotalHeight) + 40;
+
+  // Heights for each node
+  const inputHeights = inputNodes.map(() => inputNodeHeight);
+  const outputHeights = outputNodes.map(() => outputNodeHeight);
 
   // Calculate Y positions - center each side independently
   const calculateYPositions = (heights: number[]) => {
