@@ -90,20 +90,21 @@ export function TransactionSankey({
 
   const { inputNodes, outputNodes, totalOutput } = layout;
 
-  // SVG dimensions
-  const width = 700;
-  const height = Math.max(
-    300,
-    Math.max(inputNodes.length, outputNodes.length) * 60 + 40
+  // SVG dimensions - compact layout
+  const width = 500;
+  const maxNodes = Math.max(inputNodes.length, outputNodes.length);
+  const height = Math.min(
+    250,
+    Math.max(120, maxNodes * 36 + 30)
   );
-  const nodeWidth = 120;
-  const nodeGap = 8;
-  const leftX = 20;
-  const rightX = width - nodeWidth - 20;
+  const nodeWidth = 100;
+  const nodeGap = 4;
+  const leftX = 10;
+  const rightX = width - nodeWidth - 10;
 
   // Calculate node heights based on values
-  const availableHeight = height - 40;
-  const minNodeHeight = 30;
+  const availableHeight = height - 30;
+  const minNodeHeight = 24;
 
   const calculateNodeHeights = (nodes: { value: number }[], total: number) => {
     if (nodes.length === 0) return [];
@@ -213,15 +214,15 @@ export function TransactionSankey({
   };
 
   return (
-    <div className="bg-bitcoin-dark rounded-lg border border-gray-800 p-4">
-      <h3 className="text-lg font-medium text-gray-100 mb-4">
+    <div className="bg-bitcoin-dark rounded-lg border border-gray-800 p-3">
+      <h3 className="text-sm font-medium text-gray-100 mb-2">
         Transaction Flow
       </h3>
 
       <svg
         width="100%"
         viewBox={`0 0 ${width} ${height}`}
-        className="overflow-visible"
+        className="overflow-visible max-w-lg"
       >
         {/* Flow paths */}
         {flows.map((flow, idx) => (
@@ -350,22 +351,22 @@ export function TransactionSankey({
         </text>
       </svg>
 
-      {/* Legend */}
-      <div className="mt-4 flex flex-wrap gap-4 text-xs text-gray-400">
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded bg-blue-500/30 border border-blue-500" />
-          <span>Input (previous output)</span>
+      {/* Legend - compact */}
+      <div className="mt-2 flex flex-wrap gap-3 text-[10px] text-gray-500">
+        <div className="flex items-center gap-1">
+          <div className="w-2 h-2 rounded bg-blue-500/30 border border-blue-500" />
+          <span>Input</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded bg-green-500/30 border border-green-500" />
-          <span>Output (spendable)</span>
+        <div className="flex items-center gap-1">
+          <div className="w-2 h-2 rounded bg-green-500/30 border border-green-500" />
+          <span>Output</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded bg-bitcoin-orange/30 border border-bitcoin-orange" />
+        <div className="flex items-center gap-1">
+          <div className="w-2 h-2 rounded bg-bitcoin-orange/30 border border-bitcoin-orange" />
           <span>Coinbase</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded bg-gray-500/30 border border-gray-500" />
+        <div className="flex items-center gap-1">
+          <div className="w-2 h-2 rounded bg-gray-500/30 border border-gray-500" />
           <span>OP_RETURN (data)</span>
         </div>
       </div>
