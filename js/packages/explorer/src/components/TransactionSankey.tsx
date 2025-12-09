@@ -124,10 +124,13 @@ export function TransactionSankey({
   const inputHeights = inputNodes.map(() => inputNodeHeight);
   const outputHeights = outputNodes.map(() => outputNodeHeight);
 
-  // Calculate Y positions - center each side independently
+  // Calculate Y positions - center each side independently, with top padding for labels
+  const topPadding = 28; // Space for labels
   const calculateYPositions = (heights: number[]) => {
     const totalHeight = heights.reduce((sum, h) => sum + h + nodeGap, 0) - (heights.length > 0 ? nodeGap : 0);
-    let startY = (height - totalHeight) / 2;
+    // Center in the area below the labels
+    const availableHeight = height - topPadding;
+    let startY = topPadding + (availableHeight - totalHeight) / 2;
     const positions: number[] = [];
     heights.forEach((h) => {
       positions.push(startY);
