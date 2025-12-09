@@ -444,12 +444,7 @@ function TransactionRow({ tx, txid, index }: { tx: Transaction; txid: string; in
     <div className="px-4 py-3">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div className="flex items-center space-x-3 min-w-0">
-          <span className="text-gray-500 text-sm flex-shrink-0">#{index}</span>
-          {isCoinbase && (
-            <span className="bg-bitcoin-orange/20 text-bitcoin-orange text-xs px-2 py-0.5 rounded flex-shrink-0">
-              Coinbase
-            </span>
-          )}
+          <span className="text-gray-500 text-sm flex-shrink-0 w-8">#{index}</span>
           <Link
             to={`/tx/${txid}`}
             className="font-mono text-sm text-bitcoin-orange hover:underline truncate"
@@ -458,6 +453,11 @@ function TransactionRow({ tx, txid, index }: { tx: Transaction; txid: string; in
             {txid.slice(0, 16)}...{txid.slice(-8)}
           </Link>
           <CopyButton text={txid} />
+          {isCoinbase && (
+            <span className="bg-bitcoin-orange/20 text-bitcoin-orange text-xs px-2 py-0.5 rounded flex-shrink-0">
+              Coinbase
+            </span>
+          )}
         </div>
         <div
           className="flex items-center space-x-4 cursor-pointer flex-shrink-0"

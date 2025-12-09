@@ -10,6 +10,7 @@ import type {
 import { AddressDetailSkeleton } from "../components/Skeleton";
 import { CopyButton } from "../components/CopyButton";
 import { ScriptTypeBadge } from "../components/ScriptTypeBadge";
+import { BalanceHistoryChart } from "../components/BalanceHistoryChart";
 
 type TabType = "transactions" | "utxos";
 
@@ -177,6 +178,15 @@ export function AddressView() {
           </div>
         </div>
       </div>
+
+      {/* Balance History Chart */}
+      {transactions.length > 0 && (
+        <BalanceHistoryChart
+          transactions={transactions}
+          currentBalance={balance.confirmed}
+          totalTxCount={balance.tx_count}
+        />
+      )}
 
       {/* Address Statistics (collapsible) */}
       <div className="bg-bitcoin-dark rounded-lg border border-gray-800">
