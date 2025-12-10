@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { blockchainApi, networkApi, systemApi } from "@subcoin/shared";
-import type { NetworkStatus } from "@subcoin/shared";
+import { addressApi, blockchainApi, networkApi, systemApi } from "@subcoin/shared";
+import type { IndexerStatus, NetworkStatus } from "@subcoin/shared";
 import { useNewBlockSubscription, useConnection } from "../contexts/ConnectionContext";
 import { StatCardSkeleton, BlockTableSkeleton } from "../components/Skeleton";
 
@@ -10,12 +10,17 @@ interface BlockInfo {
   hash: string;
   timestamp: number;
   txCount: number;
+  /** Miner address (first coinbase output recipient) */
+  minerAddress: string | null;
+  /** Block reward in satoshis (sum of coinbase outputs) */
+  reward: number;
 }
 
 export function Dashboard() {
   const [latestBlocks, setLatestBlocks] = useState<BlockInfo[]>([]);
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus | null>(null);
   const [syncState, setSyncState] = useState<{ current: number; highest?: number } | null>(null);
+  const [indexerStatus, setIndexerStatus] = useState<IndexerStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
@@ -26,9 +31,13 @@ export function Dashboard() {
       setLoading(true);
       setError(null);
 
-      // Fetch network status
-      const status = await networkApi.getStatus();
+      // Fetch network status and indexer status
+      const [status, idxStatus] = await Promise.all([
+        networkApi.getStatus(),
+        addressApi.getIndexerStatus().catch(() => null),
+      ]);
       setNetworkStatus(status);
+      setIndexerStatus(idxStatus);
 
       // Fetch sync state from system API
       const sync = await systemApi.syncState();
@@ -64,20 +73,51 @@ export function Dashboard() {
       const blocks: BlockInfo[] = [];
       const currentHeight = sync.currentBlock;
 
-      // Fetch last 10 blocks
+      // Fetch last 10 blocks in parallel
+      const blockPromises = [];
       for (let i = 0; i < 10 && currentHeight - i >= 0; i++) {
         const height = currentHeight - i;
-        const block = await blockchainApi.getBlockByNumber(height);
-        if (block) {
-          const hash = await blockchainApi.getBlockHash(height);
-          blocks.push({
-            height,
-            hash: hash || "",
-            timestamp: block.header.time,
-            txCount: block.txdata.length,
-          });
-        }
+        blockPromises.push(
+          (async () => {
+            const [block, hash] = await Promise.all([
+              blockchainApi.getBlockByNumber(height),
+              blockchainApi.getBlockHash(height),
+            ]);
+            if (block) {
+              // Extract coinbase info (first transaction)
+              const coinbaseTx = block.txdata[0];
+              const reward = coinbaseTx
+                ? coinbaseTx.output.reduce((sum, out) => sum + out.value, 0)
+                : 0;
+
+              // Get miner address from first coinbase output
+              let minerAddress: string | null = null;
+              if (coinbaseTx && coinbaseTx.output.length > 0) {
+                const scriptPubkey = coinbaseTx.output[0].script_pubkey;
+                minerAddress = await blockchainApi.decodeScriptPubkey(scriptPubkey);
+              }
+
+              return {
+                height,
+                hash: hash || "",
+                timestamp: block.header.time,
+                txCount: block.txdata.length,
+                minerAddress,
+                reward,
+              };
+            }
+            return null;
+          })()
+        );
       }
+
+      const results = await Promise.all(blockPromises);
+      for (const result of results) {
+        if (result) blocks.push(result);
+      }
+
+      // Sort by height descending (in case parallel fetch returned out of order)
+      blocks.sort((a, b) => b.height - a.height);
 
       setLatestBlocks(blocks);
       setLastUpdate(new Date());
@@ -112,13 +152,24 @@ export function Dashboard() {
     }
   }, [isConnected, fetchData]);
 
-  const formatTimestamp = (timestamp: number) => {
-    return new Date(timestamp * 1000).toLocaleString();
+  const formatRelativeTime = (timestamp: number) => {
+    const now = Math.floor(Date.now() / 1000);
+    const diff = now - timestamp;
+
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
   };
 
-  const formatHash = (hash: string) => {
-    if (!hash) return "";
-    return `${hash.slice(0, 8)}...${hash.slice(-8)}`;
+  const formatAddress = (address: string) => {
+    if (!address) return "";
+    if (address.length <= 16) return address;
+    return `${address.slice(0, 8)}...${address.slice(-6)}`;
+  };
+
+  const formatBtc = (satoshis: number) => {
+    return (satoshis / 100_000_000).toFixed(8);
   };
 
   const isInitialLoading = loading && latestBlocks.length === 0;
@@ -166,17 +217,26 @@ export function Dashboard() {
               value={syncState?.highest?.toLocaleString() ?? "Synced"}
             />
             <StatCard
-              title="Network"
-              value={getSyncStatusText(networkStatus?.syncStatus)}
+              title={indexerStatus?.is_syncing ? "Indexer" : "Network"}
+              value={
+                indexerStatus?.is_syncing
+                  ? `${indexerStatus.progress_percent.toFixed(1)}%`
+                  : getSyncStatusText(networkStatus?.syncStatus)
+              }
+              subtitle={
+                indexerStatus?.is_syncing
+                  ? `${indexerStatus.indexed_height.toLocaleString()} / ${indexerStatus.target_height?.toLocaleString() ?? "?"}`
+                  : undefined
+              }
             />
           </>
         )}
       </div>
 
-      {/* Latest Blocks */}
+      {/* Latest Blocks - Card Style */}
       <div className="bg-bitcoin-dark rounded-lg border border-gray-800">
         <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
-          <h2 className="text-lg font-medium text-gray-100">Latest Blocks</h2>
+          <h2 className="text-lg font-medium text-gray-100">Recent Blocks</h2>
           <div className="flex items-center space-x-2">
             {isConnected && (
               <span className="text-xs text-green-500 flex items-center">
@@ -191,59 +251,71 @@ export function Dashboard() {
             )}
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-800/50">
-              <tr>
-                <th className="px-2 md:px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase">
-                  Height
-                </th>
-                <th className="px-2 md:px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase hidden sm:table-cell">
-                  Hash
-                </th>
-                <th className="px-2 md:px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase hidden md:table-cell">
-                  Timestamp
-                </th>
-                <th className="px-2 md:px-4 py-2 text-right text-xs font-medium text-gray-400 uppercase">
-                  <span className="hidden sm:inline">Transactions</span>
-                  <span className="sm:hidden">Txs</span>
-                </th>
-              </tr>
-            </thead>
-            {isInitialLoading ? (
-              <BlockTableSkeleton rows={10} />
-            ) : (
-              <tbody className="divide-y divide-gray-800">
-                {latestBlocks.map((block) => (
-                  <tr key={block.height} className="hover:bg-gray-800/30">
-                    <td className="px-2 md:px-4 py-3">
-                      <Link
-                        to={`/block/${block.height}`}
-                        className="text-bitcoin-orange hover:underline font-mono text-sm"
-                      >
-                        {block.height.toLocaleString()}
-                      </Link>
-                    </td>
-                    <td className="px-2 md:px-4 py-3 hidden sm:table-cell">
-                      <Link
-                        to={`/block/${block.hash}`}
-                        className="text-gray-300 hover:text-bitcoin-orange font-mono text-sm"
-                      >
-                        {formatHash(block.hash)}
-                      </Link>
-                    </td>
-                    <td className="px-2 md:px-4 py-3 text-gray-400 text-sm hidden md:table-cell">
-                      {formatTimestamp(block.timestamp)}
-                    </td>
-                    <td className="px-2 md:px-4 py-3 text-right text-gray-300">
-                      {block.txCount}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            )}
-          </table>
-        </div>
+
+        {isInitialLoading ? (
+          <BlockTableSkeleton rows={10} />
+        ) : (
+          <div className="divide-y divide-gray-800">
+            {latestBlocks.map((block, index) => (
+              <div
+                key={block.height}
+                className={`px-4 py-3 hover:bg-gray-800/30 transition-colors ${
+                  index === 0 ? "bg-bitcoin-orange/5" : ""
+                }`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  {/* Left: Block info */}
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                    {/* Block number badge */}
+                    <Link
+                      to={`/block/${block.height}`}
+                      className="flex-shrink-0 bg-gray-800 hover:bg-gray-700 rounded px-2.5 py-1 text-bitcoin-orange font-mono text-sm font-medium transition-colors"
+                    >
+                      #{block.height.toLocaleString()}
+                    </Link>
+
+                    {/* Miner info */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {block.minerAddress ? (
+                          <Link
+                            to={`/address/${block.minerAddress}`}
+                            className="text-blue-400 hover:text-blue-300 font-mono text-sm truncate"
+                            title={block.minerAddress}
+                          >
+                            {formatAddress(block.minerAddress)}
+                          </Link>
+                        ) : (
+                          <span className="text-gray-500 text-sm italic">
+                            Non-standard output
+                          </span>
+                        )}
+                        <span className="text-green-400 text-xs font-mono">
+                          +{formatBtc(block.reward)} BTC
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                        <span>{block.txCount} txs</span>
+                        <span className="hidden sm:inline">•</span>
+                        <span className="hidden sm:inline font-mono" title={block.hash}>
+                          {block.hash.slice(0, 12)}...
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right: Time */}
+                  <div className="flex-shrink-0 text-right">
+                    <span className="text-gray-400 text-sm italic">
+                      {formatRelativeTime(block.timestamp)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="px-4 py-3 border-t border-gray-800">
           <Link
             to="/blocks"
@@ -257,11 +329,22 @@ export function Dashboard() {
   );
 }
 
-function StatCard({ title, value }: { title: string; value: string }) {
+function StatCard({
+  title,
+  value,
+  subtitle,
+}: {
+  title: string;
+  value: string;
+  subtitle?: string;
+}) {
   return (
     <div className="bg-bitcoin-dark rounded-lg border border-gray-800 p-3 md:p-4">
       <p className="text-gray-400 text-xs md:text-sm truncate">{title}</p>
       <p className="text-lg md:text-2xl font-bold text-gray-100 mt-1 truncate">{value}</p>
+      {subtitle && (
+        <p className="text-gray-500 text-xs mt-0.5 truncate">{subtitle}</p>
+      )}
     </div>
   );
 }

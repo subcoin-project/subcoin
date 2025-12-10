@@ -1,8 +1,9 @@
 //! SQLite database management for the indexer.
 
 use crate::types::IndexerState;
-use bitcoin::hashes::Hash;
-use bitcoin::{Address, Network, OutPoint, ScriptBuf, Txid};
+use bitcoin::hashes::{Hash, hash160};
+use bitcoin::key::CompressedPublicKey;
+use bitcoin::{Address, Network, OutPoint, PubkeyHash, ScriptBuf, Txid};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions};
 use std::path::Path;
 
@@ -20,6 +21,43 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Extract an address from a script_pubkey, including P2PK scripts.
+///
+/// This handles standard address types (P2PKH, P2SH, P2WPKH, P2WSH, P2TR) via
+/// `Address::from_script`, plus P2PK (Pay-to-Public-Key) scripts which are
+/// converted to their equivalent P2PKH addresses.
+fn script_to_address(script: &ScriptBuf, network: Network) -> Option<String> {
+    // Try standard address types first
+    if let Ok(address) = Address::from_script(script.as_script(), network) {
+        return Some(address.to_string());
+    }
+
+    // Handle P2PK (Pay-to-Public-Key) scripts
+    // P2PK format: <pubkey_len> <pubkey> OP_CHECKSIG (0xac)
+    let bytes = script.as_bytes();
+
+    // Compressed P2PK: 0x21 (33) + 33-byte pubkey + 0xac (OP_CHECKSIG) = 35 bytes
+    if bytes.len() == 35 && bytes[0] == 0x21 && bytes[34] == 0xac {
+        let pubkey_bytes = &bytes[1..34];
+        if let Ok(pubkey) = CompressedPublicKey::from_slice(pubkey_bytes) {
+            let pubkey_hash = PubkeyHash::from(pubkey);
+            let address = Address::p2pkh(pubkey_hash, network);
+            return Some(address.to_string());
+        }
+    }
+
+    // Uncompressed P2PK: 0x41 (65) + 65-byte pubkey + 0xac (OP_CHECKSIG) = 67 bytes
+    if bytes.len() == 67 && bytes[0] == 0x41 && bytes[66] == 0xac {
+        let pubkey_bytes = &bytes[1..66];
+        let hash = hash160::Hash::hash(pubkey_bytes);
+        let pubkey_hash = PubkeyHash::from_raw_hash(hash);
+        let address = Address::p2pkh(pubkey_hash, network);
+        return Some(address.to_string());
+    }
+
+    None
+}
 
 /// SQLite database for the indexer.
 #[derive(Clone)]
@@ -251,9 +289,7 @@ impl IndexerDatabase {
         value: u64,
         block_height: u32,
     ) -> Result<()> {
-        let address = Address::from_script(script_pubkey.as_script(), self.network)
-            .ok()
-            .map(|a| a.to_string());
+        let address = script_to_address(script_pubkey, self.network);
 
         sqlx::query(
             "INSERT OR REPLACE INTO outputs (txid, vout, address, value, script_pubkey, block_height) VALUES (?, ?, ?, ?, ?, ?)",
@@ -540,9 +576,7 @@ impl IndexerDatabase {
                     let script = &output.script_pubkey;
                     let value = output.value.to_sat();
 
-                    let address = Address::from_script(script.as_script(), network)
-                        .ok()
-                        .map(|a| a.to_string());
+                    let address = script_to_address(script, network);
 
                     outputs_data.push((
                         txid_bytes.clone(),

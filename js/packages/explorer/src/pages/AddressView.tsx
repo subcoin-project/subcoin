@@ -6,6 +6,7 @@ import type {
   AddressStats,
   AddressTransaction,
   AddressUtxo,
+  IndexerStatus,
 } from "@subcoin/shared";
 import { AddressDetailSkeleton } from "../components/Skeleton";
 import { CopyButton } from "../components/CopyButton";
@@ -35,6 +36,9 @@ export function AddressView() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>("transactions");
   const [page, setPage] = useState(0);
+  const [indexerStatus, setIndexerStatus] = useState<IndexerStatus | null>(
+    null
+  );
   const pageSize = 25;
 
   useEffect(() => {
@@ -45,13 +49,15 @@ export function AddressView() {
         setLoading(true);
         setError(null);
 
-        const [balanceData, historyData] = await Promise.all([
+        const [balanceData, historyData, idxStatus] = await Promise.all([
           addressApi.getBalance(address),
           addressApi.getHistory(address, pageSize, 0),
+          addressApi.getIndexerStatus().catch(() => null),
         ]);
 
         setBalance(balanceData);
         setTransactions(historyData);
+        setIndexerStatus(idxStatus);
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Failed to fetch address data"
@@ -138,7 +144,17 @@ export function AddressView() {
     <div className="space-y-6">
       {/* Address Header */}
       <div className="bg-bitcoin-dark rounded-lg border border-gray-800 p-4">
-        <h1 className="text-xl font-bold text-gray-100 mb-4">Address</h1>
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-xl font-bold text-gray-100">Address</h1>
+          {indexerStatus?.is_syncing && (
+            <span
+              className="text-xs text-yellow-400 bg-yellow-900/30 px-2 py-1 rounded"
+              title={`Indexer: ${indexerStatus.indexed_height.toLocaleString()} / ${indexerStatus.target_height?.toLocaleString() ?? "?"} blocks`}
+            >
+              Indexing {indexerStatus.progress_percent.toFixed(0)}%
+            </span>
+          )}
+        </div>
 
         <div className="mb-4">
           <dt className="text-gray-400 text-sm">Address</dt>
