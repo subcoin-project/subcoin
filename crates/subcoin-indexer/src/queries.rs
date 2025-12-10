@@ -4,8 +4,8 @@ use crate::db::{IndexerDatabase, Result};
 use crate::types::{
     AddressBalance, AddressHistory, AddressStats, IndexerState, IndexerStatus, OutputStatus, Utxo,
 };
-use bitcoin::hashes::Hash;
 use bitcoin::Txid;
+use bitcoin::hashes::Hash;
 use subcoin_primitives::TxPosition;
 
 /// Query interface for the indexer database.

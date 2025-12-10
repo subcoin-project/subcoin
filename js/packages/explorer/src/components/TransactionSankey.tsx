@@ -41,7 +41,7 @@ function formatBtc(satoshis: number): string {
 }
 
 function shortenTxid(txid: string): string {
-  return `${txid.slice(0, 7)}...${txid.slice(-7)}`;
+  return `${txid.slice(0, 8)}...${txid.slice(-8)}`;
 }
 
 /**
@@ -339,7 +339,12 @@ export function TransactionSankey({
                 ) : (
                   <a
                     href={`/tx/${node.txid}`}
-                    style={{ color: '#60a5fa', fontFamily: 'monospace', textDecoration: 'none' }}
+                    style={{
+                      color: '#60a5fa',
+                      fontFamily: 'monospace',
+                      textDecoration: 'none',
+                    }}
+                    title={`${node.txid}:${node.vout}`}
                     onClick={(e) => {
                       e.preventDefault();
                       window.location.href = `/tx/${node.txid}`;
@@ -425,7 +430,11 @@ export function TransactionSankey({
                     {isSpent && spentInfo?.spentByTxid && (
                       <a
                         href={`/tx/${spentInfo.spentByTxid}`}
-                        style={{ color: '#f87171', fontFamily: 'monospace', textDecoration: 'none' }}
+                        style={{
+                          color: '#f87171',
+                          fontFamily: 'monospace',
+                          textDecoration: 'none',
+                        }}
                         title={`Spent by ${spentInfo.spentByTxid}:${spentInfo.spentByVin}`}
                         onClick={(e) => {
                           e.preventDefault();

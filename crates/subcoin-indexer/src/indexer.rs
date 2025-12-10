@@ -30,10 +30,18 @@ pub struct Indexer<Block, Client, TransactionAdapter> {
 impl<Block, Client, TransactionAdapter> Indexer<Block, Client, TransactionAdapter>
 where
     Block: BlockT,
-    Client: BlockchainEvents<Block> + HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
+    Client: BlockchainEvents<Block>
+        + HeaderBackend<Block>
+        + BlockBackend<Block>
+        + Send
+        + Sync
+        + 'static,
     TransactionAdapter: BitcoinTransactionAdapter<Block> + Send + Sync,
 {
     /// Create a new indexer.
+    ///
+    /// This only initializes the database connection. Historical indexing is deferred
+    /// to `run()` to avoid blocking node startup (including the RPC server).
     pub async fn new(db_path: &Path, network: Network, client: Arc<Client>) -> Result<Self> {
         let db = IndexerDatabase::open(db_path, network).await?;
 
@@ -43,9 +51,6 @@ where
             network,
             _phantom: PhantomData,
         };
-
-        // Check for and handle any indexing gaps
-        indexer.handle_index_gap().await?;
 
         Ok(indexer)
     }
@@ -247,7 +252,46 @@ where
     }
 
     /// Run the indexer, processing new blocks as they arrive.
+    ///
+    /// This first catches up any missing blocks (historical indexing), then
+    /// processes new block notifications for live indexing.
     pub async fn run(self) {
+        // Loop until fully caught up - this avoids buffering notifications during sync
+        loop {
+            let best_before: u32 = self.client.info().best_number.saturated_into();
+
+            // Catch up any indexing gap
+            if let Err(e) = self.handle_index_gap().await {
+                tracing::error!(?e, "Failed to handle indexing gap, indexer will not run");
+                return;
+            }
+
+            // Check if chain progressed during sync
+            let best_after: u32 = self.client.info().best_number.saturated_into();
+            if best_after == best_before {
+                // No new blocks arrived during sync - we're fully caught up
+                break;
+            }
+
+            tracing::debug!(
+                best_before,
+                best_after,
+                "Chain progressed during sync, catching up new blocks"
+            );
+        }
+
+        // Get the height we've indexed up to
+        let mut last_indexed = match self.db.load_state().await {
+            Ok(Some(crate::types::IndexerState::Active { last_indexed })) => last_indexed,
+            _ => 0,
+        };
+
+        tracing::info!(
+            last_indexed,
+            "Historical sync complete, switching to live mode"
+        );
+
+        // Now subscribe to stream - we're fully caught up, no buffered notifications
         let mut block_import_stream = self.client.every_import_notification_stream();
 
         while let Some(notification) = block_import_stream.next().await {
@@ -276,6 +320,7 @@ where
                         tracing::error!(?e, "Failed to revert blocks during reorg");
                         continue;
                     }
+                    last_indexed = revert_to;
                 }
 
                 // Index enacted blocks
@@ -285,6 +330,8 @@ where
                         Ok(block) => {
                             if let Err(e) = self.index_block(&block, height).await {
                                 tracing::error!(?e, height, "Failed to index enacted block");
+                            } else {
+                                last_indexed = height;
                             }
                         }
                         Err(e) => {
@@ -300,6 +347,7 @@ where
                             tracing::error!(?e, block_number, "Failed to index block");
                             continue;
                         }
+                        last_indexed = block_number;
                     }
                     Err(e) => {
                         tracing::error!(?e, block_number, "Failed to get block for indexing");
@@ -311,9 +359,7 @@ where
             // Update state
             if let Err(e) = self
                 .db
-                .save_state(&IndexerState::Active {
-                    last_indexed: block_number,
-                })
+                .save_state(&IndexerState::Active { last_indexed })
                 .await
             {
                 tracing::error!(?e, "Failed to save indexer state");

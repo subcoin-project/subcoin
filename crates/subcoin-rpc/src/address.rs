@@ -133,7 +133,8 @@ pub trait AddressApi {
 
     /// Get output spending status.
     #[method(name = "address_getOutputStatus")]
-    async fn get_output_status(&self, txid: Txid, vout: u32) -> Result<Option<OutputStatus>, Error>;
+    async fn get_output_status(&self, txid: Txid, vout: u32)
+    -> Result<Option<OutputStatus>, Error>;
 }
 
 /// Address RPC implementation.
@@ -264,7 +265,11 @@ where
         })
     }
 
-    async fn get_output_status(&self, txid: Txid, vout: u32) -> Result<Option<OutputStatus>, Error> {
+    async fn get_output_status(
+        &self,
+        txid: Txid,
+        vout: u32,
+    ) -> Result<Option<OutputStatus>, Error> {
         let status = self
             .indexer_query
             .get_output_status(&txid, vout)
