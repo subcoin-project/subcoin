@@ -251,11 +251,34 @@ where
         Ok(bitcoin_block)
     }
 
+    /// Run the indexer on a dedicated thread with its own tokio runtime.
+    ///
+    /// This isolates the indexer's I/O from the main async runtime, preventing
+    /// SQLite operations from blocking other tasks.
+    pub fn run_on_dedicated_thread(self)
+    where
+        Block: 'static,
+        Client: 'static,
+        TransactionAdapter: 'static,
+    {
+        std::thread::Builder::new()
+            .name("indexer".into())
+            .spawn(move || {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("Failed to create indexer runtime");
+
+                rt.block_on(self.run());
+            })
+            .expect("Failed to spawn indexer thread");
+    }
+
     /// Run the indexer, processing new blocks as they arrive.
     ///
     /// This first catches up any missing blocks (historical indexing), then
     /// processes new block notifications for live indexing.
-    pub async fn run(self) {
+    async fn run(self) {
         // Loop until fully caught up - this avoids buffering notifications during sync
         loop {
             let best_before: u32 = self.client.info().best_number.saturated_into();

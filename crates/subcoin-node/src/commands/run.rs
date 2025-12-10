@@ -299,7 +299,8 @@ impl RunCmd {
                 .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
 
             let query = Arc::new(indexer.query());
-            spawn_handle.spawn("indexer", None, indexer.run());
+            // Run indexer on dedicated thread to avoid blocking the main async runtime
+            indexer.run_on_dedicated_thread();
             (query.clone(), Some(query))
         } else {
             (Arc::new(subcoin_primitives::NoTransactionIndex), None)
