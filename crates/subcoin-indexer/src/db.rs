@@ -658,60 +658,18 @@ impl IndexerDatabase {
             query_builder.execute(&mut *tx).await?;
         }
 
-        // 4d: Update spent outputs using temporary table for batch update
-        // This is much faster than individual UPDATE statements
-        if !spent_updates.is_empty() {
-            // Create temporary table for batch update
+        // 4d: Update spent outputs - individual UPDATEs using PK index
+        // Direct PK lookups are fast; the temp table approach with correlated subqueries
+        // becomes slow as the outputs table grows
+        for (spent_txid, spent_vout, spent_height, orig_txid, orig_vout) in &spent_updates {
             sqlx::query(
-                r#"
-                CREATE TEMP TABLE IF NOT EXISTS spent_batch (
-                    orig_txid BLOB NOT NULL,
-                    orig_vout INTEGER NOT NULL,
-                    spent_txid BLOB NOT NULL,
-                    spent_vout INTEGER NOT NULL,
-                    spent_height INTEGER NOT NULL,
-                    PRIMARY KEY (orig_txid, orig_vout)
-                )
-                "#,
+                "UPDATE outputs SET spent_txid = ?, spent_vout = ?, spent_block_height = ? WHERE txid = ? AND vout = ?",
             )
-            .execute(&mut *tx)
-            .await?;
-
-            // Clear previous batch data
-            sqlx::query("DELETE FROM spent_batch")
-                .execute(&mut *tx)
-                .await?;
-
-            // Insert all spent updates into temp table (bulk insert)
-            for chunk in spent_updates.chunks(INSERT_BATCH_SIZE) {
-                let placeholders: Vec<&str> = chunk.iter().map(|_| "(?, ?, ?, ?, ?)").collect();
-                let query = format!(
-                    "INSERT INTO spent_batch (orig_txid, orig_vout, spent_txid, spent_vout, spent_height) VALUES {}",
-                    placeholders.join(", ")
-                );
-
-                let mut query_builder = sqlx::query(&query);
-                for (spent_txid, spent_vout, spent_height, orig_txid, orig_vout) in chunk {
-                    query_builder = query_builder
-                        .bind(orig_txid)
-                        .bind(orig_vout)
-                        .bind(spent_txid)
-                        .bind(spent_vout)
-                        .bind(spent_height);
-                }
-                query_builder.execute(&mut *tx).await?;
-            }
-
-            // Single UPDATE using JOIN with temp table
-            sqlx::query(
-                r#"
-                UPDATE outputs
-                SET spent_txid = (SELECT spent_txid FROM spent_batch WHERE spent_batch.orig_txid = outputs.txid AND spent_batch.orig_vout = outputs.vout),
-                    spent_vout = (SELECT spent_vout FROM spent_batch WHERE spent_batch.orig_txid = outputs.txid AND spent_batch.orig_vout = outputs.vout),
-                    spent_block_height = (SELECT spent_height FROM spent_batch WHERE spent_batch.orig_txid = outputs.txid AND spent_batch.orig_vout = outputs.vout)
-                WHERE EXISTS (SELECT 1 FROM spent_batch WHERE spent_batch.orig_txid = outputs.txid AND spent_batch.orig_vout = outputs.vout)
-                "#,
-            )
+            .bind(spent_txid)
+            .bind(spent_vout)
+            .bind(spent_height)
+            .bind(orig_txid)
+            .bind(orig_vout)
             .execute(&mut *tx)
             .await?;
         }
