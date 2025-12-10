@@ -174,8 +174,8 @@ where
                 tracing::info!(
                     processed,
                     total = total_blocks,
-                    percent = format!("{:.1}%", (processed as f64 / total_blocks as f64) * 100.0),
-                    blocks_per_sec = format!("{:.0}", blocks_per_sec),
+                    percent = %format!("{:.1}%", (processed as f64 / total_blocks as f64) * 100.0),
+                    blocks_per_sec = %format!("{:.0}", blocks_per_sec),
                     eta_secs,
                     "Indexing progress"
                 );
