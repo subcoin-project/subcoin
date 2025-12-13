@@ -60,6 +60,13 @@ pub struct Run {
     #[clap(long)]
     pub tx_index: bool,
 
+    /// Enable Bitcoin Core compatible RPC methods.
+    ///
+    /// This enables RPC methods with Bitcoin Core-style names like `getblock`, `getblockhash`,
+    /// `getrawtransaction`, etc. This is required for compatibility with tools like electrs.
+    #[clap(long)]
+    pub bitcoind_rpc: bool,
+
     /// Specify the Subcoin network behavior.
     #[clap(long, default_value = "full")]
     pub subcoin_network: SubcoinNetworkOption,
@@ -271,27 +278,36 @@ impl RunCmd {
                 Arc::new(network_handle)
             };
 
-        let transaction_indexer: Arc<dyn TransactionIndex + Send + Sync> = if run.tx_index {
-            let transaction_indexer = subcoin_indexer::TransactionIndexer::<
-                _,
-                _,
-                _,
-                subcoin_service::TransactionAdapter,
-            >::new(
-                bitcoin_network,
-                client.clone(),
-                task_manager.spawn_handle(),
+        let (transaction_indexer, indexer_query): (
+            Arc<dyn TransactionIndex + Send + Sync>,
+            Option<Arc<subcoin_indexer::IndexerQuery>>,
+        ) = if run.tx_index {
+            let index_db_path = base_path_or_default(
+                run.common_params.base_path.clone().map(Into::into),
+                &crate::substrate_cli::SubstrateCli::executable_name(),
             )
-            .map_err(|err| sp_blockchain::Error::Application(Box::new(err)))?;
-            spawn_handle.spawn("tx-index", None, transaction_indexer.run());
-            Arc::new(subcoin_indexer::TransactionIndexProvider::new(
-                client.clone(),
-            ))
+            .path()
+            .to_path_buf();
+
+            let indexer =
+                subcoin_indexer::Indexer::<_, _, subcoin_service::TransactionAdapter>::new(
+                    &index_db_path,
+                    bitcoin_network,
+                    client.clone(),
+                )
+                .await
+                .map_err(|err| sc_cli::Error::Application(Box::new(err)))?;
+
+            let query = Arc::new(indexer.query());
+            // Run indexer on dedicated thread to avoid blocking the main async runtime
+            indexer.run_on_dedicated_thread();
+            (query.clone(), Some(query))
         } else {
-            Arc::new(subcoin_primitives::NoTransactionIndex)
+            (Arc::new(subcoin_primitives::NoTransactionIndex), None)
         };
 
         // Start JSON-RPC server.
+        let enable_bitcoind_rpc = run.bitcoind_rpc;
         let gen_rpc_module = || {
             let system_info = sc_rpc::system::SystemInfo {
                 chain_name: config.chain_spec.name().into(),
@@ -302,6 +318,11 @@ impl RunCmd {
             };
             let system_rpc_tx = system_rpc_tx.clone();
 
+            let rpc_config = crate::rpc::RpcConfig {
+                bitcoin_network,
+                enable_bitcoind_rpc,
+            };
+
             crate::rpc::gen_rpc_module(
                 system_info,
                 client.clone(),
@@ -309,6 +330,8 @@ impl RunCmd {
                 system_rpc_tx,
                 network_api.clone(),
                 transaction_indexer.clone(),
+                indexer_query.clone(),
+                rpc_config,
             )
         };
 

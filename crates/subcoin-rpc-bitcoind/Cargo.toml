@@ -1,0 +1,24 @@
+[package]
+name = "subcoin-rpc-bitcoind"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+description = "Bitcoin Core compatible JSON-RPC API for Subcoin"
+
+[dependencies]
+async-trait = { workspace = true }
+bitcoin = { workspace = true, features = ["serde", "std"] }
+hex = { workspace = true }
+jsonrpsee = { workspace = true, features = ["client-core", "macros", "server-core"] }
+sc-client-api = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sp-blockchain = { workspace = true }
+sp-runtime = { workspace = true }
+subcoin-network = { workspace = true }
+subcoin-primitives = { workspace = true }
+subcoin-script = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

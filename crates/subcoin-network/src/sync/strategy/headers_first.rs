@@ -589,6 +589,9 @@ where
             }
         };
 
+        // Update progress time to prevent stall detection during prefetch header download
+        self.block_downloader.touch_progress();
+
         if final_block_number == checkpoint.number {
             // Prefetch headers complete - mark as Ready with validation
             // Use the stored anchor (which is stable across all partial responses)
@@ -712,6 +715,10 @@ where
                 return SyncAction::DisconnectPeer(from, err);
             }
         };
+
+        // Update progress time to prevent stall detection during header download
+        self.block_downloader.touch_progress();
+
         let target_block_number = end.number;
         let target_block_hash = end.hash;
 
@@ -842,6 +849,19 @@ where
                 }
             }
             BlockDownload::Batches { paused } => {
+                // Check if we should pipeline (request next batch before current is complete)
+                if self.block_downloader.should_pipeline()
+                    && !self
+                        .block_downloader
+                        .evaluate_queue_status(self.client.best_number())
+                        .is_saturated()
+                {
+                    tracing::trace!(
+                        "Pipelining: requesting next batch while current batch in progress"
+                    );
+                    return self.block_downloader.schedule_next_download_batch();
+                }
+
                 if self.block_downloader.requested_blocks.is_empty() {
                     if !self.block_downloader.missing_blocks.is_empty() {
                         if self

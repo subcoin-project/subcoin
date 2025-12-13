@@ -1,0 +1,95 @@
+/**
+ * Address balance information
+ */
+export interface AddressBalance {
+  /** Confirmed balance in satoshis */
+  confirmed: number;
+  /** Total received in satoshis */
+  total_received: number;
+  /** Total sent in satoshis */
+  total_sent: number;
+  /** Number of transactions */
+  tx_count: number;
+  /** Number of unspent outputs */
+  utxo_count: number;
+}
+
+/**
+ * Transaction in address history
+ */
+export interface AddressTransaction {
+  /** Transaction ID */
+  txid: string;
+  /** Block height */
+  block_height: number;
+  /** Net change in satoshis (positive = received, negative = sent) */
+  delta: number;
+  /** Block timestamp */
+  timestamp: number;
+}
+
+/**
+ * Unspent transaction output
+ */
+export interface AddressUtxo {
+  /** Transaction ID */
+  txid: string;
+  /** Output index */
+  vout: number;
+  /** Value in satoshis */
+  value: number;
+  /** Block height */
+  block_height: number;
+  /** ScriptPubKey as hex */
+  script_pubkey: string;
+}
+
+/**
+ * Indexer status information
+ */
+export interface IndexerStatus {
+  /** Whether the indexer is currently syncing */
+  is_syncing: boolean;
+  /** Current indexed block height */
+  indexed_height: number;
+  /** Target block height (during sync) */
+  target_height: number | null;
+  /** Sync progress as percentage (0.0 - 100.0) */
+  progress_percent: number;
+}
+
+/**
+ * Address statistics and summary information
+ */
+export interface AddressStats {
+  /** Block height when address first received funds */
+  first_seen_height: number | null;
+  /** Timestamp when address first received funds */
+  first_seen_timestamp: number | null;
+  /** Block height of most recent transaction */
+  last_seen_height: number | null;
+  /** Timestamp of most recent transaction */
+  last_seen_timestamp: number | null;
+  /** Largest single receive amount in satoshis */
+  largest_receive: number;
+  /** Largest single send amount in satoshis (absolute value) */
+  largest_send: number;
+  /** Total number of receive transactions */
+  receive_count: number;
+  /** Total number of send transactions */
+  send_count: number;
+}
+
+/**
+ * Output spending status
+ */
+export interface OutputStatus {
+  /** Whether the output has been spent */
+  spent: boolean;
+  /** Transaction ID that spent this output (if spent) */
+  spent_by_txid: string | null;
+  /** Input index in the spending transaction (if spent) */
+  spent_by_vin: number | null;
+  /** Block height where the output was spent (if spent) */
+  spent_at_height: number | null;
+}

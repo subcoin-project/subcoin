@@ -8,12 +8,13 @@ license.workspace = true
 
 [dependencies]
 bitcoin = { workspace = true }
-codec = { workspace = true }
 futures = { workspace = true }
+rayon = { workspace = true }
 sc-client-api = { workspace = true }
-sc-service = { workspace = true }
 sp-blockchain = { workspace = true }
 sp-runtime = { workspace = true }
+sqlx = { workspace = true }
 subcoin-primitives = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
 tracing = { workspace = true }

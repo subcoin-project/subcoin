@@ -36,6 +36,14 @@ pub const MIN_PROTOCOL_VERSION: u32 = 70012;
 /// If a peer's latency exceeds this threshold (2000ms), it will be disconnected immediately.
 pub const PEER_LATENCY_THRESHOLD: Latency = 2000;
 
+/// Higher latency threshold for initial sync (5000ms).
+///
+/// During initial block sync, we're more tolerant of high latency because:
+/// 1. Bulk data transfer doesn't require low latency
+/// 2. Disconnecting peers causes sync restarts which waste progress
+/// 3. Finding consistently low-latency peers globally is challenging
+pub const PEER_LATENCY_THRESHOLD_INITIAL_SYNC: Latency = 5000;
+
 /// The threshold for classifying a peer as "slow", based on average ping latency in milliseconds.
 ///
 /// A peer is considered slow if its average latency exceeds 500ms. Slow peers may be evicted from

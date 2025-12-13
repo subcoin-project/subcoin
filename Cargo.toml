@@ -19,6 +19,7 @@ members = [
     "crates/subcoin-node",
     "crates/subcoin-primitives",
     "crates/subcoin-rpc",
+    "crates/subcoin-rpc-bitcoind",
     "crates/subcoin-runtime",
     "crates/subcoin-runtime-primitives",
     "crates/subcoin-script",
@@ -62,10 +63,12 @@ log = { version = "0.4", default-features = false }
 num-bigint = "0.4.6"
 num-traits = "0.2.19"
 parking_lot = "0.12"
+rayon = "1.10"
 scale-info = { version = "2.11.6", default-features = false }
 serde = "1"
 serde_json = "1"
 sha2 = "0.9.9"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
 tempfile = "3.10.1"
 thiserror = "1.0"
 tokio = "1.41.1"
@@ -138,6 +141,7 @@ subcoin-network = { path = "crates/subcoin-network" }
 subcoin-node = { path = "crates/subcoin-node" }
 subcoin-primitives = { path = "crates/subcoin-primitives" }
 subcoin-rpc = { path = "crates/subcoin-rpc" }
+subcoin-rpc-bitcoind = { path = "crates/subcoin-rpc-bitcoind" }
 subcoin-runtime = { path = "crates/subcoin-runtime" }
 subcoin-runtime-primitives = { path = "crates/subcoin-runtime-primitives", default-features = false }
 subcoin-script = { path = "crates/subcoin-script" }

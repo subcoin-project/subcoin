@@ -1,0 +1,15 @@
+{
+  "name": "@subcoin/workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Subcoin Explorer and Wallet UI",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "dev": "bun run --filter @subcoin/explorer dev",
+    "build": "bun run --filter @subcoin/explorer build",
+    "typecheck": "bun run --filter '*' typecheck"
+  },
+  "keywords": ["bitcoin", "subcoin", "explorer", "wallet"],
+  "author": "Subcoin Project",
+  "license": "MIT"
+}
