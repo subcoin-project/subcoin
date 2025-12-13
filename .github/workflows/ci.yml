@@ -56,6 +56,17 @@ jobs:
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
 
+      # Buy some more disk space as we encountered the error `No space left on device`.
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: true
+          swap-storage: false
+
       - name: Run clippy
         run: |
           cargo clippy --locked --all-features --all-targets --manifest-path Cargo.toml -- -D warnings -A clippy::result_large_err
