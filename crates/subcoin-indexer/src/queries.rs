@@ -236,6 +236,7 @@ impl IndexerQuery {
     }
 
     /// Get output spending status.
+    #[allow(clippy::type_complexity)]
     pub async fn get_output_status(&self, txid: &Txid, vout: u32) -> Result<Option<OutputStatus>> {
         let row: Option<(Option<Vec<u8>>, Option<i64>, Option<i64>)> = sqlx::query_as(
             "SELECT spent_txid, spent_vout, spent_block_height FROM outputs WHERE txid = ? AND vout = ?",

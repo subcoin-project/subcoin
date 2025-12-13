@@ -4,7 +4,8 @@ mod error;
 mod network;
 mod raw_transactions;
 
-pub use address::{Address, AddressApiServer};
+use address::{Address, AddressApiServer};
+use bitcoin::Network as BitcoinNetwork;
 use blockchain::{Blockchain, BlockchainApiServer};
 use network::{Network, NetworkApiServer};
 use raw_transactions::{RawTransactions, RawTransactionsApiServer};
@@ -14,9 +15,6 @@ use std::sync::Arc;
 use subcoin_indexer::IndexerQuery;
 use subcoin_network::NetworkApi;
 use subcoin_primitives::{BitcoinTransactionAdapter, TransactionIndex};
-
-/// Re-export bitcoin Network for convenience.
-pub use bitcoin::Network as BitcoinNetwork;
 
 /// Subcoin RPC.
 pub struct SubcoinRpc<Block, Client, TransactionAdapter> {

@@ -435,6 +435,7 @@ impl IndexerDatabase {
     /// 1. Bulk pre-fetch of outputs (eliminates N+1 queries)
     /// 2. Collect all data in memory first, then bulk insert by table
     /// 3. Pre-aggregate address history deltas (avoids ON CONFLICT overhead)
+    #[allow(clippy::type_complexity)]
     pub async fn index_blocks_batch(
         &self,
         blocks: &[(u32, bitcoin::Block)],
