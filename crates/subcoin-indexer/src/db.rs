@@ -5,6 +5,7 @@ use bitcoin::hashes::{Hash, hash160};
 use bitcoin::key::CompressedPublicKey;
 use bitcoin::{Address, Network, OutPoint, PubkeyHash, ScriptBuf, Txid};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions};
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 /// Indexer error type.
@@ -72,13 +73,7 @@ impl IndexerDatabase {
     /// The database file is stored in a network-specific subdirectory to prevent
     /// mixing data from different networks (mainnet, testnet, signet, etc.).
     pub async fn open(path: &Path, network: Network) -> Result<Self> {
-        let network_dir = match network {
-            Network::Bitcoin => "mainnet",
-            Network::Testnet => "testnet",
-            Network::Signet => "signet",
-            Network::Regtest => "regtest",
-            _ => "unknown",
-        };
+        let network_dir = network.to_core_arg();
         let db_path = path.join("indexer").join(network_dir).join("index.sqlite");
 
         // Ensure parent directory exists
@@ -445,8 +440,6 @@ impl IndexerDatabase {
         blocks: &[(u32, bitcoin::Block)],
         network: Network,
     ) -> Result<()> {
-        use std::collections::{HashMap, HashSet};
-
         if blocks.is_empty() {
             return Ok(());
         }

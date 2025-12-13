@@ -8,7 +8,7 @@ use bitcoin::consensus::Encodable;
 use bitcoin::{Block as BitcoinBlock, BlockHash};
 use jsonrpsee::proc_macros::rpc;
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
-use sp_runtime::traits::Block as BlockT;
+use sp_runtime::traits::{Block as BlockT, SaturatedConversion};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subcoin_primitives::{BackendExt, BitcoinTransactionAdapter, convert_to_bitcoin_block};
@@ -54,6 +54,24 @@ pub trait BlockchainApi {
         blockhash: BlockHash,
         verbose: Option<bool>,
     ) -> Result<serde_json::Value, Error>;
+}
+
+/// Calculate difficulty from compact bits representation.
+fn difficulty_from_bits(bits: u32) -> f64 {
+    // Bitcoin difficulty calculation from compact bits
+    // Difficulty 1 target is 0x00000000FFFF... (256-bit), but we use a simplified formula
+    let mantissa = bits & 0x00ff_ffff;
+    let exponent = (bits >> 24) as i32;
+
+    if mantissa == 0 {
+        return 0.0;
+    }
+
+    // difficulty = difficulty_1_target / current_target
+    // Using the simplified formula from Bitcoin Core
+    let shift = 8 * (exponent - 3);
+    let diff = (0x0000ffff_u64 as f64) / (mantissa as f64) * 2f64.powi(-shift);
+    if diff > 0.0 { diff } else { 0.0 }
 }
 
 /// Bitcoin Core compatible blockchain RPC implementation.
@@ -103,7 +121,6 @@ where
     }
 
     fn best_number(&self) -> u32 {
-        use sp_runtime::traits::SaturatedConversion;
         self.client.info().best_number.saturated_into()
     }
 
@@ -118,23 +135,6 @@ where
 
     fn get_next_block_hash(&self, block_height: u32) -> Option<BlockHash> {
         self.client.block_hash(block_height + 1)
-    }
-
-    fn difficulty_from_bits(bits: u32) -> f64 {
-        // Bitcoin difficulty calculation from compact bits
-        // Difficulty 1 target is 0x00000000FFFF... (256-bit), but we use a simplified formula
-        let mantissa = bits & 0x00ff_ffff;
-        let exponent = (bits >> 24) as i32;
-
-        if mantissa == 0 {
-            return 0.0;
-        }
-
-        // difficulty = difficulty_1_target / current_target
-        // Using the simplified formula from Bitcoin Core
-        let shift = 8 * (exponent - 3);
-        let diff = (0x0000ffff_u64 as f64) / (mantissa as f64) * 2f64.powi(-shift);
-        if diff > 0.0 { diff } else { 0.0 }
     }
 
     fn block_to_get_block(&self, block: &BitcoinBlock, height: u32) -> GetBlock {
@@ -171,7 +171,7 @@ where
             mediantime: header.time, // TODO: Calculate actual median time
             nonce: header.nonce,
             bits: format!("{:08x}", header.bits.to_consensus()),
-            difficulty: Self::difficulty_from_bits(header.bits.to_consensus()),
+            difficulty: difficulty_from_bits(header.bits.to_consensus()),
             chainwork: "0".to_string(), // TODO: Calculate chainwork
             n_tx: block.txdata.len() as u32,
             previousblockhash: if height > 0 {
@@ -202,7 +202,7 @@ where
             mediantime: header.time, // TODO: Calculate actual median time
             nonce: header.nonce,
             bits: format!("{:08x}", header.bits.to_consensus()),
-            difficulty: Self::difficulty_from_bits(header.bits.to_consensus()),
+            difficulty: difficulty_from_bits(header.bits.to_consensus()),
             chainwork: "0".to_string(), // TODO: Calculate chainwork
             n_tx,
             previousblockhash: if height > 0 {
@@ -236,16 +236,10 @@ where
 
         // Get difficulty from best block header
         let block = self.get_bitcoin_block(best_hash)?;
-        let difficulty = Self::difficulty_from_bits(block.header.bits.to_consensus());
+        let difficulty = difficulty_from_bits(block.header.bits.to_consensus());
 
         Ok(GetBlockchainInfo {
-            chain: match self.network {
-                bitcoin::Network::Bitcoin => "main".to_string(),
-                bitcoin::Network::Testnet => "test".to_string(),
-                bitcoin::Network::Signet => "signet".to_string(),
-                bitcoin::Network::Regtest => "regtest".to_string(),
-                _ => "unknown".to_string(),
-            },
+            chain: self.network.to_core_arg().to_string(),
             blocks: best_number,
             headers: best_number, // Same as blocks for full node
             bestblockhash: best_hash,
