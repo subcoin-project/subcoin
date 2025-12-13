@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["TransactionIndexProvider","TransactionIndexer"]};
+window.SIDEBAR_ITEMS = {"struct":["AddressBalance","AddressHistory","AddressStats","Indexer","IndexerDatabase","IndexerQuery","IndexerStatus","OutputStatus","Utxo"]};
