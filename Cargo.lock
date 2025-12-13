@@ -9579,6 +9579,7 @@ dependencies = [
  "subcoin-indexer",
  "subcoin-network",
  "subcoin-primitives",
+ "subcoin-script",
  "thiserror 1.0.69",
 ]
 
@@ -9597,6 +9598,7 @@ dependencies = [
  "sp-runtime",
  "subcoin-network",
  "subcoin-primitives",
+ "subcoin-script",
  "thiserror 1.0.69",
  "tracing",
 ]

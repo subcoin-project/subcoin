@@ -25,6 +25,25 @@ pub enum TxoutType {
     WitnessUnknown(Vec<Vec<u8>>),
 }
 
+impl TxoutType {
+    /// Returns the script type name as used in Bitcoin Core RPC responses.
+    pub fn script_type(&self) -> &'static str {
+        match self {
+            Self::NonStandard => "nonstandard",
+            Self::Anchor => "anchor",
+            Self::PubKey(_) => "pubkey",
+            Self::PubKeyHash(_) => "pubkeyhash",
+            Self::ScriptHash(_) => "scripthash",
+            Self::Multisig { .. } => "multisig",
+            Self::NullData => "nulldata",
+            Self::WitnessV0ScriptHash(_) => "witness_v0_scripthash",
+            Self::WitnessV0KeyHash(_) => "witness_v0_keyhash",
+            Self::WitnessV1Taproot(_) => "witness_v1_taproot",
+            Self::WitnessUnknown(_) => "witness_unknown",
+        }
+    }
+}
+
 pub fn solve(script_pubkey: &Script) -> TxoutType {
     if script_pubkey.is_p2sh() {
         let hash: [u8; 20] = script_pubkey.as_bytes()[2..22].try_into().unwrap();

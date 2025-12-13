@@ -1,11 +1,7 @@
 use crate::error::Error;
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::consensus::Encodable;
-use bitcoin::hashes::Hash;
-use bitcoin::key::CompressedPublicKey;
-use bitcoin::{
-    Address, Block as BitcoinBlock, BlockHash, Network, PubkeyHash, ScriptBuf, Transaction, Txid,
-};
+use bitcoin::{Address, Block as BitcoinBlock, BlockHash, Network, ScriptBuf, Transaction, Txid};
 use jsonrpsee::proc_macros::rpc;
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 use serde::{Deserialize, Serialize};
@@ -16,6 +12,7 @@ use subcoin_primitives::{
     BackendExt, BitcoinTransactionAdapter, TransactionIndex, TxPosition, convert_to_bitcoin_block,
     extract_bitcoin_block_header,
 };
+use subcoin_script::{TxoutType, solve};
 
 /// Block data with transaction IDs included for easier client-side processing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -266,54 +263,14 @@ where
             return Ok(Some(address.to_string()));
         }
 
-        // Handle P2PK (Pay-to-Public-Key) scripts manually
-        // P2PK format: <pubkey> OP_CHECKSIG
-        // - Compressed: 33 bytes (0x21) + pubkey + OP_CHECKSIG (0xac) = 35 bytes
-        // - Uncompressed: 65 bytes (0x41) + pubkey + OP_CHECKSIG (0xac) = 67 bytes
-        if let Some(address) = self.try_decode_p2pk(&script) {
-            return Ok(Some(address));
+        // Handle P2PK - solve() extracts the pubkey, convert to P2PKH address
+        if let TxoutType::PubKey(pubkey) = solve(&script) {
+            let address = Address::p2pkh(pubkey.pubkey_hash(), self.network);
+            return Ok(Some(address.to_string()));
         }
 
         // Script doesn't represent a standard address (e.g., OP_RETURN, multisig)
         Ok(None)
-    }
-}
-
-impl<Block, Client, TransactionAdapter> Blockchain<Block, Client, TransactionAdapter>
-where
-    Block: BlockT + 'static,
-    Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + 'static,
-{
-    /// Try to decode a P2PK script to a P2PKH address.
-    ///
-    /// P2PK scripts have the format: <pubkey_len> <pubkey> OP_CHECKSIG
-    /// We convert them to the equivalent P2PKH address.
-    fn try_decode_p2pk(&self, script: &ScriptBuf) -> Option<String> {
-        let bytes = script.as_bytes();
-
-        // Check for compressed P2PK: 0x21 (33) + 33-byte pubkey + 0xac (OP_CHECKSIG)
-        if bytes.len() == 35 && bytes[0] == 0x21 && bytes[34] == 0xac {
-            let pubkey_bytes = &bytes[1..34];
-            if let Ok(pubkey) = CompressedPublicKey::from_slice(pubkey_bytes) {
-                let pubkey_hash = PubkeyHash::from(pubkey);
-                let address = Address::p2pkh(pubkey_hash, self.network);
-                return Some(address.to_string());
-            }
-        }
-
-        // Check for uncompressed P2PK: 0x41 (65) + 65-byte pubkey + 0xac (OP_CHECKSIG)
-        if bytes.len() == 67 && bytes[0] == 0x41 && bytes[66] == 0xac {
-            let pubkey_bytes = &bytes[1..66];
-            // For uncompressed pubkeys, we need to hash the full 65 bytes
-            // Use Hash160 (RIPEMD160(SHA256(pubkey)))
-            use bitcoin::hashes::hash160;
-            let hash = hash160::Hash::hash(pubkey_bytes);
-            let pubkey_hash = PubkeyHash::from_raw_hash(hash);
-            let address = Address::p2pkh(pubkey_hash, self.network);
-            return Some(address.to_string());
-        }
-
-        None
     }
 }
 

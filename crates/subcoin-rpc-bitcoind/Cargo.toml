@@ -19,5 +19,6 @@ sp-blockchain = { workspace = true }
 sp-runtime = { workspace = true }
 subcoin-network = { workspace = true }
 subcoin-primitives = { workspace = true }
+subcoin-script = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

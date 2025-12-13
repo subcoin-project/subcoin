@@ -13,6 +13,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use subcoin_network::{NetworkApi, SendTransactionResult};
 use subcoin_primitives::{BitcoinTransactionAdapter, TransactionIndex, TxPosition};
+use subcoin_script::solve;
 
 /// Bitcoin Core compatible raw transaction RPC API.
 #[rpc(client, server)]
@@ -160,21 +161,7 @@ where
                     .ok()
                     .map(|a| a.to_string());
 
-                let script_type = if script.is_p2pkh() {
-                    "pubkeyhash"
-                } else if script.is_p2sh() {
-                    "scripthash"
-                } else if script.is_p2wpkh() {
-                    "witness_v0_keyhash"
-                } else if script.is_p2wsh() {
-                    "witness_v0_scripthash"
-                } else if script.is_p2tr() {
-                    "witness_v1_taproot"
-                } else if script.is_op_return() {
-                    "nulldata"
-                } else {
-                    "nonstandard"
-                };
+                let script_type = solve(script).script_type();
 
                 Vout {
                     value: Amount::from_sat(output.value.to_sat()).to_btc(),

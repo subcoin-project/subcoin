@@ -39,6 +39,7 @@ pub use self::interpreter::verify_script;
 pub use self::signature_checker::{
     NoSignatureCheck, SignatureChecker, SignatureError, TransactionSignatureChecker,
 };
+pub use self::solver::{TxoutType, solve};
 
 pub type H256 = bitcoin::hashes::sha256::Hash;
 pub type SchnorrSignature = bitcoin::taproot::Signature;
