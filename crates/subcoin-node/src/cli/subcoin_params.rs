@@ -127,6 +127,13 @@ pub struct CommonParams {
     #[clap(long)]
     pub script_engine: Option<ScriptEngine>,
 
+    /// Use native UTXO storage for O(1) UTXO operations.
+    ///
+    /// When enabled, UTXOs are stored in native RocksDB with MuHash commitment,
+    /// bypassing Substrate's Merkle Patricia Trie for dramatically faster IBD.
+    #[clap(long)]
+    pub native_utxo: bool,
+
     /// Specify custom base path.
     #[arg(long, short = 'd', value_name = "PATH")]
     pub base_path: Option<PathBuf>,

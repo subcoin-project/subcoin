@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 use subcoin_primitives::BackendExt;
 use subcoin_runtime::interface::OpaqueBlock;
 use subcoin_service::FullClient;
+use subcoin_utxo_storage::NativeUtxoStorage;
 
 /// Custom value parser to handle both file paths and raw block data in hex format.
 fn parse_raw_block(input: &str) -> Result<String, String> {
@@ -94,6 +95,8 @@ pub struct ImportBlocksCmd {
     block_count: Option<usize>,
     to: Option<usize>,
     raw_block: Option<String>,
+    native_utxo: bool,
+    base_path: Option<PathBuf>,
 }
 
 impl ImportBlocksCmd {
@@ -107,7 +110,37 @@ impl ImportBlocksCmd {
             block_count: cmd.block_count,
             to: cmd.end_block,
             raw_block: cmd.raw_block.clone(),
+            native_utxo: cmd.common_params.native_utxo,
+            base_path: cmd.common_params.base_path.clone(),
         }
+    }
+
+    /// Create native UTXO storage if enabled.
+    fn create_native_storage(&self) -> sc_cli::Result<Option<Arc<NativeUtxoStorage>>> {
+        if !self.native_utxo {
+            return Ok(None);
+        }
+
+        let base_path = self
+            .base_path
+            .as_ref()
+            .map(|p| sc_service::BasePath::new(p.clone()))
+            .unwrap_or_else(|| sc_service::BasePath::from_project("", "", "subcoin"));
+
+        let native_storage_path = base_path.path().join("native_utxo");
+
+        tracing::info!(
+            "🚀 Native UTXO storage enabled at {}",
+            native_storage_path.display()
+        );
+
+        let storage = NativeUtxoStorage::open(&native_storage_path).map_err(|err| {
+            sc_cli::Error::Application(Box::new(std::io::Error::other(format!(
+                "Failed to open native UTXO storage: {err:?}"
+            ))))
+        })?;
+
+        Ok(Some(Arc::new(storage)))
     }
 
     /// Run the import-blocks command
@@ -119,6 +152,8 @@ impl ImportBlocksCmd {
         spawn_handle: SpawnTaskHandle,
         maybe_prometheus_config: Option<PrometheusConfig>,
     ) -> sc_cli::Result<()> {
+        let native_storage = self.create_native_storage()?;
+
         // Import single block.
         if let Some(block_data) = &self.raw_block {
             let raw_block =
@@ -138,6 +173,10 @@ impl ImportBlocksCmd {
                         .as_ref(),
                 );
 
+            if let Some(storage) = native_storage {
+                bitcoin_block_import = bitcoin_block_import.with_native_utxo_storage(storage);
+            }
+
             let block_hash = block.block_hash();
 
             bitcoin_block_import
@@ -156,6 +195,7 @@ impl ImportBlocksCmd {
             import_config,
             spawn_handle,
             maybe_prometheus_config,
+            native_storage,
         )
         .await
     }
@@ -168,6 +208,7 @@ impl ImportBlocksCmd {
         import_config: ImportConfig,
         spawn_handle: SpawnTaskHandle,
         maybe_prometheus_config: Option<PrometheusConfig>,
+        native_storage: Option<Arc<NativeUtxoStorage>>,
     ) -> sc_cli::Result<()> {
         let block_provider = BitcoinBlockProvider::new(maybe_data_dir)?;
 
@@ -200,6 +241,10 @@ impl ImportBlocksCmd {
                     .map(|config| config.registry.clone())
                     .as_ref(),
             );
+
+        if let Some(storage) = native_storage {
+            bitcoin_block_import = bitcoin_block_import.with_native_utxo_storage(storage);
+        }
 
         if let Some(PrometheusConfig { port, registry }) = maybe_prometheus_config {
             spawn_handle.spawn(

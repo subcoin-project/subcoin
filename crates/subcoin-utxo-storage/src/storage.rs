@@ -1,11 +1,11 @@
 //! Native UTXO storage implementation using RocksDB with MuHash commitment.
 
-use crate::coin::{outpoint_to_key, Coin};
+use crate::coin::{Coin, outpoint_to_key};
 use crate::undo::BlockUndo;
-use crate::{cf, meta_keys, Error, Result};
+use crate::{Error, Result, cf, meta_keys};
 use bitcoin::{Block, OutPoint, Transaction};
 use parking_lot::RwLock;
-use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, Options, WriteBatch, DB};
+use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, DB, Options, WriteBatch};
 use std::path::Path;
 use subcoin_crypto::MuHash3072;
 
@@ -380,9 +380,9 @@ mod tests {
     use bitcoin::{Amount, ScriptBuf, TxOut};
 
     fn create_test_block(height: u32, prev_outpoints: &[OutPoint]) -> Block {
+        use bitcoin::CompactTarget;
         use bitcoin::blockdata::block::{Header, Version};
         use bitcoin::blockdata::transaction::{Transaction, TxIn, Version as TxVersion};
-        use bitcoin::CompactTarget;
 
         // Create unique coinbase script_sig with height (like real Bitcoin blocks)
         let mut coinbase_script = vec![0x03]; // Push 3 bytes

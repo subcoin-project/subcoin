@@ -44,6 +44,7 @@ use subcoin_primitives::runtime::SubcoinApi;
 use subcoin_primitives::{
     BackendExt, BitcoinTransactionAdapter, CoinStorageKey, substrate_header_digest,
 };
+use subcoin_utxo_storage::NativeUtxoStorage;
 use substrate_prometheus_endpoint::Registry;
 
 /// Block import configuration.
@@ -96,6 +97,32 @@ impl Stats {
             {tx_per_ms:.2} tx/ms, {block_per_second:.2} block/s, execution time: {execution_time} ms",
         );
     }
+
+    fn record_block_execution_detailed<Block: BlockT>(
+        &mut self,
+        block_number: NumberFor<Block>,
+        tx_count: usize,
+        execute_block_ms: u128,
+        drain_changes_ms: u128,
+    ) {
+        let total_ms = execute_block_ms + drain_changes_ms;
+        self.total_txs += tx_count;
+        self.total_blocks += 1;
+        self.total_execution_time += total_ms as usize;
+
+        // Log every block for measurement
+        // Note: execute_block_ms INCLUDES state root computation via sp_io::storage::root()
+        // in frame_system::finalize(). The drain_changes_ms just retrieves cached value.
+        // So execute_block_ms = runtime_execution + state_root_computation
+        tracing::info!(
+            "block={} txs={} execute_block_ms={} drain_changes_ms={} total_ms={}",
+            block_number,
+            tx_count,
+            execute_block_ms,
+            drain_changes_ms,
+            total_ms,
+        );
+    }
 }
 
 /// Bitcoin specific block import implementation.
@@ -105,6 +132,8 @@ pub struct BitcoinBlockImporter<Block, Client, BE, BI, TransactionAdapter> {
     stats: Stats,
     config: ImportConfig,
     verifier: BlockVerifier<Block, Client, BE>,
+    /// Native UTXO storage for O(1) operations (optional).
+    native_utxo_storage: Option<Arc<NativeUtxoStorage>>,
     metrics: Option<Metrics>,
     last_block_execution_report: Instant,
     _phantom: PhantomData<TransactionAdapter>,
@@ -156,10 +185,22 @@ where
             stats: Stats::default(),
             config,
             verifier,
+            native_utxo_storage: None,
             metrics,
             last_block_execution_report: Instant::now(),
             _phantom: Default::default(),
         }
+    }
+
+    /// Sets native UTXO storage for O(1) UTXO operations.
+    ///
+    /// When configured, UTXO lookups during verification bypass Substrate state
+    /// and use native RocksDB storage instead. The storage is also updated
+    /// after each successful block import.
+    pub fn with_native_utxo_storage(mut self, storage: Arc<NativeUtxoStorage>) -> Self {
+        self.verifier = self.verifier.with_native_utxo_storage(storage.clone());
+        self.native_utxo_storage = Some(storage);
+        self
     }
 
     #[inline]
@@ -199,35 +240,45 @@ where
         Block::Hash,
         sp_state_machine::StorageChanges<HashingFor<Block>>,
     )> {
-        let timer = std::time::Instant::now();
-
         let transactions_count = block.extrinsics().len();
         let block_size = block.encoded_size();
 
         let mut runtime_api = self.client.runtime_api();
         runtime_api.set_call_context(CallContext::Onchain);
 
+        // Phase 1: Execute block (includes UTXO updates AND state root computation)
+        // Note: sp_io::storage::root() is called inside finalize(), so this
+        // measures runtime execution + trie/state root computation combined.
+        let execute_start = std::time::Instant::now();
         runtime_api.execute_block_without_state_root_check(parent_hash, block)?;
+        let execute_block_ms = execute_start.elapsed().as_millis();
 
+        // Phase 2: Drain storage changes (uses cached state root from phase 1)
+        let drain_start = std::time::Instant::now();
         let state = self.client.state_at(parent_hash)?;
-
         let storage_changes = runtime_api
             .into_storage_changes(&state, parent_hash)
             .map_err(sp_blockchain::Error::StorageChanges)?;
+        let drain_changes_ms = drain_start.elapsed().as_millis();
 
         let state_root = storage_changes.transaction_storage_root;
+
+        // Detailed logging for performance measurement
+        self.stats.record_block_execution_detailed::<Block>(
+            block_number,
+            transactions_count,
+            execute_block_ms,
+            drain_changes_ms,
+        );
 
         if let Some(metrics) = &self.metrics {
             const BLOCK_EXECUTION_REPORT_INTERVAL: u128 = 50;
 
-            // Executing blocks before 200000 is pretty fast, it becomes
-            // increasingly slower beyond this point, we only cares about
-            // the slow block executions.
             if self.last_block_execution_report.elapsed().as_millis()
                 > BLOCK_EXECUTION_REPORT_INTERVAL
             {
                 let block_number: u32 = block_number.saturated_into();
-                let execution_time = timer.elapsed().as_millis();
+                let execution_time = execute_block_ms + drain_changes_ms;
                 metrics.report_block_execution(
                     block_number.saturated_into(),
                     transactions_count,
@@ -501,24 +552,42 @@ where
             .verify_block(block_number, &block)
             .map_err(|err| import_err(format!("{err:?}")))?;
 
+        // Clone block for native storage update (only when native storage is enabled)
+        let bitcoin_block_for_native = self.native_utxo_storage.as_ref().map(|_| block.clone());
+
         let block_import_params = self
             .prepare_substrate_block_import(block, substrate_parent_block, origin)
             .map_err(|err| import_err(err.to_string()))?;
 
-        self.inner
+        let import_result = self
+            .inner
             .import_block(block_import_params)
             .await
-            .map(|import_result| match import_result {
-                ImportResult::Imported(aux) => ImportStatus::Imported {
-                    block_number,
-                    block_hash,
-                    aux,
-                },
-                ImportResult::AlreadyInChain => ImportStatus::AlreadyInChain(block_number),
-                ImportResult::KnownBad => ImportStatus::KnownBad,
-                ImportResult::UnknownParent => ImportStatus::UnknownParent,
-                ImportResult::MissingState => ImportStatus::MissingState,
-            })
-            .map_err(|err| import_err(err.to_string()))
+            .map_err(|err| import_err(err.to_string()))?;
+
+        // Apply block to native UTXO storage after successful import
+        if let ImportResult::Imported(_) = &import_result {
+            if let Some(native_storage) = &self.native_utxo_storage {
+                if let Some(btc_block) = bitcoin_block_for_native {
+                    native_storage
+                        .apply_block(&btc_block, block_number)
+                        .map_err(|err| {
+                            import_err(format!("Failed to apply block to native storage: {err:?}"))
+                        })?;
+                }
+            }
+        }
+
+        Ok(match import_result {
+            ImportResult::Imported(aux) => ImportStatus::Imported {
+                block_number,
+                block_hash,
+                aux,
+            },
+            ImportResult::AlreadyInChain => ImportStatus::AlreadyInChain(block_number),
+            ImportResult::KnownBad => ImportStatus::KnownBad,
+            ImportResult::UnknownParent => ImportStatus::UnknownParent,
+            ImportResult::MissingState => ImportStatus::MissingState,
+        })
     }
 }

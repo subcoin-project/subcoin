@@ -50,6 +50,7 @@ use std::sync::Arc;
 use subcoin_primitives::consensus::{TxError, check_transaction_sanity};
 use subcoin_primitives::runtime::{Coin, bitcoin_block_subsidy};
 use subcoin_primitives::{CoinStorageKey, MAX_BLOCK_WEIGHT};
+use subcoin_utxo_storage::NativeUtxoStorage;
 use tx_verify::{get_legacy_sig_op_count, is_final_tx};
 
 /// Represents the Bitcoin script backend.
@@ -210,7 +211,10 @@ pub struct BlockVerifier<Block, Client, BE> {
     chain_params: ChainParams,
     header_verifier: HeaderVerifier<Block, Client>,
     block_verification: BlockVerification,
+    /// Storage key for runtime UTXO lookups (used when native_utxo_storage is None).
     coin_storage_key: Arc<dyn CoinStorageKey>,
+    /// Native UTXO storage for O(1) lookups (bypasses Substrate state).
+    native_utxo_storage: Option<Arc<NativeUtxoStorage>>,
     script_engine: ScriptEngine,
     _phantom: PhantomData<(Block, BE)>,
 }
@@ -232,9 +236,19 @@ impl<Block, Client, BE> BlockVerifier<Block, Client, BE> {
             header_verifier,
             block_verification,
             coin_storage_key,
+            native_utxo_storage: None,
             script_engine,
             _phantom: Default::default(),
         }
+    }
+
+    /// Sets the native UTXO storage for O(1) lookups.
+    ///
+    /// When set, UTXO lookups bypass Substrate state and use native RocksDB storage instead.
+    /// This dramatically improves block verification performance.
+    pub fn with_native_utxo_storage(mut self, storage: Arc<NativeUtxoStorage>) -> Self {
+        self.native_utxo_storage = Some(storage);
+        self
     }
 }
 
@@ -609,14 +623,26 @@ where
     }
 
     /// Finds a UTXO in the state backend.
+    ///
+    /// When native UTXO storage is configured, lookups are O(1) via RocksDB.
+    /// Otherwise, falls back to Substrate state queries (slower, O(log n)).
     fn find_utxo_in_state(&self, block_hash: Block::Hash, out_point: OutPoint) -> Option<Coin> {
+        // Use native storage if available (O(1) lookup)
+        if let Some(native_storage) = &self.native_utxo_storage {
+            return native_storage.get(&out_point).map(|native_coin| {
+                // Convert native Coin to runtime Coin (same structure)
+                Coin {
+                    is_coinbase: native_coin.is_coinbase,
+                    amount: native_coin.amount,
+                    height: native_coin.height,
+                    script_pubkey: native_coin.script_pubkey,
+                }
+            });
+        }
+
+        // Fall back to Substrate state queries (slower)
         use codec::Decode;
 
-        // Read state from the backend
-        //
-        // TODO: optimizations:
-        // - Read the state from the in memory backend.
-        // - Maintain a flat in-memory UTXO cache and try to read from cache first.
         let OutPoint { txid, vout } = out_point;
         let storage_key = self.coin_storage_key.storage_key(txid, vout);
 

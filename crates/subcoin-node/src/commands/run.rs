@@ -12,6 +12,7 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 use subcoin_network::{BlockSyncOption, NetworkApi, SyncStrategy};
 use subcoin_primitives::{CONFIRMATION_DEPTH, TransactionIndex};
+use subcoin_utxo_storage::NativeUtxoStorage;
 
 /// Options for configuring the Subcoin network behavior.
 #[derive(Copy, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, clap::ValueEnum)]
@@ -212,7 +213,32 @@ impl RunCmd {
 
         let spawn_handle = task_manager.spawn_handle();
 
-        let bitcoin_block_import =
+        // Initialize native UTXO storage if enabled
+        let native_utxo_storage = if run.common_params.native_utxo {
+            let native_storage_path = base_path_or_default(
+                run.common_params.base_path.clone().map(Into::into),
+                &crate::substrate_cli::SubstrateCli::executable_name(),
+            )
+            .path()
+            .join("native_utxo");
+
+            tracing::info!(
+                "🚀 Native UTXO storage enabled at {}",
+                native_storage_path.display()
+            );
+
+            let storage = NativeUtxoStorage::open(&native_storage_path).map_err(|err| {
+                sc_cli::Error::Application(Box::new(std::io::Error::other(format!(
+                    "Failed to open native UTXO storage: {err:?}"
+                ))))
+            })?;
+
+            Some(Arc::new(storage))
+        } else {
+            None
+        };
+
+        let mut bitcoin_block_import =
             BitcoinBlockImporter::<_, _, _, _, subcoin_service::TransactionAdapter>::new(
                 client.clone(),
                 client.clone(),
@@ -220,6 +246,10 @@ impl RunCmd {
                 Arc::new(subcoin_service::CoinStorageKey),
                 config.prometheus_registry(),
             );
+
+        if let Some(storage) = native_utxo_storage {
+            bitcoin_block_import = bitcoin_block_import.with_native_utxo_storage(storage);
+        }
 
         let import_queue = sc_consensus_nakamoto::bitcoin_import_queue(
             &task_manager.spawn_essential_handle(),
