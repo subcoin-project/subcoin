@@ -78,6 +78,41 @@ impl MuHash3072 {
             output
         })
     }
+
+    /// Serialize the MuHash state for persistence.
+    ///
+    /// Format: numerator (384 bytes, little-endian) || denominator (384 bytes, little-endian)
+    /// Total: 768 bytes
+    pub fn serialize(&self) -> [u8; 768] {
+        let mut data = [0u8; 768];
+
+        // Serialize numerator (384 bytes)
+        let num_bytes = self.numerator.to_bytes_le();
+        data[..num_bytes.len().min(384)].copy_from_slice(&num_bytes[..num_bytes.len().min(384)]);
+
+        // Serialize denominator (384 bytes)
+        let denom_bytes = self.denominator.to_bytes_le();
+        data[384..384 + denom_bytes.len().min(384)]
+            .copy_from_slice(&denom_bytes[..denom_bytes.len().min(384)]);
+
+        data
+    }
+
+    /// Deserialize MuHash state from bytes.
+    ///
+    /// Returns None if the data is invalid.
+    pub fn deserialize(data: &[u8; 768]) -> Self {
+        let modulus = (BigUint::one() << 3072) - 1103717u32.to_biguint().unwrap();
+
+        let numerator = BigUint::from_bytes_le(&data[..384]);
+        let denominator = BigUint::from_bytes_le(&data[384..]);
+
+        Self {
+            numerator,
+            denominator,
+            modulus,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -111,5 +146,33 @@ mod tests {
                 .collect::<String>(),
             "10d312b100cbd32ada024a6646e40d3482fcff103668d2625f10002a607d5863"
         );
+    }
+
+    #[test]
+    fn test_muhash_serialize_roundtrip() {
+        let mut muhash = MuHash3072::new();
+
+        // Add some data
+        muhash.insert(&[0x00; 32]);
+        muhash.insert(&[0x01; 32]);
+        muhash.remove(&[0x02; 32]);
+
+        // Serialize and deserialize
+        let serialized = muhash.serialize();
+        let deserialized = MuHash3072::deserialize(&serialized);
+
+        // Verify the digest matches
+        assert_eq!(muhash.digest(), deserialized.digest());
+        assert_eq!(muhash.txoutset_muhash(), deserialized.txoutset_muhash());
+    }
+
+    #[test]
+    fn test_muhash_empty_serialize_roundtrip() {
+        let muhash = MuHash3072::new();
+
+        let serialized = muhash.serialize();
+        let deserialized = MuHash3072::deserialize(&serialized);
+
+        assert_eq!(muhash.digest(), deserialized.digest());
     }
 }

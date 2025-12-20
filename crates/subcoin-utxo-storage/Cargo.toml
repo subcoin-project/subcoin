@@ -1,0 +1,21 @@
+[package]
+name = "subcoin-utxo-storage"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+description = "Native UTXO storage with MuHash commitment for Subcoin"
+
+[dependencies]
+bincode = { workspace = true }
+bitcoin = { workspace = true, features = ["serde", "std"] }
+parking_lot = { workspace = true }
+rocksdb = "0.21.0"
+serde = { workspace = true }
+subcoin-crypto = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

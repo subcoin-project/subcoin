@@ -9780,6 +9780,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "subcoin-utxo-storage"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "bitcoin 0.32.2",
+ "parking_lot 0.12.4",
+ "rocksdb",
+ "serde",
+ "subcoin-crypto",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
 name = "substrate-bip39"
 version = "0.4.7"
 source = "git+https://github.com/subcoin-project/polkadot-sdk?branch=subcoin-v8#b348aa58d9f527ea7cb0eec4d8a59a21f97044ce"

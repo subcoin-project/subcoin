@@ -28,6 +28,7 @@ members = [
     "crates/subcoin-test-service",
     "crates/subcoin-mempool",
     "crates/subcoin-utxo-snapshot",
+    "crates/subcoin-utxo-storage",
 ]
 
 default-members = [
@@ -149,6 +150,7 @@ subcoin-service = { path = "crates/subcoin-service" }
 subcoin-test-service = { path = "crates/subcoin-test-service" }
 subcoin-mempool = { path = "crates/subcoin-mempool" }
 subcoin-utxo-snapshot = { path = "crates/subcoin-utxo-snapshot" }
+subcoin-utxo-storage = { path = "crates/subcoin-utxo-storage" }
 
 [profile.release]
 panic = "abort"
