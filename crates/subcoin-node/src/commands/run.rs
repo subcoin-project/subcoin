@@ -233,6 +233,19 @@ impl RunCmd {
                 ))))
             })?;
 
+            // Validate native storage is in sync with chain
+            let native_height = storage.height();
+            let chain_height = chain_info.best_number as u32;
+
+            if native_height != chain_height {
+                return Err(sc_cli::Error::Application(Box::new(std::io::Error::other(
+                    format!(
+                        "Native UTXO storage height ({native_height}) does not match chain height ({chain_height}). \
+                        Please start fresh with a clean data directory when using --native-utxo."
+                    ),
+                ))));
+            }
+
             Some(Arc::new(storage))
         } else {
             None

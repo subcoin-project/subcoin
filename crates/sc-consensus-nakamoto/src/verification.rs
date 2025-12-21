@@ -625,7 +625,7 @@ where
     /// Finds a UTXO in the state backend.
     ///
     /// When native UTXO storage is configured, lookups are O(1) via RocksDB.
-    /// Otherwise, falls back to Substrate state queries (slower, O(log n)).
+    /// Otherwise, uses Substrate state queries (slower, O(log n)).
     fn find_utxo_in_state(&self, block_hash: Block::Hash, out_point: OutPoint) -> Option<Coin> {
         // Use native storage if available (O(1) lookup)
         if let Some(native_storage) = &self.native_utxo_storage {
@@ -640,7 +640,7 @@ where
             });
         }
 
-        // Fall back to Substrate state queries (slower)
+        // Use Substrate state queries (slower, O(log n))
         use codec::Decode;
 
         let OutPoint { txid, vout } = out_point;

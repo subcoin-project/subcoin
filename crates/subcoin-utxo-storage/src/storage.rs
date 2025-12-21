@@ -101,6 +101,8 @@ impl NativeUtxoStorage {
     ///
     /// This updates the UTXO set, MuHash, and saves undo data for potential reorgs.
     pub fn apply_block(&self, block: &Block, height: u32) -> Result<()> {
+        use std::collections::HashMap;
+
         let cf_utxos = self.db.cf_handle(cf::UTXOS).ok_or(Error::NotInitialized)?;
         let cf_undo = self.db.cf_handle(cf::UNDO).ok_or(Error::NotInitialized)?;
         let cf_meta = self.db.cf_handle(cf::META).ok_or(Error::NotInitialized)?;
@@ -110,6 +112,10 @@ impl NativeUtxoStorage {
         let mut muhash = self.muhash.write();
         let mut created: u64 = 0;
         let mut spent: u64 = 0;
+
+        // Track UTXOs created within this block (not yet in DB)
+        // This handles the case where a later tx spends an output from an earlier tx in the same block
+        let mut in_block_utxos: HashMap<OutPoint, Coin> = HashMap::new();
 
         for tx in &block.txdata {
             self.process_transaction(
@@ -121,6 +127,7 @@ impl NativeUtxoStorage {
                 &mut muhash,
                 &mut created,
                 &mut spent,
+                &mut in_block_utxos,
             )?;
         }
 
@@ -168,6 +175,7 @@ impl NativeUtxoStorage {
         muhash: &mut MuHash3072,
         created: &mut u64,
         spent: &mut u64,
+        in_block_utxos: &mut std::collections::HashMap<OutPoint, Coin>,
     ) -> Result<()> {
         let txid = tx.compute_txid();
         let is_coinbase = tx.is_coinbase();
@@ -178,15 +186,21 @@ impl NativeUtxoStorage {
                 let outpoint = input.previous_output;
                 let key = outpoint_to_key(&outpoint);
 
-                // Get existing UTXO
-                let coin_bytes = self
-                    .db
-                    .get_cf(cf_utxos, key)
-                    .map_err(Error::Rocksdb)?
-                    .ok_or(Error::UtxoNotFound(outpoint))?;
+                // First check in-block UTXOs (created by earlier tx in same block)
+                // Then check the database
+                let coin = if let Some(coin) = in_block_utxos.remove(&outpoint) {
+                    // Found in current block - already pending in batch, just remove from tracking
+                    coin
+                } else {
+                    // Look up in database
+                    let coin_bytes = self
+                        .db
+                        .get_cf(cf_utxos, key)
+                        .map_err(Error::Rocksdb)?
+                        .ok_or(Error::UtxoNotFound(outpoint))?;
 
-                let coin =
-                    Coin::decode(&coin_bytes).map_err(|e| Error::Deserialization(e.to_string()))?;
+                    Coin::decode(&coin_bytes).map_err(|e| Error::Deserialization(e.to_string()))?
+                };
 
                 // Record for undo
                 undo.record_spend(outpoint, coin.clone());
@@ -195,7 +209,7 @@ impl NativeUtxoStorage {
                 let muhash_data = coin.serialize_for_muhash(&outpoint);
                 muhash.remove(&muhash_data);
 
-                // Remove from storage
+                // Remove from storage (batch delete - handles both DB and pending writes)
                 batch.delete_cf(cf_utxos, key);
                 *spent += 1;
             }
@@ -221,6 +235,9 @@ impl NativeUtxoStorage {
             // Add to MuHash
             let muhash_data = coin.serialize_for_muhash(&outpoint);
             muhash.insert(&muhash_data);
+
+            // Track in-block UTXOs so later txs in this block can spend them
+            in_block_utxos.insert(outpoint, coin.clone());
 
             // Add to storage
             batch.put_cf(cf_utxos, key, coin.encode());
@@ -324,14 +341,14 @@ impl NativeUtxoStorage {
         self.muhash.read().txoutset_muhash()
     }
 
-    /// Get current UTXO count.
-    pub fn utxo_count(&self) -> u64 {
-        *self.utxo_count.read()
-    }
-
-    /// Get current block height.
+    /// Get the current block height of the UTXO set.
     pub fn height(&self) -> u32 {
         *self.height.read()
+    }
+
+    /// Get the current UTXO count.
+    pub fn utxo_count(&self) -> u64 {
+        *self.utxo_count.read()
     }
 
     // --- Private helper methods ---
@@ -523,5 +540,114 @@ mod tests {
         storage.apply_block(&block1, 1).unwrap();
 
         assert_eq!(storage.muhash_hex(), muhash_at_1);
+    }
+
+    /// Test in-block UTXO spending: a later transaction spends an output created
+    /// by an earlier transaction in the same block.
+    #[test]
+    fn test_in_block_utxo_spending() {
+        use bitcoin::CompactTarget;
+        use bitcoin::blockdata::block::{Header, Version};
+        use bitcoin::blockdata::transaction::{Transaction, TxIn, Version as TxVersion};
+
+        let storage = NativeUtxoStorage::open_temp().unwrap();
+
+        // Create a block with 3 transactions:
+        // tx0: coinbase -> output A
+        // tx1: (from prev block) -> output B
+        // tx2: spends output B (created by tx1 in the same block!)
+
+        // First, apply a genesis block to have something to spend
+        let genesis = create_test_block(0, &[]);
+        storage.apply_block(&genesis, 0).unwrap();
+
+        let genesis_coinbase = OutPoint {
+            txid: genesis.txdata[0].compute_txid(),
+            vout: 0,
+        };
+
+        // Build block 1 with in-block spending
+        let coinbase_tx = Transaction {
+            version: TxVersion::TWO,
+            lock_time: bitcoin::absolute::LockTime::ZERO,
+            input: vec![TxIn {
+                previous_output: OutPoint::null(),
+                script_sig: ScriptBuf::from_bytes(vec![0x01, 0x01]),
+                sequence: bitcoin::Sequence::MAX,
+                witness: bitcoin::Witness::new(),
+            }],
+            output: vec![TxOut {
+                value: Amount::from_sat(5_000_000_000),
+                script_pubkey: ScriptBuf::new_p2pkh(&bitcoin::PubkeyHash::all_zeros()),
+            }],
+        };
+
+        // tx1: spends genesis coinbase, creates output B
+        let tx1 = Transaction {
+            version: TxVersion::TWO,
+            lock_time: bitcoin::absolute::LockTime::ZERO,
+            input: vec![TxIn {
+                previous_output: genesis_coinbase,
+                script_sig: ScriptBuf::new(),
+                sequence: bitcoin::Sequence::MAX,
+                witness: bitcoin::Witness::new(),
+            }],
+            output: vec![TxOut {
+                value: Amount::from_sat(4_000_000_000),
+                script_pubkey: ScriptBuf::new_p2pkh(&bitcoin::PubkeyHash::all_zeros()),
+            }],
+        };
+
+        let tx1_output = OutPoint {
+            txid: tx1.compute_txid(),
+            vout: 0,
+        };
+
+        // tx2: spends tx1's output (in-block spending!)
+        let tx2 = Transaction {
+            version: TxVersion::TWO,
+            lock_time: bitcoin::absolute::LockTime::ZERO,
+            input: vec![TxIn {
+                previous_output: tx1_output,
+                script_sig: ScriptBuf::new(),
+                sequence: bitcoin::Sequence::MAX,
+                witness: bitcoin::Witness::new(),
+            }],
+            output: vec![TxOut {
+                value: Amount::from_sat(3_000_000_000),
+                script_pubkey: ScriptBuf::new_p2pkh(&bitcoin::PubkeyHash::all_zeros()),
+            }],
+        };
+
+        let tx2_output = OutPoint {
+            txid: tx2.compute_txid(),
+            vout: 0,
+        };
+
+        let block1 = Block {
+            header: Header {
+                version: Version::TWO,
+                prev_blockhash: bitcoin::BlockHash::all_zeros(),
+                merkle_root: bitcoin::TxMerkleNode::all_zeros(),
+                time: 0,
+                bits: CompactTarget::from_consensus(0),
+                nonce: 1,
+            },
+            txdata: vec![coinbase_tx, tx1, tx2],
+        };
+
+        // This should succeed - tx2 can spend tx1's output created in the same block
+        storage.apply_block(&block1, 1).unwrap();
+
+        assert_eq!(storage.height(), 1);
+        // genesis coinbase spent, tx1 output spent (in-block), coinbase output + tx2 output created
+        // Net: 2 UTXOs (coinbase from block1, tx2 output)
+        assert_eq!(storage.utxo_count(), 2);
+
+        // tx1's output should NOT exist (it was spent in-block)
+        assert!(!storage.contains(&tx1_output));
+
+        // tx2's output should exist
+        assert!(storage.contains(&tx2_output));
     }
 }
