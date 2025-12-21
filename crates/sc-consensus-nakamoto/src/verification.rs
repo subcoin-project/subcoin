@@ -47,9 +47,9 @@ use sp_runtime::traits::Block as BlockT;
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::sync::Arc;
+use subcoin_primitives::MAX_BLOCK_WEIGHT;
 use subcoin_primitives::consensus::{TxError, check_transaction_sanity};
 use subcoin_primitives::runtime::{Coin, bitcoin_block_subsidy};
-use subcoin_primitives::{CoinStorageKey, MAX_BLOCK_WEIGHT};
 use subcoin_utxo_storage::NativeUtxoStorage;
 use tx_verify::{get_legacy_sig_op_count, is_final_tx};
 
@@ -211,10 +211,8 @@ pub struct BlockVerifier<Block, Client, BE> {
     chain_params: ChainParams,
     header_verifier: HeaderVerifier<Block, Client>,
     block_verification: BlockVerification,
-    /// Storage key for runtime UTXO lookups (used when native_utxo_storage is None).
-    coin_storage_key: Arc<dyn CoinStorageKey>,
-    /// Native UTXO storage for O(1) lookups (bypasses Substrate state).
-    native_utxo_storage: Option<Arc<NativeUtxoStorage>>,
+    /// Native UTXO storage for O(1) lookups.
+    native_utxo_storage: Arc<NativeUtxoStorage>,
     script_engine: ScriptEngine,
     _phantom: PhantomData<(Block, BE)>,
 }
@@ -225,7 +223,7 @@ impl<Block, Client, BE> BlockVerifier<Block, Client, BE> {
         client: Arc<Client>,
         network: bitcoin::Network,
         block_verification: BlockVerification,
-        coin_storage_key: Arc<dyn CoinStorageKey>,
+        native_utxo_storage: Arc<NativeUtxoStorage>,
         script_engine: ScriptEngine,
     ) -> Self {
         let chain_params = ChainParams::new(network);
@@ -235,20 +233,10 @@ impl<Block, Client, BE> BlockVerifier<Block, Client, BE> {
             chain_params,
             header_verifier,
             block_verification,
-            coin_storage_key,
-            native_utxo_storage: None,
+            native_utxo_storage,
             script_engine,
             _phantom: Default::default(),
         }
-    }
-
-    /// Sets the native UTXO storage for O(1) lookups.
-    ///
-    /// When set, UTXO lookups bypass Substrate state and use native RocksDB storage instead.
-    /// This dramatically improves block verification performance.
-    pub fn with_native_utxo_storage(mut self, storage: Arc<NativeUtxoStorage>) -> Self {
-        self.native_utxo_storage = Some(storage);
-        self
     }
 }
 
@@ -622,37 +610,17 @@ where
         Ok(())
     }
 
-    /// Finds a UTXO in the state backend.
-    ///
-    /// When native UTXO storage is configured, lookups are O(1) via RocksDB.
-    /// Otherwise, uses Substrate state queries (slower, O(log n)).
-    fn find_utxo_in_state(&self, block_hash: Block::Hash, out_point: OutPoint) -> Option<Coin> {
-        // Use native storage if available (O(1) lookup)
-        if let Some(native_storage) = &self.native_utxo_storage {
-            return native_storage.get(&out_point).map(|native_coin| {
-                // Convert native Coin to runtime Coin (same structure)
-                Coin {
-                    is_coinbase: native_coin.is_coinbase,
-                    amount: native_coin.amount,
-                    height: native_coin.height,
-                    script_pubkey: native_coin.script_pubkey,
-                }
-            });
-        }
-
-        // Use Substrate state queries (slower, O(log n))
-        use codec::Decode;
-
-        let OutPoint { txid, vout } = out_point;
-        let storage_key = self.coin_storage_key.storage_key(txid, vout);
-
-        let maybe_storage_data = self
-            .client
-            .storage(block_hash, &sc_client_api::StorageKey(storage_key))
-            .ok()
-            .flatten();
-
-        maybe_storage_data.and_then(|data| Coin::decode(&mut data.0.as_slice()).ok())
+    /// Finds a UTXO in native storage (O(1) lookup via RocksDB).
+    fn find_utxo_in_state(&self, _block_hash: Block::Hash, out_point: OutPoint) -> Option<Coin> {
+        self.native_utxo_storage.get(&out_point).map(|native_coin| {
+            // Convert native Coin to runtime Coin (same structure)
+            Coin {
+                is_coinbase: native_coin.is_coinbase,
+                amount: native_coin.amount,
+                height: native_coin.height,
+                script_pubkey: native_coin.script_pubkey,
+            }
+        })
     }
 }
 

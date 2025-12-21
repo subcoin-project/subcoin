@@ -41,9 +41,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Instant;
 use subcoin_primitives::runtime::SubcoinApi;
-use subcoin_primitives::{
-    BackendExt, BitcoinTransactionAdapter, CoinStorageKey, substrate_header_digest,
-};
+use subcoin_primitives::{BackendExt, BitcoinTransactionAdapter, substrate_header_digest};
 use subcoin_utxo_storage::NativeUtxoStorage;
 use substrate_prometheus_endpoint::Registry;
 
@@ -132,8 +130,8 @@ pub struct BitcoinBlockImporter<Block, Client, BE, BI, TransactionAdapter> {
     stats: Stats,
     config: ImportConfig,
     verifier: BlockVerifier<Block, Client, BE>,
-    /// Native UTXO storage for O(1) operations (optional).
-    native_utxo_storage: Option<Arc<NativeUtxoStorage>>,
+    /// Native UTXO storage for O(1) operations.
+    native_utxo_storage: Arc<NativeUtxoStorage>,
     metrics: Option<Metrics>,
     last_block_execution_report: Instant,
     _phantom: PhantomData<TransactionAdapter>,
@@ -161,14 +159,14 @@ where
         client: Arc<Client>,
         block_import: BI,
         config: ImportConfig,
-        coin_storage_key: Arc<dyn CoinStorageKey>,
+        native_utxo_storage: Arc<NativeUtxoStorage>,
         registry: Option<&Registry>,
     ) -> Self {
         let verifier = BlockVerifier::new(
             client.clone(),
             config.network,
             config.block_verification,
-            coin_storage_key,
+            native_utxo_storage.clone(),
             config.script_engine,
         );
         let metrics = match registry {
@@ -185,22 +183,11 @@ where
             stats: Stats::default(),
             config,
             verifier,
-            native_utxo_storage: None,
+            native_utxo_storage,
             metrics,
             last_block_execution_report: Instant::now(),
             _phantom: Default::default(),
         }
-    }
-
-    /// Sets native UTXO storage for O(1) UTXO operations.
-    ///
-    /// When configured, UTXO lookups during verification bypass Substrate state
-    /// and use native RocksDB storage instead. The storage is also updated
-    /// after each successful block import.
-    pub fn with_native_utxo_storage(mut self, storage: Arc<NativeUtxoStorage>) -> Self {
-        self.verifier = self.verifier.with_native_utxo_storage(storage.clone());
-        self.native_utxo_storage = Some(storage);
-        self
     }
 
     #[inline]
@@ -552,8 +539,8 @@ where
             .verify_block(block_number, &block)
             .map_err(|err| import_err(format!("{err:?}")))?;
 
-        // Clone block for native storage update (only when native storage is enabled)
-        let bitcoin_block_for_native = self.native_utxo_storage.as_ref().map(|_| block.clone());
+        // Clone block for native storage update
+        let bitcoin_block_for_native = block.clone();
 
         let block_import_params = self
             .prepare_substrate_block_import(block, substrate_parent_block, origin)
@@ -567,15 +554,11 @@ where
 
         // Apply block to native UTXO storage after successful import
         if let ImportResult::Imported(_) = &import_result {
-            if let Some(native_storage) = &self.native_utxo_storage {
-                if let Some(btc_block) = bitcoin_block_for_native {
-                    native_storage
-                        .apply_block(&btc_block, block_number)
-                        .map_err(|err| {
-                            import_err(format!("Failed to apply block to native storage: {err:?}"))
-                        })?;
-                }
-            }
+            self.native_utxo_storage
+                .apply_block(&bitcoin_block_for_native, block_number)
+                .map_err(|err| {
+                    import_err(format!("Failed to apply block to native storage: {err:?}"))
+                })?;
         }
 
         Ok(match import_result {

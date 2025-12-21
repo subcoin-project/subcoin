@@ -8,12 +8,10 @@ use sc_client_api::{BlockBackend, HeaderBackend, ProofProvider};
 use sc_network::config::ProtocolId;
 use sc_network::request_responses::{IncomingRequest, OutgoingResponse};
 use sc_network::{MAX_RESPONSE_SIZE, NetworkBackend, PeerId};
-use sp_api::ProvideRuntimeApi;
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
-use subcoin_primitives::runtime::SubcoinApi;
 
 const LOG_TARGET: &str = "sync::subcoin";
 
@@ -105,14 +103,7 @@ pub struct NetworkRequestHandler<Block, Client> {
 impl<B, Client> NetworkRequestHandler<B, Client>
 where
     B: BlockT,
-    Client: HeaderBackend<B>
-        + BlockBackend<B>
-        + ProofProvider<B>
-        + ProvideRuntimeApi<B>
-        + Send
-        + Sync
-        + 'static,
-    Client::Api: SubcoinApi<B>,
+    Client: HeaderBackend<B> + BlockBackend<B> + ProofProvider<B> + Send + Sync + 'static,
 {
     /// Create a new [`NetworkRequestHandler`].
     pub fn new<N: NetworkBackend<B, <B as BlockT>::Hash>>(
@@ -203,9 +194,13 @@ where
                 Ok(response)
             }
             v1::NetworkRequest::GetCoinsCount { block_hash } => {
-                let count = self.client.runtime_api().coins_count(block_hash)?;
-                let response = v1::NetworkResponse::<B>::CoinsCount { block_hash, count };
-                Ok(response)
+                // TODO: Wire NativeUtxoStorage through to get actual UTXO count
+                // For now, return an error indicating the feature is not available
+                Err(HandleRequestError::Client(sp_blockchain::Error::Backend(
+                    format!(
+                        "GetCoinsCount at {block_hash} not yet implemented with native storage"
+                    ),
+                )))
             }
             v1::NetworkRequest::GetBlockHeader { block_number } => {
                 let block_hash = self.client.hash(block_number)?.ok_or_else(|| {
@@ -235,9 +230,6 @@ enum HandleRequestError {
 
     #[error(transparent)]
     Client(#[from] sp_blockchain::Error),
-
-    #[error(transparent)]
-    RuntimeApi(#[from] sp_api::ApiError),
 
     #[error("Failed to send response.")]
     SendResponse,

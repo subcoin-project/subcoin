@@ -261,15 +261,6 @@ where
     }
 }
 
-/// Deals with the storage key for UTXO in the state.
-pub trait CoinStorageKey: Send + Sync {
-    /// Returns the storage key for the given output specified by (txid, vout).
-    fn storage_key(&self, txid: bitcoin::Txid, vout: u32) -> Vec<u8>;
-
-    /// Returns the final storage prefix for Coins.
-    fn storage_prefix(&self) -> [u8; 32];
-}
-
 /// Represents a Bitcoin block locator, used to sync blockchain data between nodes.
 #[derive(Debug, Clone)]
 pub struct BlockLocator {

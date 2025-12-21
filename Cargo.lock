@@ -9444,12 +9444,11 @@ dependencies = [
  "sc-transaction-pool-api",
  "schnellru",
  "slotmap",
- "sp-api",
  "sp-blockchain",
  "sp-runtime",
  "subcoin-primitives",
- "subcoin-runtime-primitives",
  "subcoin-script",
+ "subcoin-utxo-storage",
  "thiserror 1.0.69",
 ]
 
@@ -9765,6 +9764,7 @@ dependencies = [
  "sp-keyring",
  "subcoin-runtime",
  "subcoin-service",
+ "subcoin-utxo-storage",
  "tempfile",
  "tokio",
 ]

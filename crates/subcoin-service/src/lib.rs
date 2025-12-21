@@ -60,19 +60,6 @@ impl NativeExecutionDispatch for SubcoinExecutorDispatch {
     }
 }
 
-/// This struct implements the trait [`subcoin_primitives::CoinStorageKey`].
-pub struct CoinStorageKey;
-
-impl subcoin_primitives::CoinStorageKey for CoinStorageKey {
-    fn storage_key(&self, txid: bitcoin::Txid, vout: u32) -> Vec<u8> {
-        pallet_bitcoin::coin_storage_key::<subcoin_runtime::Runtime>(txid, vout)
-    }
-
-    fn storage_prefix(&self) -> [u8; 32] {
-        pallet_bitcoin::coin_storage_prefix::<subcoin_runtime::Runtime>()
-    }
-}
-
 /// Subcoin node components.
 pub struct NodeComponents {
     /// Client.

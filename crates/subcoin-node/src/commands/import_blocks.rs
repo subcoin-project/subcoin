@@ -95,7 +95,6 @@ pub struct ImportBlocksCmd {
     block_count: Option<usize>,
     to: Option<usize>,
     raw_block: Option<String>,
-    native_utxo: bool,
     base_path: Option<PathBuf>,
 }
 
@@ -110,20 +109,12 @@ impl ImportBlocksCmd {
             block_count: cmd.block_count,
             to: cmd.end_block,
             raw_block: cmd.raw_block.clone(),
-            native_utxo: cmd.common_params.native_utxo,
             base_path: cmd.common_params.base_path.clone(),
         }
     }
 
-    /// Create native UTXO storage if enabled.
-    fn create_native_storage(
-        &self,
-        chain_height: u32,
-    ) -> sc_cli::Result<Option<Arc<NativeUtxoStorage>>> {
-        if !self.native_utxo {
-            return Ok(None);
-        }
-
+    /// Create native UTXO storage (mandatory).
+    fn create_native_storage(&self, chain_height: u32) -> sc_cli::Result<Arc<NativeUtxoStorage>> {
         let base_path = self
             .base_path
             .as_ref()
@@ -133,7 +124,7 @@ impl ImportBlocksCmd {
         let native_storage_path = base_path.path().join("native_utxo");
 
         tracing::info!(
-            "🚀 Native UTXO storage enabled at {}",
+            "🚀 Native UTXO storage at {}",
             native_storage_path.display()
         );
 
@@ -149,12 +140,12 @@ impl ImportBlocksCmd {
             return Err(sc_cli::Error::Application(Box::new(std::io::Error::other(
                 format!(
                     "Native UTXO storage height ({native_height}) does not match chain height ({chain_height}). \
-                    Please start fresh with a clean data directory when using --native-utxo."
+                    Please start fresh with a clean data directory."
                 ),
             ))));
         }
 
-        Ok(Some(Arc::new(storage)))
+        Ok(Arc::new(storage))
     }
 
     /// Run the import-blocks command
@@ -166,7 +157,7 @@ impl ImportBlocksCmd {
         spawn_handle: SpawnTaskHandle,
         maybe_prometheus_config: Option<PrometheusConfig>,
     ) -> sc_cli::Result<()> {
-        let chain_height = client.info().best_number as u32;
+        let chain_height = client.info().best_number;
         let native_storage = self.create_native_storage(chain_height)?;
 
         // Import single block.
@@ -181,16 +172,12 @@ impl ImportBlocksCmd {
                     client.clone(),
                     client.clone(),
                     import_config,
-                    Arc::new(subcoin_service::CoinStorageKey),
+                    native_storage,
                     maybe_prometheus_config
                         .as_ref()
                         .map(|config| config.registry.clone())
                         .as_ref(),
                 );
-
-            if let Some(storage) = native_storage {
-                bitcoin_block_import = bitcoin_block_import.with_native_utxo_storage(storage);
-            }
 
             let block_hash = block.block_hash();
 
@@ -223,7 +210,7 @@ impl ImportBlocksCmd {
         import_config: ImportConfig,
         spawn_handle: SpawnTaskHandle,
         maybe_prometheus_config: Option<PrometheusConfig>,
-        native_storage: Option<Arc<NativeUtxoStorage>>,
+        native_storage: Arc<NativeUtxoStorage>,
     ) -> sc_cli::Result<()> {
         let block_provider = BitcoinBlockProvider::new(maybe_data_dir)?;
 
@@ -250,16 +237,12 @@ impl ImportBlocksCmd {
                 client.clone(),
                 client.clone(),
                 import_config,
-                Arc::new(subcoin_service::CoinStorageKey),
+                native_storage,
                 maybe_prometheus_config
                     .as_ref()
                     .map(|config| config.registry.clone())
                     .as_ref(),
             );
-
-        if let Some(storage) = native_storage {
-            bitcoin_block_import = bitcoin_block_import.with_native_utxo_storage(storage);
-        }
 
         if let Some(PrometheusConfig { port, registry }) = maybe_prometheus_config {
             spawn_handle.spawn(

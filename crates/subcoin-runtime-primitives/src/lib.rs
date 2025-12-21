@@ -140,6 +140,9 @@ fn block_subsidy(height: u32, subsidy_halving_interval: u32) -> u64 {
 
 sp_api::decl_runtime_apis! {
     /// Subcoin API.
+    ///
+    /// Note: UTXO queries (coins_count, get_utxos) have been moved to native storage.
+    /// Use `NativeUtxoStorage` directly for O(1) UTXO lookups.
     pub trait SubcoinApi {
         /// Same as the original `execute_block()` with the removal
         /// of `state_root` check in the `final_checks()`.
@@ -147,14 +150,5 @@ sp_api::decl_runtime_apis! {
 
         /// Finalize block without checking the extrinsics_root and state_root.
         fn finalize_block_without_checks(header: Block::Header);
-
-        /// Returns the number of total coins (i.e., the size of UTXO set).
-        fn coins_count() -> u64;
-
-        /// Query UTXOs by outpoints.
-        ///
-        /// Returns a vector of the same length as the input, with `Some(Coin)` for
-        /// UTXOs that exist and `None` for those that don't.
-        fn get_utxos(outpoints: Vec<OutPoint>) -> Vec<Option<Coin>>;
     }
 }

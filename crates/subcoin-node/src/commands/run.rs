@@ -213,56 +213,48 @@ impl RunCmd {
 
         let spawn_handle = task_manager.spawn_handle();
 
-        // Initialize native UTXO storage if enabled
-        let native_utxo_storage = if run.common_params.native_utxo {
-            let native_storage_path = base_path_or_default(
-                run.common_params.base_path.clone().map(Into::into),
-                &crate::substrate_cli::SubstrateCli::executable_name(),
-            )
-            .path()
-            .join("native_utxo");
+        // Initialize native UTXO storage (mandatory)
+        let native_storage_path = base_path_or_default(
+            run.common_params.base_path.clone().map(Into::into),
+            &crate::substrate_cli::SubstrateCli::executable_name(),
+        )
+        .path()
+        .join("native_utxo");
 
-            tracing::info!(
-                "🚀 Native UTXO storage enabled at {}",
-                native_storage_path.display()
-            );
+        tracing::info!(
+            "🚀 Native UTXO storage at {}",
+            native_storage_path.display()
+        );
 
-            let storage = NativeUtxoStorage::open(&native_storage_path).map_err(|err| {
-                sc_cli::Error::Application(Box::new(std::io::Error::other(format!(
-                    "Failed to open native UTXO storage: {err:?}"
-                ))))
-            })?;
+        let storage = NativeUtxoStorage::open(&native_storage_path).map_err(|err| {
+            sc_cli::Error::Application(Box::new(std::io::Error::other(format!(
+                "Failed to open native UTXO storage: {err:?}"
+            ))))
+        })?;
 
-            // Validate native storage is in sync with chain
-            let native_height = storage.height();
-            let chain_height = chain_info.best_number as u32;
+        // Validate native storage is in sync with chain
+        let native_height = storage.height();
+        let chain_height = chain_info.best_number;
 
-            if native_height != chain_height {
-                return Err(sc_cli::Error::Application(Box::new(std::io::Error::other(
-                    format!(
-                        "Native UTXO storage height ({native_height}) does not match chain height ({chain_height}). \
-                        Please start fresh with a clean data directory when using --native-utxo."
-                    ),
-                ))));
-            }
+        if native_height != chain_height {
+            return Err(sc_cli::Error::Application(Box::new(std::io::Error::other(
+                format!(
+                    "Native UTXO storage height ({native_height}) does not match chain height ({chain_height}). \
+                    Please start fresh with a clean data directory."
+                ),
+            ))));
+        }
 
-            Some(Arc::new(storage))
-        } else {
-            None
-        };
+        let native_utxo_storage = Arc::new(storage);
 
-        let mut bitcoin_block_import =
+        let bitcoin_block_import =
             BitcoinBlockImporter::<_, _, _, _, subcoin_service::TransactionAdapter>::new(
                 client.clone(),
                 client.clone(),
                 import_config,
-                Arc::new(subcoin_service::CoinStorageKey),
+                native_utxo_storage.clone(),
                 config.prometheus_registry(),
             );
-
-        if let Some(storage) = native_utxo_storage {
-            bitcoin_block_import = bitcoin_block_import.with_native_utxo_storage(storage);
-        }
 
         let import_queue = sc_consensus_nakamoto::bitcoin_import_queue(
             &task_manager.spawn_essential_handle(),
@@ -304,7 +296,10 @@ impl RunCmd {
                 task_manager.keep_alive(import_queue);
                 Arc::new(subcoin_network::NoNetwork)
             } else {
-                let tx_pool = Arc::new(subcoin_mempool::MemPool::new(client.clone()));
+                let tx_pool = Arc::new(subcoin_mempool::MemPool::new(
+                    client.clone(),
+                    native_utxo_storage.clone(),
+                ));
 
                 let network_handle = subcoin_network::build_network(
                     client.clone(),

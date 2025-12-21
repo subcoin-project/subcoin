@@ -18,6 +18,7 @@ use sp_consensus::BlockOrigin;
 use sp_keyring::sr25519::Keyring as Sr25519Keyring;
 use std::sync::Arc;
 use subcoin_service::{FullClient, NodeComponents, SubcoinConfiguration};
+use subcoin_utxo_storage::NativeUtxoStorage;
 
 fn decode_raw_block(hex_str: &str) -> Block {
     let data = Vec::<u8>::from_hex(hex_str).expect("Failed to convert hex str");
@@ -145,6 +146,12 @@ pub async fn new_test_node_and_produce_blocks(
         subcoin_service::new_node(SubcoinConfiguration::test_config(config))
             .expect("Failed to create node");
 
+    // Create temporary directory for native UTXO storage in tests
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+    let native_storage = Arc::new(
+        NativeUtxoStorage::open(temp_dir.path()).expect("Failed to open native UTXO storage"),
+    );
+
     let mut bitcoin_block_import =
         BitcoinBlockImporter::<_, _, _, _, subcoin_service::TransactionAdapter>::new(
             client.clone(),
@@ -155,7 +162,7 @@ pub async fn new_test_node_and_produce_blocks(
                 execute_block: true,
                 script_engine: ScriptEngine::Core,
             },
-            Arc::new(subcoin_service::CoinStorageKey),
+            native_storage,
             None,
         );
 

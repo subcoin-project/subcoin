@@ -5,16 +5,9 @@ mod parse_txout_set;
 
 use crate::cli::subcoin_params::Chain;
 use sc_cli::{DatabaseParams, ImportParams, NodeKeyParams, SharedParams};
-use sc_client_api::{HeaderBackend, StorageProvider};
-use sp_core::Decode;
-use sp_core::storage::StorageKey;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subcoin_primitives::runtime::Coin;
-use subcoin_primitives::{BackendExt, CoinStorageKey};
 use subcoin_service::FullClient;
-
-const FINAL_STORAGE_PREFIX_LEN: usize = 32;
 
 /// Parameters for constructing a Client.
 #[derive(Debug, Clone, clap::Args)]
@@ -143,49 +136,16 @@ impl sc_cli::CliConfiguration for BlockchainCmd {
 }
 
 fn fetch_utxo_set_at(
-    client: &Arc<FullClient>,
-    height: Option<u32>,
+    _client: &Arc<FullClient>,
+    _height: Option<u32>,
 ) -> sc_cli::Result<(
     u32,
     bitcoin::BlockHash,
-    impl Iterator<Item = (bitcoin::Txid, u32, Coin)>,
+    std::iter::Empty<(bitcoin::Txid, u32, subcoin_primitives::runtime::Coin)>,
 )> {
-    let storage_prefix = subcoin_service::CoinStorageKey.storage_prefix();
-    let storage_key = StorageKey(storage_prefix.to_vec());
-
-    let block_number = height.unwrap_or_else(|| client.info().best_number);
-
-    let bitcoin_block_hash = client
-        .block_hash(block_number)
-        .ok_or(sc_cli::Error::Client(sp_blockchain::Error::Backend(
-            format!("Bitcoin block hash for #{block_number} missing"),
-        )))?;
-
-    let substrate_block_hash =
-        client
-            .hash(block_number)?
-            .ok_or(sc_cli::Error::Client(sp_blockchain::Error::Backend(
-                format!("Substrate block hash for #{block_number} missing"),
-            )))?;
-
-    Ok((
-        block_number,
-        bitcoin_block_hash,
-        client
-            .storage_pairs(substrate_block_hash, Some(&storage_key), None)?
-            .map(|(key, value)| {
-                let (txid, vout) = <(pallet_bitcoin::types::Txid, u32)>::decode(
-                    &mut &key.0.as_slice()[FINAL_STORAGE_PREFIX_LEN..],
-                )
-                .expect("Key type of `Coins` must be correct; qed");
-
-                let txid: bitcoin::Txid = txid.into();
-
-                // output in genesis tx is excluded in the UTXO set.
-                let coin = Coin::decode(&mut value.0.as_slice())
-                    .expect("Coin read from DB must be decoded successfully; qed");
-
-                (txid, vout, coin)
-            }),
-    ))
+    // TODO: Reimplement using NativeUtxoStorage iteration.
+    // Substrate UTXO storage has been removed in favor of native RocksDB storage.
+    Err(sc_cli::Error::Application(Box::new(std::io::Error::other(
+        "dumptxoutset is not yet implemented with native UTXO storage",
+    ))))
 }
