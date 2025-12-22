@@ -75,6 +75,13 @@ pub struct ImportBlocks {
     #[clap(long, default_value_t = true)]
     pub execute_transactions: bool,
 
+    /// Disable parallel script verification (for benchmarking).
+    ///
+    /// By default, script verification is parallelized using rayon. Use this flag
+    /// to run sequential verification for performance comparison.
+    #[clap(long)]
+    pub no_parallel_verification: bool,
+
     #[allow(missing_docs)]
     #[clap(flatten)]
     pub common_params: CommonParams,

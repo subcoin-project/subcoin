@@ -36,6 +36,7 @@ use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::blockdata::constants::{COINBASE_MATURITY, MAX_BLOCK_SIGOPS_COST};
 use bitcoin::blockdata::weight::WITNESS_SCALE_FACTOR;
 use bitcoin::consensus::Encodable;
+use bitcoin::hashes::Hash;
 use bitcoin::{
     Amount, Block as BitcoinBlock, BlockHash, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid,
     VarInt, Weight,
@@ -81,7 +82,7 @@ pub enum BlockVerification {
 }
 
 /// Represents the context of a transaction within a block.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TransactionContext {
     /// Block number containing the transaction.
     pub block_number: u32,
@@ -99,6 +100,136 @@ impl std::fmt::Display for TransactionContext {
             self.block_number, self.tx_index, self.txid
         )
     }
+}
+
+/// A script verification task to be executed in parallel.
+///
+/// This struct captures all data needed to verify a single input's script
+/// independently of other inputs.
+struct ScriptVerificationTask {
+    /// Serialized spending transaction (for Core engine).
+    spending_tx_bytes: Vec<u8>,
+    /// Transaction context for error reporting.
+    tx_context: TransactionContext,
+    /// Input index within the transaction.
+    input_index: usize,
+    /// The spent output (contains script_pubkey to verify against).
+    spent_output: TxOut,
+    /// Script verification flags.
+    flags: u32,
+    /// Full transaction (for Subcoin engine only).
+    tx: Option<bitcoin::Transaction>,
+}
+
+/// Verifies a single script verification task.
+///
+/// This function is designed to be called from multiple threads.
+fn verify_script_task(
+    task: &ScriptVerificationTask,
+    script_engine: ScriptEngine,
+) -> Result<(), Error> {
+    match script_engine {
+        ScriptEngine::Core => script_verify::verify_input_script(
+            &task.spent_output,
+            &task.spending_tx_bytes,
+            task.input_index,
+            task.flags,
+        ),
+        ScriptEngine::Subcoin => {
+            let tx = task
+                .tx
+                .as_ref()
+                .expect("Transaction must be present for Subcoin engine; qed");
+            let input = &tx.input[task.input_index];
+
+            let mut checker = subcoin_script::TransactionSignatureChecker::new(
+                tx,
+                task.input_index,
+                task.spent_output.value.to_sat(),
+            );
+
+            let verify_flags =
+                subcoin_script::VerifyFlags::from_bits(task.flags).expect("Invalid flags");
+
+            subcoin_script::verify_script(
+                &input.script_sig,
+                &task.spent_output.script_pubkey,
+                &input.witness,
+                &verify_flags,
+                &mut checker,
+            )
+            .map_err(|script_err| Error::InvalidScript {
+                block_hash: BlockHash::all_zeros(),
+                context: task.tx_context.clone(),
+                input_index: task.input_index,
+                error: Box::new(script_err),
+            })
+        }
+        ScriptEngine::None => Ok(()),
+    }
+}
+
+/// Verifies all script tasks in parallel using rayon.
+fn verify_scripts_parallel(
+    tasks: &[ScriptVerificationTask],
+    script_engine: ScriptEngine,
+    block_hash: BlockHash,
+) -> Result<(), Error> {
+    use rayon::prelude::*;
+
+    if matches!(script_engine, ScriptEngine::None) {
+        return Ok(());
+    }
+
+    tasks.par_iter().try_for_each(|task| {
+        verify_script_task(task, script_engine).map_err(|err| {
+            // Update block_hash in error if needed
+            match err {
+                Error::InvalidScript {
+                    context,
+                    input_index,
+                    error,
+                    ..
+                } => Error::InvalidScript {
+                    block_hash,
+                    context,
+                    input_index,
+                    error,
+                },
+                other => other,
+            }
+        })
+    })
+}
+
+/// Verifies all script tasks sequentially.
+fn verify_scripts_sequential(
+    tasks: &[ScriptVerificationTask],
+    script_engine: ScriptEngine,
+    block_hash: BlockHash,
+) -> Result<(), Error> {
+    if matches!(script_engine, ScriptEngine::None) {
+        return Ok(());
+    }
+
+    for task in tasks {
+        verify_script_task(task, script_engine).map_err(|err| match err {
+            Error::InvalidScript {
+                context,
+                input_index,
+                error,
+                ..
+            } => Error::InvalidScript {
+                block_hash,
+                context,
+                input_index,
+                error,
+            },
+            other => other,
+        })?;
+    }
+
+    Ok(())
 }
 
 /// Block verification error.
@@ -214,6 +345,8 @@ pub struct BlockVerifier<Block, Client, BE> {
     /// Native UTXO storage for O(1) lookups.
     native_utxo_storage: Arc<NativeUtxoStorage>,
     script_engine: ScriptEngine,
+    /// Whether to use parallel script verification.
+    parallel_verification: bool,
     _phantom: PhantomData<(Block, BE)>,
 }
 
@@ -225,6 +358,7 @@ impl<Block, Client, BE> BlockVerifier<Block, Client, BE> {
         block_verification: BlockVerification,
         native_utxo_storage: Arc<NativeUtxoStorage>,
         script_engine: ScriptEngine,
+        parallel_verification: bool,
     ) -> Self {
         let chain_params = ChainParams::new(network);
         let header_verifier = HeaderVerifier::new(client.clone(), chain_params.clone());
@@ -235,6 +369,7 @@ impl<Block, Client, BE> BlockVerifier<Block, Client, BE> {
             block_verification,
             native_utxo_storage,
             script_engine,
+            parallel_verification,
             _phantom: Default::default(),
         }
     }
@@ -248,9 +383,15 @@ where
 {
     /// Performs full block verification.
     ///
+    /// Returns the script verification duration (zero if verification was skipped).
+    ///
     /// References:
     /// - <https://en.bitcoin.it/wiki/Protocol_rules#.22block.22_messages>
-    pub fn verify_block(&self, block_number: u32, block: &BitcoinBlock) -> Result<(), Error> {
+    pub fn verify_block(
+        &self,
+        block_number: u32,
+        block: &BitcoinBlock,
+    ) -> Result<std::time::Duration, Error> {
         let txids = self.check_block_sanity(block_number, block)?;
 
         self.contextual_check_block(block_number, block.block_hash(), block, txids)
@@ -262,7 +403,7 @@ where
         block_hash: BlockHash,
         block: &BitcoinBlock,
         txids: HashMap<usize, Txid>,
-    ) -> Result<(), Error> {
+    ) -> Result<std::time::Duration, Error> {
         match self.block_verification {
             BlockVerification::Full => {
                 let lock_time_cutoff = self.header_verifier.verify(&block.header)?;
@@ -278,15 +419,14 @@ where
                     return Err(Error::BlockTooLarge(block_hash));
                 }
 
-                self.verify_transactions(block_number, block, txids, lock_time_cutoff)?;
+                self.verify_transactions(block_number, block, txids, lock_time_cutoff)
             }
             BlockVerification::HeaderOnly => {
                 self.header_verifier.verify(&block.header)?;
+                Ok(std::time::Duration::ZERO)
             }
-            BlockVerification::None => {}
+            BlockVerification::None => Ok(std::time::Duration::ZERO),
         }
-
-        Ok(())
     }
 
     /// Performs preliminary checks.
@@ -375,13 +515,19 @@ where
         Ok(txids)
     }
 
+    /// Verifies all transactions in the block using a two-phase approach.
+    ///
+    /// Phase 1 (Sequential): UTXO validation, double-spend checks, and task collection.
+    /// Phase 2 (Parallel or Sequential): Script verification.
+    ///
+    /// Returns the duration spent on script verification for benchmarking.
     fn verify_transactions(
         &self,
         block_number: u32,
         block: &BitcoinBlock,
         txids: HashMap<usize, Txid>,
         lock_time_cutoff: u32,
-    ) -> Result<(), Error> {
+    ) -> Result<std::time::Duration, Error> {
         let parent_number = block_number - 1;
         let parent_hash =
             self.client
@@ -414,15 +560,13 @@ where
         let mut block_fee = 0;
         let mut spent_coins_in_block = HashSet::new();
 
-        // Preallocated buffer for serializing tx when using the Core scripg engine.
-        let mut tx_buffer = if matches!(self.script_engine, ScriptEngine::Core) {
-            Vec::<u8>::with_capacity(4096)
-        } else {
-            Vec::new()
-        };
+        // Estimate input count for pre-allocation (average ~2 inputs per non-coinbase tx).
+        let estimated_inputs = block.txdata.len().saturating_sub(1).saturating_mul(2);
+        let mut script_tasks: Vec<ScriptVerificationTask> = Vec::with_capacity(estimated_inputs);
 
-        // TODO: verify transactions in parallel.
-        // https://github.com/bitcoin/bitcoin/blob/6f9db1ebcab4064065ccd787161bf2b87e03cc1f/src/validation.cpp#L2611
+        let use_core_engine = matches!(self.script_engine, ScriptEngine::Core);
+
+        // ========== Phase 1: Sequential UTXO validation + collect script tasks ==========
         for (tx_index, tx) in block.txdata.iter().enumerate() {
             if tx_index == 0 {
                 // Enforce rule that the coinbase starts with serialized block height.
@@ -447,11 +591,15 @@ where
                 return Err(Error::TransactionNotFinal(block_hash));
             }
 
-            tx_buffer.clear();
-            tx.consensus_encode(&mut tx_buffer)
-                .map_err(Error::BitcoinCodec)?;
-
-            let spending_transaction = tx_buffer.as_slice();
+            // Serialize transaction once for Core engine.
+            let spending_tx_bytes = if use_core_engine {
+                let mut buffer = Vec::with_capacity(tx.total_size());
+                tx.consensus_encode(&mut buffer)
+                    .map_err(Error::BitcoinCodec)?;
+                buffer
+            } else {
+                Vec::new()
+            };
 
             let access_coin = |out_point: OutPoint| -> Result<(TxOut, bool, u32), Error> {
                 let maybe_coin = match self.find_utxo_in_state(parent_hash, out_point) {
@@ -485,10 +633,10 @@ where
             let mut value_in = 0;
             let mut sig_ops_cost = 0;
 
-            // TODO: Check input in parallel.
             for (input_index, input) in tx.input.iter().enumerate() {
                 let coin = input.previous_output;
 
+                // Double-spend check (must remain sequential).
                 if spent_coins_in_block.contains(&coin) {
                     return Err(Error::AlreadySpentInCurrentBlock {
                         block_hash,
@@ -498,7 +646,7 @@ where
                     });
                 }
 
-                // Access coin.
+                // Access coin (O(1) RocksDB lookup or in-block search).
                 let (spent_output, is_coinbase, coin_height) = access_coin(coin)?;
 
                 // If coin is coinbase, check that it's matured.
@@ -506,54 +654,21 @@ where
                     return Err(Error::PrematureSpendOfCoinbase(block_hash));
                 }
 
-                // tracing::debug!(
-                // target: "subcoin_script",
-                // block_number,
-                // tx_index,
-                // txid = ?get_txid(tx_index),
-                // input_index,
-                // "Verifying input script"
-                // );
-                match self.script_engine {
-                    ScriptEngine::Core => {
-                        script_verify::verify_input_script(
-                            &spent_output,
-                            spending_transaction,
-                            input_index,
-                            flags,
-                        )?;
-                    }
-                    ScriptEngine::None => {
-                        // Skip script verification.
-                    }
-                    ScriptEngine::Subcoin => {
-                        let mut checker = subcoin_script::TransactionSignatureChecker::new(
-                            tx,
-                            input_index,
-                            spent_output.value.to_sat(),
-                        );
-
-                        let verify_flags =
-                            subcoin_script::VerifyFlags::from_bits(flags).expect("Invalid flags");
-
-                        let script_result = subcoin_script::verify_script(
-                            &input.script_sig,
-                            &spent_output.script_pubkey,
-                            &input.witness,
-                            &verify_flags,
-                            &mut checker,
-                        );
-
-                        if let Err(script_err) = script_result {
-                            let context = tx_context(tx_index);
-                            return Err(Error::InvalidScript {
-                                block_hash,
-                                context,
-                                input_index,
-                                error: Box::new(script_err),
-                            });
-                        }
-                    }
+                // Collect script verification task (instead of verifying inline).
+                if !matches!(self.script_engine, ScriptEngine::None) {
+                    let task = ScriptVerificationTask {
+                        spending_tx_bytes: spending_tx_bytes.clone(),
+                        tx_context: tx_context(tx_index),
+                        input_index,
+                        spent_output: spent_output.clone(),
+                        flags,
+                        tx: if use_core_engine {
+                            None
+                        } else {
+                            Some(tx.clone())
+                        },
+                    };
+                    script_tasks.push(task);
                 }
 
                 spent_coins_in_block.insert(coin);
@@ -594,6 +709,18 @@ where
             block_fee += tx_fee;
         }
 
+        // ========== Phase 2: Script verification (parallel or sequential) ==========
+        let verify_start = std::time::Instant::now();
+
+        if self.parallel_verification {
+            verify_scripts_parallel(&script_tasks, self.script_engine, block_hash)?;
+        } else {
+            verify_scripts_sequential(&script_tasks, self.script_engine, block_hash)?;
+        }
+
+        let verify_scripts_duration = verify_start.elapsed();
+
+        // Validate block reward.
         let coinbase_value = block.txdata[0]
             .output
             .iter()
@@ -607,7 +734,7 @@ where
             return Err(Error::InvalidBlockReward(block_hash));
         }
 
-        Ok(())
+        Ok(verify_scripts_duration)
     }
 
     /// Finds a UTXO in native storage (O(1) lookup via RocksDB).

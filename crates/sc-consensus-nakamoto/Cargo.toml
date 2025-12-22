@@ -14,6 +14,7 @@ clap = { workspace = true, optional = true }
 codec = { workspace = true }
 futures = { workspace = true }
 hex-literal = { workspace = true }
+rayon = { workspace = true }
 sc-client-api = { workspace = true }
 sc-consensus = { workspace = true }
 sc-utils = { workspace = true }

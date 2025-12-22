@@ -56,6 +56,11 @@ pub struct ImportConfig {
     pub execute_block: bool,
     /// Bitcoin script interpreter.
     pub script_engine: ScriptEngine,
+    /// Enable parallel script verification (default: true).
+    ///
+    /// When enabled, script verification tasks are collected during sequential
+    /// UTXO validation and then executed in parallel using rayon.
+    pub parallel_verification: bool,
 }
 
 #[derive(Debug, Default)]
@@ -66,6 +71,8 @@ struct Stats {
     total_blocks: usize,
     // Total block execution times in milliseconds.
     total_execution_time: usize,
+    /// Pending script verification time for the current block (set before prepare_substrate_block_import).
+    pending_verify_scripts_ms: u128,
 }
 
 impl Stats {
@@ -108,14 +115,18 @@ impl Stats {
         self.total_blocks += 1;
         self.total_execution_time += total_ms as usize;
 
+        let verify_scripts_ms = self.pending_verify_scripts_ms;
+        self.pending_verify_scripts_ms = 0; // Reset after use
+
         // Log every block for measurement
         // Note: execute_block_ms INCLUDES state root computation via sp_io::storage::root()
         // in frame_system::finalize(). The drain_changes_ms just retrieves cached value.
         // So execute_block_ms = runtime_execution + state_root_computation
         tracing::info!(
-            "block={} txs={} execute_block_ms={} drain_changes_ms={} total_ms={}",
+            "block={} txs={} verify_scripts_ms={} execute_block_ms={} drain_changes_ms={} total_ms={}",
             block_number,
             tx_count,
+            verify_scripts_ms,
             execute_block_ms,
             drain_changes_ms,
             total_ms,
@@ -168,6 +179,7 @@ where
             config.block_verification,
             native_utxo_storage.clone(),
             config.script_engine,
+            config.parallel_verification,
         );
         let metrics = match registry {
             Some(registry) => Metrics::register(registry)
@@ -535,9 +547,13 @@ where
         let block_hash = block.block_hash();
 
         // Consensus-level Bitcoin block verification.
-        self.verifier
+        let verify_scripts_duration = self
+            .verifier
             .verify_block(block_number, &block)
             .map_err(|err| import_err(format!("{err:?}")))?;
+
+        // Store script verification timing for logging in prepare_substrate_block_import
+        self.stats.pending_verify_scripts_ms = verify_scripts_duration.as_millis();
 
         // Clone block for native storage update
         let bitcoin_block_for_native = block.clone();

@@ -161,6 +161,7 @@ pub async fn new_test_node_and_produce_blocks(
                 block_verification: BlockVerification::None,
                 execute_block: true,
                 script_engine: ScriptEngine::Core,
+                parallel_verification: true,
             },
             native_storage,
             None,

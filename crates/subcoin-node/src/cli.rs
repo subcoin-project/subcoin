@@ -88,6 +88,7 @@ pub fn run() -> sc_cli::Result<()> {
             let bitcoin_network = cmd.common_params.bitcoin_network();
             let import_config = ImportConfig {
                 execute_block: cmd.execute_transactions,
+                parallel_verification: !cmd.no_parallel_verification,
                 ..cmd.common_params.import_config(true)
             };
             let chain_spec_id = cmd.common_params.chain.chain_spec_id();

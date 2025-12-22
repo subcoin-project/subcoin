@@ -7407,6 +7407,7 @@ dependencies = [
  "futures",
  "hex-literal",
  "parity-scale-codec",
+ "rayon",
  "sc-client-api",
  "sc-consensus",
  "sc-utils",

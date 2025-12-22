@@ -192,6 +192,7 @@ impl CommonParams {
             script_engine: self
                 .script_engine
                 .unwrap_or_else(|| Defaults::script_engine(is_dev)),
+            parallel_verification: true,
         }
     }
 }
