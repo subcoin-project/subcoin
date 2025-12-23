@@ -7418,9 +7418,9 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-state-machine",
+ "subcoin-bitcoin-state",
  "subcoin-primitives",
  "subcoin-script",
- "subcoin-utxo-storage",
  "substrate-prometheus-endpoint",
  "thiserror 1.0.69",
  "tracing",
@@ -9393,6 +9393,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "subcoin-bitcoin-state"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "bitcoin 0.32.2",
+ "parking_lot 0.12.4",
+ "rocksdb",
+ "serde",
+ "subcoin-crypto",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
 name = "subcoin-crypto"
 version = "0.1.0"
 dependencies = [
@@ -9447,9 +9462,9 @@ dependencies = [
  "slotmap",
  "sp-blockchain",
  "sp-runtime",
+ "subcoin-bitcoin-state",
  "subcoin-primitives",
  "subcoin-script",
- "subcoin-utxo-storage",
  "thiserror 1.0.69",
 ]
 
@@ -9527,6 +9542,7 @@ dependencies = [
  "sp-core",
  "sp-io",
  "sp-runtime",
+ "subcoin-bitcoin-state",
  "subcoin-crypto",
  "subcoin-indexer",
  "subcoin-informant",
@@ -9539,7 +9555,6 @@ dependencies = [
  "subcoin-service",
  "subcoin-test-service",
  "subcoin-utxo-snapshot",
- "subcoin-utxo-storage",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
@@ -9763,9 +9778,9 @@ dependencies = [
  "serde_json",
  "sp-consensus",
  "sp-keyring",
+ "subcoin-bitcoin-state",
  "subcoin-runtime",
  "subcoin-service",
- "subcoin-utxo-storage",
  "tempfile",
  "tokio",
 ]
@@ -9780,21 +9795,6 @@ dependencies = [
  "serde",
  "subcoin-primitives",
  "txoutset",
-]
-
-[[package]]
-name = "subcoin-utxo-storage"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "bitcoin 0.32.2",
- "parking_lot 0.12.4",
- "rocksdb",
- "serde",
- "subcoin-crypto",
- "tempfile",
- "thiserror 1.0.69",
- "tracing",
 ]
 
 [[package]]

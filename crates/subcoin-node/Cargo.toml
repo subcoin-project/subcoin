@@ -57,7 +57,7 @@ subcoin-rpc-bitcoind = { workspace = true }
 subcoin-runtime = { workspace = true }
 subcoin-service = { workspace = true }
 subcoin-utxo-snapshot = { workspace = true }
-subcoin-utxo-storage = { workspace = true }
+subcoin-bitcoin-state = { workspace = true }
 substrate-frame-rpc-system = { workspace = true }
 substrate-prometheus-endpoint = { workspace = true }
 thiserror = { workspace = true }

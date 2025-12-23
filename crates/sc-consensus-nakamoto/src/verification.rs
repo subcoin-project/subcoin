@@ -48,10 +48,10 @@ use sp_runtime::traits::Block as BlockT;
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::sync::Arc;
+use subcoin_bitcoin_state::BitcoinState;
 use subcoin_primitives::MAX_BLOCK_WEIGHT;
 use subcoin_primitives::consensus::{TxError, check_transaction_sanity};
 use subcoin_primitives::runtime::{Coin, bitcoin_block_subsidy};
-use subcoin_utxo_storage::NativeUtxoStorage;
 use tx_verify::{get_legacy_sig_op_count, is_final_tx};
 
 /// Represents the Bitcoin script backend.
@@ -342,8 +342,8 @@ pub struct BlockVerifier<Block, Client, BE> {
     chain_params: ChainParams,
     header_verifier: HeaderVerifier<Block, Client>,
     block_verification: BlockVerification,
-    /// Native UTXO storage for O(1) lookups.
-    native_utxo_storage: Arc<NativeUtxoStorage>,
+    /// Bitcoin state for O(1) UTXO lookups.
+    bitcoin_state: Arc<BitcoinState>,
     script_engine: ScriptEngine,
     /// Whether to use parallel script verification.
     parallel_verification: bool,
@@ -356,7 +356,7 @@ impl<Block, Client, BE> BlockVerifier<Block, Client, BE> {
         client: Arc<Client>,
         network: bitcoin::Network,
         block_verification: BlockVerification,
-        native_utxo_storage: Arc<NativeUtxoStorage>,
+        bitcoin_state: Arc<BitcoinState>,
         script_engine: ScriptEngine,
         parallel_verification: bool,
     ) -> Self {
@@ -367,7 +367,7 @@ impl<Block, Client, BE> BlockVerifier<Block, Client, BE> {
             chain_params,
             header_verifier,
             block_verification,
-            native_utxo_storage,
+            bitcoin_state,
             script_engine,
             parallel_verification,
             _phantom: Default::default(),
@@ -737,15 +737,15 @@ where
         Ok(verify_scripts_duration)
     }
 
-    /// Finds a UTXO in native storage (O(1) lookup via RocksDB).
+    /// Finds a UTXO in Bitcoin state (O(1) lookup via RocksDB).
     fn find_utxo_in_state(&self, _block_hash: Block::Hash, out_point: OutPoint) -> Option<Coin> {
-        self.native_utxo_storage.get(&out_point).map(|native_coin| {
-            // Convert native Coin to runtime Coin (same structure)
+        self.bitcoin_state.get(&out_point).map(|state_coin| {
+            // Convert state Coin to runtime Coin (same structure)
             Coin {
-                is_coinbase: native_coin.is_coinbase,
-                amount: native_coin.amount,
-                height: native_coin.height,
-                script_pubkey: native_coin.script_pubkey,
+                is_coinbase: state_coin.is_coinbase,
+                amount: state_coin.amount,
+                height: state_coin.height,
+                script_pubkey: state_coin.script_pubkey,
             }
         })
     }

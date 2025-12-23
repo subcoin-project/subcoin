@@ -15,7 +15,7 @@ slotmap = "1.0"
 sp-runtime = { workspace = true }
 subcoin-primitives = { workspace = true }
 subcoin-script = { workspace = true }
-subcoin-utxo-storage = { workspace = true }
+subcoin-bitcoin-state = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]

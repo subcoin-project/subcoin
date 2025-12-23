@@ -1,4 +1,4 @@
-//! Native UTXO storage implementation using RocksDB with MuHash commitment.
+//! Bitcoin state storage implementation using RocksDB with MuHash commitment.
 
 use crate::coin::{Coin, outpoint_to_key};
 use crate::undo::BlockUndo;
@@ -9,11 +9,11 @@ use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, DB, Options, WriteBatch};
 use std::path::Path;
 use subcoin_crypto::MuHash3072;
 
-/// Native UTXO storage with MuHash commitment tracking.
+/// Bitcoin state (UTXO set) with MuHash commitment tracking.
 ///
 /// This provides O(1) UTXO operations and O(1) MuHash updates per UTXO change,
 /// compared to O(log n) for Substrate's Merkle Patricia Trie.
-pub struct NativeUtxoStorage {
+pub struct BitcoinState {
     /// RocksDB instance.
     db: DB,
     /// Rolling MuHash accumulator (protected by RwLock for concurrent reads).
@@ -24,7 +24,7 @@ pub struct NativeUtxoStorage {
     height: RwLock<u32>,
 }
 
-impl NativeUtxoStorage {
+impl BitcoinState {
     /// Open or create UTXO storage at the given path.
     pub fn open(path: &Path) -> Result<Self> {
         let mut db_opts = Options::default();
@@ -57,7 +57,7 @@ impl NativeUtxoStorage {
         let height = Self::load_height(&db)?;
 
         tracing::info!(
-            "Opened native UTXO storage at height {height}, {utxo_count} UTXOs, muhash: {}",
+            "Opened Bitcoin state at height {height}, {utxo_count} UTXOs, muhash: {}",
             muhash.txoutset_muhash()
         );
 
@@ -459,7 +459,7 @@ mod tests {
 
     #[test]
     fn test_apply_genesis_block() {
-        let storage = NativeUtxoStorage::open_temp().unwrap();
+        let storage = BitcoinState::open_temp().unwrap();
 
         let block = create_test_block(0, &[]);
         storage.apply_block(&block, 0).unwrap();
@@ -482,7 +482,7 @@ mod tests {
 
     #[test]
     fn test_apply_and_revert_block() {
-        let storage = NativeUtxoStorage::open_temp().unwrap();
+        let storage = BitcoinState::open_temp().unwrap();
 
         // Apply genesis block
         let block0 = create_test_block(0, &[]);
@@ -519,7 +519,7 @@ mod tests {
 
     #[test]
     fn test_muhash_consistency() {
-        let storage = NativeUtxoStorage::open_temp().unwrap();
+        let storage = BitcoinState::open_temp().unwrap();
 
         // Apply multiple blocks
         let block0 = create_test_block(0, &[]);
@@ -550,7 +550,7 @@ mod tests {
         use bitcoin::blockdata::block::{Header, Version};
         use bitcoin::blockdata::transaction::{Transaction, TxIn, Version as TxVersion};
 
-        let storage = NativeUtxoStorage::open_temp().unwrap();
+        let storage = BitcoinState::open_temp().unwrap();
 
         // Create a block with 3 transactions:
         // tx0: coinbase -> output A

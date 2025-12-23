@@ -10,9 +10,9 @@ use sc_service::config::{IpNetwork, RpcBatchRequestConfig};
 use sc_service::{BasePath, Configuration, TaskManager};
 use std::num::NonZeroU32;
 use std::sync::Arc;
+use subcoin_bitcoin_state::BitcoinState;
 use subcoin_network::{BlockSyncOption, NetworkApi, SyncStrategy};
 use subcoin_primitives::{CONFIRMATION_DEPTH, TransactionIndex};
-use subcoin_utxo_storage::NativeUtxoStorage;
 
 /// Options for configuring the Subcoin network behavior.
 #[derive(Copy, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, clap::ValueEnum)]
@@ -213,46 +213,43 @@ impl RunCmd {
 
         let spawn_handle = task_manager.spawn_handle();
 
-        // Initialize native UTXO storage (mandatory)
-        let native_storage_path = base_path_or_default(
+        // Initialize Bitcoin state (mandatory)
+        let bitcoin_state_path = base_path_or_default(
             run.common_params.base_path.clone().map(Into::into),
             &crate::substrate_cli::SubstrateCli::executable_name(),
         )
         .path()
-        .join("native_utxo");
+        .join("bitcoin_state");
 
-        tracing::info!(
-            "🚀 Native UTXO storage at {}",
-            native_storage_path.display()
-        );
+        tracing::info!("🚀 Bitcoin state at {}", bitcoin_state_path.display());
 
-        let storage = NativeUtxoStorage::open(&native_storage_path).map_err(|err| {
+        let state = BitcoinState::open(&bitcoin_state_path).map_err(|err| {
             sc_cli::Error::Application(Box::new(std::io::Error::other(format!(
-                "Failed to open native UTXO storage: {err:?}"
+                "Failed to open Bitcoin state: {err:?}"
             ))))
         })?;
 
-        // Validate native storage is in sync with chain
-        let native_height = storage.height();
+        // Validate Bitcoin state is in sync with chain
+        let state_height = state.height();
         let chain_height = chain_info.best_number;
 
-        if native_height != chain_height {
+        if state_height != chain_height {
             return Err(sc_cli::Error::Application(Box::new(std::io::Error::other(
                 format!(
-                    "Native UTXO storage height ({native_height}) does not match chain height ({chain_height}). \
+                    "Bitcoin state height ({state_height}) does not match chain height ({chain_height}). \
                     Please start fresh with a clean data directory."
                 ),
             ))));
         }
 
-        let native_utxo_storage = Arc::new(storage);
+        let bitcoin_state = Arc::new(state);
 
         let bitcoin_block_import =
             BitcoinBlockImporter::<_, _, _, _, subcoin_service::TransactionAdapter>::new(
                 client.clone(),
                 client.clone(),
                 import_config,
-                native_utxo_storage.clone(),
+                bitcoin_state.clone(),
                 config.prometheus_registry(),
             );
 
@@ -298,7 +295,7 @@ impl RunCmd {
             } else {
                 let tx_pool = Arc::new(subcoin_mempool::MemPool::new(
                     client.clone(),
-                    native_utxo_storage.clone(),
+                    bitcoin_state.clone(),
                 ));
 
                 let network_handle = subcoin_network::build_network(

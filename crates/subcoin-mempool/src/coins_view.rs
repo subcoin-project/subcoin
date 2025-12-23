@@ -9,8 +9,8 @@ use bitcoin::{OutPoint as COutPoint, Transaction};
 use schnellru::{ByLength, LruMap};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use subcoin_bitcoin_state::BitcoinState;
 use subcoin_primitives::{MEMPOOL_HEIGHT, PoolCoin};
-use subcoin_utxo_storage::NativeUtxoStorage;
 
 /// In-memory UTXO cache with native storage backend.
 ///
@@ -28,22 +28,22 @@ pub struct CoinsViewCache {
     /// Outputs spent by mempool transactions.
     mempool_spends: HashSet<COutPoint>,
 
-    /// Native UTXO storage for O(1) lookups.
-    utxo_storage: Arc<NativeUtxoStorage>,
+    /// Bitcoin state for O(1) UTXO lookups.
+    bitcoin_state: Arc<BitcoinState>,
 }
 
 impl CoinsViewCache {
     /// Create a new coins view cache.
     ///
     /// # Arguments
-    /// * `utxo_storage` - Native UTXO storage for O(1) lookups
+    /// * `bitcoin_state` - Bitcoin state for O(1) UTXO lookups
     /// * `cache_size` - Maximum number of base layer entries to cache
-    pub fn new(utxo_storage: Arc<NativeUtxoStorage>, cache_size: u32) -> Self {
+    pub fn new(bitcoin_state: Arc<BitcoinState>, cache_size: u32) -> Self {
         Self {
             base_cache: LruMap::new(ByLength::new(cache_size)),
             mempool_overlay: HashMap::new(),
             mempool_spends: HashSet::new(),
-            utxo_storage,
+            bitcoin_state,
         }
     }
 
@@ -158,9 +158,9 @@ impl CoinsViewCache {
         self.mempool_overlay.contains_key(outpoint) || self.base_cache.peek(outpoint).is_some()
     }
 
-    /// Fetch coin from native UTXO storage (O(1) lookup).
+    /// Fetch coin from Bitcoin state (O(1) lookup).
     fn fetch_from_storage(&self, outpoint: &COutPoint) -> Option<PoolCoin> {
-        self.utxo_storage.get(outpoint).map(|coin| PoolCoin {
+        self.bitcoin_state.get(outpoint).map(|coin| PoolCoin {
             output: bitcoin::TxOut {
                 value: bitcoin::Amount::from_sat(coin.amount),
                 script_pubkey: bitcoin::ScriptBuf::from_bytes(coin.script_pubkey),

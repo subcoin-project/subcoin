@@ -40,9 +40,9 @@ use sp_runtime::{SaturatedConversion, Saturating};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Instant;
+use subcoin_bitcoin_state::BitcoinState;
 use subcoin_primitives::runtime::SubcoinApi;
 use subcoin_primitives::{BackendExt, BitcoinTransactionAdapter, substrate_header_digest};
-use subcoin_utxo_storage::NativeUtxoStorage;
 use substrate_prometheus_endpoint::Registry;
 
 /// Block import configuration.
@@ -141,8 +141,8 @@ pub struct BitcoinBlockImporter<Block, Client, BE, BI, TransactionAdapter> {
     stats: Stats,
     config: ImportConfig,
     verifier: BlockVerifier<Block, Client, BE>,
-    /// Native UTXO storage for O(1) operations.
-    native_utxo_storage: Arc<NativeUtxoStorage>,
+    /// Bitcoin state storage for O(1) UTXO operations.
+    bitcoin_state: Arc<BitcoinState>,
     metrics: Option<Metrics>,
     last_block_execution_report: Instant,
     _phantom: PhantomData<TransactionAdapter>,
@@ -170,14 +170,14 @@ where
         client: Arc<Client>,
         block_import: BI,
         config: ImportConfig,
-        native_utxo_storage: Arc<NativeUtxoStorage>,
+        bitcoin_state: Arc<BitcoinState>,
         registry: Option<&Registry>,
     ) -> Self {
         let verifier = BlockVerifier::new(
             client.clone(),
             config.network,
             config.block_verification,
-            native_utxo_storage.clone(),
+            bitcoin_state.clone(),
             config.script_engine,
             config.parallel_verification,
         );
@@ -195,7 +195,7 @@ where
             stats: Stats::default(),
             config,
             verifier,
-            native_utxo_storage,
+            bitcoin_state,
             metrics,
             last_block_execution_report: Instant::now(),
             _phantom: Default::default(),
@@ -568,12 +568,12 @@ where
             .await
             .map_err(|err| import_err(err.to_string()))?;
 
-        // Apply block to native UTXO storage after successful import
+        // Apply block to Bitcoin state after successful import
         if let ImportResult::Imported(_) = &import_result {
-            self.native_utxo_storage
+            self.bitcoin_state
                 .apply_block(&bitcoin_block_for_native, block_number)
                 .map_err(|err| {
-                    import_err(format!("Failed to apply block to native storage: {err:?}"))
+                    import_err(format!("Failed to apply block to Bitcoin state: {err:?}"))
                 })?;
         }
 

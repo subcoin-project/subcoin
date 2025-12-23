@@ -16,10 +16,10 @@ use sp_runtime::traits::{Block as BlockT, CheckedDiv, NumberFor, Zero};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use subcoin_bitcoin_state::BitcoinState;
 use subcoin_primitives::BackendExt;
 use subcoin_runtime::interface::OpaqueBlock;
 use subcoin_service::FullClient;
-use subcoin_utxo_storage::NativeUtxoStorage;
 
 /// Custom value parser to handle both file paths and raw block data in hex format.
 fn parse_raw_block(input: &str) -> Result<String, String> {
@@ -120,39 +120,36 @@ impl ImportBlocksCmd {
         }
     }
 
-    /// Create native UTXO storage (mandatory).
-    fn create_native_storage(&self, chain_height: u32) -> sc_cli::Result<Arc<NativeUtxoStorage>> {
+    /// Create Bitcoin state storage (mandatory).
+    fn create_bitcoin_state(&self, chain_height: u32) -> sc_cli::Result<Arc<BitcoinState>> {
         let base_path = self
             .base_path
             .as_ref()
             .map(|p| sc_service::BasePath::new(p.clone()))
             .unwrap_or_else(|| sc_service::BasePath::from_project("", "", "subcoin"));
 
-        let native_storage_path = base_path.path().join("native_utxo");
+        let bitcoin_state_path = base_path.path().join("bitcoin_state");
 
-        tracing::info!(
-            "🚀 Native UTXO storage at {}",
-            native_storage_path.display()
-        );
+        tracing::info!("🚀 Bitcoin state at {}", bitcoin_state_path.display());
 
-        let storage = NativeUtxoStorage::open(&native_storage_path).map_err(|err| {
+        let bitcoin_state = BitcoinState::open(&bitcoin_state_path).map_err(|err| {
             sc_cli::Error::Application(Box::new(std::io::Error::other(format!(
-                "Failed to open native UTXO storage: {err:?}"
+                "Failed to open Bitcoin state: {err:?}"
             ))))
         })?;
 
-        // Validate native storage is in sync with chain
-        let native_height = storage.height();
-        if native_height != chain_height {
+        // Validate Bitcoin state is in sync with chain
+        let state_height = bitcoin_state.height();
+        if state_height != chain_height {
             return Err(sc_cli::Error::Application(Box::new(std::io::Error::other(
                 format!(
-                    "Native UTXO storage height ({native_height}) does not match chain height ({chain_height}). \
+                    "Bitcoin state height ({state_height}) does not match chain height ({chain_height}). \
                     Please start fresh with a clean data directory."
                 ),
             ))));
         }
 
-        Ok(Arc::new(storage))
+        Ok(Arc::new(bitcoin_state))
     }
 
     /// Run the import-blocks command
@@ -165,7 +162,7 @@ impl ImportBlocksCmd {
         maybe_prometheus_config: Option<PrometheusConfig>,
     ) -> sc_cli::Result<()> {
         let chain_height = client.info().best_number;
-        let native_storage = self.create_native_storage(chain_height)?;
+        let bitcoin_state = self.create_bitcoin_state(chain_height)?;
 
         // Import single block.
         if let Some(block_data) = &self.raw_block {
@@ -179,7 +176,7 @@ impl ImportBlocksCmd {
                     client.clone(),
                     client.clone(),
                     import_config,
-                    native_storage,
+                    bitcoin_state,
                     maybe_prometheus_config
                         .as_ref()
                         .map(|config| config.registry.clone())
@@ -204,7 +201,7 @@ impl ImportBlocksCmd {
             import_config,
             spawn_handle,
             maybe_prometheus_config,
-            native_storage,
+            bitcoin_state,
         )
         .await
     }
@@ -217,7 +214,7 @@ impl ImportBlocksCmd {
         import_config: ImportConfig,
         spawn_handle: SpawnTaskHandle,
         maybe_prometheus_config: Option<PrometheusConfig>,
-        native_storage: Arc<NativeUtxoStorage>,
+        bitcoin_state: Arc<BitcoinState>,
     ) -> sc_cli::Result<()> {
         let block_provider = BitcoinBlockProvider::new(maybe_data_dir)?;
 
@@ -244,7 +241,7 @@ impl ImportBlocksCmd {
                 client.clone(),
                 client.clone(),
                 import_config,
-                native_storage,
+                bitcoin_state,
                 maybe_prometheus_config
                     .as_ref()
                     .map(|config| config.registry.clone())

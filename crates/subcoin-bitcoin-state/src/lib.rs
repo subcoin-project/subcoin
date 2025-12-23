@@ -1,6 +1,6 @@
-//! Native UTXO storage with MuHash commitment for Subcoin.
+//! Bitcoin state (UTXO set) storage with MuHash commitment for Subcoin.
 //!
-//! This crate provides a high-performance UTXO storage implementation that bypasses
+//! This crate provides a high-performance Bitcoin state implementation that bypasses
 //! Substrate's Merkle Patricia Trie, using direct RocksDB storage with MuHash commitment.
 //!
 //! ## Architecture
@@ -24,7 +24,7 @@ mod undo;
 
 pub use coin::Coin;
 pub use error::Error;
-pub use storage::NativeUtxoStorage;
+pub use storage::BitcoinState;
 pub use undo::BlockUndo;
 
 /// Result type for UTXO storage operations.

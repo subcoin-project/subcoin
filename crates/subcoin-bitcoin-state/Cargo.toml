@@ -1,11 +1,11 @@
 [package]
-name = "subcoin-utxo-storage"
+name = "subcoin-bitcoin-state"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 repository.workspace = true
 license.workspace = true
-description = "Native UTXO storage with MuHash commitment for Subcoin"
+description = "Bitcoin state (UTXO set) storage with MuHash commitment for Subcoin"
 
 [dependencies]
 bincode = { workspace = true }

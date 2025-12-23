@@ -40,9 +40,9 @@ use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
+use subcoin_bitcoin_state::BitcoinState;
 use subcoin_primitives::tx_pool::*;
 use subcoin_primitives::{BackendExt, ClientExt};
-use subcoin_utxo_storage::NativeUtxoStorage;
 
 /// Thread-safe Bitcoin mempool.
 ///
@@ -77,17 +77,17 @@ where
     Client: HeaderBackend<Block> + AuxStore + Send + Sync,
 {
     /// Create a new mempool with default options.
-    pub fn new(client: Arc<Client>, utxo_storage: Arc<NativeUtxoStorage>) -> Self {
-        Self::with_options(client, utxo_storage, MemPoolOptions::default())
+    pub fn new(client: Arc<Client>, bitcoin_state: Arc<BitcoinState>) -> Self {
+        Self::with_options(client, bitcoin_state, MemPoolOptions::default())
     }
 
     /// Create a new mempool with custom options.
     pub fn with_options(
         client: Arc<Client>,
-        utxo_storage: Arc<NativeUtxoStorage>,
+        bitcoin_state: Arc<BitcoinState>,
         options: MemPoolOptions,
     ) -> Self {
-        let coins_cache = CoinsViewCache::new(utxo_storage, 10_000);
+        let coins_cache = CoinsViewCache::new(bitcoin_state, 10_000);
 
         Self {
             options,
