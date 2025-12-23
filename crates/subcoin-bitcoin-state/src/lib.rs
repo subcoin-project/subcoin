@@ -24,11 +24,15 @@ mod undo;
 
 pub use coin::Coin;
 pub use error::Error;
-pub use storage::BitcoinState;
+pub use storage::{BitcoinState, UtxoIterator};
 pub use undo::BlockUndo;
 
 /// Result type for UTXO storage operations.
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Result type for export_chunk operation.
+/// Contains: (entries, next_cursor, is_complete)
+pub type ExportChunkResult = (Vec<(bitcoin::OutPoint, Coin)>, Option<[u8; 36]>, bool);
 
 /// Column family names for RocksDB.
 mod cf {

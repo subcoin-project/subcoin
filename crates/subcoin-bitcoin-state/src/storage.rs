@@ -351,6 +351,212 @@ impl BitcoinState {
         *self.utxo_count.read()
     }
 
+    /// Get the serialized MuHash (768 bytes) for P2P transmission.
+    pub fn muhash_serialized(&self) -> [u8; 768] {
+        self.muhash.read().serialize()
+    }
+
+    /// Verify MuHash against expected checkpoint value.
+    ///
+    /// Returns `true` if the current MuHash matches the expected hex string.
+    pub fn verify_muhash(&self, expected_hex: &str) -> bool {
+        self.muhash_hex() == expected_hex
+    }
+
+    // --- UTXO Sync Methods (for P2P fast sync) ---
+
+    /// Export a chunk of UTXOs for serving to peers during fast sync.
+    ///
+    /// Returns UTXOs in lexicographic order by OutPoint for deterministic pagination.
+    ///
+    /// # Arguments
+    /// * `cursor` - Starting point for iteration (exclusive). None starts from beginning.
+    /// * `max_entries` - Maximum number of UTXOs to return.
+    ///
+    /// # Returns
+    /// * Vector of (OutPoint, Coin) pairs
+    /// * Next cursor for pagination (None if no more entries)
+    /// * Boolean indicating if this is the last chunk
+    pub fn export_chunk(
+        &self,
+        cursor: Option<&[u8; 36]>,
+        max_entries: u32,
+    ) -> Result<crate::ExportChunkResult> {
+        use crate::coin::key_to_outpoint;
+
+        let cf = self.db.cf_handle(cf::UTXOS).ok_or(Error::NotInitialized)?;
+
+        let mut entries = Vec::with_capacity(max_entries as usize);
+        let mut iter = self.db.raw_iterator_cf(cf);
+
+        // Position iterator
+        match cursor {
+            Some(start_key) => {
+                iter.seek(start_key);
+                // Skip the cursor key itself (exclusive start)
+                if iter.valid() && iter.key() == Some(start_key.as_slice()) {
+                    iter.next();
+                }
+            }
+            None => iter.seek_to_first(),
+        }
+
+        let mut last_key: Option<[u8; 36]> = None;
+
+        while iter.valid() && entries.len() < max_entries as usize {
+            if let (Some(key), Some(value)) = (iter.key(), iter.value()) {
+                if key.len() == 36 {
+                    let key_array: [u8; 36] = key.try_into().unwrap();
+                    let outpoint = key_to_outpoint(&key_array);
+                    let coin =
+                        Coin::decode(value).map_err(|e| Error::Deserialization(e.to_string()))?;
+                    entries.push((outpoint, coin));
+                    last_key = Some(key_array);
+                }
+            }
+            iter.next();
+        }
+
+        let is_complete = !iter.valid();
+        let next_cursor = if is_complete { None } else { last_key };
+
+        Ok((entries, next_cursor, is_complete))
+    }
+
+    /// Bulk import UTXOs for fast sync (no undo data).
+    ///
+    /// This is used during initial sync when downloading UTXO snapshots from peers.
+    /// No undo data is stored since we trust the checkpoint verification.
+    ///
+    /// # Arguments
+    /// * `entries` - Vector of (OutPoint, Coin) pairs to import
+    ///
+    /// # Returns
+    /// Number of UTXOs successfully imported
+    pub fn bulk_import(&self, entries: Vec<(OutPoint, Coin)>) -> Result<usize> {
+        use crate::coin::outpoint_to_key;
+
+        let cf_utxos = self.db.cf_handle(cf::UTXOS).ok_or(Error::NotInitialized)?;
+        let cf_meta = self.db.cf_handle(cf::META).ok_or(Error::NotInitialized)?;
+
+        let mut batch = WriteBatch::default();
+        let mut muhash = self.muhash.write();
+        let count = entries.len();
+
+        for (outpoint, coin) in &entries {
+            let key = outpoint_to_key(outpoint);
+
+            // Add to MuHash
+            let muhash_data = coin.serialize_for_muhash(outpoint);
+            muhash.insert(&muhash_data);
+
+            // Add to storage
+            batch.put_cf(cf_utxos, key, coin.encode());
+        }
+
+        // Update UTXO count
+        let new_count = {
+            let mut utxo_count = self.utxo_count.write();
+            *utxo_count = utxo_count
+                .checked_add(count as u64)
+                .ok_or_else(|| Error::InvalidHeight("UTXO count overflow".to_string()))?;
+            *utxo_count
+        };
+
+        // Save metadata
+        batch.put_cf(cf_meta, meta_keys::UTXO_COUNT, new_count.to_le_bytes());
+        batch.put_cf(cf_meta, meta_keys::MUHASH, muhash.serialize());
+
+        // Atomic write
+        self.db.write(batch)?;
+
+        tracing::debug!("Bulk imported {count} UTXOs, total: {new_count}");
+
+        Ok(count)
+    }
+
+    /// Finalize bulk import at a specific height.
+    ///
+    /// This is called after all UTXO chunks have been downloaded and verified.
+    /// Sets the height and persists the final state.
+    pub fn finalize_import(&self, height: u32) -> Result<()> {
+        let cf_meta = self.db.cf_handle(cf::META).ok_or(Error::NotInitialized)?;
+
+        let mut batch = WriteBatch::default();
+        batch.put_cf(cf_meta, meta_keys::HEIGHT, height.to_le_bytes());
+
+        // Also persist current muhash and count
+        let muhash = self.muhash.read();
+        let count = *self.utxo_count.read();
+        batch.put_cf(cf_meta, meta_keys::MUHASH, muhash.serialize());
+        batch.put_cf(cf_meta, meta_keys::UTXO_COUNT, count.to_le_bytes());
+
+        self.db.write(batch)?;
+
+        *self.height.write() = height;
+
+        tracing::info!(
+            "Finalized UTXO import at height {height}, {count} UTXOs, muhash: {}",
+            muhash.txoutset_muhash()
+        );
+
+        Ok(())
+    }
+
+    /// Clear all UTXO data (for restarting fast sync after verification failure).
+    ///
+    /// This removes all UTXOs and resets metadata to initial state.
+    pub fn clear(&self) -> Result<()> {
+        let cf_utxos = self.db.cf_handle(cf::UTXOS).ok_or(Error::NotInitialized)?;
+        let cf_undo = self.db.cf_handle(cf::UNDO).ok_or(Error::NotInitialized)?;
+        let cf_meta = self.db.cf_handle(cf::META).ok_or(Error::NotInitialized)?;
+
+        let mut batch = WriteBatch::default();
+
+        // Delete all UTXOs
+        let mut iter = self.db.raw_iterator_cf(cf_utxos);
+        iter.seek_to_first();
+        while iter.valid() {
+            if let Some(key) = iter.key() {
+                batch.delete_cf(cf_utxos, key);
+            }
+            iter.next();
+        }
+
+        // Delete all undo data
+        let mut iter = self.db.raw_iterator_cf(cf_undo);
+        iter.seek_to_first();
+        while iter.valid() {
+            if let Some(key) = iter.key() {
+                batch.delete_cf(cf_undo, key);
+            }
+            iter.next();
+        }
+
+        // Reset metadata
+        batch.put_cf(cf_meta, meta_keys::HEIGHT, 0u32.to_le_bytes());
+        batch.put_cf(cf_meta, meta_keys::UTXO_COUNT, 0u64.to_le_bytes());
+        batch.put_cf(cf_meta, meta_keys::MUHASH, MuHash3072::new().serialize());
+
+        self.db.write(batch)?;
+
+        // Reset in-memory state
+        *self.height.write() = 0;
+        *self.utxo_count.write() = 0;
+        *self.muhash.write() = MuHash3072::new();
+
+        tracing::info!("Cleared all UTXO data");
+
+        Ok(())
+    }
+
+    /// Iterate over all UTXOs (for verification/debugging).
+    ///
+    /// Returns an iterator that yields (OutPoint, Coin) pairs in lexicographic order.
+    pub fn iter_utxos(&self) -> UtxoIterator<'_> {
+        UtxoIterator::new(&self.db)
+    }
+
     // --- Private helper methods ---
 
     fn load_muhash(db: &DB) -> Result<MuHash3072> {
@@ -387,6 +593,46 @@ impl BitcoinState {
             Some(bytes) if bytes.len() == 4 => Ok(u32::from_le_bytes(bytes.try_into().unwrap())),
             _ => Ok(0),
         }
+    }
+}
+
+/// Iterator over all UTXOs in the storage.
+///
+/// Yields (OutPoint, Coin) pairs in lexicographic order by OutPoint key.
+pub struct UtxoIterator<'a> {
+    iter: rocksdb::DBRawIterator<'a>,
+}
+
+impl<'a> UtxoIterator<'a> {
+    fn new(db: &'a DB) -> Self {
+        let cf = db
+            .cf_handle(cf::UTXOS)
+            .expect("UTXOS column family must exist");
+        let mut iter = db.raw_iterator_cf(cf);
+        iter.seek_to_first();
+        Self { iter }
+    }
+}
+
+impl Iterator for UtxoIterator<'_> {
+    type Item = (OutPoint, Coin);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        use crate::coin::key_to_outpoint;
+
+        while self.iter.valid() {
+            if let (Some(key), Some(value)) = (self.iter.key(), self.iter.value()) {
+                if key.len() == 36 {
+                    let key_array: [u8; 36] = key.try_into().ok()?;
+                    let outpoint = key_to_outpoint(&key_array);
+                    let coin = Coin::decode(value).ok()?;
+                    self.iter.next();
+                    return Some((outpoint, coin));
+                }
+            }
+            self.iter.next();
+        }
+        None
     }
 }
 
@@ -649,5 +895,223 @@ mod tests {
 
         // tx2's output should exist
         assert!(storage.contains(&tx2_output));
+    }
+
+    // --- Tests for UTXO Sync Methods ---
+
+    fn create_test_utxos(count: usize) -> Vec<(OutPoint, Coin)> {
+        (0..count)
+            .map(|i| {
+                let txid = bitcoin::Txid::from_byte_array([i as u8; 32]);
+                let outpoint = OutPoint { txid, vout: 0 };
+                let coin = Coin::new(
+                    false,
+                    (i as u64 + 1) * 1000,
+                    i as u32,
+                    vec![0x51], // OP_TRUE
+                );
+                (outpoint, coin)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_bulk_import_and_export() {
+        let storage = BitcoinState::open_temp().unwrap();
+
+        // Create test UTXOs
+        let utxos = create_test_utxos(10);
+        let original_muhash = storage.muhash_hex();
+
+        // Bulk import
+        let imported = storage.bulk_import(utxos.clone()).unwrap();
+        assert_eq!(imported, 10);
+        assert_eq!(storage.utxo_count(), 10);
+        assert_ne!(storage.muhash_hex(), original_muhash);
+
+        // Export all in one chunk
+        let (exported, next_cursor, is_complete) = storage.export_chunk(None, 100).unwrap();
+        assert_eq!(exported.len(), 10);
+        assert!(is_complete);
+        assert!(next_cursor.is_none());
+
+        // Verify all UTXOs match
+        for (outpoint, coin) in &utxos {
+            let found = exported.iter().any(|(op, c)| op == outpoint && c == coin);
+            assert!(found, "UTXO {outpoint:?} not found in export");
+        }
+    }
+
+    #[test]
+    fn test_export_chunk_pagination() {
+        let storage = BitcoinState::open_temp().unwrap();
+
+        // Import 25 UTXOs
+        let utxos = create_test_utxos(25);
+        storage.bulk_import(utxos).unwrap();
+
+        // Export in chunks of 10
+        let mut all_exported = Vec::new();
+        let mut cursor: Option<[u8; 36]> = None;
+        let mut chunks = 0;
+
+        loop {
+            let (chunk, next_cursor, is_complete) =
+                storage.export_chunk(cursor.as_ref(), 10).unwrap();
+            all_exported.extend(chunk);
+            chunks += 1;
+
+            if is_complete {
+                break;
+            }
+            cursor = next_cursor;
+        }
+
+        assert_eq!(all_exported.len(), 25);
+        assert_eq!(chunks, 3); // 10 + 10 + 5
+
+        // Verify ordering is consistent (lexicographic by OutPoint key)
+        for i in 1..all_exported.len() {
+            let prev_key = crate::coin::outpoint_to_key(&all_exported[i - 1].0);
+            let curr_key = crate::coin::outpoint_to_key(&all_exported[i].0);
+            assert!(prev_key < curr_key, "UTXOs not in lexicographic order");
+        }
+    }
+
+    #[test]
+    fn test_bulk_import_muhash_consistency() {
+        // Test that bulk_import produces the same MuHash as apply_block
+        let storage1 = BitcoinState::open_temp().unwrap();
+        let storage2 = BitcoinState::open_temp().unwrap();
+
+        // Apply block to storage1
+        let block = create_test_block(0, &[]);
+        storage1.apply_block(&block, 0).unwrap();
+
+        // Get the UTXO created by the block
+        let coinbase_outpoint = OutPoint {
+            txid: block.txdata[0].compute_txid(),
+            vout: 0,
+        };
+        let coin = storage1.get(&coinbase_outpoint).unwrap();
+
+        // Bulk import the same UTXO to storage2
+        storage2
+            .bulk_import(vec![(coinbase_outpoint, coin)])
+            .unwrap();
+
+        // MuHash should match
+        assert_eq!(storage1.muhash_hex(), storage2.muhash_hex());
+    }
+
+    #[test]
+    fn test_finalize_import() {
+        let storage = BitcoinState::open_temp().unwrap();
+
+        // Import UTXOs
+        let utxos = create_test_utxos(5);
+        storage.bulk_import(utxos).unwrap();
+        assert_eq!(storage.height(), 0);
+
+        // Finalize at height 100
+        storage.finalize_import(100).unwrap();
+        assert_eq!(storage.height(), 100);
+        assert_eq!(storage.utxo_count(), 5);
+    }
+
+    #[test]
+    fn test_clear() {
+        let storage = BitcoinState::open_temp().unwrap();
+
+        // Add some data
+        let block = create_test_block(0, &[]);
+        storage.apply_block(&block, 0).unwrap();
+        assert_eq!(storage.height(), 0);
+        assert_eq!(storage.utxo_count(), 1);
+
+        let muhash_before_clear = storage.muhash_hex();
+
+        // Clear
+        storage.clear().unwrap();
+
+        assert_eq!(storage.height(), 0);
+        assert_eq!(storage.utxo_count(), 0);
+        assert_ne!(storage.muhash_hex(), muhash_before_clear);
+
+        // Should be able to apply block again
+        storage.apply_block(&block, 0).unwrap();
+        assert_eq!(storage.utxo_count(), 1);
+    }
+
+    #[test]
+    fn test_iter_utxos() {
+        let storage = BitcoinState::open_temp().unwrap();
+
+        let utxos = create_test_utxos(5);
+        storage.bulk_import(utxos.clone()).unwrap();
+
+        // Iterate and count
+        let iterated: Vec<_> = storage.iter_utxos().collect();
+        assert_eq!(iterated.len(), 5);
+
+        // All UTXOs should be present
+        for (outpoint, coin) in &utxos {
+            let found = iterated.iter().any(|(op, c)| op == outpoint && c == coin);
+            assert!(found, "UTXO {outpoint:?} not found in iteration");
+        }
+    }
+
+    #[test]
+    fn test_sync_roundtrip() {
+        // Simulate a full sync: export from one storage, import to another
+        let source = BitcoinState::open_temp().unwrap();
+        let target = BitcoinState::open_temp().unwrap();
+
+        // Source has blocks
+        let block0 = create_test_block(0, &[]);
+        source.apply_block(&block0, 0).unwrap();
+
+        let coinbase0 = OutPoint {
+            txid: block0.txdata[0].compute_txid(),
+            vout: 0,
+        };
+        let block1 = create_test_block(1, &[coinbase0]);
+        source.apply_block(&block1, 1).unwrap();
+
+        let source_height = source.height();
+        let source_muhash = source.muhash_hex();
+        let source_count = source.utxo_count();
+
+        // Export all UTXOs from source
+        let (utxos, _, is_complete) = source.export_chunk(None, 1000).unwrap();
+        assert!(is_complete);
+
+        // Import to target
+        target.bulk_import(utxos).unwrap();
+        target.finalize_import(source_height).unwrap();
+
+        // Verify target matches source
+        assert_eq!(target.height(), source_height);
+        assert_eq!(target.utxo_count(), source_count);
+        assert_eq!(target.muhash_hex(), source_muhash);
+    }
+
+    #[test]
+    fn test_verify_muhash() {
+        let storage = BitcoinState::open_temp().unwrap();
+
+        let block = create_test_block(0, &[]);
+        storage.apply_block(&block, 0).unwrap();
+
+        let muhash = storage.muhash_hex();
+
+        // Correct verification
+        assert!(storage.verify_muhash(&muhash));
+
+        // Incorrect verification
+        assert!(
+            !storage
+                .verify_muhash("0000000000000000000000000000000000000000000000000000000000000000")
+        );
     }
 }
