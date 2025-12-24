@@ -1,5 +1,5 @@
 use crate::state_sync_wrapper::StateSyncWrapper;
-use crate::utxo_sync::{UTXO_SYNC_STRATEGY_KEY, UtxoSyncStrategy};
+use crate::utxo_sync::{UTXO_SNAP_SYNC_KEY, UtxoSnapSync, UtxoSnapSyncProgress};
 use codec::{Decode, Encode};
 use futures::FutureExt;
 use sc_client_api::{BlockBackend, HeaderBackend, ProofProvider};
@@ -187,7 +187,7 @@ where
             config.target_height,
             config.expected_muhash
         );
-        strategy.enable_utxo_sync(config.target_height, config.expected_muhash);
+        strategy.enable_utxo_snap_sync(config.target_height, config.expected_muhash);
     }
 
     Ok(Box::new(strategy))
@@ -203,8 +203,8 @@ pub struct SnapcakeSyncingStrategy<B: BlockT, Client> {
     state: Option<StateStrategy<B>>,
     /// `ChainSync` strategy.`
     chain_sync: Option<ChainSync<B, Client>>,
-    /// UTXO sync strategy for fast sync mode.
-    utxo_sync: Option<UtxoSyncStrategy<B>>,
+    /// UTXO snap sync for fast sync mode.
+    utxo_snap_sync: Option<UtxoSnapSync<B>>,
     /// Bitcoin state storage.
     bitcoin_state: Arc<BitcoinState>,
     /// Connected peers and their best blocks used to seed a new strategy when switching to it in
@@ -281,7 +281,7 @@ where
             client,
             state: None,
             chain_sync: Some(chain_sync),
-            utxo_sync: None,
+            utxo_snap_sync: None,
             bitcoin_state,
             peer_best_blocks: Default::default(),
             peer_state_sync_target_headers: HashMap::new(),
@@ -314,44 +314,45 @@ where
         }
     }
 
-    /// Enable UTXO fast sync mode with the specified target height and expected MuHash.
+    /// Enable UTXO snap sync mode with the specified target height and expected MuHash.
     ///
     /// This will start downloading UTXOs from peers and populate the local BitcoinState.
-    pub fn enable_utxo_sync(&mut self, target_height: u32, expected_muhash: String) {
+    pub fn enable_utxo_snap_sync(&mut self, target_height: u32, expected_muhash: String) {
         tracing::info!(
             target: LOG_TARGET,
-            "Enabling UTXO fast sync: target height={target_height}, muhash={expected_muhash}"
+            "Enabling UTXO snap sync: target height={target_height}, muhash={expected_muhash}"
         );
 
-        let utxo_sync = UtxoSyncStrategy::new(
+        let mut utxo_snap_sync = UtxoSnapSync::new(
             target_height,
             expected_muhash,
             self.subcoin_network_request_protocol_name.clone(),
             self.bitcoin_state.clone(),
         );
 
-        // Register existing peers with the UTXO sync strategy
-        let mut utxo_sync = utxo_sync;
+        // Register existing peers with the UTXO snap sync
         for peer_id in self.peer_best_blocks.keys() {
-            utxo_sync.on_peer_connected(*peer_id);
+            utxo_snap_sync.on_peer_connected(*peer_id);
         }
 
-        self.utxo_sync = Some(utxo_sync);
+        self.utxo_snap_sync = Some(utxo_snap_sync);
     }
 
-    /// Check if UTXO sync is active.
-    pub fn is_utxo_sync_active(&self) -> bool {
-        self.utxo_sync.is_some()
+    /// Check if UTXO snap sync is active.
+    pub fn is_utxo_snap_sync_active(&self) -> bool {
+        self.utxo_snap_sync.is_some()
     }
 
-    /// Check if UTXO sync is complete.
-    pub fn is_utxo_sync_complete(&self) -> bool {
-        self.utxo_sync.as_ref().is_some_and(|s| s.is_complete())
+    /// Check if UTXO snap sync is complete.
+    pub fn is_utxo_snap_sync_complete(&self) -> bool {
+        self.utxo_snap_sync
+            .as_ref()
+            .is_some_and(|s| s.is_complete())
     }
 
-    /// Get UTXO sync progress if active.
-    pub fn utxo_sync_progress(&self) -> Option<crate::utxo_sync::UtxoSyncProgress> {
-        self.utxo_sync.as_ref().map(|s| s.progress())
+    /// Get UTXO snap sync progress if active.
+    pub fn utxo_snap_sync_progress(&self) -> Option<UtxoSnapSyncProgress> {
+        self.utxo_snap_sync.as_ref().map(|s| s.progress())
     }
 
     // TODO: proper algo to select state sync target.
@@ -457,8 +458,8 @@ where
                 utxo_count,
                 muhash,
             } => {
-                if let Some(ref mut utxo_sync) = self.utxo_sync {
-                    utxo_sync.on_utxo_set_info(peer_id, height, utxo_count, muhash);
+                if let Some(ref mut snap_sync) = self.utxo_snap_sync {
+                    snap_sync.on_utxo_set_info(peer_id, height, utxo_count, muhash);
                 } else {
                     tracing::debug!(
                         target: LOG_TARGET,
@@ -471,9 +472,9 @@ where
                 next_cursor,
                 is_complete,
             } => {
-                if let Some(ref mut utxo_sync) = self.utxo_sync {
+                if let Some(ref mut snap_sync) = self.utxo_snap_sync {
                     if let Err(e) =
-                        utxo_sync.on_utxo_chunk(peer_id, entries, next_cursor, is_complete)
+                        snap_sync.on_utxo_chunk(peer_id, entries, next_cursor, is_complete)
                     {
                         tracing::error!(
                             target: LOG_TARGET,
@@ -585,8 +586,8 @@ where
         self.pending_best_block_requests.push(peer_id);
 
         // Forward to UTXO sync strategy if active
-        if let Some(ref mut utxo_sync) = self.utxo_sync {
-            utxo_sync.on_peer_connected(peer_id);
+        if let Some(ref mut snap_sync) = self.utxo_snap_sync {
+            snap_sync.on_peer_connected(peer_id);
         }
     }
 
@@ -597,8 +598,8 @@ where
         if let Some(c) = self.chain_sync.as_mut() {
             c.remove_peer(peer_id);
         }
-        if let Some(ref mut utxo_sync) = self.utxo_sync {
-            utxo_sync.on_peer_disconnected(peer_id);
+        if let Some(ref mut snap_sync) = self.utxo_snap_sync {
+            snap_sync.on_peer_disconnected(peer_id);
         }
 
         self.peer_best_blocks.remove(peer_id);
@@ -755,7 +756,7 @@ where
                     }
                 }
             }
-            UTXO_SYNC_STRATEGY_KEY => {
+            UTXO_SNAP_SYNC_KEY => {
                 // UTXO sync responses use the same VersionedNetworkResponse format
                 let Ok(response) = response.downcast::<Vec<u8>>() else {
                     tracing::warn!(target: LOG_TARGET, "Failed to downcast UTXO sync response");
@@ -929,17 +930,17 @@ where
                     self.create_subcoin_request_action(peer_id, subcoin_request, network_service)
                 })
                 .collect()
-        } else if let Some(ref mut utxo_sync) = self.utxo_sync {
+        } else if let Some(ref mut snap_sync) = self.utxo_snap_sync {
             // UTXO sync is active - generate UTXO sync actions
-            if utxo_sync.is_complete() {
+            if snap_sync.is_complete() {
                 tracing::info!(target: LOG_TARGET, "✅ UTXO fast sync complete!");
-                self.utxo_sync = None;
+                self.utxo_snap_sync = None;
                 self.state_sync_complete = true;
                 // Exit the program once UTXO sync is complete
                 std::process::exit(0);
             }
 
-            let progress = utxo_sync.progress();
+            let progress = snap_sync.progress();
             tracing::debug!(
                 target: LOG_TARGET,
                 "UTXO sync progress: {} UTXOs downloaded, {} pending requests",
@@ -947,7 +948,7 @@ where
                 progress.pending_requests
             );
 
-            utxo_sync.actions(network_service)
+            snap_sync.actions(network_service)
         } else if let Some(ref mut state) = self.state {
             state.actions(network_service).collect()
         } else {

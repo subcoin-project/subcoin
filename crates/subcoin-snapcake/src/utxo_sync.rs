@@ -1,7 +1,50 @@
-//! UTXO sync strategy for fast synchronization.
+//! UTXO Snapshot Sync (UtxoSnapSync) for fast node bootstrapping.
 //!
-//! This module implements the client-side P2P UTXO sync protocol that downloads
-//! UTXO chunks from peers and verifies them using MuHash.
+//! This module implements the client-side P2P protocol for downloading a UTXO set
+//! snapshot from peers, enabling new nodes to sync quickly without processing all
+//! historical blocks.
+//!
+//! # Overview
+//!
+//! `UtxoSnapSync` downloads the complete UTXO set at a specific checkpoint height
+//! from peers using a cursor-based pagination protocol. After download, it verifies
+//! the data integrity using MuHash (a rolling hash that allows incremental updates).
+//!
+//! # Protocol Flow
+//!
+//! ```text
+//! Client (Snapcake)                    Server (Full Node)
+//!        │                                     │
+//!        │──── GetUtxoSetInfo ────────────────>│
+//!        │<─── UtxoSetInfo(height, count, mh) ─│
+//!        │                                     │
+//!        │──── GetUtxoChunk(cursor=None) ─────>│
+//!        │<─── UtxoChunk(entries, cursor) ─────│
+//!        │                                     │
+//!        │──── GetUtxoChunk(cursor=...) ──────>│
+//!        │<─── UtxoChunk(entries, cursor) ─────│
+//!        │              ...                    │
+//!        │──── GetUtxoChunk(cursor=...) ──────>│
+//!        │<─── UtxoChunk(entries, complete) ───│
+//!        │                                     │
+//!        │  [Verify MuHash against checkpoint] │
+//!        │                                     │
+//! ```
+//!
+//! # Verification
+//!
+//! After downloading all UTXOs, the client computes the MuHash of the received
+//! data and compares it against the expected checkpoint value. This ensures:
+//!
+//! - **Data integrity**: No corruption during transfer
+//! - **Completeness**: All UTXOs were received
+//! - **Correctness**: Data matches Bitcoin Core's UTXO set at that height
+//!
+//! # Error Handling
+//!
+//! - **Timeout**: Requests timeout after 30 seconds, peer is deprioritized
+//! - **MuHash mismatch**: Storage is cleared and sync restarts with different peer
+//! - **Peer failure**: After 3 failures, peer is excluded from future requests
 
 use bitcoin::hashes::Hash;
 use codec::Encode;
@@ -17,96 +60,133 @@ use std::time::{Duration, Instant};
 use subcoin_bitcoin_state::BitcoinState;
 use subcoin_service::network_request_handler::{VersionedNetworkRequest, v1};
 
-/// Strategy key for UTXO sync.
-pub const UTXO_SYNC_STRATEGY_KEY: StrategyKey = StrategyKey::new("UtxoSync");
+/// Strategy key identifying UTXO snap sync in the syncing framework.
+pub const UTXO_SNAP_SYNC_KEY: StrategyKey = StrategyKey::new("UtxoSnapSync");
 
 const LOG_TARGET: &str = "sync::utxo";
 
-/// Default number of UTXOs per chunk.
+/// Default number of UTXOs per chunk request.
+///
+/// 50,000 UTXOs results in approximately 5 MB per chunk, balancing
+/// memory usage with network efficiency.
 pub const DEFAULT_CHUNK_SIZE: u32 = 50_000;
 
-/// Maximum number of parallel chunk requests.
-pub const DEFAULT_PARALLEL_REQUESTS: usize = 4;
+/// Default maximum number of parallel chunk requests.
+///
+/// Currently set to 1 because cursor-based pagination requires sequential
+/// requests. Future improvements could enable parallel downloads by
+/// partitioning the keyspace.
+pub const DEFAULT_MAX_PENDING_REQUESTS: usize = 1;
 
-/// Request timeout duration.
+/// Duration before a request is considered timed out.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Maximum retries per peer before marking it as failed.
-const MAX_PEER_RETRIES: u32 = 3;
+/// Maximum request failures before a peer is excluded.
+const MAX_PEER_FAILURES: u32 = 3;
 
-/// Progress of UTXO sync.
+/// Progress information for UTXO snap sync.
 #[derive(Debug, Clone)]
-pub struct UtxoSyncProgress {
-    /// Target height for fast sync.
+pub struct UtxoSnapSyncProgress {
+    /// Target block height for the UTXO snapshot.
     pub target_height: u32,
-    /// Expected MuHash at target height.
+    /// Expected MuHash at the target height (from checkpoint).
     pub expected_muhash: String,
     /// Number of UTXOs downloaded so far.
     pub downloaded_utxos: u64,
-    /// Whether sync is complete.
+    /// Whether sync has completed successfully.
     pub is_complete: bool,
-    /// Number of pending requests.
+    /// Number of chunk requests currently in flight.
     pub pending_requests: usize,
 }
 
-/// State of a pending chunk request.
+/// Internal state for tracking a pending chunk request.
 #[derive(Debug)]
 struct PendingRequest {
-    /// The cursor for this request.
+    /// Cursor that was sent with this request.
     cursor: Option<[u8; 36]>,
-    /// Time when the request was sent.
+    /// Timestamp when the request was initiated.
     sent_at: Instant,
 }
 
-/// Peer state for UTXO sync.
+/// Per-peer tracking state for sync reliability.
 #[derive(Debug, Default)]
 struct PeerState {
-    /// Number of failed requests to this peer.
-    failed_requests: u32,
-    /// Whether this peer has UTXO set info.
+    /// Count of failed requests to this peer.
+    failure_count: u32,
+    /// Whether we've received UTXO set info from this peer.
     has_utxo_info: bool,
-    /// Peer's reported UTXO height.
+    /// Peer's reported UTXO set height.
     utxo_height: Option<u32>,
     /// Peer's reported UTXO count.
     utxo_count: Option<u64>,
-    /// Peer's reported MuHash.
+    /// Peer's reported MuHash (as hex string).
     muhash: Option<String>,
 }
 
-/// UTXO sync strategy for downloading UTXOs from peers.
-pub struct UtxoSyncStrategy<B: BlockT> {
-    /// Target height for fast sync.
+/// UTXO Snapshot Sync - Downloads UTXO set from peers for fast node bootstrapping.
+///
+/// This struct implements the client-side logic for the P2P UTXO sync protocol.
+/// It manages peer connections, request scheduling, chunk processing, and
+/// final verification against MuHash checkpoints.
+///
+/// # Usage
+///
+/// ```ignore
+/// let snap_sync = UtxoSnapSync::new(
+///     840_000,                    // Target height
+///     "ba56574e...".to_string(), // Expected MuHash
+///     protocol_name,
+///     bitcoin_state,
+/// );
+///
+/// // In the sync loop:
+/// let actions = snap_sync.actions(&network_service);
+/// // ... process actions and responses ...
+///
+/// if snap_sync.is_complete() {
+///     // Sync finished successfully
+/// }
+/// ```
+pub struct UtxoSnapSync<B: BlockT> {
+    /// Target block height for the UTXO snapshot.
     target_height: u32,
-    /// Expected MuHash at target height.
+    /// Expected MuHash at target height (from checkpoint).
     expected_muhash: String,
-    /// Protocol name for requests.
+    /// Protocol name for P2P requests.
     protocol_name: sc_network::ProtocolName,
-    /// Bitcoin state storage.
+    /// Bitcoin state storage for importing UTXOs.
     bitcoin_state: Arc<BitcoinState>,
-    /// Current cursor for pagination.
+    /// Current pagination cursor (None = start from beginning).
     current_cursor: Option<[u8; 36]>,
-    /// Number of UTXOs downloaded.
+    /// Total UTXOs downloaded so far.
     downloaded_utxos: u64,
-    /// Pending chunk requests by peer.
+    /// In-flight requests indexed by peer.
     pending_requests: HashMap<PeerId, PendingRequest>,
-    /// Peer states.
+    /// Per-peer state tracking.
     peer_states: HashMap<PeerId, PeerState>,
-    /// Connected peers.
+    /// Set of currently connected peers.
     connected_peers: HashSet<PeerId>,
-    /// Maximum parallel requests.
-    max_parallel_requests: usize,
-    /// Chunk size (UTXOs per chunk).
+    /// Maximum concurrent requests (currently 1 due to sequential cursors).
+    max_pending_requests: usize,
+    /// UTXOs to request per chunk.
     chunk_size: u32,
-    /// Whether sync is complete.
+    /// Whether sync completed successfully.
     is_complete: bool,
-    /// Whether we've requested UTXO set info from peers.
+    /// Whether initial UTXO set info has been requested from peers.
     info_requested: bool,
-    /// Phantom for block type.
+    /// Phantom for block type parameter.
     _phantom: std::marker::PhantomData<B>,
 }
 
-impl<B: BlockT> UtxoSyncStrategy<B> {
-    /// Create a new UTXO sync strategy.
+impl<B: BlockT> UtxoSnapSync<B> {
+    /// Create a new UTXO snap sync instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `target_height` - Block height to sync UTXO set to
+    /// * `expected_muhash` - Expected MuHash at target height (from checkpoint)
+    /// * `protocol_name` - P2P protocol name for requests
+    /// * `bitcoin_state` - Storage backend for importing UTXOs
     pub fn new(
         target_height: u32,
         expected_muhash: String,
@@ -123,7 +203,7 @@ impl<B: BlockT> UtxoSyncStrategy<B> {
             pending_requests: HashMap::new(),
             peer_states: HashMap::new(),
             connected_peers: HashSet::new(),
-            max_parallel_requests: DEFAULT_PARALLEL_REQUESTS,
+            max_pending_requests: DEFAULT_MAX_PENDING_REQUESTS,
             chunk_size: DEFAULT_CHUNK_SIZE,
             is_complete: false,
             info_requested: false,
@@ -131,19 +211,21 @@ impl<B: BlockT> UtxoSyncStrategy<B> {
         }
     }
 
-    /// Configure maximum parallel requests.
-    pub fn with_max_parallel_requests(mut self, max: usize) -> Self {
-        self.max_parallel_requests = max;
+    /// Configure maximum number of pending requests.
+    ///
+    /// Note: Currently only 1 is effective due to sequential cursor pagination.
+    pub fn with_max_pending_requests(mut self, max: usize) -> Self {
+        self.max_pending_requests = max;
         self
     }
 
-    /// Configure chunk size.
+    /// Configure the number of UTXOs to request per chunk.
     pub fn with_chunk_size(mut self, size: u32) -> Self {
         self.chunk_size = size;
         self
     }
 
-    /// Register a new peer.
+    /// Register a newly connected peer.
     pub fn on_peer_connected(&mut self, peer_id: PeerId) {
         self.connected_peers.insert(peer_id);
         self.peer_states.entry(peer_id).or_default();
@@ -155,7 +237,10 @@ impl<B: BlockT> UtxoSyncStrategy<B> {
         self.pending_requests.remove(peer_id);
     }
 
-    /// Handle UTXO set info response from a peer.
+    /// Process UTXO set info response from a peer.
+    ///
+    /// This validates that the peer has data at our target height and
+    /// that their MuHash matches our expected checkpoint.
     pub fn on_utxo_set_info(
         &mut self,
         peer_id: PeerId,
@@ -163,12 +248,11 @@ impl<B: BlockT> UtxoSyncStrategy<B> {
         utxo_count: u64,
         muhash: v1::MuHashCommitment,
     ) {
-        // Compute the txoutset muhash (32-byte hash) for comparison with checkpoints
         let muhash_hex = muhash.txoutset_muhash();
 
         tracing::info!(
             target: LOG_TARGET,
-            "Peer {peer_id} UTXO set info: height={height}, count={utxo_count}, muhash={muhash_hex}"
+            "Peer {peer_id} UTXO set: height={height}, count={utxo_count}, muhash={muhash_hex}"
         );
 
         if let Some(state) = self.peer_states.get_mut(&peer_id) {
@@ -178,27 +262,32 @@ impl<B: BlockT> UtxoSyncStrategy<B> {
             state.muhash = Some(muhash_hex.clone());
         }
 
-        // Validate peer has the data we need
+        // Validate peer can serve our target height
         if height < self.target_height {
             tracing::warn!(
                 target: LOG_TARGET,
-                "Peer {peer_id} height {height} is below target {}", self.target_height
+                "Peer {peer_id} height {height} < target {}",
+                self.target_height
             );
             return;
         }
 
-        // Check if MuHash matches (if we know the expected value)
+        // Validate MuHash if peer is at our exact target height
         if height == self.target_height && muhash_hex != self.expected_muhash {
             tracing::warn!(
                 target: LOG_TARGET,
                 "Peer {peer_id} MuHash mismatch: expected {}, got {muhash_hex}",
                 self.expected_muhash
             );
-            self.mark_peer_failed(&peer_id);
+            self.record_peer_failure(&peer_id);
         }
     }
 
-    /// Handle UTXO chunk response from a peer.
+    /// Process a UTXO chunk response from a peer.
+    ///
+    /// This imports the received UTXOs into storage and updates the cursor
+    /// for the next request. When the final chunk is received, it verifies
+    /// the complete UTXO set against the expected MuHash.
     pub fn on_utxo_chunk(
         &mut self,
         peer_id: PeerId,
@@ -206,16 +295,15 @@ impl<B: BlockT> UtxoSyncStrategy<B> {
         next_cursor: Option<[u8; 36]>,
         is_complete: bool,
     ) -> Result<(), String> {
-        // Remove the pending request
-        let _pending = self.pending_requests.remove(&peer_id);
+        self.pending_requests.remove(&peer_id);
 
-        let entries_count = entries.len();
+        let chunk_size = entries.len();
         tracing::debug!(
             target: LOG_TARGET,
-            "Received {entries_count} UTXOs from {peer_id}, complete={is_complete}"
+            "Received {chunk_size} UTXOs from {peer_id}, complete={is_complete}"
         );
 
-        // Convert entries to (OutPoint, Coin) pairs
+        // Convert protocol entries to storage format
         let utxos: Vec<(bitcoin::OutPoint, subcoin_bitcoin_state::Coin)> = entries
             .into_iter()
             .map(|entry| {
@@ -231,7 +319,7 @@ impl<B: BlockT> UtxoSyncStrategy<B> {
             })
             .collect();
 
-        // Import the UTXOs
+        // Import into storage
         let imported = self
             .bitcoin_state
             .bulk_import(utxos)
@@ -244,53 +332,12 @@ impl<B: BlockT> UtxoSyncStrategy<B> {
 
         tracing::info!(
             target: LOG_TARGET,
-            "Imported {imported} UTXOs, total: {}", self.downloaded_utxos
+            "Imported {imported} UTXOs, total: {}",
+            self.downloaded_utxos
         );
 
-        // Update cursor for next request
         if is_complete {
-            tracing::info!(
-                target: LOG_TARGET,
-                "UTXO sync complete: {} UTXOs downloaded",
-                self.downloaded_utxos
-            );
-
-            // Finalize the import
-            self.bitcoin_state
-                .finalize_import(self.target_height)
-                .map_err(|e| format!("Failed to finalize import: {e}"))?;
-
-            tracing::info!(
-                target: LOG_TARGET,
-                "After finalize: height={}, utxo_count={}, muhash={}",
-                self.bitcoin_state.height(),
-                self.bitcoin_state.utxo_count(),
-                self.bitcoin_state.muhash_hex()
-            );
-
-            // Verify final MuHash
-            if !self.bitcoin_state.verify_muhash(&self.expected_muhash) {
-                let actual = self.bitcoin_state.muhash_hex();
-
-                // MuHash verification failed - reset state and try again with different peer
-                tracing::warn!(
-                    target: LOG_TARGET,
-                    "MuHash mismatch: expected {}, got {actual}. Clearing storage and retrying.",
-                    self.expected_muhash
-                );
-
-                // Mark the peer that sent bad data as failed
-                self.mark_peer_failed(&peer_id);
-
-                // Clear storage and reset sync state
-                self.reset_for_retry()
-                    .map_err(|e| format!("Failed to reset for retry: {e}"))?;
-
-                return Ok(()); // Continue with retry, don't propagate error
-            }
-
-            self.is_complete = true;
-            tracing::info!(target: LOG_TARGET, "UTXO sync verified successfully!");
+            self.finalize_sync(peer_id)?;
         } else {
             self.current_cursor = next_cursor;
         }
@@ -298,37 +345,77 @@ impl<B: BlockT> UtxoSyncStrategy<B> {
         Ok(())
     }
 
-    /// Reset sync state for retry after verification failure.
+    /// Finalize sync after receiving all chunks.
+    fn finalize_sync(&mut self, peer_id: PeerId) -> Result<(), String> {
+        tracing::info!(
+            target: LOG_TARGET,
+            "UTXO download complete: {} UTXOs",
+            self.downloaded_utxos
+        );
+
+        // Finalize the import (sets height and computes final MuHash)
+        self.bitcoin_state
+            .finalize_import(self.target_height)
+            .map_err(|e| format!("Failed to finalize import: {e}"))?;
+
+        tracing::info!(
+            target: LOG_TARGET,
+            "After finalize: height={}, utxo_count={}, muhash={}",
+            self.bitcoin_state.height(),
+            self.bitcoin_state.utxo_count(),
+            self.bitcoin_state.muhash_hex()
+        );
+
+        // Verify MuHash matches checkpoint
+        if !self.bitcoin_state.verify_muhash(&self.expected_muhash) {
+            let actual = self.bitcoin_state.muhash_hex();
+            tracing::warn!(
+                target: LOG_TARGET,
+                "MuHash verification failed: expected {}, got {actual}",
+                self.expected_muhash
+            );
+
+            self.record_peer_failure(&peer_id);
+            self.reset_for_retry()
+                .map_err(|e| format!("Failed to reset: {e}"))?;
+
+            return Ok(());
+        }
+
+        self.is_complete = true;
+        tracing::info!(target: LOG_TARGET, "UTXO sync verified successfully!");
+        Ok(())
+    }
+
+    /// Reset state to retry sync after verification failure.
     fn reset_for_retry(&mut self) -> Result<(), String> {
-        // Clear storage
         self.bitcoin_state
             .clear()
             .map_err(|e| format!("Failed to clear storage: {e}"))?;
 
-        // Reset sync state
         self.current_cursor = None;
         self.downloaded_utxos = 0;
-        self.info_requested = false; // Re-request info from peers
+        self.info_requested = false;
 
         tracing::info!(target: LOG_TARGET, "Reset sync state for retry");
         Ok(())
     }
 
-    /// Mark a peer as failed.
-    fn mark_peer_failed(&mut self, peer_id: &PeerId) {
+    /// Record a failure for a peer, potentially excluding them from future requests.
+    fn record_peer_failure(&mut self, peer_id: &PeerId) {
         if let Some(state) = self.peer_states.get_mut(peer_id) {
-            state.failed_requests = state.failed_requests.saturating_add(1);
-            if state.failed_requests >= MAX_PEER_RETRIES {
+            state.failure_count = state.failure_count.saturating_add(1);
+            if state.failure_count >= MAX_PEER_FAILURES {
                 tracing::warn!(
                     target: LOG_TARGET,
-                    "Peer {peer_id} exceeded max retries, marking as failed"
+                    "Peer {peer_id} excluded after {MAX_PEER_FAILURES} failures"
                 );
             }
         }
     }
 
-    /// Check for timed-out requests.
-    fn check_timeouts(&mut self) {
+    /// Check for and handle timed-out requests.
+    fn process_timeouts(&mut self) {
         let now = Instant::now();
         let timed_out: Vec<PeerId> = self
             .pending_requests
@@ -340,12 +427,12 @@ impl<B: BlockT> UtxoSyncStrategy<B> {
         for peer_id in timed_out {
             tracing::warn!(target: LOG_TARGET, "Request to {peer_id} timed out");
             self.pending_requests.remove(&peer_id);
-            self.mark_peer_failed(&peer_id);
+            self.record_peer_failure(&peer_id);
         }
     }
 
-    /// Get peers that are suitable for requests.
-    fn get_suitable_peers(&self) -> Vec<PeerId> {
+    /// Get peers suitable for sending requests to.
+    fn suitable_peers(&self) -> Vec<PeerId> {
         self.connected_peers
             .iter()
             .filter(|peer_id| {
@@ -353,35 +440,40 @@ impl<B: BlockT> UtxoSyncStrategy<B> {
                 if self.pending_requests.contains_key(peer_id) {
                     return false;
                 }
-                // Skip failed peers
+
+                // Skip peers that have failed too many times
                 if let Some(state) = self.peer_states.get(peer_id) {
-                    if state.failed_requests >= MAX_PEER_RETRIES {
+                    if state.failure_count >= MAX_PEER_FAILURES {
                         return false;
                     }
-                    // Prefer peers that have confirmed UTXO info
+
+                    // Prefer peers with confirmed UTXO info at sufficient height
                     if state.has_utxo_info {
                         if let Some(height) = state.utxo_height {
                             return height >= self.target_height;
                         }
                     }
                 }
+
                 true
             })
             .copied()
             .collect()
     }
 
-    /// Generate sync actions.
+    /// Generate sync actions for the network layer.
+    ///
+    /// This is called by the syncing framework to get pending network requests.
     pub fn actions(&mut self, network_service: &NetworkServiceHandle) -> Vec<SyncingAction<B>> {
         if self.is_complete {
             return Vec::new();
         }
 
-        self.check_timeouts();
+        self.process_timeouts();
 
         let mut actions = Vec::new();
 
-        // First, request UTXO set info from peers if we haven't yet
+        // First phase: request UTXO set info from all peers
         if !self.info_requested {
             for peer_id in self.connected_peers.iter().copied() {
                 let request = VersionedNetworkRequest::<B>::V1(v1::NetworkRequest::GetUtxoSetInfo);
@@ -391,18 +483,17 @@ impl<B: BlockT> UtxoSyncStrategy<B> {
             return actions;
         }
 
-        // Calculate how many requests we can make
+        // Check if we can send more requests
         let available_slots = self
-            .max_parallel_requests
+            .max_pending_requests
             .saturating_sub(self.pending_requests.len());
         if available_slots == 0 {
             return actions;
         }
 
-        // Get suitable peers and make one chunk request
-        // (sequential cursor means only one request at a time)
-        let suitable_peers = self.get_suitable_peers();
-        if let Some(peer_id) = suitable_peers.into_iter().next() {
+        // Send chunk request to a suitable peer
+        // (Sequential cursor means only one active request at a time)
+        if let Some(peer_id) = self.suitable_peers().into_iter().next() {
             let request = VersionedNetworkRequest::<B>::V1(v1::NetworkRequest::GetUtxoChunk {
                 cursor: self.current_cursor,
                 max_entries: self.chunk_size,
@@ -422,7 +513,7 @@ impl<B: BlockT> UtxoSyncStrategy<B> {
         actions
     }
 
-    /// Create a network request action.
+    /// Create a network request action for the syncing framework.
     fn create_request_action(
         &self,
         peer_id: PeerId,
@@ -441,7 +532,7 @@ impl<B: BlockT> UtxoSyncStrategy<B> {
 
         SyncingAction::StartRequest {
             peer_id,
-            key: UTXO_SYNC_STRATEGY_KEY,
+            key: UTXO_SNAP_SYNC_KEY,
             request: async move {
                 Ok(rx.await?.map(|(response, protocol_name)| {
                     (Box::new(response) as Box<dyn Any + Send>, protocol_name)
@@ -452,14 +543,14 @@ impl<B: BlockT> UtxoSyncStrategy<B> {
         }
     }
 
-    /// Check if sync is complete.
+    /// Check if sync has completed successfully.
     pub fn is_complete(&self) -> bool {
         self.is_complete
     }
 
-    /// Get current progress.
-    pub fn progress(&self) -> UtxoSyncProgress {
-        UtxoSyncProgress {
+    /// Get current sync progress.
+    pub fn progress(&self) -> UtxoSnapSyncProgress {
+        UtxoSnapSyncProgress {
             target_height: self.target_height,
             expected_muhash: self.expected_muhash.clone(),
             downloaded_utxos: self.downloaded_utxos,
