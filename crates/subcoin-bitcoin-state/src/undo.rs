@@ -76,7 +76,12 @@ mod tests {
             txid: bitcoin::Txid::all_zeros(),
             vout: 0,
         };
-        let coin1 = Coin::new(true, 5000000000, 0, vec![0x51]);
+        let coin1 = Coin {
+            is_coinbase: true,
+            amount: 5000000000,
+            height: 0,
+            script_pubkey: vec![0x51],
+        };
 
         let outpoint2 = OutPoint {
             txid: bitcoin::Txid::all_zeros(),

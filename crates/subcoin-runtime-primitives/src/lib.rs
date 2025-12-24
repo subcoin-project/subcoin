@@ -47,6 +47,62 @@ impl MaxEncodedLen for Coin {
     }
 }
 
+#[cfg(feature = "std")]
+impl Coin {
+    /// Create a Coin from a Bitcoin TxOut.
+    pub fn from_txout(txout: &bitcoin::TxOut, height: u32, is_coinbase: bool) -> Self {
+        Self {
+            is_coinbase,
+            amount: txout.value.to_sat(),
+            height,
+            script_pubkey: txout.script_pubkey.to_bytes(),
+        }
+    }
+
+    /// Serialize to bytes for storage (using bincode).
+    pub fn encode_for_storage(&self) -> Vec<u8> {
+        bincode::serialize(self).expect("Coin serialization should not fail")
+    }
+
+    /// Deserialize from storage bytes.
+    pub fn decode_from_storage(bytes: &[u8]) -> Result<Self, bincode::Error> {
+        bincode::deserialize(bytes)
+    }
+
+    /// Serialize for MuHash computation (Bitcoin Core compatible format).
+    ///
+    /// Format: OutPoint || (height << 1 | is_coinbase) || TxOut
+    ///
+    /// Reference: <https://github.com/bitcoin/bitcoin/blob/6f9db1e/src/kernel/coinstats.cpp#L51>
+    pub fn serialize_for_muhash(&self, outpoint: &bitcoin::OutPoint) -> Vec<u8> {
+        use bitcoin::{Amount, ScriptBuf};
+
+        let mut data = Vec::with_capacity(36 + 4 + 8 + self.script_pubkey.len() + 9);
+
+        // Serialize OutPoint (txid || vout)
+        outpoint
+            .consensus_encode(&mut data)
+            .expect("OutPoint encoding should not fail");
+
+        // Serialize height and coinbase flag: (height << 1) | is_coinbase
+        let height_and_coinbase = (self.height << 1) | (self.is_coinbase as u32);
+        height_and_coinbase
+            .consensus_encode(&mut data)
+            .expect("u32 encoding should not fail");
+
+        // Serialize TxOut (value || script)
+        let txout = bitcoin::TxOut {
+            value: Amount::from_sat(self.amount),
+            script_pubkey: ScriptBuf::from_bytes(self.script_pubkey.clone()),
+        };
+        txout
+            .consensus_encode(&mut data)
+            .expect("TxOut encoding should not fail");
+
+        data
+    }
+}
+
 /// Wrapper type for representing [`bitcoin::Txid`] in runtime, stored in reversed byte order.
 #[derive(
     Debug,

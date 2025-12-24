@@ -9403,6 +9403,7 @@ dependencies = [
  "serde",
  "serde_json",
  "subcoin-crypto",
+ "subcoin-runtime-primitives",
  "tempfile",
  "thiserror 1.0.69",
  "tracing",
@@ -9650,6 +9651,7 @@ dependencies = [
 name = "subcoin-runtime-primitives"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "bitcoin 0.32.2",
  "parity-scale-codec",
  "scale-info",

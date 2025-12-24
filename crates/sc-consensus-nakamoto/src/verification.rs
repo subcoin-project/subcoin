@@ -42,6 +42,7 @@ use bitcoin::{
     VarInt, Weight,
 };
 pub use header_verify::{Error as HeaderError, HeaderVerifier};
+use rayon::prelude::*;
 use sc_client_api::{AuxStore, Backend, StorageProvider};
 use sp_blockchain::HeaderBackend;
 use sp_runtime::traits::Block as BlockT;
@@ -68,6 +69,13 @@ pub enum ScriptEngine {
     Subcoin,
 }
 
+impl ScriptEngine {
+    /// Returns `true` if script verification is enabled.
+    pub fn is_enabled(&self) -> bool {
+        !matches!(self, Self::None)
+    }
+}
+
 /// Represents the level of block verification.
 #[derive(Copy, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 #[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
@@ -79,6 +87,17 @@ pub enum BlockVerification {
     Full,
     /// Verify the block header only, without the transaction veification.
     HeaderOnly,
+}
+
+/// Represents the parallelism mode for script verification.
+#[derive(Copy, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
+pub enum ScriptVerification {
+    /// Verify scripts sequentially in a single thread.
+    Sequential,
+    /// Verify scripts in parallel using rayon thread pool.
+    #[default]
+    Parallel,
 }
 
 /// Represents the context of a transaction within a block.
@@ -166,69 +185,6 @@ impl ScriptVerificationTask {
             ScriptEngine::None => Ok(()),
         }
     }
-}
-
-/// Verifies all script tasks in parallel using rayon.
-fn verify_scripts_parallel(
-    tasks: &[ScriptVerificationTask],
-    script_engine: ScriptEngine,
-    block_hash: BlockHash,
-) -> Result<(), Error> {
-    use rayon::prelude::*;
-
-    if matches!(script_engine, ScriptEngine::None) {
-        return Ok(());
-    }
-
-    tasks.par_iter().try_for_each(|task| {
-        task.verify(script_engine).map_err(|err| {
-            // Update block_hash in error if needed
-            match err {
-                Error::InvalidScript {
-                    context,
-                    input_index,
-                    error,
-                    ..
-                } => Error::InvalidScript {
-                    block_hash,
-                    context,
-                    input_index,
-                    error,
-                },
-                other => other,
-            }
-        })
-    })
-}
-
-/// Verifies all script tasks sequentially.
-fn verify_scripts_sequential(
-    tasks: &[ScriptVerificationTask],
-    script_engine: ScriptEngine,
-    block_hash: BlockHash,
-) -> Result<(), Error> {
-    if matches!(script_engine, ScriptEngine::None) {
-        return Ok(());
-    }
-
-    for task in tasks {
-        task.verify(script_engine).map_err(|err| match err {
-            Error::InvalidScript {
-                context,
-                input_index,
-                error,
-                ..
-            } => Error::InvalidScript {
-                block_hash,
-                context,
-                input_index,
-                error,
-            },
-            other => other,
-        })?;
-    }
-
-    Ok(())
 }
 
 /// Block verification error.
@@ -344,8 +300,8 @@ pub struct BlockVerifier<Block, Client, BE> {
     /// Bitcoin state for O(1) UTXO lookups.
     bitcoin_state: Arc<BitcoinState>,
     script_engine: ScriptEngine,
-    /// Whether to use parallel script verification.
-    parallel_verification: bool,
+    /// Script verification parallelism mode.
+    script_verification: ScriptVerification,
     _phantom: PhantomData<(Block, BE)>,
 }
 
@@ -357,7 +313,7 @@ impl<Block, Client, BE> BlockVerifier<Block, Client, BE> {
         block_verification: BlockVerification,
         bitcoin_state: Arc<BitcoinState>,
         script_engine: ScriptEngine,
-        parallel_verification: bool,
+        script_verification: ScriptVerification,
     ) -> Self {
         let chain_params = ChainParams::new(network);
         let header_verifier = HeaderVerifier::new(client.clone(), chain_params.clone());
@@ -368,7 +324,7 @@ impl<Block, Client, BE> BlockVerifier<Block, Client, BE> {
             block_verification,
             bitcoin_state,
             script_engine,
-            parallel_verification,
+            script_verification,
             _phantom: Default::default(),
         }
     }
@@ -654,7 +610,7 @@ where
                 }
 
                 // Collect script verification task (instead of verifying inline).
-                if !matches!(self.script_engine, ScriptEngine::None) {
+                if self.script_engine.is_enabled() {
                     let task = ScriptVerificationTask {
                         spending_tx_bytes: spending_tx_bytes.clone(),
                         tx_context: tx_context(tx_index),
@@ -711,11 +667,7 @@ where
         // ========== Phase 2: Script verification (parallel or sequential) ==========
         let verify_start = std::time::Instant::now();
 
-        if self.parallel_verification {
-            verify_scripts_parallel(&script_tasks, self.script_engine, block_hash)?;
-        } else {
-            verify_scripts_sequential(&script_tasks, self.script_engine, block_hash)?;
-        }
+        self.verify_scripts(&script_tasks, block_hash)?;
 
         let verify_scripts_duration = verify_start.elapsed();
 
@@ -736,17 +688,47 @@ where
         Ok(verify_scripts_duration)
     }
 
+    /// Verifies all script tasks using the configured verification mode.
+    fn verify_scripts(
+        &self,
+        tasks: &[ScriptVerificationTask],
+        block_hash: BlockHash,
+    ) -> Result<(), Error> {
+        if !self.script_engine.is_enabled() {
+            return Ok(());
+        }
+
+        let map_error = |err| match err {
+            Error::InvalidScript {
+                context,
+                input_index,
+                error,
+                ..
+            } => Error::InvalidScript {
+                block_hash,
+                context,
+                input_index,
+                error,
+            },
+            other => other,
+        };
+
+        match self.script_verification {
+            ScriptVerification::Parallel => tasks
+                .par_iter()
+                .try_for_each(|task| task.verify(self.script_engine).map_err(map_error)),
+            ScriptVerification::Sequential => {
+                for task in tasks {
+                    task.verify(self.script_engine).map_err(map_error)?;
+                }
+                Ok(())
+            }
+        }
+    }
+
     /// Finds a UTXO in Bitcoin state (O(1) lookup via RocksDB).
     fn find_utxo_in_state(&self, _block_hash: Block::Hash, out_point: OutPoint) -> Option<Coin> {
-        self.bitcoin_state.get(&out_point).map(|state_coin| {
-            // Convert state Coin to runtime Coin (same structure)
-            Coin {
-                is_coinbase: state_coin.is_coinbase,
-                amount: state_coin.amount,
-                height: state_coin.height,
-                script_pubkey: state_coin.script_pubkey,
-            }
-        })
+        self.bitcoin_state.get(&out_point)
     }
 }
 

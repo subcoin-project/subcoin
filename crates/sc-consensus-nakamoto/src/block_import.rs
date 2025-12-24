@@ -20,7 +20,7 @@
 
 use crate::ScriptEngine;
 use crate::metrics::Metrics;
-use crate::verification::{BlockVerification, BlockVerifier};
+use crate::verification::{BlockVerification, BlockVerifier, ScriptVerification};
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::hashes::Hash;
 use bitcoin::{Block as BitcoinBlock, BlockHash, Network, Work};
@@ -56,11 +56,11 @@ pub struct ImportConfig {
     pub execute_block: bool,
     /// Bitcoin script interpreter.
     pub script_engine: ScriptEngine,
-    /// Enable parallel script verification (default: true).
+    /// Script verification parallelism mode.
     ///
-    /// When enabled, script verification tasks are collected during sequential
-    /// UTXO validation and then executed in parallel using rayon.
-    pub parallel_verification: bool,
+    /// When set to `Parallel`, script verification tasks are collected during
+    /// sequential UTXO validation and then executed in parallel using rayon.
+    pub script_verification: ScriptVerification,
 }
 
 #[derive(Debug, Default)]
@@ -179,7 +179,7 @@ where
             config.block_verification,
             bitcoin_state.clone(),
             config.script_engine,
-            config.parallel_verification,
+            config.script_verification,
         );
         let metrics = match registry {
             Some(registry) => Metrics::register(registry)

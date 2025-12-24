@@ -12,7 +12,7 @@ pub use import_queue::{
     BlockImportQueue, ImportBlocks, ImportManyBlocksResult, bitcoin_import_queue,
 };
 pub use verification::{
-    BlockVerification, BlockVerifier, HeaderError, HeaderVerifier, ScriptEngine,
+    BlockVerification, BlockVerifier, HeaderError, HeaderVerifier, ScriptEngine, ScriptVerification,
 };
 pub use verifier::SubstrateImportQueueVerifier;
 

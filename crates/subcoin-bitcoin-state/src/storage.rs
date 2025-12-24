@@ -85,7 +85,7 @@ impl BitcoinState {
             .get_cf(cf, key)
             .ok()
             .flatten()
-            .and_then(|bytes| Coin::decode(&bytes).ok())
+            .and_then(|bytes| Coin::decode_from_storage(&bytes).ok())
     }
 
     /// Check if a UTXO exists.
@@ -199,7 +199,8 @@ impl BitcoinState {
                         .map_err(Error::Rocksdb)?
                         .ok_or(Error::UtxoNotFound(outpoint))?;
 
-                    Coin::decode(&coin_bytes).map_err(|e| Error::Deserialization(e.to_string()))?
+                    Coin::decode_from_storage(&coin_bytes)
+                        .map_err(|e| Error::Deserialization(e.to_string()))?
                 };
 
                 // Record for undo
@@ -239,7 +240,7 @@ impl BitcoinState {
             if is_duplicate {
                 // Remove old coin from MuHash (we'll add the new one below)
                 if let Some(old_bytes) = self.db.get_cf(cf_utxos, key).ok().flatten() {
-                    if let Ok(old_coin) = Coin::decode(&old_bytes) {
+                    if let Ok(old_coin) = Coin::decode_from_storage(&old_bytes) {
                         let old_muhash_data = old_coin.serialize_for_muhash(&outpoint);
                         muhash.remove(&old_muhash_data);
                     }
@@ -260,7 +261,7 @@ impl BitcoinState {
             in_block_utxos.insert(outpoint, coin.clone());
 
             // Add to storage
-            batch.put_cf(cf_utxos, key, coin.encode());
+            batch.put_cf(cf_utxos, key, coin.encode_for_storage());
 
             // Only increment count if this is a NEW entry, not a duplicate
             if !is_duplicate {
@@ -299,8 +300,8 @@ impl BitcoinState {
 
             // Get the coin to remove from MuHash
             if let Some(coin_bytes) = self.db.get_cf(&cf_utxos, key).map_err(Error::Rocksdb)? {
-                let coin =
-                    Coin::decode(&coin_bytes).map_err(|e| Error::Deserialization(e.to_string()))?;
+                let coin = Coin::decode_from_storage(&coin_bytes)
+                    .map_err(|e| Error::Deserialization(e.to_string()))?;
                 let muhash_data = coin.serialize_for_muhash(outpoint);
                 muhash.remove(&muhash_data);
             }
@@ -317,7 +318,7 @@ impl BitcoinState {
             muhash.insert(&muhash_data);
 
             // Add back to storage
-            batch.put_cf(&cf_utxos, key, coin.encode());
+            batch.put_cf(&cf_utxos, key, coin.encode_for_storage());
         }
 
         // Update metadata
@@ -432,8 +433,8 @@ impl BitcoinState {
                 if key.len() == 36 {
                     let key_array: [u8; 36] = key.try_into().unwrap();
                     let outpoint = key_to_outpoint(&key_array);
-                    let coin =
-                        Coin::decode(value).map_err(|e| Error::Deserialization(e.to_string()))?;
+                    let coin = Coin::decode_from_storage(value)
+                        .map_err(|e| Error::Deserialization(e.to_string()))?;
                     entries.push((outpoint, coin));
                     last_key = Some(key_array);
                 }
@@ -510,8 +511,8 @@ impl BitcoinState {
                 if key.len() == 36 {
                     let key_array: [u8; 36] = key.try_into().unwrap();
                     let outpoint = key_to_outpoint(&key_array);
-                    let coin =
-                        Coin::decode(value).map_err(|e| Error::Deserialization(e.to_string()))?;
+                    let coin = Coin::decode_from_storage(value)
+                        .map_err(|e| Error::Deserialization(e.to_string()))?;
 
                     let muhash_data = coin.serialize_for_muhash(&outpoint);
                     recomputed_muhash.insert(&muhash_data);
@@ -581,7 +582,7 @@ impl BitcoinState {
             muhash.insert(&muhash_data);
 
             // Add to storage
-            batch.put_cf(cf_utxos, key, coin.encode());
+            batch.put_cf(cf_utxos, key, coin.encode_for_storage());
         }
 
         // Update UTXO count
@@ -755,7 +756,7 @@ impl Iterator for UtxoIterator<'_> {
                 if key.len() == 36 {
                     let key_array: [u8; 36] = key.try_into().ok()?;
                     let outpoint = key_to_outpoint(&key_array);
-                    let coin = Coin::decode(value).ok()?;
+                    let coin = Coin::decode_from_storage(value).ok()?;
                     self.iter.next();
                     return Some((outpoint, coin));
                 }
@@ -1269,12 +1270,12 @@ mod tests {
             .map(|i| {
                 let txid = bitcoin::Txid::from_byte_array([i as u8; 32]);
                 let outpoint = OutPoint { txid, vout: 0 };
-                let coin = Coin::new(
-                    false,
-                    (i as u64 + 1) * 1000,
-                    i as u32,
-                    vec![0x51], // OP_TRUE
-                );
+                let coin = Coin {
+                    is_coinbase: false,
+                    amount: (i as u64 + 1) * 1000,
+                    height: i as u32,
+                    script_pubkey: vec![0x51], // OP_TRUE
+                };
                 (outpoint, coin)
             })
             .collect()

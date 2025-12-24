@@ -177,12 +177,12 @@ fn create_test_utxos(count: usize, start_height: u32) -> Vec<(OutPoint, Coin)> {
             txid_bytes[0..8].copy_from_slice(&(i as u64).to_le_bytes());
             let txid = bitcoin::Txid::from_byte_array(txid_bytes);
             let outpoint = OutPoint { txid, vout: 0 };
-            let coin = Coin::new(
-                i == 0,                          // First one is coinbase
-                (i as u64 + 1) * 50_000_000,     // 0.5 BTC increments
-                start_height + (i as u32 / 100), // Spread across heights
-                ScriptBuf::new_p2pkh(&bitcoin::PubkeyHash::all_zeros()).to_bytes(),
-            );
+            let coin = Coin {
+                is_coinbase: i == 0,                     // First one is coinbase
+                amount: (i as u64 + 1) * 50_000_000,     // 0.5 BTC increments
+                height: start_height + (i as u32 / 100), // Spread across heights
+                script_pubkey: ScriptBuf::new_p2pkh(&bitcoin::PubkeyHash::all_zeros()).to_bytes(),
+            };
             (outpoint, coin)
         })
         .collect()
