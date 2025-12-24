@@ -1,11 +1,11 @@
 //! Bitcoin state storage implementation using RocksDB with MuHash commitment.
 
 use crate::undo::BlockUndo;
-use crate::{cf, meta_keys, Coin, Error, Result};
+use crate::{Coin, Error, Result, cf, meta_keys};
 use bitcoin::hashes::Hash;
 use bitcoin::{Block, OutPoint, Transaction};
 use parking_lot::RwLock;
-use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, Options, WriteBatch, DB};
+use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, DB, Options, WriteBatch};
 use std::collections::HashMap;
 use std::path::Path;
 use subcoin_crypto::MuHash3072;
@@ -777,9 +777,9 @@ mod tests {
     use bitcoin::{Amount, ScriptBuf, TxOut};
 
     fn create_test_block(height: u32, prev_outpoints: &[OutPoint]) -> Block {
+        use bitcoin::CompactTarget;
         use bitcoin::blockdata::block::{Header, Version};
         use bitcoin::blockdata::transaction::{Transaction, TxIn, Version as TxVersion};
-        use bitcoin::CompactTarget;
 
         // Create unique coinbase script_sig with height (like real Bitcoin blocks)
         let mut coinbase_script = vec![0x03]; // Push 3 bytes
@@ -926,9 +926,9 @@ mod tests {
     /// by an earlier transaction in the same block.
     #[test]
     fn test_in_block_utxo_spending() {
+        use bitcoin::CompactTarget;
         use bitcoin::blockdata::block::{Header, Version};
         use bitcoin::blockdata::transaction::{Transaction, TxIn, Version as TxVersion};
-        use bitcoin::CompactTarget;
 
         let storage = BitcoinState::open_temp().unwrap();
 
@@ -1049,9 +1049,9 @@ mod tests {
     /// Test count consistency after multiple blocks with in-block spending.
     #[test]
     fn test_count_consistency_with_in_block_spending() {
+        use bitcoin::CompactTarget;
         use bitcoin::blockdata::block::{Header, Version};
         use bitcoin::blockdata::transaction::{Transaction, TxIn, Version as TxVersion};
-        use bitcoin::CompactTarget;
 
         let storage = BitcoinState::open_temp().unwrap();
 
@@ -1161,9 +1161,9 @@ mod tests {
     /// This test verifies that we handle this case correctly.
     #[test]
     fn test_duplicate_coinbase_txid_handling() {
+        use bitcoin::CompactTarget;
         use bitcoin::blockdata::block::{Header, Version};
         use bitcoin::blockdata::transaction::{Transaction, TxIn, Version as TxVersion};
-        use bitcoin::CompactTarget;
 
         let storage = BitcoinState::open_temp().unwrap();
 
@@ -1478,8 +1478,10 @@ mod tests {
         assert!(storage.verify_muhash(&muhash));
 
         // Incorrect verification
-        assert!(!storage
-            .verify_muhash("0000000000000000000000000000000000000000000000000000000000000000"));
+        assert!(
+            !storage
+                .verify_muhash("0000000000000000000000000000000000000000000000000000000000000000")
+        );
     }
 
     #[test]

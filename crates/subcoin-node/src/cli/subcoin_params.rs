@@ -1,5 +1,5 @@
 use clap::Parser;
-use sc_consensus_nakamoto::{BlockVerification, ImportConfig, ScriptEngine};
+use sc_consensus_nakamoto::{BlockVerification, ImportConfig, ScriptEngine, ScriptVerification};
 use std::path::PathBuf;
 use subcoin_network::{PeerId, SyncStrategy};
 
@@ -127,13 +127,6 @@ pub struct CommonParams {
     #[clap(long)]
     pub script_engine: Option<ScriptEngine>,
 
-    /// Use native UTXO storage for O(1) UTXO operations.
-    ///
-    /// When enabled, UTXOs are stored in native RocksDB with MuHash commitment,
-    /// bypassing Substrate's Merkle Patricia Trie for dramatically faster IBD.
-    #[clap(long)]
-    pub native_utxo: bool,
-
     /// Specify custom base path.
     #[arg(long, short = 'd', value_name = "PATH")]
     pub base_path: Option<PathBuf>,
@@ -192,7 +185,7 @@ impl CommonParams {
             script_engine: self
                 .script_engine
                 .unwrap_or_else(|| Defaults::script_engine(is_dev)),
-            parallel_verification: true,
+            script_verification: ScriptVerification::Parallel,
         }
     }
 }
