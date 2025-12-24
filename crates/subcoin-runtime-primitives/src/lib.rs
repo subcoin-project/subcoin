@@ -6,6 +6,8 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 use bitcoin::consensus::Encodable;
+#[cfg(feature = "std")]
+use bitcoin::{Amount, ScriptBuf};
 use codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_core::H256;
@@ -75,8 +77,6 @@ impl Coin {
     ///
     /// Reference: <https://github.com/bitcoin/bitcoin/blob/6f9db1e/src/kernel/coinstats.cpp#L51>
     pub fn serialize_for_muhash(&self, outpoint: &bitcoin::OutPoint) -> Vec<u8> {
-        use bitcoin::{Amount, ScriptBuf};
-
         let mut data = Vec::with_capacity(36 + 4 + 8 + self.script_pubkey.len() + 9);
 
         // Serialize OutPoint (txid || vout)

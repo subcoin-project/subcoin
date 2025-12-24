@@ -1,11 +1,12 @@
 //! Bitcoin state storage implementation using RocksDB with MuHash commitment.
 
-use crate::coin::{Coin, outpoint_to_key};
+use crate::coin::{Coin, key_to_outpoint, outpoint_to_key};
 use crate::undo::BlockUndo;
 use crate::{Error, Result, cf, meta_keys};
 use bitcoin::{Block, OutPoint, Transaction};
 use parking_lot::RwLock;
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, DB, Options, WriteBatch};
+use std::collections::HashMap;
 use std::path::Path;
 use subcoin_crypto::MuHash3072;
 
@@ -101,8 +102,6 @@ impl BitcoinState {
     ///
     /// This updates the UTXO set, MuHash, and saves undo data for potential reorgs.
     pub fn apply_block(&self, block: &Block, height: u32) -> Result<()> {
-        use std::collections::HashMap;
-
         let cf_utxos = self.db.cf_handle(cf::UTXOS).ok_or(Error::NotInitialized)?;
         let cf_undo = self.db.cf_handle(cf::UNDO).ok_or(Error::NotInitialized)?;
         let cf_meta = self.db.cf_handle(cf::META).ok_or(Error::NotInitialized)?;
@@ -407,8 +406,6 @@ impl BitcoinState {
         cursor: Option<&[u8; 36]>,
         max_entries: u32,
     ) -> Result<crate::ExportChunkResult> {
-        use crate::coin::key_to_outpoint;
-
         let cf = self.db.cf_handle(cf::UTXOS).ok_or(Error::NotInitialized)?;
 
         let mut entries = Vec::with_capacity(max_entries as usize);
@@ -494,8 +491,6 @@ impl BitcoinState {
     ///
     /// Returns (was_consistent, actual_count, actual_muhash_hex).
     pub fn verify_and_repair_muhash(&self) -> Result<(bool, u64, String)> {
-        use crate::coin::key_to_outpoint;
-
         let cf_utxos = self.db.cf_handle(cf::UTXOS).ok_or(Error::NotInitialized)?;
         let cf_meta = self.db.cf_handle(cf::META).ok_or(Error::NotInitialized)?;
 
@@ -565,8 +560,6 @@ impl BitcoinState {
     /// # Returns
     /// Number of UTXOs successfully imported
     pub fn bulk_import(&self, entries: Vec<(OutPoint, Coin)>) -> Result<usize> {
-        use crate::coin::outpoint_to_key;
-
         let cf_utxos = self.db.cf_handle(cf::UTXOS).ok_or(Error::NotInitialized)?;
         let cf_meta = self.db.cf_handle(cf::META).ok_or(Error::NotInitialized)?;
 
@@ -749,8 +742,6 @@ impl Iterator for UtxoIterator<'_> {
     type Item = (OutPoint, Coin);
 
     fn next(&mut self) -> Option<Self::Item> {
-        use crate::coin::key_to_outpoint;
-
         while self.iter.valid() {
             if let (Some(key), Some(value)) = (self.iter.key(), self.iter.value()) {
                 if key.len() == 36 {
