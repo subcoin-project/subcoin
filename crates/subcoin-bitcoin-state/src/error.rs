@@ -9,13 +9,9 @@ pub enum Error {
     #[error("RocksDB error: {0}")]
     Rocksdb(#[from] rocksdb::Error),
 
-    /// Serialization error.
-    #[error("Serialization error: {0}")]
-    Serialization(String),
-
-    /// Deserialization error.
-    #[error("Deserialization error: {0}")]
-    Deserialization(String),
+    /// Bincode serialization/deserialization error.
+    #[error("Bincode error: {0}")]
+    Bincode(#[from] bincode::Error),
 
     /// UTXO not found when trying to spend.
     #[error("UTXO not found: {0}")]
@@ -48,10 +44,4 @@ pub enum Error {
     /// IO error.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-}
-
-impl From<bincode::Error> for Error {
-    fn from(err: bincode::Error) -> Self {
-        Self::Serialization(err.to_string())
-    }
 }

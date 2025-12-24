@@ -1,14 +1,33 @@
 //! Bitcoin state storage implementation using RocksDB with MuHash commitment.
 
-use crate::coin::{Coin, key_to_outpoint, outpoint_to_key};
 use crate::undo::BlockUndo;
-use crate::{Error, Result, cf, meta_keys};
+use crate::{cf, meta_keys, Coin, Error, Result};
+use bitcoin::hashes::Hash;
 use bitcoin::{Block, OutPoint, Transaction};
 use parking_lot::RwLock;
-use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, DB, Options, WriteBatch};
+use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, Options, WriteBatch, DB};
 use std::collections::HashMap;
 use std::path::Path;
 use subcoin_crypto::MuHash3072;
+
+/// Convert OutPoint to storage key (36 bytes).
+///
+/// Format: txid (32 bytes, raw) || vout (4 bytes, little-endian)
+fn outpoint_to_key(outpoint: &OutPoint) -> [u8; 36] {
+    let mut key = [0u8; 36];
+    key[..32].copy_from_slice(outpoint.txid.as_ref());
+    key[32..].copy_from_slice(&outpoint.vout.to_le_bytes());
+    key
+}
+
+/// Parse storage key back to OutPoint.
+fn key_to_outpoint(key: &[u8; 36]) -> OutPoint {
+    let mut txid_bytes = [0u8; 32];
+    txid_bytes.copy_from_slice(&key[..32]);
+    let txid = bitcoin::Txid::from_byte_array(txid_bytes);
+    let vout = u32::from_le_bytes(key[32..].try_into().unwrap());
+    OutPoint { txid, vout }
+}
 
 /// Bitcoin state (UTXO set) with MuHash commitment tracking.
 ///
@@ -194,12 +213,10 @@ impl BitcoinState {
                     // Look up in database
                     let coin_bytes = self
                         .db
-                        .get_cf(cf_utxos, key)
-                        .map_err(Error::Rocksdb)?
+                        .get_cf(cf_utxos, key)?
                         .ok_or(Error::UtxoNotFound(outpoint))?;
 
-                    Coin::decode_from_storage(&coin_bytes)
-                        .map_err(|e| Error::Deserialization(e.to_string()))?
+                    Coin::decode_from_storage(&coin_bytes)?
                 };
 
                 // Record for undo
@@ -283,12 +300,10 @@ impl BitcoinState {
         let undo_key = height.to_be_bytes();
         let undo_bytes = self
             .db
-            .get_cf(cf_undo, undo_key)
-            .map_err(Error::Rocksdb)?
+            .get_cf(cf_undo, undo_key)?
             .ok_or(Error::UndoNotFound(height))?;
 
-        let undo =
-            BlockUndo::decode(&undo_bytes).map_err(|e| Error::Deserialization(e.to_string()))?;
+        let undo = BlockUndo::decode(&undo_bytes)?;
 
         let mut batch = WriteBatch::default();
         let mut muhash = self.muhash.write();
@@ -298,9 +313,8 @@ impl BitcoinState {
             let key = outpoint_to_key(outpoint);
 
             // Get the coin to remove from MuHash
-            if let Some(coin_bytes) = self.db.get_cf(&cf_utxos, key).map_err(Error::Rocksdb)? {
-                let coin = Coin::decode_from_storage(&coin_bytes)
-                    .map_err(|e| Error::Deserialization(e.to_string()))?;
+            if let Some(coin_bytes) = self.db.get_cf(&cf_utxos, key)? {
+                let coin = Coin::decode_from_storage(&coin_bytes)?;
                 let muhash_data = coin.serialize_for_muhash(outpoint);
                 muhash.remove(&muhash_data);
             }
@@ -430,8 +444,7 @@ impl BitcoinState {
                 if key.len() == 36 {
                     let key_array: [u8; 36] = key.try_into().unwrap();
                     let outpoint = key_to_outpoint(&key_array);
-                    let coin = Coin::decode_from_storage(value)
-                        .map_err(|e| Error::Deserialization(e.to_string()))?;
+                    let coin = Coin::decode_from_storage(value)?;
                     entries.push((outpoint, coin));
                     last_key = Some(key_array);
                 }
@@ -506,8 +519,7 @@ impl BitcoinState {
                 if key.len() == 36 {
                     let key_array: [u8; 36] = key.try_into().unwrap();
                     let outpoint = key_to_outpoint(&key_array);
-                    let coin = Coin::decode_from_storage(value)
-                        .map_err(|e| Error::Deserialization(e.to_string()))?;
+                    let coin = Coin::decode_from_storage(value)?;
 
                     let muhash_data = coin.serialize_for_muhash(&outpoint);
                     recomputed_muhash.insert(&muhash_data);
@@ -526,7 +538,7 @@ impl BitcoinState {
 
         if !is_consistent {
             tracing::warn!(
-                "MuHash inconsistency detected! stored_count={stored_count}, actual_count={actual_count}, \
+                "MuHash inconsistency detected! {stored_count}, {actual_count}, \
                  stored_muhash={stored_muhash_hex}, recomputed_muhash={recomputed_muhash_hex}"
             );
 
@@ -765,9 +777,9 @@ mod tests {
     use bitcoin::{Amount, ScriptBuf, TxOut};
 
     fn create_test_block(height: u32, prev_outpoints: &[OutPoint]) -> Block {
-        use bitcoin::CompactTarget;
         use bitcoin::blockdata::block::{Header, Version};
         use bitcoin::blockdata::transaction::{Transaction, TxIn, Version as TxVersion};
+        use bitcoin::CompactTarget;
 
         // Create unique coinbase script_sig with height (like real Bitcoin blocks)
         let mut coinbase_script = vec![0x03]; // Push 3 bytes
@@ -914,9 +926,9 @@ mod tests {
     /// by an earlier transaction in the same block.
     #[test]
     fn test_in_block_utxo_spending() {
-        use bitcoin::CompactTarget;
         use bitcoin::blockdata::block::{Header, Version};
         use bitcoin::blockdata::transaction::{Transaction, TxIn, Version as TxVersion};
+        use bitcoin::CompactTarget;
 
         let storage = BitcoinState::open_temp().unwrap();
 
@@ -1037,9 +1049,9 @@ mod tests {
     /// Test count consistency after multiple blocks with in-block spending.
     #[test]
     fn test_count_consistency_with_in_block_spending() {
-        use bitcoin::CompactTarget;
         use bitcoin::blockdata::block::{Header, Version};
         use bitcoin::blockdata::transaction::{Transaction, TxIn, Version as TxVersion};
+        use bitcoin::CompactTarget;
 
         let storage = BitcoinState::open_temp().unwrap();
 
@@ -1149,9 +1161,9 @@ mod tests {
     /// This test verifies that we handle this case correctly.
     #[test]
     fn test_duplicate_coinbase_txid_handling() {
-        use bitcoin::CompactTarget;
         use bitcoin::blockdata::block::{Header, Version};
         use bitcoin::blockdata::transaction::{Transaction, TxIn, Version as TxVersion};
+        use bitcoin::CompactTarget;
 
         let storage = BitcoinState::open_temp().unwrap();
 
@@ -1329,8 +1341,8 @@ mod tests {
 
         // Verify ordering is consistent (lexicographic by OutPoint key)
         for i in 1..all_exported.len() {
-            let prev_key = crate::coin::outpoint_to_key(&all_exported[i - 1].0);
-            let curr_key = crate::coin::outpoint_to_key(&all_exported[i].0);
+            let prev_key = outpoint_to_key(&all_exported[i - 1].0);
+            let curr_key = outpoint_to_key(&all_exported[i].0);
             assert!(prev_key < curr_key, "UTXOs not in lexicographic order");
         }
     }
@@ -1466,9 +1478,20 @@ mod tests {
         assert!(storage.verify_muhash(&muhash));
 
         // Incorrect verification
-        assert!(
-            !storage
-                .verify_muhash("0000000000000000000000000000000000000000000000000000000000000000")
-        );
+        assert!(!storage
+            .verify_muhash("0000000000000000000000000000000000000000000000000000000000000000"));
+    }
+
+    #[test]
+    fn test_outpoint_key_roundtrip() {
+        let outpoint = OutPoint {
+            txid: bitcoin::Txid::all_zeros(),
+            vout: 42,
+        };
+
+        let key = outpoint_to_key(&outpoint);
+        let decoded = key_to_outpoint(&key);
+
+        assert_eq!(outpoint, decoded);
     }
 }

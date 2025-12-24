@@ -10,6 +10,28 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
+/// Parsed checkpoints indexed by height.
+static CHECKPOINTS: LazyLock<HashMap<u32, Checkpoint>> = LazyLock::new(|| {
+    let file: CheckpointFile = serde_json::from_str(include_str!("checkpoints.json"))
+        .expect("Failed to parse checkpoints.json");
+
+    file.checkpoints
+        .into_iter()
+        .map(|cp| {
+            (
+                cp.height,
+                Checkpoint {
+                    height: cp.height,
+                    block_hash: cp.block_hash,
+                    txouts: cp.txouts,
+                    muhash: cp.muhash,
+                    total_amount: cp.total_amount,
+                },
+            )
+        })
+        .collect()
+});
+
 /// Raw checkpoint data as stored in JSON.
 #[derive(Debug, Deserialize)]
 struct CheckpointData {
@@ -48,29 +70,6 @@ pub struct Checkpoint {
     pub muhash: String,
     pub total_amount: f64,
 }
-
-/// Parsed checkpoints indexed by height.
-static CHECKPOINTS: LazyLock<HashMap<u32, Checkpoint>> = LazyLock::new(|| {
-    let json_str = include_str!("checkpoints.json");
-    let file: CheckpointFile =
-        serde_json::from_str(json_str).expect("Failed to parse checkpoints.json");
-
-    file.checkpoints
-        .into_iter()
-        .map(|cp| {
-            (
-                cp.height,
-                Checkpoint {
-                    height: cp.height,
-                    block_hash: cp.block_hash,
-                    txouts: cp.txouts,
-                    muhash: cp.muhash,
-                    total_amount: cp.total_amount,
-                },
-            )
-        })
-        .collect()
-});
 
 /// Get the full checkpoint data at a specific height.
 ///

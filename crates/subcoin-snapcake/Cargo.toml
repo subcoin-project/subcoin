@@ -46,4 +46,4 @@ subcoin-service = { workspace = true }
 subcoin-utxo-snapshot = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
-rocksdb = "0.21.0"
+rocksdb = { workspace = true }

@@ -11,11 +11,11 @@ description = "Bitcoin state (UTXO set) storage with MuHash commitment for Subco
 bincode = { workspace = true }
 bitcoin = { workspace = true, features = ["serde", "std"] }
 parking_lot = { workspace = true }
-rocksdb = "0.21.0"
+rocksdb = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 subcoin-crypto = { workspace = true }
-subcoin-runtime-primitives = { workspace = true }
+subcoin-runtime-primitives = { workspace = true, features = ["std"] }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 

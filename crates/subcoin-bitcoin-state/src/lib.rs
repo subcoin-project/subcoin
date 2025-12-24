@@ -18,14 +18,13 @@
 //! - Constant-time commitment computation
 
 pub mod checkpoints;
-mod coin;
 mod error;
 mod storage;
 mod undo;
 
-pub use coin::Coin;
 pub use error::Error;
 pub use storage::{BitcoinState, UtxoIterator};
+pub use subcoin_runtime_primitives::Coin;
 pub use undo::BlockUndo;
 
 /// Result type for UTXO storage operations.
