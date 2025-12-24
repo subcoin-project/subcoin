@@ -214,9 +214,9 @@ pub enum BlockSyncOption {
     AlwaysOn,
     /// Bitcoin block sync is fully disabled.
     Off,
-    /// Bitcoin block sync is paused until Substrate fast sync completes,
+    /// Bitcoin block sync is paused until Substrate snap sync completes,
     /// after which it resumes automatically.
-    PausedUntilFastSync,
+    PausedUntilSnapSync,
 }
 
 /// Memory management configuration for network operations.
@@ -272,7 +272,7 @@ pub struct Config {
     /// Whether to enable the block sync on startup.
     ///
     /// The block sync from Bitcoin P2P network may be disabled temporarily when
-    /// performing fast sync from the Subcoin network.
+    /// performing snap sync from the Subcoin network.
     pub block_sync: BlockSyncOption,
     /// Memory management configuration.
     pub memory_config: MemoryConfig,
@@ -308,7 +308,7 @@ fn builtin_seednodes(network: BitcoinNetwork) -> &'static [&'static str] {
 /// Watch the Substrate sync status and enable the subcoin block sync when the Substate
 /// state sync is finished.
 // TODO: I'm not super happy with pulling in the dep sc-network-sync just for SyncingService.
-async fn watch_substrate_fast_sync<Block>(
+async fn watch_substrate_snap_sync<Block>(
     subcoin_network_handle: NetworkHandle,
     substate_sync_service: Arc<SyncingService<Block>>,
 ) where
@@ -499,16 +499,16 @@ where
         tracing::info!("Subcoin block sync is disabled on startup");
     }
 
-    if matches!(block_sync, BlockSyncOption::PausedUntilFastSync) {
+    if matches!(block_sync, BlockSyncOption::PausedUntilSnapSync) {
         if let Some(substrate_sync_service) = substrate_sync_service {
             spawn_handle.spawn(
-                "substrate-fast-sync-watcher",
+                "substrate-snap-sync-watcher",
                 None,
-                watch_substrate_fast_sync(network_handle.clone(), substrate_sync_service),
+                watch_substrate_snap_sync(network_handle.clone(), substrate_sync_service),
             );
         } else {
             tracing::warn!(
-                "Block sync from Bitcoin P2P network will not be started automatically on Substrate fast sync completion"
+                "Block sync from Bitcoin P2P network will not be started automatically on Substrate snap sync completion"
             );
         }
     }

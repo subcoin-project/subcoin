@@ -401,9 +401,9 @@ impl BitcoinState {
         self.muhash_hex() == expected_hex
     }
 
-    // --- UTXO Sync Methods (for P2P fast sync) ---
+    // --- UTXO Sync Methods (for P2P snap sync) ---
 
-    /// Export a chunk of UTXOs for serving to peers during fast sync.
+    /// Export a chunk of UTXOs for serving to peers during snap sync.
     ///
     /// Returns UTXOs in lexicographic order by OutPoint for deterministic pagination.
     ///
@@ -561,7 +561,7 @@ impl BitcoinState {
         Ok((is_consistent, actual_count, recomputed_muhash_hex))
     }
 
-    /// Bulk import UTXOs for fast sync (no undo data).
+    /// Bulk import UTXOs for snap sync (no undo data).
     ///
     /// This is used during initial sync when downloading UTXO snapshots from peers.
     /// No undo data is stored since we trust the checkpoint verification.
@@ -639,7 +639,7 @@ impl BitcoinState {
         Ok(())
     }
 
-    /// Clear all UTXO data (for restarting fast sync after verification failure).
+    /// Clear all UTXO data (for restarting snap sync after verification failure).
     ///
     /// This removes all UTXOs and resets metadata to initial state.
     pub fn clear(&self) -> Result<()> {

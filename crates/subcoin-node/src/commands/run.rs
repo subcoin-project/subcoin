@@ -146,16 +146,16 @@ impl Run {
     }
 
     fn block_sync_option(&self) -> BlockSyncOption {
-        let fast_sync_enabled = matches!(
+        let snap_sync_enabled = matches!(
             self.substrate_network_params.sync,
             SyncMode::Fast | SyncMode::FastUnsafe
         );
 
         // The block sync from bitcoin P2P network will be temporarily disabled
-        // if the fast sync is enabled.
-        match (self.subcoin_network.no_block_sync(), fast_sync_enabled) {
+        // if the snap sync is enabled.
+        match (self.subcoin_network.no_block_sync(), snap_sync_enabled) {
             (true, _) => BlockSyncOption::Off,
-            (false, true) => BlockSyncOption::PausedUntilFastSync,
+            (false, true) => BlockSyncOption::PausedUntilSnapSync,
             (false, false) => BlockSyncOption::AlwaysOn,
         }
     }

@@ -7,7 +7,7 @@
 //! of [`sc_service::Client`] but do not perform any significant tasks.
 //!
 //! The downloaded UTXO set snapshot is fully compatible with Bitcoin Core, enabling Bitcoin Core's
-//! Fast Sync feature without the need for a trusted snapshot provider. This enhances decentralization
+//! assumeutxo feature without the need for a trusted snapshot provider. This enhances decentralization
 //! by allowing users to quickly synchronize their Bitcoin Core node without relying on external,
 //! centralized sources for the snapshot.
 //!
@@ -16,7 +16,7 @@
 //! - **Decentralized UTXO Set Download:** Fetch the UTXO set from the decentralized Subcoin P2P network,
 //!   removing the need for trusted third-party snapshots.
 //! - **Bitcoin Core Compatibility:** Generate UTXO set snapshots compatible with Bitcoin Core's `txoutset`,
-//!   allowing for seamless integration with Bitcoin's Fast Sync functionality.
+//!   allowing for seamless integration with Bitcoin's assumeutxo functionality.
 //! - **Lightweight Node:** Only includes essential network components for state syncing, reducing
 //!   resource consumption compared to a full regular Substrate node.
 //!
@@ -31,7 +31,7 @@
 //!
 //! `snapcake` can be used to speed up the synchronization of Bitcoin Core nodes by providing decentralized
 //! UTXO snapshots, thereby reducing the reliance on centralized snapshot providers and enhancing the
-//! decentralization of Bitcoin's fast sync process.
+//! decentralization of Bitcoin's assumeutxo process.
 
 #![allow(clippy::result_large_err)]
 
@@ -59,7 +59,7 @@ use std::sync::Arc;
 use subcoin_runtime::RuntimeApi;
 use subcoin_runtime::interface::OpaqueBlock as Block;
 use subcoin_service::{GenesisBlockBuilder, TransactionAdapter};
-use syncing_strategy::{FastSyncConfig, TargetBlock};
+use syncing_strategy::{SnapSyncConfig, TargetBlock};
 
 type FullClient = sc_service::TFullClient<Block, RuntimeApi, WasmExecutor>;
 
@@ -76,11 +76,11 @@ fn main() -> sc_cli::Result<()> {
         TargetBlock::LastFinalized
     };
 
-    // Resolve fast sync configuration
-    let fast_sync_config = if app.fast_sync {
-        let config = if let Some(target_height) = app.fast_sync_target {
+    // Resolve snap sync configuration
+    let snap_sync_config = if app.snap_sync {
+        let config = if let Some(target_height) = app.snap_sync_target {
             // Use specified target height
-            FastSyncConfig::for_height(target_height).ok_or_else(|| {
+            SnapSyncConfig::for_height(target_height).ok_or_else(|| {
                 sc_cli::Error::Input(format!(
                     "No MuHash checkpoint found for height {target_height}. \
                      Available checkpoints: {:?}",
@@ -89,12 +89,12 @@ fn main() -> sc_cli::Result<()> {
             })?
         } else {
             // Use highest checkpoint
-            FastSyncConfig::from_highest_checkpoint().ok_or_else(|| {
-                sc_cli::Error::Input("No MuHash checkpoints available for fast sync".to_string())
+            SnapSyncConfig::from_highest_checkpoint().ok_or_else(|| {
+                sc_cli::Error::Input("No MuHash checkpoints available for snap sync".to_string())
             })?
         };
         tracing::info!(
-            "Fast sync enabled: target height={}, muhash={}",
+            "Snap sync enabled: target height={}, muhash={}",
             config.target_height,
             config.expected_muhash
         );
@@ -114,7 +114,7 @@ fn main() -> sc_cli::Result<()> {
                 skip_proof,
                 command.snapshot_dir(),
                 sync_target,
-                fast_sync_config,
+                snap_sync_config,
             )
         })
         .map_err(Into::into)
@@ -126,7 +126,7 @@ fn start_snapcake_node(
     skip_proof: bool,
     snapshot_dir: PathBuf,
     sync_target: TargetBlock<Block>,
-    fast_sync_config: Option<FastSyncConfig>,
+    snap_sync_config: Option<SnapSyncConfig>,
 ) -> Result<TaskManager, sc_service::error::Error> {
     let executor = sc_service::new_wasm_executor(&config.executor);
     let backend = sc_service::new_db_backend(config.db_config())?;
@@ -165,7 +165,7 @@ fn start_snapcake_node(
                 skip_proof,
                 snapshot_dir,
                 sync_target,
-                fast_sync_config,
+                snap_sync_config,
             )?
         }
         NetworkBackendType::Litep2p => {
@@ -177,7 +177,7 @@ fn start_snapcake_node(
                 skip_proof,
                 snapshot_dir,
                 sync_target,
-                fast_sync_config,
+                snap_sync_config,
             )?;
         }
     }
@@ -193,7 +193,7 @@ fn start_substrate_network<N>(
     skip_proof: bool,
     snapshot_dir: PathBuf,
     sync_target: TargetBlock<Block>,
-    fast_sync_config: Option<FastSyncConfig>,
+    snap_sync_config: Option<SnapSyncConfig>,
 ) -> Result<(), sc_service::error::Error>
 where
     N: sc_network::NetworkBackend<Block, <Block as BlockT>::Hash>,
@@ -257,7 +257,7 @@ where
         skip_proof,
         snapshot_dir,
         sync_target,
-        fast_sync_config,
+        snap_sync_config,
     )?;
 
     let (syncing_engine, sync_service, block_announce_config) = SyncingEngine::new(

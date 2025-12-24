@@ -1,6 +1,6 @@
 //! End-to-end tests for UTXO sync between two nodes.
 //!
-//! These tests simulate the P2P UTXO fast sync protocol:
+//! These tests simulate the P2P UTXO snap sync protocol:
 //! - Server node: Has UTXOs and serves chunks to peers
 //! - Client node: Downloads UTXO chunks and verifies with MuHash
 //!

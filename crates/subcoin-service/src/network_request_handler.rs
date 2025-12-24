@@ -101,9 +101,9 @@ pub mod v1 {
         GetCoinsCount { block_hash: Block::Hash },
         /// Request the header of specified block.
         GetBlockHeader { block_number: NumberFor<Block> },
-        /// Request UTXO set info for fast sync.
+        /// Request UTXO set info for snap sync.
         GetUtxoSetInfo,
-        /// Request a chunk of UTXOs for fast sync.
+        /// Request a chunk of UTXOs for snap sync.
         GetUtxoChunk {
             /// Cursor for pagination (36 bytes: txid + vout).
             /// None means start from beginning.
@@ -124,7 +124,7 @@ pub mod v1 {
         CoinsCount { block_hash: Block::Hash, count: u64 },
         /// Block header.
         BlockHeader { block_header: Block::Header },
-        /// UTXO set info for fast sync.
+        /// UTXO set info for snap sync.
         UtxoSetInfo {
             /// Block height of the UTXO set.
             height: u32,
@@ -133,7 +133,7 @@ pub mod v1 {
             /// MuHash commitment.
             muhash: MuHashCommitment,
         },
-        /// A chunk of UTXOs for fast sync.
+        /// A chunk of UTXOs for snap sync.
         UtxoChunk {
             /// UTXO entries in this chunk.
             entries: Vec<UtxoEntry>,

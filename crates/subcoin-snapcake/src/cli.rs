@@ -78,19 +78,19 @@ pub struct App {
     #[arg(long, default_value = "true")]
     pub skip_proof: bool,
 
-    /// Enable UTXO fast sync mode.
+    /// Enable UTXO snap sync mode.
     ///
     /// When enabled, downloads UTXOs directly from peers using the P2P UTXO sync protocol
     /// instead of the legacy Substrate state sync. This is faster and more efficient.
     #[arg(long)]
-    pub fast_sync: bool,
+    pub snap_sync: bool,
 
-    /// Target block height for fast sync.
+    /// Target block height for snap sync.
     ///
     /// If not specified, uses the highest available MuHash checkpoint.
     /// The specified height must have a known MuHash checkpoint.
-    #[arg(long, value_name = "HEIGHT", requires = "fast_sync")]
-    pub fast_sync_target: Option<u32>,
+    #[arg(long, value_name = "HEIGHT", requires = "snap_sync")]
+    pub snap_sync_target: Option<u32>,
 
     /// Sets a custom logging filter (syntax: `<target>=<level>`).
     ///

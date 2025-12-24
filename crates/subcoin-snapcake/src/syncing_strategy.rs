@@ -38,17 +38,17 @@ const LOG_TARGET: &str = "sync::snapcake";
 
 const SUBCOIN_STRATEGY_KEY: StrategyKey = StrategyKey::new("Subcoin");
 
-/// Configuration for UTXO fast sync mode.
+/// Configuration for UTXO snap sync mode.
 #[derive(Debug, Clone)]
-pub struct FastSyncConfig {
-    /// Target block height for fast sync.
+pub struct SnapSyncConfig {
+    /// Target block height for snap sync.
     pub target_height: u32,
     /// Expected MuHash at the target height.
     pub expected_muhash: String,
 }
 
-impl FastSyncConfig {
-    /// Create a new fast sync configuration.
+impl SnapSyncConfig {
+    /// Create a new snap sync configuration.
     pub fn new(target_height: u32, expected_muhash: String) -> Self {
         Self {
             target_height,
@@ -56,7 +56,7 @@ impl FastSyncConfig {
         }
     }
 
-    /// Create a fast sync configuration from the highest available checkpoint.
+    /// Create a snap sync configuration from the highest available checkpoint.
     ///
     /// Returns `None` if no checkpoints are available.
     pub fn from_highest_checkpoint() -> Option<Self> {
@@ -64,7 +64,7 @@ impl FastSyncConfig {
             .map(|cp| Self::new(cp.height, cp.muhash.clone()))
     }
 
-    /// Create a fast sync configuration for a specific height.
+    /// Create a snap sync configuration for a specific height.
     ///
     /// Returns `None` if no checkpoint exists for the given height.
     pub fn for_height(height: u32) -> Option<Self> {
@@ -110,7 +110,7 @@ pub fn build_snapcake_syncing_strategy<Block, Client, Net>(
     skip_proof: bool,
     snapshot_dir: PathBuf,
     sync_target: TargetBlock<Block>,
-    fast_sync_config: Option<FastSyncConfig>,
+    snap_sync_config: Option<SnapSyncConfig>,
 ) -> Result<Box<dyn SyncingStrategy<Block>>, sc_service::Error>
 where
     Block: BlockT,
@@ -179,11 +179,11 @@ where
         subcoin_network_request_protocol_name,
     )?;
 
-    // Enable UTXO fast sync if configured
-    if let Some(config) = fast_sync_config {
+    // Enable UTXO snap sync if configured
+    if let Some(config) = snap_sync_config {
         tracing::info!(
             target: LOG_TARGET,
-            "Enabling UTXO fast sync: target height={}, muhash={}",
+            "Enabling UTXO snap sync: target height={}, muhash={}",
             config.target_height,
             config.expected_muhash
         );
@@ -203,7 +203,7 @@ pub struct SnapcakeSyncingStrategy<B: BlockT, Client> {
     state: Option<StateStrategy<B>>,
     /// `ChainSync` strategy.`
     chain_sync: Option<ChainSync<B, Client>>,
-    /// UTXO snap sync for fast sync mode.
+    /// UTXO snap sync for snap sync mode.
     utxo_snap_sync: Option<UtxoSnapSync<B>>,
     /// Bitcoin state storage.
     bitcoin_state: Arc<BitcoinState>,
@@ -933,7 +933,7 @@ where
         } else if let Some(ref mut snap_sync) = self.utxo_snap_sync {
             // UTXO sync is active - generate UTXO sync actions
             if snap_sync.is_complete() {
-                tracing::info!(target: LOG_TARGET, "✅ UTXO fast sync complete!");
+                tracing::info!(target: LOG_TARGET, "✅ UTXO snap sync complete!");
                 self.utxo_snap_sync = None;
                 self.state_sync_complete = true;
                 // Exit the program once UTXO sync is complete

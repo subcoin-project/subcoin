@@ -1,7 +1,7 @@
 //! MuHash checkpoints for UTXO set verification.
 //!
 //! These checkpoints are derived from Bitcoin Core's `gettxoutsetinfo muhash <height>`
-//! command and can be used to verify fast sync downloads.
+//! command and can be used to verify snap sync downloads.
 //!
 //! The checkpoint data is stored in `checkpoints.json` and loaded at compile time.
 //! See that file for the Bitcoin Core version used to generate these values.
