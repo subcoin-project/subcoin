@@ -46,6 +46,8 @@ sp-runtime = { workspace = true }
 sp-state-machine = { workspace = true }
 sp-storage = { workspace = true }
 sp-trie = { workspace = true }
+subcoin-bitcoin-state = { workspace = true }
+subcoin-crypto = { workspace = true }
 subcoin-network = { workspace = true }
 subcoin-primitives = { workspace = true }
 subcoin-runtime = { workspace = true }

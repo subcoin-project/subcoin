@@ -17,6 +17,7 @@
 //! - O(1) MuHash update per UTXO
 //! - Constant-time commitment computation
 
+pub mod checkpoints;
 mod coin;
 mod error;
 mod storage;

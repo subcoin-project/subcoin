@@ -229,6 +229,26 @@ impl BitcoinState {
             let coin = Coin::from_txout(output, height, is_coinbase);
             let key = outpoint_to_key(&outpoint);
 
+            // Check for duplicate coinbase txid (BIP30 edge case).
+            // Bitcoin had duplicate coinbase txids in blocks 91722/91812 and 91880/91842.
+            // If the outpoint already exists, we need to handle it specially:
+            // - Remove old entry from MuHash before adding new
+            // - Don't increment count (we're replacing, not creating)
+            let is_duplicate = self.db.get_cf(cf_utxos, key).ok().flatten().is_some();
+
+            if is_duplicate {
+                // Remove old coin from MuHash (we'll add the new one below)
+                if let Some(old_bytes) = self.db.get_cf(cf_utxos, key).ok().flatten() {
+                    if let Ok(old_coin) = Coin::decode(&old_bytes) {
+                        let old_muhash_data = old_coin.serialize_for_muhash(&outpoint);
+                        muhash.remove(&old_muhash_data);
+                    }
+                }
+                tracing::warn!(
+                    "Duplicate coinbase txid at height {height}: {outpoint:?} (BIP30 edge case)"
+                );
+            }
+
             // Record for undo
             undo.record_create(outpoint);
 
@@ -241,7 +261,11 @@ impl BitcoinState {
 
             // Add to storage
             batch.put_cf(cf_utxos, key, coin.encode());
-            *created += 1;
+
+            // Only increment count if this is a NEW entry, not a duplicate
+            if !is_duplicate {
+                *created += 1;
+            }
         }
 
         Ok(())
@@ -421,6 +445,112 @@ impl BitcoinState {
         let next_cursor = if is_complete { None } else { last_key };
 
         Ok((entries, next_cursor, is_complete))
+    }
+
+    /// Count actual entries in the UTXOS column family (for debugging).
+    ///
+    /// This iterates through all entries and counts them, comparing with metadata.
+    pub fn count_actual_utxos(&self) -> Result<(u64, u64, u64)> {
+        let cf = self.db.cf_handle(cf::UTXOS).ok_or(Error::NotInitialized)?;
+
+        let mut iter = self.db.raw_iterator_cf(cf);
+        iter.seek_to_first();
+
+        let mut total_entries = 0u64;
+        let mut entries_36_bytes = 0u64;
+        let mut entries_other = 0u64;
+
+        while iter.valid() {
+            if let Some(key) = iter.key() {
+                total_entries += 1;
+                if key.len() == 36 {
+                    entries_36_bytes += 1;
+                } else {
+                    entries_other += 1;
+                    tracing::warn!(
+                        "Found entry with unexpected key length: {} bytes",
+                        key.len()
+                    );
+                }
+            }
+            iter.next();
+        }
+
+        let metadata_count = self.utxo_count();
+
+        tracing::info!(
+            "UTXO count check: metadata={metadata_count}, actual_total={total_entries}, \
+             36-byte keys={entries_36_bytes}, other keys={entries_other}"
+        );
+
+        Ok((metadata_count, entries_36_bytes, entries_other))
+    }
+
+    /// Verify and optionally repair MuHash consistency.
+    ///
+    /// Recomputes MuHash from actual DB contents and compares with stored value.
+    /// If there's a mismatch, updates the stored MuHash and count to match reality.
+    ///
+    /// Returns (was_consistent, actual_count, actual_muhash_hex).
+    pub fn verify_and_repair_muhash(&self) -> Result<(bool, u64, String)> {
+        use crate::coin::key_to_outpoint;
+
+        let cf_utxos = self.db.cf_handle(cf::UTXOS).ok_or(Error::NotInitialized)?;
+        let cf_meta = self.db.cf_handle(cf::META).ok_or(Error::NotInitialized)?;
+
+        // Recompute MuHash from actual DB contents
+        let mut recomputed_muhash = MuHash3072::new();
+        let mut actual_count: u64 = 0;
+
+        let mut iter = self.db.raw_iterator_cf(cf_utxos);
+        iter.seek_to_first();
+
+        while iter.valid() {
+            if let (Some(key), Some(value)) = (iter.key(), iter.value()) {
+                if key.len() == 36 {
+                    let key_array: [u8; 36] = key.try_into().unwrap();
+                    let outpoint = key_to_outpoint(&key_array);
+                    let coin =
+                        Coin::decode(value).map_err(|e| Error::Deserialization(e.to_string()))?;
+
+                    let muhash_data = coin.serialize_for_muhash(&outpoint);
+                    recomputed_muhash.insert(&muhash_data);
+                    actual_count += 1;
+                }
+            }
+            iter.next();
+        }
+
+        let stored_muhash_hex = self.muhash.read().txoutset_muhash();
+        let recomputed_muhash_hex = recomputed_muhash.txoutset_muhash();
+        let stored_count = *self.utxo_count.read();
+
+        let is_consistent =
+            stored_muhash_hex == recomputed_muhash_hex && stored_count == actual_count;
+
+        if !is_consistent {
+            tracing::warn!(
+                "MuHash inconsistency detected! stored_count={stored_count}, actual_count={actual_count}, \
+                 stored_muhash={stored_muhash_hex}, recomputed_muhash={recomputed_muhash_hex}"
+            );
+
+            // Repair: update stored values to match reality
+            let mut batch = rocksdb::WriteBatch::default();
+            batch.put_cf(cf_meta, meta_keys::MUHASH, recomputed_muhash.serialize());
+            batch.put_cf(cf_meta, meta_keys::UTXO_COUNT, actual_count.to_le_bytes());
+            self.db.write(batch)?;
+
+            *self.muhash.write() = recomputed_muhash.clone();
+            *self.utxo_count.write() = actual_count;
+
+            tracing::info!("Repaired MuHash: count={actual_count}, muhash={recomputed_muhash_hex}");
+        } else {
+            tracing::info!(
+                "MuHash verification passed: count={actual_count}, muhash={recomputed_muhash_hex}"
+            );
+        }
+
+        Ok((is_consistent, actual_count, recomputed_muhash_hex))
     }
 
     /// Bulk import UTXOs for fast sync (no undo data).
@@ -895,6 +1025,241 @@ mod tests {
 
         // tx2's output should exist
         assert!(storage.contains(&tx2_output));
+
+        // CRITICAL: Verify count consistency - metadata should match actual DB
+        let (metadata_count, actual_count, other_keys) = storage.count_actual_utxos().unwrap();
+        assert_eq!(
+            metadata_count, actual_count,
+            "Metadata count ({metadata_count}) should match actual DB entries ({actual_count})"
+        );
+        assert_eq!(other_keys, 0, "Should not have any non-36-byte keys");
+
+        // Verify MuHash consistency
+        let (is_consistent, _, _) = storage.verify_and_repair_muhash().unwrap();
+        assert!(
+            is_consistent,
+            "MuHash should be consistent without needing repair"
+        );
+    }
+
+    /// Test count consistency after multiple blocks with in-block spending.
+    #[test]
+    fn test_count_consistency_with_in_block_spending() {
+        use bitcoin::CompactTarget;
+        use bitcoin::blockdata::block::{Header, Version};
+        use bitcoin::blockdata::transaction::{Transaction, TxIn, Version as TxVersion};
+
+        let storage = BitcoinState::open_temp().unwrap();
+
+        // Apply genesis block
+        let genesis = create_test_block(0, &[]);
+        storage.apply_block(&genesis, 0).unwrap();
+
+        let mut prev_coinbase = OutPoint {
+            txid: genesis.txdata[0].compute_txid(),
+            vout: 0,
+        };
+
+        // Apply 10 blocks, each with in-block spending
+        for height in 1..=10 {
+            let coinbase_tx = Transaction {
+                version: TxVersion::TWO,
+                lock_time: bitcoin::absolute::LockTime::ZERO,
+                input: vec![TxIn {
+                    previous_output: OutPoint::null(),
+                    script_sig: ScriptBuf::from_bytes(vec![height as u8, 0x01]),
+                    sequence: bitcoin::Sequence::MAX,
+                    witness: bitcoin::Witness::new(),
+                }],
+                output: vec![TxOut {
+                    value: Amount::from_sat(5_000_000_000),
+                    script_pubkey: ScriptBuf::new_p2pkh(&bitcoin::PubkeyHash::all_zeros()),
+                }],
+            };
+
+            // tx1: spends previous coinbase, creates output
+            let tx1 = Transaction {
+                version: TxVersion::TWO,
+                lock_time: bitcoin::absolute::LockTime::ZERO,
+                input: vec![TxIn {
+                    previous_output: prev_coinbase,
+                    script_sig: ScriptBuf::new(),
+                    sequence: bitcoin::Sequence::MAX,
+                    witness: bitcoin::Witness::new(),
+                }],
+                output: vec![TxOut {
+                    value: Amount::from_sat(4_000_000_000),
+                    script_pubkey: ScriptBuf::new_p2pkh(&bitcoin::PubkeyHash::all_zeros()),
+                }],
+            };
+
+            let tx1_output = OutPoint {
+                txid: tx1.compute_txid(),
+                vout: 0,
+            };
+
+            // tx2: spends tx1's output (in-block spending!)
+            let tx2 = Transaction {
+                version: TxVersion::TWO,
+                lock_time: bitcoin::absolute::LockTime::ZERO,
+                input: vec![TxIn {
+                    previous_output: tx1_output,
+                    script_sig: ScriptBuf::new(),
+                    sequence: bitcoin::Sequence::MAX,
+                    witness: bitcoin::Witness::new(),
+                }],
+                output: vec![TxOut {
+                    value: Amount::from_sat(3_000_000_000),
+                    script_pubkey: ScriptBuf::new_p2pkh(&bitcoin::PubkeyHash::all_zeros()),
+                }],
+            };
+
+            let block = Block {
+                header: Header {
+                    version: Version::TWO,
+                    prev_blockhash: bitcoin::BlockHash::all_zeros(),
+                    merkle_root: bitcoin::TxMerkleNode::all_zeros(),
+                    time: 0,
+                    bits: CompactTarget::from_consensus(0),
+                    nonce: height,
+                },
+                txdata: vec![coinbase_tx.clone(), tx1, tx2],
+            };
+
+            storage.apply_block(&block, height).unwrap();
+
+            // Update for next iteration
+            prev_coinbase = OutPoint {
+                txid: coinbase_tx.compute_txid(),
+                vout: 0,
+            };
+
+            // Check count consistency after each block
+            let (metadata_count, actual_count, _) = storage.count_actual_utxos().unwrap();
+            assert_eq!(
+                metadata_count, actual_count,
+                "Count mismatch at height {height}: metadata={metadata_count}, actual={actual_count}"
+            );
+        }
+
+        // Final MuHash consistency check
+        let (is_consistent, actual_count, _) = storage.verify_and_repair_muhash().unwrap();
+        assert!(is_consistent, "MuHash should be consistent");
+        assert_eq!(storage.utxo_count(), actual_count);
+    }
+
+    /// Test for the duplicate coinbase bug (BIP30 violation in early Bitcoin blocks).
+    ///
+    /// Bitcoin had blocks with duplicate coinbase txids:
+    /// - Block 91722 and 91812 share the same coinbase txid
+    /// - Block 91880 and 91842 share the same coinbase txid
+    ///
+    /// This test verifies that we handle this case correctly.
+    #[test]
+    fn test_duplicate_coinbase_txid_handling() {
+        use bitcoin::CompactTarget;
+        use bitcoin::blockdata::block::{Header, Version};
+        use bitcoin::blockdata::transaction::{Transaction, TxIn, Version as TxVersion};
+
+        let storage = BitcoinState::open_temp().unwrap();
+
+        // Create a coinbase transaction that will be used by two blocks
+        let duplicate_coinbase = Transaction {
+            version: TxVersion::TWO,
+            lock_time: bitcoin::absolute::LockTime::ZERO,
+            input: vec![TxIn {
+                previous_output: OutPoint::null(),
+                // Same script to get same txid
+                script_sig: ScriptBuf::from_bytes(vec![0x04, 0xff, 0xff, 0x00, 0x1d, 0x01, 0x04]),
+                sequence: bitcoin::Sequence::MAX,
+                witness: bitcoin::Witness::new(),
+            }],
+            output: vec![TxOut {
+                value: Amount::from_sat(5_000_000_000),
+                script_pubkey: ScriptBuf::new_p2pkh(&bitcoin::PubkeyHash::all_zeros()),
+            }],
+        };
+
+        let duplicate_outpoint = OutPoint {
+            txid: duplicate_coinbase.compute_txid(),
+            vout: 0,
+        };
+
+        // Block 1: First block with this coinbase
+        let block1 = Block {
+            header: Header {
+                version: Version::TWO,
+                prev_blockhash: bitcoin::BlockHash::all_zeros(),
+                merkle_root: bitcoin::TxMerkleNode::all_zeros(),
+                time: 0,
+                bits: CompactTarget::from_consensus(0),
+                nonce: 1,
+            },
+            txdata: vec![duplicate_coinbase.clone()],
+        };
+
+        storage.apply_block(&block1, 1).unwrap();
+        assert_eq!(storage.utxo_count(), 1);
+        assert!(storage.contains(&duplicate_outpoint));
+
+        // Block 2: Different unique coinbase
+        let unique_coinbase = Transaction {
+            version: TxVersion::TWO,
+            lock_time: bitcoin::absolute::LockTime::ZERO,
+            input: vec![TxIn {
+                previous_output: OutPoint::null(),
+                script_sig: ScriptBuf::from_bytes(vec![0x02, 0x02]),
+                sequence: bitcoin::Sequence::MAX,
+                witness: bitcoin::Witness::new(),
+            }],
+            output: vec![TxOut {
+                value: Amount::from_sat(5_000_000_000),
+                script_pubkey: ScriptBuf::new_p2pkh(&bitcoin::PubkeyHash::all_zeros()),
+            }],
+        };
+
+        let block2 = Block {
+            header: Header {
+                version: Version::TWO,
+                prev_blockhash: bitcoin::BlockHash::all_zeros(),
+                merkle_root: bitcoin::TxMerkleNode::all_zeros(),
+                time: 0,
+                bits: CompactTarget::from_consensus(0),
+                nonce: 2,
+            },
+            txdata: vec![unique_coinbase],
+        };
+
+        storage.apply_block(&block2, 2).unwrap();
+        assert_eq!(storage.utxo_count(), 2);
+
+        // Block 3: DUPLICATE coinbase (same txid as block 1!)
+        // This simulates the BIP30 bug in blocks 91722/91812 and 91880/91842
+        let block3 = Block {
+            header: Header {
+                version: Version::TWO,
+                prev_blockhash: bitcoin::BlockHash::all_zeros(),
+                merkle_root: bitcoin::TxMerkleNode::all_zeros(),
+                time: 0,
+                bits: CompactTarget::from_consensus(0),
+                nonce: 3,
+            },
+            txdata: vec![duplicate_coinbase],
+        };
+
+        storage.apply_block(&block3, 3).unwrap();
+
+        // BUG: Without fix, count would be 3 but actual DB has only 2 entries!
+        // The duplicate overwrites the existing entry in DB but still increments count.
+
+        // Verify count consistency
+        let (metadata_count, actual_count, _) = storage.count_actual_utxos().unwrap();
+
+        // This assertion will FAIL if the bug exists
+        assert_eq!(
+            metadata_count, actual_count,
+            "Duplicate coinbase bug: metadata count ({metadata_count}) != actual DB entries ({actual_count})"
+        );
     }
 
     // --- Tests for UTXO Sync Methods ---

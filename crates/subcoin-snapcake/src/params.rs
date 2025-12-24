@@ -98,7 +98,7 @@ impl SnapcakeNetworkParams {
             out_peers: 8,
             in_peers: 32,
             in_peers_light: 100,
-            no_mdns: true,
+            no_mdns: false,
             max_parallel_downloads: 8,
             node_key_params: NodeKeyParams {
                 node_key: None,
@@ -106,7 +106,7 @@ impl SnapcakeNetworkParams {
                 node_key_file: None,
                 unsafe_force_node_key_generation: false,
             },
-            discover_local: false,
+            discover_local: true,
             kademlia_disjoint_query_paths: false,
             kademlia_replication_factor: NonZero::new(20).expect("20 is not zero"),
             ipfs_server: false,

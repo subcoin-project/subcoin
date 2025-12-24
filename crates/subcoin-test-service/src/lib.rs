@@ -186,3 +186,136 @@ pub async fn new_test_node_and_produce_blocks(
 
     client
 }
+
+/// Import blocks and return both client and BitcoinState for verification.
+pub async fn import_blocks_with_state(
+    config: &Configuration,
+    up_to: u32,
+) -> (Arc<FullClient>, Arc<BitcoinState>) {
+    let NodeComponents { client, .. } =
+        subcoin_service::new_node(SubcoinConfiguration::test_config(config))
+            .expect("Failed to create node");
+
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+    let bitcoin_state =
+        Arc::new(BitcoinState::open(temp_dir.path()).expect("Failed to open Bitcoin state"));
+
+    let mut bitcoin_block_import =
+        BitcoinBlockImporter::<_, _, _, _, subcoin_service::TransactionAdapter>::new(
+            client.clone(),
+            client.clone(),
+            ImportConfig {
+                network: bitcoin::Network::Bitcoin,
+                block_verification: BlockVerification::None,
+                execute_block: true,
+                script_engine: ScriptEngine::Core,
+                parallel_verification: true,
+            },
+            bitcoin_state.clone(),
+            None,
+        );
+
+    let test_blocks = block_data();
+
+    if up_to as usize >= test_blocks.len() {
+        panic!(
+            "Can not produce too many blocks (maximum: {}) in test env",
+            test_blocks.len()
+        );
+    }
+
+    // Start from block 0 (genesis) - it may already be in chain, which is fine
+    for block_number in 0..=up_to {
+        let block = test_blocks[block_number as usize].clone();
+        let import_status = bitcoin_block_import
+            .import_block(block, BlockOrigin::Own)
+            .await
+            .unwrap();
+        // Genesis may already be in chain, other blocks should be imported
+        assert!(
+            matches!(import_status, ImportStatus::Imported { .. })
+                || matches!(import_status, ImportStatus::AlreadyInChain(_)),
+            "Unexpected import status: {import_status:?}"
+        );
+    }
+
+    (client, bitcoin_state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::runtime::Handle;
+
+    #[tokio::test]
+    async fn test_block_import_count_consistency() {
+        let runtime_handle = Handle::current();
+        let config = test_configuration(runtime_handle);
+
+        // Import 3 blocks (genesis + blocks 1-3)
+        let (_client, bitcoin_state) = import_blocks_with_state(&config, 3).await;
+
+        // Verify the state is at the expected height
+        assert_eq!(bitcoin_state.height(), 3);
+
+        // CRITICAL: Verify count consistency between metadata and actual DB
+        let (metadata_count, actual_count, other_keys) =
+            bitcoin_state.count_actual_utxos().unwrap();
+        assert_eq!(
+            metadata_count, actual_count,
+            "Block import count mismatch: metadata={metadata_count}, actual={actual_count}"
+        );
+        assert_eq!(other_keys, 0, "Should not have non-36-byte keys");
+
+        // Verify MuHash consistency
+        let (is_consistent, _, _) = bitcoin_state.verify_and_repair_muhash().unwrap();
+        assert!(
+            is_consistent,
+            "MuHash should be consistent after block import"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_utxo_sync_after_block_import() {
+        let runtime_handle = Handle::current();
+        let config = test_configuration(runtime_handle);
+
+        // Import blocks to create source state
+        let (_client, source_state) = import_blocks_with_state(&config, 3).await;
+
+        // Create target state
+        let temp_dir = tempfile::tempdir().unwrap();
+        let target_state =
+            Arc::new(BitcoinState::open(temp_dir.path()).expect("Failed to open target state"));
+
+        // Export all UTXOs from source
+        let mut all_utxos = Vec::new();
+        let mut cursor = None;
+        loop {
+            let (chunk, next_cursor, is_complete) =
+                source_state.export_chunk(cursor.as_ref(), 100).unwrap();
+            all_utxos.extend(chunk);
+            if is_complete {
+                break;
+            }
+            cursor = next_cursor;
+        }
+
+        // Import into target
+        target_state.bulk_import(all_utxos).unwrap();
+        target_state.finalize_import(source_state.height()).unwrap();
+
+        // Verify sync was successful
+        assert_eq!(target_state.height(), source_state.height());
+        assert_eq!(target_state.utxo_count(), source_state.utxo_count());
+        assert_eq!(target_state.muhash_hex(), source_state.muhash_hex());
+
+        // Verify count consistency on both sides
+        let (src_meta, src_actual, _) = source_state.count_actual_utxos().unwrap();
+        let (tgt_meta, tgt_actual, _) = target_state.count_actual_utxos().unwrap();
+
+        assert_eq!(src_meta, src_actual, "Source count should be consistent");
+        assert_eq!(tgt_meta, tgt_actual, "Target count should be consistent");
+        assert_eq!(src_actual, tgt_actual, "Actual counts should match");
+    }
+}

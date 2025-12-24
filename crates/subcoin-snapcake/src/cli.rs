@@ -78,6 +78,20 @@ pub struct App {
     #[arg(long, default_value = "true")]
     pub skip_proof: bool,
 
+    /// Enable UTXO fast sync mode.
+    ///
+    /// When enabled, downloads UTXOs directly from peers using the P2P UTXO sync protocol
+    /// instead of the legacy Substrate state sync. This is faster and more efficient.
+    #[arg(long)]
+    pub fast_sync: bool,
+
+    /// Target block height for fast sync.
+    ///
+    /// If not specified, uses the highest available MuHash checkpoint.
+    /// The specified height must have a known MuHash checkpoint.
+    #[arg(long, value_name = "HEIGHT", requires = "fast_sync")]
+    pub fast_sync_target: Option<u32>,
+
     /// Sets a custom logging filter (syntax: `<target>=<level>`).
     ///
     /// Log levels (least to most verbose) are `error`, `warn`, `info`, `debug`, and `trace`.

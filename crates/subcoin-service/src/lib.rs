@@ -242,6 +242,7 @@ pub fn start_substrate_network<N>(
     _backend: Arc<FullBackend>,
     task_manager: &mut TaskManager,
     bitcoin_network: bitcoin::Network,
+    bitcoin_state: Arc<subcoin_bitcoin_state::BitcoinState>,
     mut telemetry: Option<Telemetry>,
 ) -> Result<SubstrateNetworkingParts, ServiceError>
 where
@@ -259,6 +260,7 @@ where
             &config.protocol_id(),
             config.chain_spec.fork_id(),
             client.clone(),
+            bitcoin_state,
             100,
         );
         task_manager.spawn_handle().spawn(

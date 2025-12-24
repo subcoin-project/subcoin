@@ -229,6 +229,11 @@ impl RunCmd {
             ))))
         })?;
 
+        // Verify MuHash consistency and repair if needed
+        if let Err(err) = state.verify_and_repair_muhash() {
+            tracing::warn!("Failed to verify MuHash: {err:?}");
+        }
+
         // Validate Bitcoin state is in sync with chain
         let state_height = state.height();
         let chain_height = chain_info.best_number;
@@ -271,6 +276,7 @@ impl RunCmd {
                     backend,
                     &mut task_manager,
                     bitcoin_network,
+                    bitcoin_state.clone(),
                     telemetry,
                 )?
             }
@@ -281,6 +287,7 @@ impl RunCmd {
                     backend,
                     &mut task_manager,
                     bitcoin_network,
+                    bitcoin_state.clone(),
                     telemetry,
                 )?
             }

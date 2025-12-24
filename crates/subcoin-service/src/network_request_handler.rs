@@ -68,6 +68,30 @@ pub enum VersionedNetworkResponse<Block: BlockT> {
 pub mod v1 {
     use sp_runtime::traits::{Block as BlockT, NumberFor};
 
+    /// MuHash commitment for UTXO set verification (768 bytes serialized).
+    #[derive(Debug, Clone, codec::Encode, codec::Decode)]
+    pub struct MuHashCommitment(pub [u8; 768]);
+
+    impl MuHashCommitment {
+        /// Create from raw bytes.
+        pub fn from_bytes(bytes: [u8; 768]) -> Self {
+            Self(bytes)
+        }
+
+        /// Get the inner bytes.
+        pub fn as_bytes(&self) -> &[u8; 768] {
+            &self.0
+        }
+
+        /// Compute the txoutset muhash (32-byte hash in Bitcoin Core format).
+        ///
+        /// This deserializes the 768-byte state and computes the final hash.
+        pub fn txoutset_muhash(&self) -> String {
+            let muhash = subcoin_crypto::MuHash3072::deserialize(&self.0);
+            muhash.txoutset_muhash()
+        }
+    }
+
     /// Subcoin network specific requests.
     #[derive(Debug, codec::Encode, codec::Decode)]
     pub enum NetworkRequest<Block: BlockT> {
@@ -77,6 +101,16 @@ pub mod v1 {
         GetCoinsCount { block_hash: Block::Hash },
         /// Request the header of specified block.
         GetBlockHeader { block_number: NumberFor<Block> },
+        /// Request UTXO set info for fast sync.
+        GetUtxoSetInfo,
+        /// Request a chunk of UTXOs for fast sync.
+        GetUtxoChunk {
+            /// Cursor for pagination (36 bytes: txid + vout).
+            /// None means start from beginning.
+            cursor: Option<[u8; 36]>,
+            /// Maximum number of UTXOs to return.
+            max_entries: u32,
+        },
     }
 
     /// Subcoin network specific responses.
@@ -90,12 +124,48 @@ pub mod v1 {
         CoinsCount { block_hash: Block::Hash, count: u64 },
         /// Block header.
         BlockHeader { block_header: Block::Header },
+        /// UTXO set info for fast sync.
+        UtxoSetInfo {
+            /// Block height of the UTXO set.
+            height: u32,
+            /// Total number of UTXOs.
+            utxo_count: u64,
+            /// MuHash commitment.
+            muhash: MuHashCommitment,
+        },
+        /// A chunk of UTXOs for fast sync.
+        UtxoChunk {
+            /// UTXO entries in this chunk.
+            entries: Vec<UtxoEntry>,
+            /// Cursor for next chunk (None if this is the last chunk).
+            next_cursor: Option<[u8; 36]>,
+            /// Whether this is the final chunk.
+            is_complete: bool,
+        },
+    }
+
+    /// A single UTXO entry for P2P transmission.
+    #[derive(Debug, Clone, codec::Encode, codec::Decode)]
+    pub struct UtxoEntry {
+        /// Transaction ID (32 bytes).
+        pub txid: [u8; 32],
+        /// Output index.
+        pub vout: u32,
+        /// Whether from coinbase transaction.
+        pub is_coinbase: bool,
+        /// Value in satoshis.
+        pub amount: u64,
+        /// Block height where the UTXO was created.
+        pub height: u32,
+        /// ScriptPubKey.
+        pub script_pubkey: Vec<u8>,
     }
 }
 
 /// Handler for incoming block requests from a remote peer.
 pub struct NetworkRequestHandler<Block, Client> {
     client: Arc<Client>,
+    bitcoin_state: Arc<subcoin_bitcoin_state::BitcoinState>,
     request_receiver: async_channel::Receiver<IncomingRequest>,
     _phantom: PhantomData<Block>,
 }
@@ -110,6 +180,7 @@ where
         protocol_id: &ProtocolId,
         fork_id: Option<&str>,
         client: Arc<Client>,
+        bitcoin_state: Arc<subcoin_bitcoin_state::BitcoinState>,
         num_peer_hint: usize,
     ) -> (Self, N::RequestResponseProtocolConfig) {
         // Reserve enough request slots for one request per peer when we are at the maximum
@@ -127,6 +198,7 @@ where
         (
             Self {
                 client,
+                bitcoin_state,
                 request_receiver,
                 _phantom: Default::default(),
             },
@@ -218,6 +290,75 @@ where
                             "Header for #{block_number},{block_hash} not found"
                         ))
                     })?)
+            }
+            v1::NetworkRequest::GetUtxoSetInfo => {
+                let height = self.bitcoin_state.height();
+                let utxo_count = self.bitcoin_state.utxo_count();
+                let muhash =
+                    v1::MuHashCommitment::from_bytes(self.bitcoin_state.muhash_serialized());
+
+                Ok(v1::NetworkResponse::<B>::UtxoSetInfo {
+                    height,
+                    utxo_count,
+                    muhash,
+                })
+            }
+            v1::NetworkRequest::GetUtxoChunk {
+                cursor,
+                max_entries,
+            } => {
+                // Debug: verify actual DB entries match metadata on first request
+                if cursor.is_none() {
+                    if let Err(e) = self.bitcoin_state.count_actual_utxos() {
+                        tracing::warn!("Failed to count UTXOs: {e:?}");
+                    }
+                }
+
+                tracing::info!(
+                    "GetUtxoChunk request: cursor={}, max_entries={max_entries}",
+                    if cursor.is_some() {
+                        "Some(...)"
+                    } else {
+                        "None"
+                    }
+                );
+
+                let (utxos, next_cursor, is_complete) = self
+                    .bitcoin_state
+                    .export_chunk(cursor.as_ref(), max_entries)
+                    .map_err(|e| {
+                        HandleRequestError::Client(sp_blockchain::Error::Backend(format!(
+                            "Failed to export UTXO chunk: {e}"
+                        )))
+                    })?;
+
+                tracing::info!(
+                    "GetUtxoChunk response: entries={}, next_cursor={}, is_complete={is_complete}",
+                    utxos.len(),
+                    if next_cursor.is_some() {
+                        "Some(...)"
+                    } else {
+                        "None"
+                    }
+                );
+
+                let entries = utxos
+                    .into_iter()
+                    .map(|(outpoint, coin)| v1::UtxoEntry {
+                        txid: *outpoint.txid.as_ref(),
+                        vout: outpoint.vout,
+                        is_coinbase: coin.is_coinbase,
+                        amount: coin.amount,
+                        height: coin.height,
+                        script_pubkey: coin.script_pubkey,
+                    })
+                    .collect();
+
+                Ok(v1::NetworkResponse::<B>::UtxoChunk {
+                    entries,
+                    next_cursor,
+                    is_complete,
+                })
             }
         }
     }
