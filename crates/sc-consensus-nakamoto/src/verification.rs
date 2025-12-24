@@ -121,51 +121,50 @@ struct ScriptVerificationTask {
     tx: Option<bitcoin::Transaction>,
 }
 
-/// Verifies a single script verification task.
-///
-/// This function is designed to be called from multiple threads.
-fn verify_script_task(
-    task: &ScriptVerificationTask,
-    script_engine: ScriptEngine,
-) -> Result<(), Error> {
-    match script_engine {
-        ScriptEngine::Core => script_verify::verify_input_script(
-            &task.spent_output,
-            &task.spending_tx_bytes,
-            task.input_index,
-            task.flags,
-        ),
-        ScriptEngine::Subcoin => {
-            let tx = task
-                .tx
-                .as_ref()
-                .expect("Transaction must be present for Subcoin engine; qed");
-            let input = &tx.input[task.input_index];
+impl ScriptVerificationTask {
+    /// Verifies this script verification task.
+    ///
+    /// This method is designed to be called from multiple threads.
+    fn verify(&self, script_engine: ScriptEngine) -> Result<(), Error> {
+        match script_engine {
+            ScriptEngine::Core => script_verify::verify_input_script(
+                &self.spent_output,
+                &self.spending_tx_bytes,
+                self.input_index,
+                self.flags,
+            ),
+            ScriptEngine::Subcoin => {
+                let tx = self
+                    .tx
+                    .as_ref()
+                    .expect("Transaction must be present for Subcoin engine; qed");
+                let input = &tx.input[self.input_index];
 
-            let mut checker = subcoin_script::TransactionSignatureChecker::new(
-                tx,
-                task.input_index,
-                task.spent_output.value.to_sat(),
-            );
+                let mut checker = subcoin_script::TransactionSignatureChecker::new(
+                    tx,
+                    self.input_index,
+                    self.spent_output.value.to_sat(),
+                );
 
-            let verify_flags =
-                subcoin_script::VerifyFlags::from_bits(task.flags).expect("Invalid flags");
+                let verify_flags =
+                    subcoin_script::VerifyFlags::from_bits(self.flags).expect("Invalid flags");
 
-            subcoin_script::verify_script(
-                &input.script_sig,
-                &task.spent_output.script_pubkey,
-                &input.witness,
-                &verify_flags,
-                &mut checker,
-            )
-            .map_err(|script_err| Error::InvalidScript {
-                block_hash: BlockHash::all_zeros(),
-                context: task.tx_context.clone(),
-                input_index: task.input_index,
-                error: Box::new(script_err),
-            })
+                subcoin_script::verify_script(
+                    &input.script_sig,
+                    &self.spent_output.script_pubkey,
+                    &input.witness,
+                    &verify_flags,
+                    &mut checker,
+                )
+                .map_err(|script_err| Error::InvalidScript {
+                    block_hash: BlockHash::all_zeros(),
+                    context: self.tx_context.clone(),
+                    input_index: self.input_index,
+                    error: Box::new(script_err),
+                })
+            }
+            ScriptEngine::None => Ok(()),
         }
-        ScriptEngine::None => Ok(()),
     }
 }
 
@@ -182,7 +181,7 @@ fn verify_scripts_parallel(
     }
 
     tasks.par_iter().try_for_each(|task| {
-        verify_script_task(task, script_engine).map_err(|err| {
+        task.verify(script_engine).map_err(|err| {
             // Update block_hash in error if needed
             match err {
                 Error::InvalidScript {
@@ -213,7 +212,7 @@ fn verify_scripts_sequential(
     }
 
     for task in tasks {
-        verify_script_task(task, script_engine).map_err(|err| match err {
+        task.verify(script_engine).map_err(|err| match err {
             Error::InvalidScript {
                 context,
                 input_index,
