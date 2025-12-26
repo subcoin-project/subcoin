@@ -1,5 +1,6 @@
 mod aux_schema;
 mod block_import;
+mod block_preparation;
 mod chain_params;
 mod import_queue;
 mod metrics;
@@ -7,6 +8,9 @@ mod verification;
 mod verifier;
 
 pub use block_import::{BitcoinBlockImport, BitcoinBlockImporter, ImportConfig, ImportStatus};
+pub use block_preparation::{
+    InBlockOutput, PreparedBlock, TxExecutionLevels, UtxoProvider, VerifiedBlock,
+};
 pub use chain_params::ChainParams;
 pub use import_queue::{
     BlockImportQueue, ImportBlocks, ImportManyBlocksResult, bitcoin_import_queue,
