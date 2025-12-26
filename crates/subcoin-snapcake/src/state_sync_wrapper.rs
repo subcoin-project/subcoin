@@ -53,7 +53,7 @@ where
         );
 
         Self {
-            inner: StateSync::new(client, target_header, None, None, skip_proof),
+            inner: StateSync::new(client, target_header, None, None, skip_proof, None),
             target_block_number: target_block_number.saturated_into(),
             target_bitcoin_block_hash,
             muhash: MuHash3072::new(),

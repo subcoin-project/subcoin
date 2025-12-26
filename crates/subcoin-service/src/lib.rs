@@ -252,7 +252,7 @@ type SubstrateNetworkingParts = (
 pub fn start_substrate_network<N>(
     config: &mut Configuration,
     client: Arc<FullClient>,
-    _backend: Arc<FullBackend>,
+    backend: Arc<FullBackend>,
     task_manager: &mut TaskManager,
     bitcoin_network: bitcoin::Network,
     mut telemetry: Option<Telemetry>,
@@ -317,6 +317,7 @@ where
             warp_sync_config: None,
             block_relay: None,
             metrics,
+            trie_node_writer: Some(backend.trie_node_writer()),
         })?;
 
     // Custom `sc_service::spawn_tasks` with some needless tasks removed.
