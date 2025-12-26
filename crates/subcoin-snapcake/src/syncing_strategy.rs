@@ -550,7 +550,7 @@ where
                     debug_assert!(false);
                 }
             }
-            WarpSync::<B, Client>::STRATEGY_KEY => {
+            WarpSync::<B>::STRATEGY_KEY => {
                 unreachable!("Warp sync unsupported")
             }
             ChainSync::<B, Client>::STRATEGY_KEY => {
