@@ -7,7 +7,7 @@ fn test_runtime_txid_type() {
     let genesis_block = bitcoin::constants::genesis_block(bitcoin::Network::Bitcoin);
     let txid = genesis_block.txdata[0].compute_txid();
 
-    let runtime_txid: crate::Txid = txid.into();
+    let runtime_txid: crate::types::Txid = txid.into();
 
     // Verify encoding matches (bitcoin txid is in reverse order)
     let mut d = Vec::new();

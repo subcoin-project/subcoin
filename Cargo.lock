@@ -7407,6 +7407,7 @@ dependencies = [
  "futures",
  "hex-literal",
  "parity-scale-codec",
+ "rayon",
  "sc-client-api",
  "sc-consensus",
  "sc-utils",
@@ -7417,6 +7418,7 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-state-machine",
+ "subcoin-bitcoin-state",
  "subcoin-primitives",
  "subcoin-script",
  "substrate-prometheus-endpoint",
@@ -9391,6 +9393,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "subcoin-bitcoin-state"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "bitcoin 0.32.2",
+ "parking_lot 0.12.4",
+ "rocksdb",
+ "serde",
+ "serde_json",
+ "subcoin-crypto",
+ "subcoin-runtime-primitives",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
 name = "subcoin-crypto"
 version = "0.1.0"
 dependencies = [
@@ -9443,11 +9462,10 @@ dependencies = [
  "sc-transaction-pool-api",
  "schnellru",
  "slotmap",
- "sp-api",
  "sp-blockchain",
  "sp-runtime",
+ "subcoin-bitcoin-state",
  "subcoin-primitives",
- "subcoin-runtime-primitives",
  "subcoin-script",
  "thiserror 1.0.69",
 ]
@@ -9526,6 +9544,7 @@ dependencies = [
  "sp-core",
  "sp-io",
  "sp-runtime",
+ "subcoin-bitcoin-state",
  "subcoin-crypto",
  "subcoin-indexer",
  "subcoin-informant",
@@ -9632,6 +9651,7 @@ dependencies = [
 name = "subcoin-runtime-primitives"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "bitcoin 0.32.2",
  "parity-scale-codec",
  "scale-info",
@@ -9698,6 +9718,8 @@ dependencies = [
  "sp-storage",
  "sp-tracing",
  "sp-trie",
+ "subcoin-bitcoin-state",
+ "subcoin-crypto",
  "subcoin-network",
  "subcoin-primitives",
  "subcoin-runtime",
@@ -9741,6 +9763,7 @@ dependencies = [
  "sp-consensus",
  "sp-core",
  "sp-runtime",
+ "subcoin-bitcoin-state",
  "subcoin-crypto",
  "subcoin-primitives",
  "subcoin-runtime",
@@ -9761,6 +9784,7 @@ dependencies = [
  "serde_json",
  "sp-consensus",
  "sp-keyring",
+ "subcoin-bitcoin-state",
  "subcoin-runtime",
  "subcoin-service",
  "tempfile",

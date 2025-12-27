@@ -10,6 +10,7 @@ use sc_service::config::{IpNetwork, RpcBatchRequestConfig};
 use sc_service::{BasePath, Configuration, TaskManager};
 use std::num::NonZeroU32;
 use std::sync::Arc;
+use subcoin_bitcoin_state::BitcoinState;
 use subcoin_network::{BlockSyncOption, NetworkApi, SyncStrategy};
 use subcoin_primitives::{CONFIRMATION_DEPTH, TransactionIndex};
 
@@ -145,16 +146,16 @@ impl Run {
     }
 
     fn block_sync_option(&self) -> BlockSyncOption {
-        let fast_sync_enabled = matches!(
+        let snap_sync_enabled = matches!(
             self.substrate_network_params.sync,
             SyncMode::Fast | SyncMode::FastUnsafe
         );
 
         // The block sync from bitcoin P2P network will be temporarily disabled
-        // if the fast sync is enabled.
-        match (self.subcoin_network.no_block_sync(), fast_sync_enabled) {
+        // if the snap sync is enabled.
+        match (self.subcoin_network.no_block_sync(), snap_sync_enabled) {
             (true, _) => BlockSyncOption::Off,
-            (false, true) => BlockSyncOption::PausedUntilFastSync,
+            (false, true) => BlockSyncOption::PausedUntilSnapSync,
             (false, false) => BlockSyncOption::AlwaysOn,
         }
     }
@@ -212,12 +213,48 @@ impl RunCmd {
 
         let spawn_handle = task_manager.spawn_handle();
 
+        // Initialize Bitcoin state (mandatory)
+        let bitcoin_state_path = base_path_or_default(
+            run.common_params.base_path.clone().map(Into::into),
+            &crate::substrate_cli::SubstrateCli::executable_name(),
+        )
+        .path()
+        .join("bitcoin_state");
+
+        tracing::info!("🚀 Bitcoin state at {}", bitcoin_state_path.display());
+
+        let state = BitcoinState::open(&bitcoin_state_path).map_err(|err| {
+            sc_cli::Error::Application(Box::new(std::io::Error::other(format!(
+                "Failed to open Bitcoin state: {err:?}"
+            ))))
+        })?;
+
+        // Verify MuHash consistency and repair if needed
+        if let Err(err) = state.verify_and_repair_muhash() {
+            tracing::warn!("Failed to verify MuHash: {err:?}");
+        }
+
+        // Validate Bitcoin state is in sync with chain
+        let state_height = state.height();
+        let chain_height = chain_info.best_number;
+
+        if state_height != chain_height {
+            return Err(sc_cli::Error::Application(Box::new(std::io::Error::other(
+                format!(
+                    "Bitcoin state height ({state_height}) does not match chain height ({chain_height}). \
+                    Please start fresh with a clean data directory."
+                ),
+            ))));
+        }
+
+        let bitcoin_state = Arc::new(state);
+
         let bitcoin_block_import =
             BitcoinBlockImporter::<_, _, _, _, subcoin_service::TransactionAdapter>::new(
                 client.clone(),
                 client.clone(),
                 import_config,
-                Arc::new(subcoin_service::CoinStorageKey),
+                bitcoin_state.clone(),
                 config.prometheus_registry(),
             );
 
@@ -239,6 +276,7 @@ impl RunCmd {
                     backend,
                     &mut task_manager,
                     bitcoin_network,
+                    bitcoin_state.clone(),
                     telemetry,
                 )?
             }
@@ -249,6 +287,7 @@ impl RunCmd {
                     backend,
                     &mut task_manager,
                     bitcoin_network,
+                    bitcoin_state.clone(),
                     telemetry,
                 )?
             }
@@ -261,7 +300,10 @@ impl RunCmd {
                 task_manager.keep_alive(import_queue);
                 Arc::new(subcoin_network::NoNetwork)
             } else {
-                let tx_pool = Arc::new(subcoin_mempool::MemPool::new(client.clone()));
+                let tx_pool = Arc::new(subcoin_mempool::MemPool::new(
+                    client.clone(),
+                    bitcoin_state.clone(),
+                ));
 
                 let network_handle = subcoin_network::build_network(
                     client.clone(),

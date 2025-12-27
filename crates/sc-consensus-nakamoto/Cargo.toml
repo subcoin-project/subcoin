@@ -14,6 +14,7 @@ clap = { workspace = true, optional = true }
 codec = { workspace = true }
 futures = { workspace = true }
 hex-literal = { workspace = true }
+rayon = { workspace = true }
 sc-client-api = { workspace = true }
 sc-consensus = { workspace = true }
 sc-utils = { workspace = true }
@@ -26,6 +27,7 @@ sp-runtime = { workspace = true }
 sp-state-machine = { workspace = true }
 subcoin-primitives = { workspace = true }
 subcoin-script = { workspace = true }
+subcoin-bitcoin-state = { workspace = true }
 substrate-prometheus-endpoint = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

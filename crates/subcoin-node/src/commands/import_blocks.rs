@@ -16,6 +16,7 @@ use sp_runtime::traits::{Block as BlockT, CheckedDiv, NumberFor, Zero};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use subcoin_bitcoin_state::BitcoinState;
 use subcoin_primitives::BackendExt;
 use subcoin_runtime::interface::OpaqueBlock;
 use subcoin_service::FullClient;
@@ -74,6 +75,13 @@ pub struct ImportBlocks {
     #[clap(long, default_value_t = true)]
     pub execute_transactions: bool,
 
+    /// Disable parallel script verification (for benchmarking).
+    ///
+    /// By default, script verification is parallelized using rayon. Use this flag
+    /// to run sequential verification for performance comparison.
+    #[clap(long)]
+    pub no_parallel_verification: bool,
+
     #[allow(missing_docs)]
     #[clap(flatten)]
     pub common_params: CommonParams,
@@ -94,6 +102,7 @@ pub struct ImportBlocksCmd {
     block_count: Option<usize>,
     to: Option<usize>,
     raw_block: Option<String>,
+    base_path: Option<PathBuf>,
 }
 
 impl ImportBlocksCmd {
@@ -107,7 +116,40 @@ impl ImportBlocksCmd {
             block_count: cmd.block_count,
             to: cmd.end_block,
             raw_block: cmd.raw_block.clone(),
+            base_path: cmd.common_params.base_path.clone(),
         }
+    }
+
+    /// Create Bitcoin state storage (mandatory).
+    fn create_bitcoin_state(&self, chain_height: u32) -> sc_cli::Result<Arc<BitcoinState>> {
+        let base_path = self
+            .base_path
+            .as_ref()
+            .map(|p| sc_service::BasePath::new(p.clone()))
+            .unwrap_or_else(|| sc_service::BasePath::from_project("", "", "subcoin"));
+
+        let bitcoin_state_path = base_path.path().join("bitcoin_state");
+
+        tracing::info!("🚀 Bitcoin state at {}", bitcoin_state_path.display());
+
+        let bitcoin_state = BitcoinState::open(&bitcoin_state_path).map_err(|err| {
+            sc_cli::Error::Application(Box::new(std::io::Error::other(format!(
+                "Failed to open Bitcoin state: {err:?}"
+            ))))
+        })?;
+
+        // Validate Bitcoin state is in sync with chain
+        let state_height = bitcoin_state.height();
+        if state_height != chain_height {
+            return Err(sc_cli::Error::Application(Box::new(std::io::Error::other(
+                format!(
+                    "Bitcoin state height ({state_height}) does not match chain height ({chain_height}). \
+                    Please start fresh with a clean data directory."
+                ),
+            ))));
+        }
+
+        Ok(Arc::new(bitcoin_state))
     }
 
     /// Run the import-blocks command
@@ -119,6 +161,9 @@ impl ImportBlocksCmd {
         spawn_handle: SpawnTaskHandle,
         maybe_prometheus_config: Option<PrometheusConfig>,
     ) -> sc_cli::Result<()> {
+        let chain_height = client.info().best_number;
+        let bitcoin_state = self.create_bitcoin_state(chain_height)?;
+
         // Import single block.
         if let Some(block_data) = &self.raw_block {
             let raw_block =
@@ -131,7 +176,7 @@ impl ImportBlocksCmd {
                     client.clone(),
                     client.clone(),
                     import_config,
-                    Arc::new(subcoin_service::CoinStorageKey),
+                    bitcoin_state,
                     maybe_prometheus_config
                         .as_ref()
                         .map(|config| config.registry.clone())
@@ -156,6 +201,7 @@ impl ImportBlocksCmd {
             import_config,
             spawn_handle,
             maybe_prometheus_config,
+            bitcoin_state,
         )
         .await
     }
@@ -168,6 +214,7 @@ impl ImportBlocksCmd {
         import_config: ImportConfig,
         spawn_handle: SpawnTaskHandle,
         maybe_prometheus_config: Option<PrometheusConfig>,
+        bitcoin_state: Arc<BitcoinState>,
     ) -> sc_cli::Result<()> {
         let block_provider = BitcoinBlockProvider::new(maybe_data_dir)?;
 
@@ -194,7 +241,7 @@ impl ImportBlocksCmd {
                 client.clone(),
                 client.clone(),
                 import_config,
-                Arc::new(subcoin_service::CoinStorageKey),
+                bitcoin_state,
                 maybe_prometheus_config
                     .as_ref()
                     .map(|config| config.registry.clone())

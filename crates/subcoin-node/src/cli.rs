@@ -10,7 +10,7 @@ use clap::Parser;
 // use frame_benchmarking_cli::{BenchmarkCmd, SUBSTRATE_REFERENCE_HARDWARE};
 use sc_cli::SubstrateCli as SubstrateCliT;
 use sc_client_api::UsageProvider;
-use sc_consensus_nakamoto::ImportConfig;
+use sc_consensus_nakamoto::{ImportConfig, ScriptVerification};
 use sc_service::PartialComponents;
 use std::sync::Arc;
 use subcoin_primitives::CONFIRMATION_DEPTH;
@@ -88,6 +88,11 @@ pub fn run() -> sc_cli::Result<()> {
             let bitcoin_network = cmd.common_params.bitcoin_network();
             let import_config = ImportConfig {
                 execute_block: cmd.execute_transactions,
+                script_verification: if cmd.no_parallel_verification {
+                    ScriptVerification::Sequential
+                } else {
+                    ScriptVerification::Parallel
+                },
                 ..cmd.common_params.import_config(true)
             };
             let chain_spec_id = cmd.common_params.chain.chain_spec_id();

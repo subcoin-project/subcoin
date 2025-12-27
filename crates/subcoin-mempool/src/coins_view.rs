@@ -1,28 +1,24 @@
 //! UTXO cache layer for mempool validation.
 //!
 //! Implements a dual-layer cache:
-//! - Base layer: UTXOs from the blockchain (invalidated on block import)
+//! - Base layer: UTXOs from native storage (invalidated on block import)
 //! - Overlay: UTXOs created by pending mempool transactions (never cleared on block import)
 
 use crate::error::MempoolError;
 use bitcoin::{OutPoint as COutPoint, Transaction};
-use sc_client_api::HeaderBackend;
 use schnellru::{ByLength, LruMap};
-use sp_api::ProvideRuntimeApi;
-use sp_runtime::traits::Block as BlockT;
 use std::collections::{HashMap, HashSet};
-use std::marker::PhantomData;
 use std::sync::Arc;
+use subcoin_bitcoin_state::BitcoinState;
 use subcoin_primitives::{MEMPOOL_HEIGHT, PoolCoin};
-use subcoin_runtime_primitives::SubcoinApi;
 
-/// In-memory UTXO cache with Substrate runtime backend.
+/// In-memory UTXO cache with native storage backend.
 ///
 /// Uses a dual-layer design to handle both blockchain UTXOs and mempool-created coins:
 /// - `base_cache`: LRU cache of UTXOs from the blockchain (cleared on block import)
 /// - `mempool_overlay`: Coins created by pending transactions (preserved across blocks)
 /// - `mempool_spends`: Outputs spent by pending transactions
-pub struct CoinsViewCache<Block: BlockT, Client> {
+pub struct CoinsViewCache {
     /// Base layer: coins from blockchain (invalidated on block import).
     base_cache: LruMap<COutPoint, Option<PoolCoin>, ByLength>,
 
@@ -32,36 +28,22 @@ pub struct CoinsViewCache<Block: BlockT, Client> {
     /// Outputs spent by mempool transactions.
     mempool_spends: HashSet<COutPoint>,
 
-    /// Best block hash (for runtime queries).
-    best_block: Block::Hash,
-
-    /// Substrate client for runtime API calls.
-    client: Arc<Client>,
-
-    _phantom: PhantomData<Block>,
+    /// Bitcoin state for O(1) UTXO lookups.
+    bitcoin_state: Arc<BitcoinState>,
 }
 
-impl<Block, Client> CoinsViewCache<Block, Client>
-where
-    Block: BlockT,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
-    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
-{
+impl CoinsViewCache {
     /// Create a new coins view cache.
     ///
     /// # Arguments
-    /// * `client` - Substrate client for runtime API access
+    /// * `bitcoin_state` - Bitcoin state for O(1) UTXO lookups
     /// * `cache_size` - Maximum number of base layer entries to cache
-    pub fn new(client: Arc<Client>, cache_size: u32) -> Self {
-        let best_block = client.info().best_hash;
-
+    pub fn new(bitcoin_state: Arc<BitcoinState>, cache_size: u32) -> Self {
         Self {
             base_cache: LruMap::new(ByLength::new(cache_size)),
             mempool_overlay: HashMap::new(),
             mempool_spends: HashSet::new(),
-            best_block,
-            client,
-            _phantom: PhantomData,
+            bitcoin_state,
         }
     }
 
@@ -71,7 +53,7 @@ where
     /// 1. Check if spent by mempool
     /// 2. Check mempool overlay (created by pending txs)
     /// 3. Check base cache
-    /// 4. Query runtime and cache result
+    /// 4. Query native storage and cache result
     pub fn get_coin(&mut self, outpoint: &COutPoint) -> Result<Option<PoolCoin>, MempoolError> {
         // 1. Check mempool spends first
         if self.mempool_spends.contains(outpoint) {
@@ -88,38 +70,28 @@ where
             return Ok(cached.clone());
         }
 
-        // 4. Fetch from runtime (single query)
-        let coin = self.fetch_from_runtime(outpoint)?;
+        // 4. Fetch from native storage (O(1) lookup)
+        let coin = self.fetch_from_storage(outpoint);
         self.base_cache.insert(*outpoint, coin.clone());
         Ok(coin)
     }
 
     /// Batch-prefetch coins (called at start of validation).
     ///
-    /// This is critical for performance: queries all needed coins in a single
-    /// runtime call rather than making individual calls per input.
-    ///
+    /// Queries all needed coins and caches them for subsequent lookups.
     /// Should be called with all transaction inputs before validation begins.
     pub fn ensure_coins(&mut self, outpoints: &[COutPoint]) -> Result<(), MempoolError> {
-        let missing: Vec<COutPoint> = outpoints
-            .iter()
-            .copied()
-            .filter(|op| {
-                !self.mempool_spends.contains(op)
-                    && !self.mempool_overlay.contains_key(op)
-                    && self.base_cache.peek(op).is_none()
-            })
-            .collect();
+        for outpoint in outpoints {
+            if self.mempool_spends.contains(outpoint)
+                || self.mempool_overlay.contains_key(outpoint)
+                || self.base_cache.peek(outpoint).is_some()
+            {
+                continue;
+            }
 
-        if missing.is_empty() {
-            return Ok(());
-        }
-
-        // Single batched runtime call for all missing coins
-        let coins = self.batch_fetch_from_runtime(&missing)?;
-
-        for (outpoint, coin_opt) in missing.into_iter().zip(coins) {
-            self.base_cache.insert(outpoint, coin_opt);
+            // Fetch from native storage and cache
+            let coin = self.fetch_from_storage(outpoint);
+            self.base_cache.insert(*outpoint, coin);
         }
 
         Ok(())
@@ -173,8 +145,7 @@ where
     ///
     /// **CRITICAL:** Only clears the base cache, preserving the mempool overlay.
     /// Mempool coins remain valid until their transactions are removed.
-    pub fn on_block_connected(&mut self, block_hash: Block::Hash) {
-        self.best_block = block_hash;
+    pub fn on_block_connected(&mut self) {
         self.base_cache.clear(); // Mempool overlay preserved
     }
 
@@ -187,48 +158,17 @@ where
         self.mempool_overlay.contains_key(outpoint) || self.base_cache.peek(outpoint).is_some()
     }
 
-    /// Synchronous runtime API call for single coin.
-    fn fetch_from_runtime(&self, outpoint: &COutPoint) -> Result<Option<PoolCoin>, MempoolError> {
-        let api = self.client.runtime_api();
-        let outpoint_prim = subcoin_runtime_primitives::OutPoint::from(*outpoint);
-
-        api.get_utxos(self.best_block, vec![outpoint_prim])
-            .map_err(|e| MempoolError::RuntimeApi(format!("Failed to fetch UTXO: {e:?}")))?
-            .into_iter()
-            .next()
-            .ok_or_else(|| MempoolError::RuntimeApi("Empty response from runtime API".into()))
-            .map(|opt_coin| opt_coin.map(|coin| coin.into()))
-    }
-
-    /// Batch fetch multiple coins from runtime.
-    fn batch_fetch_from_runtime(
-        &self,
-        outpoints: &[COutPoint],
-    ) -> Result<Vec<Option<PoolCoin>>, MempoolError> {
-        let api = self.client.runtime_api();
-        let outpoints_prim: Vec<_> = outpoints
-            .iter()
-            .map(|op| subcoin_runtime_primitives::OutPoint::from(*op))
-            .collect();
-
-        api.get_utxos(self.best_block, outpoints_prim)
-            .map(|coins| {
-                coins
-                    .into_iter()
-                    .map(|opt_coin| opt_coin.map(|coin| coin.into()))
-                    .collect()
-            })
-            .map_err(|e| MempoolError::RuntimeApi(format!("Batch fetch failed: {e:?}")))
-    }
-
-    /// Get the current best block hash.
-    pub fn best_block(&self) -> Block::Hash {
-        self.best_block
-    }
-
-    /// Get reference to the client.
-    pub fn client(&self) -> &Arc<Client> {
-        &self.client
+    /// Fetch coin from Bitcoin state (O(1) lookup).
+    fn fetch_from_storage(&self, outpoint: &COutPoint) -> Option<PoolCoin> {
+        self.bitcoin_state.get(outpoint).map(|coin| PoolCoin {
+            output: bitcoin::TxOut {
+                value: bitcoin::Amount::from_sat(coin.amount),
+                script_pubkey: bitcoin::ScriptBuf::from_bytes(coin.script_pubkey),
+            },
+            height: coin.height,
+            is_coinbase: coin.is_coinbase,
+            median_time_past: 0, // TODO: Store MTP in native storage if needed
+        })
     }
 
     /// Get statistics about the cache.
@@ -257,6 +197,5 @@ mod tests {
     #[allow(unused_imports)]
     use super::*;
 
-    // Note: Full tests require a mock runtime API implementation.
-    // These will be added when the runtime implementation is complete.
+    // Note: Full tests require a mock native storage implementation.
 }

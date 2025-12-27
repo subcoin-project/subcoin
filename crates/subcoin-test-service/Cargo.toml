@@ -15,5 +15,6 @@ sp-consensus = { workspace = true }
 sp-keyring = { workspace = true }
 subcoin-runtime = { workspace = true }
 subcoin-service = { workspace = true }
+subcoin-bitcoin-state = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }

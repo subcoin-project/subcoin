@@ -1,0 +1,23 @@
+[package]
+name = "subcoin-bitcoin-state"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+description = "Bitcoin state (UTXO set) storage with MuHash commitment for Subcoin"
+
+[dependencies]
+bincode = { workspace = true }
+bitcoin = { workspace = true, features = ["serde", "std"] }
+parking_lot = { workspace = true }
+rocksdb = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+subcoin-crypto = { workspace = true }
+subcoin-runtime-primitives = { workspace = true, features = ["std"] }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

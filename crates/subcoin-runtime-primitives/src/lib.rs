@@ -6,6 +6,8 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 use bitcoin::consensus::Encodable;
+#[cfg(feature = "std")]
+use bitcoin::{Amount, ScriptBuf};
 use codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_core::H256;
@@ -44,6 +46,60 @@ pub struct Coin {
 impl MaxEncodedLen for Coin {
     fn max_encoded_len() -> usize {
         bool::max_encoded_len() + u64::max_encoded_len() + MAX_SCRIPT_SIZE
+    }
+}
+
+#[cfg(feature = "std")]
+impl Coin {
+    /// Create a Coin from a Bitcoin TxOut.
+    pub fn from_txout(txout: &bitcoin::TxOut, height: u32, is_coinbase: bool) -> Self {
+        Self {
+            is_coinbase,
+            amount: txout.value.to_sat(),
+            height,
+            script_pubkey: txout.script_pubkey.to_bytes(),
+        }
+    }
+
+    /// Serialize to bytes for storage (using bincode).
+    pub fn encode_for_storage(&self) -> Vec<u8> {
+        bincode::serialize(self).expect("Coin serialization should not fail")
+    }
+
+    /// Deserialize from storage bytes.
+    pub fn decode_from_storage(bytes: &[u8]) -> Result<Self, bincode::Error> {
+        bincode::deserialize(bytes)
+    }
+
+    /// Serialize for MuHash computation (Bitcoin Core compatible format).
+    ///
+    /// Format: OutPoint || (height << 1 | is_coinbase) || TxOut
+    ///
+    /// Reference: <https://github.com/bitcoin/bitcoin/blob/6f9db1e/src/kernel/coinstats.cpp#L51>
+    pub fn serialize_for_muhash(&self, outpoint: &bitcoin::OutPoint) -> Vec<u8> {
+        let mut data = Vec::with_capacity(36 + 4 + 8 + self.script_pubkey.len() + 9);
+
+        // Serialize OutPoint (txid || vout)
+        outpoint
+            .consensus_encode(&mut data)
+            .expect("OutPoint encoding should not fail");
+
+        // Serialize height and coinbase flag: (height << 1) | is_coinbase
+        let height_and_coinbase = (self.height << 1) | (self.is_coinbase as u32);
+        height_and_coinbase
+            .consensus_encode(&mut data)
+            .expect("u32 encoding should not fail");
+
+        // Serialize TxOut (value || script)
+        let txout = bitcoin::TxOut {
+            value: Amount::from_sat(self.amount),
+            script_pubkey: ScriptBuf::from_bytes(self.script_pubkey.clone()),
+        };
+        txout
+            .consensus_encode(&mut data)
+            .expect("TxOut encoding should not fail");
+
+        data
     }
 }
 
@@ -140,6 +196,9 @@ fn block_subsidy(height: u32, subsidy_halving_interval: u32) -> u64 {
 
 sp_api::decl_runtime_apis! {
     /// Subcoin API.
+    ///
+    /// Note: UTXO queries (coins_count, get_utxos) have been moved to native storage.
+    /// Use `NativeUtxoStorage` directly for O(1) UTXO lookups.
     pub trait SubcoinApi {
         /// Same as the original `execute_block()` with the removal
         /// of `state_root` check in the `final_checks()`.
@@ -147,14 +206,5 @@ sp_api::decl_runtime_apis! {
 
         /// Finalize block without checking the extrinsics_root and state_root.
         fn finalize_block_without_checks(header: Block::Header);
-
-        /// Returns the number of total coins (i.e., the size of UTXO set).
-        fn coins_count() -> u64;
-
-        /// Query UTXOs by outpoints.
-        ///
-        /// Returns a vector of the same length as the input, with `Some(Coin)` for
-        /// UTXOs that exist and `None` for those that don't.
-        fn get_utxos(outpoints: Vec<OutPoint>) -> Vec<Option<Coin>>;
     }
 }

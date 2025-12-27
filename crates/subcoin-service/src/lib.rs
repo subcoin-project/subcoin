@@ -60,19 +60,6 @@ impl NativeExecutionDispatch for SubcoinExecutorDispatch {
     }
 }
 
-/// This struct implements the trait [`subcoin_primitives::CoinStorageKey`].
-pub struct CoinStorageKey;
-
-impl subcoin_primitives::CoinStorageKey for CoinStorageKey {
-    fn storage_key(&self, txid: bitcoin::Txid, vout: u32) -> Vec<u8> {
-        pallet_bitcoin::coin_storage_key::<subcoin_runtime::Runtime>(txid, vout)
-    }
-
-    fn storage_prefix(&self) -> [u8; 32] {
-        pallet_bitcoin::coin_storage_prefix::<subcoin_runtime::Runtime>()
-    }
-}
-
 /// Subcoin node components.
 pub struct NodeComponents {
     /// Client.
@@ -255,6 +242,7 @@ pub fn start_substrate_network<N>(
     _backend: Arc<FullBackend>,
     task_manager: &mut TaskManager,
     bitcoin_network: bitcoin::Network,
+    bitcoin_state: Arc<subcoin_bitcoin_state::BitcoinState>,
     mut telemetry: Option<Telemetry>,
 ) -> Result<SubstrateNetworkingParts, ServiceError>
 where
@@ -272,6 +260,7 @@ where
             &config.protocol_id(),
             config.chain_spec.fork_id(),
             client.clone(),
+            bitcoin_state,
             100,
         );
         task_manager.spawn_handle().spawn(

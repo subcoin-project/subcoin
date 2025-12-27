@@ -1,5 +1,5 @@
 use clap::Parser;
-use sc_consensus_nakamoto::{BlockVerification, ImportConfig, ScriptEngine};
+use sc_consensus_nakamoto::{BlockVerification, ImportConfig, ScriptEngine, ScriptVerification};
 use std::path::PathBuf;
 use subcoin_network::{PeerId, SyncStrategy};
 
@@ -185,6 +185,7 @@ impl CommonParams {
             script_engine: self
                 .script_engine
                 .unwrap_or_else(|| Defaults::script_engine(is_dev)),
+            script_verification: ScriptVerification::Parallel,
         }
     }
 }

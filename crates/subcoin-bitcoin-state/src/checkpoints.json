@@ -1,0 +1,87 @@
+{
+  "metadata": {
+    "bitcoin_core_version": "v29.99.0-2def85847318",
+    "generated_at": "2025-12-24",
+    "command": "bitcoin-cli gettxoutsetinfo muhash <height>",
+    "notes": "MuHash uses SHA256 finalization. Format stable since Bitcoin Core v0.21.0 (BIP-???). Genesis coinbase is unspendable per consensus rules."
+  },
+  "checkpoints": [
+    {
+      "height": 0,
+      "block_hash": "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",
+      "txouts": 0,
+      "muhash": "dd5ad2a105c2d29495f577245c357409002329b9f4d6182c0af3dc2f462555c8",
+      "total_amount": 0.0
+    },
+    {
+      "height": 100000,
+      "block_hash": "000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506",
+      "txouts": 71888,
+      "muhash": "86aa993b32b9df2afa1a2c4855d34911146ad77328a82887e058d23f01831e3e",
+      "total_amount": 4999900.0
+    },
+    {
+      "height": 200000,
+      "block_hash": "000000000000034a7dedef4a161fa058a2d67a173a90155f3a2fe6fc132e0ebf",
+      "txouts": 2318056,
+      "muhash": "169c05b5de13ef28aa2c4e0cb9085502603e9d274babb84872349af7fa3c8ced",
+      "total_amount": 9999889.98361183
+    },
+    {
+      "height": 300000,
+      "block_hash": "000000000000000082ccf8f1557c5d40b21edabb18d2d691cfbf87118bac7254",
+      "txouts": 10852334,
+      "muhash": "fc15451c76ea4c5209a2839b35e30733053984f89d5b20c0b9b5abaa1e2683a1",
+      "total_amount": 12749864.79244827
+    },
+    {
+      "height": 400000,
+      "block_hash": "000000000000000004ec466ce4732fe6f1ed1cddc2ed4b328fff5224276e3f6f",
+      "txouts": 34820275,
+      "muhash": "95bce37e94e93fdf923d3358eba1f4599772887fb5ab30c45f78c89b7297d3e2",
+      "total_amount": 15249861.13306633
+    },
+    {
+      "height": 500000,
+      "block_hash": "00000000000000000024fb37364cbf81fd49cc2d51c09c75c35433c3a1945d04",
+      "txouts": 59949466,
+      "muhash": "cf4a51b5bd341d526f59b7917733db4579211b478217540e2cae3c1b649104c1",
+      "total_amount": 16749848.5862050
+    },
+    {
+      "height": 600000,
+      "block_hash": "00000000000000000007316856900e76b4f7a9139cfbfba89842c8d196cd5f91",
+      "txouts": 63389760,
+      "muhash": "daed1b24011562a65bf9786d216ed303232cecc50074c9e3ef7acabfac3238c9",
+      "total_amount": 17999829.82192702
+    },
+    {
+      "height": 700000,
+      "block_hash": "0000000000000000000590fc0f3eba193a278534220b2b37e9849e1a770ca959",
+      "txouts": 75262612,
+      "muhash": "35cab51d0142a8775f71e59bfefdb4af548b08470903532271d2c6c50171c897",
+      "total_amount": 18812300.04249204
+    },
+    {
+      "height": 750000,
+      "block_hash": "0000000000000000000592a974b1b9f087cb77628bb4a097d5c2c11b3476a58e",
+      "txouts": 83702786,
+      "muhash": "ee94f06373ad38e366d04622e319f39eefc296d966275f76d2d94607647c5371",
+      "total_amount": 19124792.17586219
+    },
+    {
+      "height": 800000,
+      "block_hash": "00000000000000000002a7c4c1e48d76c5a37902165a270156b7a8d72728a054",
+      "txouts": 111535121,
+      "muhash": "3e22f8ceab4ef25240bc7ae186d7dbc955ca13159759bacb0e3c878c7a62d730",
+      "total_amount": 19437286.83643360
+    },
+    {
+      "height": 840000,
+      "block_hash": "0000000000000000000320283a032748cef8227873ff4872689bf23f1cda83a5",
+      "txouts": 176948713,
+      "muhash": "ba56574e1b9a9f64ff9091b1baec407b35c9c34634c923e60467bc5e4265a637",
+      "total_amount": 19687283.61771483
+    }
+  ]
+}

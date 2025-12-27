@@ -28,6 +28,7 @@ members = [
     "crates/subcoin-test-service",
     "crates/subcoin-mempool",
     "crates/subcoin-utxo-snapshot",
+    "crates/subcoin-bitcoin-state",
 ]
 
 default-members = [
@@ -64,6 +65,7 @@ num-bigint = "0.4.6"
 num-traits = "0.2.19"
 parking_lot = "0.12"
 rayon = "1.10"
+rocksdb = "0.21.0"
 scale-info = { version = "2.11.6", default-features = false }
 serde = "1"
 serde_json = "1"
@@ -149,6 +151,7 @@ subcoin-service = { path = "crates/subcoin-service" }
 subcoin-test-service = { path = "crates/subcoin-test-service" }
 subcoin-mempool = { path = "crates/subcoin-mempool" }
 subcoin-utxo-snapshot = { path = "crates/subcoin-utxo-snapshot" }
+subcoin-bitcoin-state = { path = "crates/subcoin-bitcoin-state" }
 
 [profile.release]
 panic = "abort"

@@ -16,9 +16,6 @@ use crate::types::{ConflictSet, EntryId, FeeRate, LockPoints};
 use bitcoin::absolute::{LOCK_TIME_THRESHOLD, LockTime};
 use bitcoin::hashes::Hash;
 use bitcoin::{Transaction, Txid, Weight};
-use sc_client_api::HeaderBackend;
-use sp_api::ProvideRuntimeApi;
-use sp_runtime::traits::Block as BlockT;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::sync::Arc;
@@ -100,20 +97,14 @@ const MAX_STANDARD_TX_SIGOPS_COST: i64 = 80_000;
 /// - Not already in mempool
 /// - Input availability
 /// - Fee requirements
-pub fn pre_checks<Block, Client>(
+pub fn pre_checks(
     ws: &mut ValidationWorkspace,
     inner: &MemPoolInner,
-    coins_cache: &mut CoinsViewCache<Block, Client>,
+    coins_cache: &mut CoinsViewCache,
     options: &MemPoolOptions,
     current_height: u32,
     current_mtp: i64,
-    _best_block: Block::Hash,
-) -> Result<(), MempoolError>
-where
-    Block: BlockT,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
-    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
-{
+) -> Result<(), MempoolError> {
     let tx = &ws.tx;
 
     // 1. CheckTransaction (sanity checks)
@@ -164,7 +155,7 @@ where
         }
 
         // Validate RBF rules (BIP125)
-        let conflict_set = check_rbf_policy(ws, inner, coins_cache, options)?;
+        let conflict_set = check_rbf_policy(ws, inner, options)?;
         ws.conflict_set = Some(conflict_set);
     }
 
@@ -341,21 +332,16 @@ pub fn check_package_limits(
 /// Creates TxMemPoolEntry and adds it to arena, updating ancestor/descendant state.
 /// If conflict_set is present, removes conflicting transactions first (RBF).
 #[allow(clippy::too_many_arguments)]
-pub fn finalize_tx<Block, Client>(
+pub fn finalize_tx(
     ws: ValidationWorkspace,
     inner: &mut MemPoolInner,
-    coins_cache: &mut CoinsViewCache<Block, Client>,
+    coins_cache: &mut CoinsViewCache,
     current_height: u32,
     current_time: i64,
     entry_block_mtp: i64,
     entry_block_hash: bitcoin::BlockHash,
     sequence: u64,
-) -> Result<EntryId, MempoolError>
-where
-    Block: BlockT,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
-    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
-{
+) -> Result<EntryId, MempoolError> {
     // Handle RBF: Remove conflicting transactions if present
     if let Some(conflict_set) = &ws.conflict_set {
         // Remove from mempool (with update_descendants = true for RBF)
@@ -520,16 +506,11 @@ pub fn standard_script_verify_flags() -> VerifyFlags {
 }
 
 /// Verify transaction scripts under the provided verification flags.
-pub fn check_inputs<Block, Client>(
+pub fn check_inputs(
     ws: &ValidationWorkspace,
-    coins_cache: &mut CoinsViewCache<Block, Client>,
+    coins_cache: &mut CoinsViewCache,
     flags: VerifyFlags,
-) -> Result<(), MempoolError>
-where
-    Block: BlockT,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
-    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
-{
+) -> Result<(), MempoolError> {
     let tx = &ws.tx;
 
     for (input_index, txin) in tx.input.iter().enumerate() {
@@ -564,17 +545,11 @@ where
 /// 4. Replacement pays for its own bandwidth
 /// 5. Replacement pays for replaced bandwidth
 /// 6. No more than max_replacement_txs original transactions replaced
-pub fn check_rbf_policy<Block, Client>(
+pub fn check_rbf_policy(
     ws: &ValidationWorkspace,
     inner: &MemPoolInner,
-    _coins_cache: &CoinsViewCache<Block, Client>,
     options: &MemPoolOptions,
-) -> Result<ConflictSet, MempoolError>
-where
-    Block: BlockT,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
-    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
-{
+) -> Result<ConflictSet, MempoolError> {
     let tx = &ws.tx;
 
     // Step 1: Find ALL direct conflicts (not just first one!)
@@ -710,7 +685,7 @@ fn is_final_tx(tx: &Transaction, height: u32, block_time: u32) -> bool {
 pub fn topological_sort_package(
     transactions: Vec<Arc<Transaction>>,
 ) -> Result<Vec<Arc<Transaction>>, MempoolError> {
-    use std::collections::{HashMap, VecDeque};
+    use std::collections::VecDeque;
 
     // Build txid -> tx mapping
     let tx_map: HashMap<Txid, Arc<Transaction>> = transactions
@@ -775,16 +750,11 @@ pub fn topological_sort_package(
 ///
 /// Builds local map of in-package outputs to handle dependencies.
 /// Returns (total_fee, total_vsize, package_feerate).
-pub fn calculate_package_feerate<Block, Client>(
+pub fn calculate_package_feerate(
     sorted_txs: &[Arc<Transaction>],
     inner: &MemPoolInner,
-    coins_cache: &mut CoinsViewCache<Block, Client>,
-) -> Result<(bitcoin::Amount, i64, FeeRate), MempoolError>
-where
-    Block: BlockT,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
-    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
-{
+    coins_cache: &mut CoinsViewCache,
+) -> Result<(bitcoin::Amount, i64, FeeRate), MempoolError> {
     use bitcoin::OutPoint;
 
     // Build map of in-package outputs: outpoint -> TxOut
@@ -894,21 +864,15 @@ where
 ///
 /// IMPORTANT: Reuses Arc<Transaction> to avoid unnecessary cloning.
 #[allow(clippy::too_many_arguments)]
-pub fn pre_validate_package_tx<Block, Client>(
+pub fn pre_validate_package_tx(
     tx: Arc<Transaction>,
     inner: &MemPoolInner,
-    coins_cache: &mut CoinsViewCache<Block, Client>,
+    coins_cache: &mut CoinsViewCache,
     options: &MemPoolOptions,
     current_height: u32,
     current_mtp: i64,
-    best_block: Block::Hash,
     package_feerate: FeeRate,
-) -> Result<ValidationWorkspace, MempoolError>
-where
-    Block: BlockT,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
-    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
-{
+) -> Result<ValidationWorkspace, MempoolError> {
     // Create workspace with Arc (no cloning)
     let mut ws = ValidationWorkspace::new(tx);
 
@@ -920,7 +884,6 @@ where
         options,
         current_height,
         current_mtp,
-        best_block,
     ) {
         Ok(()) => {}
         Err(MempoolError::FeeTooLow {
@@ -954,129 +917,6 @@ where
     Ok(ws)
 }
 
-/// Validate and accept a package of transactions (two-phase commit).
-///
-/// Phase 1: Pre-validate all transactions without modifying mempool
-/// Phase 2: Finalize all transactions if all validations passed
-#[allow(clippy::too_many_arguments)]
-pub fn validate_package<Block, Client>(
-    package: &crate::types::Package,
-    inner: &mut MemPoolInner,
-    coins_cache: &mut CoinsViewCache<Block, Client>,
-    options: &MemPoolOptions,
-    current_height: u32,
-    best_block: Block::Hash,
-    current_time: i64,
-    sequence_start: u64,
-) -> Result<crate::types::PackageValidationResult, MempoolError>
-where
-    Block: BlockT,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + sc_client_api::AuxStore + Send + Sync,
-    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
-{
-    // Step 1: Check package limits
-    if package.transactions.len() > options.max_package_count {
-        return Err(MempoolError::PackageTooLarge(
-            package.transactions.len(),
-            options.max_package_count,
-        ));
-    }
-
-    // Calculate total vsize
-    let total_vsize: u64 = package
-        .transactions
-        .iter()
-        .map(|tx| tx.weight().to_vbytes_ceil())
-        .sum();
-
-    if total_vsize > options.max_package_vsize {
-        return Err(MempoolError::PackageSizeTooLarge(total_vsize));
-    }
-
-    // Step 2: Topological sort (parents before children)
-    let sorted_txs = topological_sort_package(package.transactions.clone())?;
-
-    // Step 3: Calculate package feerate (with in-package outputs map)
-    let (_total_fee, _total_vsize_i64, package_feerate) =
-        calculate_package_feerate(&sorted_txs, inner, coins_cache)?;
-
-    // Step 4: Check package meets minimum feerate
-    if package_feerate < options.min_relay_fee_rate() {
-        return Err(MempoolError::PackageFeeTooLow(format!(
-            "package feerate {package_feerate:?} < min {:?}",
-            options.min_relay_fee_rate()
-        )));
-    }
-
-    // PHASE 1: Pre-validate all transactions (NO mempool modification)
-    let mut validated_workspaces = Vec::new();
-    // TODO (Phase 8): Get actual MTP from runtime API instead of using current_time
-    let current_mtp = current_time;
-
-    for tx in &sorted_txs {
-        match pre_validate_package_tx(
-            tx.clone(),
-            inner,
-            coins_cache,
-            options,
-            current_height,
-            current_mtp,
-            best_block,
-            package_feerate,
-        ) {
-            Ok(ws) => {
-                // Add to coins cache overlay for next tx in package
-                // This makes in-package parent outputs visible to children
-                coins_cache.add_mempool_coins(&ws.tx);
-                validated_workspaces.push(ws);
-            }
-            Err(e) => {
-                // Validation failed - rollback coins cache overlay
-                for ws in &validated_workspaces {
-                    coins_cache.remove_mempool_tx(&ws.tx);
-                }
-                return Err(MempoolError::PackageTxValidationFailed(
-                    tx.compute_txid(),
-                    format!("{e}"),
-                ));
-            }
-        }
-    }
-
-    // PHASE 2: All validations passed - finalize all transactions
-    let mut accepted = Vec::new();
-    let mut sequence = sequence_start;
-
-    // Get Bitcoin block hash for entry_block_hash
-    use subcoin_primitives::BackendExt;
-    let entry_block_hash = coins_cache
-        .client()
-        .clone()
-        .bitcoin_block_hash_for(best_block)
-        .unwrap_or_else(bitcoin::BlockHash::all_zeros);
-
-    for ws in validated_workspaces {
-        let txid = ws.tx.compute_txid();
-        finalize_tx(
-            ws,
-            inner,
-            coins_cache,
-            current_height,
-            current_time,
-            current_mtp,
-            entry_block_hash,
-            sequence,
-        )?;
-        accepted.push(txid);
-        sequence += 1;
-    }
-
-    Ok(crate::types::PackageValidationResult {
-        accepted,
-        package_feerate,
-    })
-}
-
 /// BIP68 sequence lock constants
 const SEQUENCE_LOCKTIME_DISABLE_FLAG: u32 = 1u32 << 31;
 const SEQUENCE_LOCKTIME_TYPE_FLAG: u32 = 1u32 << 22;
@@ -1087,50 +927,12 @@ const SEQUENCE_LOCKTIME_GRANULARITY: i64 = 512; // 512 seconds
 ///
 /// This function computes the earliest block height and median time past (MTP) at which
 /// a transaction becomes valid, based on its inputs' sequence values according to BIP68.
-///
-/// ## BIP68 Relative Lock-Time Encoding
-///
-/// Each input's nSequence value encodes:
-/// - **Bit 31 (DISABLE_FLAG)**: If set, sequence locks are disabled for this input
-/// - **Bit 22 (TYPE_FLAG)**: If clear = height-based, if set = time-based
-/// - **Bits 0-15 (VALUE)**: The relative lock-time value
-///
-/// Height-based: Value is number of blocks since input's confirmation
-/// Time-based: Value * 512 seconds since input's MTP
-///
-/// Coinbase inputs MUST have DISABLE_FLAG set (BIP68 rule).
-///
-/// ## Lock Points Calculation
-///
-/// For each input (unless DISABLE_FLAG is set):
-/// 1. Lookup the input coin's block metadata (height, MTP)
-/// 2. If height-based: `lock_height = coin_height + sequence_value + 1`
-/// 3. If time-based: `lock_time = coin_mtp + (sequence_value * 512)`
-/// 4. Track max lock height/time across all inputs
-/// 5. Track highest input block hash (for reorg detection)
-///
-/// ## Returns
-///
-/// `LockPoints` with:
-/// - `height`: Minimum block height for validity (-1 if no height locks)
-/// - `time`: Minimum MTP for validity (0 if no time locks)
-/// - `max_input_block`: Highest block containing any input (for reorg detection)
-///
-/// ## Errors
-///
-/// Returns `MempoolError::NonBIP68Final` if the transaction is not yet final according to
-/// current chain tip.
-pub fn calculate_lock_points_at_tip<Block, Client>(
+pub fn calculate_lock_points_at_tip(
     tx: &Transaction,
-    coins_cache: &mut CoinsViewCache<Block, Client>,
+    coins_cache: &mut CoinsViewCache,
     current_height: u32,
     current_mtp: i64,
-) -> Result<LockPoints, MempoolError>
-where
-    Block: BlockT,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
-    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
-{
+) -> Result<LockPoints, MempoolError> {
     let mut lock_height: i32 = -1;
     let mut lock_time: i64 = 0;
     let max_input_block: Option<bitcoin::BlockHash> = None;
@@ -1159,16 +961,12 @@ where
         // Track highest input block for reorg detection
         if coin.height > max_input_height {
             max_input_height = coin.height;
-            // We'll need to get the block hash from the runtime
-            // For now, we'll set this in a second pass or leave as None
-            // TODO: Get block hash from runtime API
         }
 
         let masked_sequence = sequence & SEQUENCE_LOCKTIME_MASK;
 
         if (sequence & SEQUENCE_LOCKTIME_TYPE_FLAG) == 0 {
             // Height-based relative lock
-            // Formula: lock_height = coin_height + masked_sequence + 1
             let coin_lock_height = coin
                 .height
                 .checked_add(masked_sequence)
@@ -1178,7 +976,6 @@ where
             lock_height = lock_height.max(coin_lock_height as i32);
         } else {
             // Time-based relative lock (512-second granularity)
-            // Formula: lock_time = coin_mtp + (masked_sequence * 512)
             let offset = (masked_sequence as i64)
                 .checked_mul(SEQUENCE_LOCKTIME_GRANULARITY)
                 .ok_or(MempoolError::NonBIP68Final)?;
@@ -1205,6 +1002,118 @@ where
         height: lock_height,
         time: lock_time,
         max_input_block,
+    })
+}
+
+/// Validate and accept a package of transactions (CPFP support).
+///
+/// Implements two-phase commit:
+/// 1. Validate all transactions (parents before children)
+/// 2. Finalize all transactions atomically
+#[allow(clippy::too_many_arguments)]
+pub fn validate_package(
+    package: &crate::types::Package,
+    inner: &mut MemPoolInner,
+    coins_cache: &mut CoinsViewCache,
+    options: &MemPoolOptions,
+    current_height: u32,
+    current_mtp: i64,
+    sequence_start: u64,
+) -> Result<crate::types::PackageValidationResult, MempoolError> {
+    use crate::types::PackageValidationResult;
+
+    if package.transactions.is_empty() {
+        return Ok(PackageValidationResult {
+            accepted: Vec::new(),
+            package_feerate: FeeRate::from_sat_per_kvb(0),
+        });
+    }
+
+    // Check package size limits
+    if package.transactions.len() > options.max_package_count {
+        return Err(MempoolError::PackageTooLarge(
+            package.transactions.len(),
+            options.max_package_count,
+        ));
+    }
+
+    // Sort transactions topologically
+    let sorted = topological_sort_package(package.transactions.clone())?;
+
+    // Calculate package-wide feerate for CPFP
+    let (total_fee, total_vsize, package_feerate) =
+        calculate_package_feerate(&sorted, inner, coins_cache)?;
+
+    // Check package size limit
+    if total_vsize as u64 > options.max_package_vsize {
+        return Err(MempoolError::PackageSizeTooLarge(total_vsize as u64));
+    }
+
+    // Check minimum package feerate
+    if package_feerate < options.min_relay_fee_rate() {
+        return Err(MempoolError::PackageFeeTooLow(format!(
+            "package feerate {} < minimum {}",
+            package_feerate.as_sat_per_kvb(),
+            options.min_relay_fee_rate().as_sat_per_kvb()
+        )));
+    }
+
+    // Phase 1: Validate all transactions (no state changes)
+    let mut workspaces = Vec::with_capacity(sorted.len());
+
+    for tx in &sorted {
+        let ws = match pre_validate_package_tx(
+            tx.clone(),
+            inner,
+            coins_cache,
+            options,
+            current_height,
+            current_mtp,
+            package_feerate,
+        ) {
+            Ok(ws) => ws,
+            Err(e) => {
+                return Err(MempoolError::PackageTxValidationFailed(
+                    tx.compute_txid(),
+                    format!("{e:?}"),
+                ));
+            }
+        };
+        workspaces.push(ws);
+    }
+
+    // Phase 2: Finalize all transactions atomically
+    let current_time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_secs() as i64;
+
+    let mut accepted = Vec::with_capacity(workspaces.len());
+    let mut sequence = sequence_start;
+
+    for ws in workspaces {
+        let txid = ws.tx.compute_txid();
+
+        finalize_tx(
+            ws,
+            inner,
+            coins_cache,
+            current_height,
+            current_time,
+            current_mtp,
+            bitcoin::BlockHash::all_zeros(), // Package entry - no specific block hash
+            sequence,
+        )?;
+
+        accepted.push(txid);
+        sequence += 1;
+    }
+
+    let _ = total_fee; // Silence unused warning
+
+    Ok(PackageValidationResult {
+        accepted,
+        package_feerate,
     })
 }
 
@@ -1284,11 +1193,6 @@ mod tests {
         assert!(pos[&txid_b] < pos[&txid_c]);
     }
 
-    // Note: Actual cycle detection test would require creating transactions
-    // with circular dependencies, which is cryptographically impossible in Bitcoin
-    // (you can't know the txid before creating the transaction).
-    // The cycle detection code path is exercised indirectly through chain tests.
-
     #[test]
     fn test_topological_sort_empty() {
         let sorted = topological_sort_package(vec![]).unwrap();
@@ -1302,421 +1206,4 @@ mod tests {
         assert_eq!(sorted.len(), 1);
         assert_eq!(sorted[0].compute_txid(), tx.compute_txid());
     }
-
-    // TODO: BIP68 Sequence Lock Tests - Enable once MockClient ApiExt is implemented
-    // The test infrastructure is ready but requires ApiExt<Block> implementation
-    // which is complex. These tests validate calculate_lock_points_at_tip() comprehensively.
-    /*
-    #[cfg(test)]
-    mod bip68_tests {
-        use super::*;
-        use crate::coins_view::CoinsViewCache;
-        use bitcoin::hashes::Hash;
-        use bitcoin::{OutPoint, ScriptBuf, TxOut};
-        use sc_client_api::HeaderBackend;
-        use sp_api::ProvideRuntimeApi;
-        use sp_runtime::testing::{Block as TestBlock, Header, TestXt};
-        use std::collections::HashMap;
-        use std::sync::{Arc, RwLock};
-        use subcoin_primitives::PoolCoin;
-        // TODO: Fix BIP68 test mocks to use new API structure
-
-        type TestBlockType = TestBlock<TestXt<(), ()>>;
-
-        /// Mock client for BIP68 testing
-        struct MockBIP68Client {
-            utxos: RwLock<HashMap<OutPoint, PoolCoin>>,
-            best_block: RwLock<<TestBlockType as sp_runtime::traits::Block>::Hash>,
-            best_number: RwLock<u64>,
-        }
-
-        impl MockBIP68Client {
-            fn new() -> Self {
-                Self {
-                    utxos: RwLock::new(HashMap::new()),
-                    best_block: RwLock::new(Default::default()),
-                    best_number: RwLock::new(100),
-                }
-            }
-
-            fn add_utxo(&self, outpoint: OutPoint, coin: PoolCoin) {
-                self.utxos.write().unwrap().insert(outpoint, coin);
-            }
-        }
-
-        impl HeaderBackend<TestBlockType> for MockBIP68Client {
-            fn header(
-                &self,
-                _hash: <TestBlockType as sp_runtime::traits::Block>::Hash,
-            ) -> sp_blockchain::Result<Option<Header>> {
-                Ok(Some(Header::new_from_number(
-                    *self.best_number.read().unwrap(),
-                )))
-            }
-
-            fn info(&self) -> sc_client_api::blockchain::Info<TestBlockType> {
-                sc_client_api::blockchain::Info {
-                    best_hash: *self.best_block.read().unwrap(),
-                    best_number: *self.best_number.read().unwrap(),
-                    finalized_hash: Default::default(),
-                    finalized_number: 0,
-                    genesis_hash: Default::default(),
-                    number_leaves: 1,
-                    finalized_state: None,
-                    block_gap: None,
-                }
-            }
-
-            fn status(
-                &self,
-                _hash: <TestBlockType as sp_runtime::traits::Block>::Hash,
-            ) -> sp_blockchain::Result<sc_client_api::blockchain::BlockStatus> {
-                Ok(sc_client_api::blockchain::BlockStatus::InChain)
-            }
-
-            fn number(
-                &self,
-                _hash: <TestBlockType as sp_runtime::traits::Block>::Hash,
-            ) -> sp_blockchain::Result<Option<u64>> {
-                Ok(Some(*self.best_number.read().unwrap()))
-            }
-
-            fn hash(
-                &self,
-                _number: u64,
-            ) -> sp_blockchain::Result<Option<<TestBlockType as sp_runtime::traits::Block>::Hash>>
-            {
-                Ok(Some(*self.best_block.read().unwrap()))
-            }
-        }
-
-        impl ProvideRuntimeApi<TestBlockType> for MockBIP68Client {
-            type Api = Self;
-
-            fn runtime_api(&self) -> sp_api::ApiRef<Self::Api> {
-                unimplemented!()
-            }
-        }
-
-        // TODO: Implement mock using subcoin_runtime_primitives::SubcoinApi and subcoin_primitives::ClientExt
-
-        fn create_coin(height: u32, mtp: i64, is_coinbase: bool) -> PoolCoin {
-            PoolCoin {
-                output: TxOut {
-                    value: Amount::from_sat(100_000),
-                    script_pubkey: ScriptBuf::new(),
-                },
-                height,
-                is_coinbase,
-                median_time_past: mtp,
-            }
-        }
-
-        fn create_tx_with_sequence(sequence: u32) -> Transaction {
-            let prev_txid = Txid::all_zeros();
-            Transaction {
-                version: transaction::Version::TWO,
-                lock_time: LockTime::ZERO,
-                input: vec![TxIn {
-                    previous_output: OutPoint {
-                        txid: prev_txid,
-                        vout: 0,
-                    },
-                    script_sig: ScriptBuf::new(),
-                    sequence: Sequence(sequence),
-                    witness: bitcoin::Witness::new(),
-                }],
-                output: vec![TxOut {
-                    value: Amount::from_sat(50_000),
-                    script_pubkey: ScriptBuf::new(),
-                }],
-            }
-        }
-
-        #[test]
-        fn test_height_based_relative_lock() {
-            let client = Arc::new(MockBIP68Client::new());
-            let mut coins_cache = CoinsViewCache::new(client.clone(), 1000);
-
-            // Create a coin at height 50 with MTP 500000
-            let prev_txid = Txid::all_zeros();
-            let outpoint = OutPoint {
-                txid: prev_txid,
-                vout: 0,
-            };
-            client.add_utxo(outpoint, create_coin(50, 500000, false));
-
-            // Create transaction with height-based lock: 10 blocks
-            // Sequence value: 10 (no type flag = height-based)
-            let tx = create_tx_with_sequence(10);
-
-            let current_height = 100;
-            let current_mtp = 1000000;
-
-            let result =
-                calculate_lock_points_at_tip(&tx, &mut coins_cache, current_height, current_mtp);
-
-            assert!(result.is_ok());
-            let lock_points = result.unwrap();
-            // Lock height = coin_height (50) + sequence (10) + 1 = 61
-            assert_eq!(lock_points.height, 61);
-            assert_eq!(lock_points.time, 0);
-        }
-
-        #[test]
-        fn test_time_based_relative_lock() {
-            let client = Arc::new(MockBIP68Client::new());
-            let mut coins_cache = CoinsViewCache::new(client.clone(), 1000);
-
-            // Create a coin at height 50 with MTP 500000
-            let prev_txid = Txid::all_zeros();
-            let outpoint = OutPoint {
-                txid: prev_txid,
-                vout: 0,
-            };
-            client.add_utxo(outpoint, create_coin(50, 500000, false));
-
-            // Create transaction with time-based lock: 10 * 512 seconds
-            // Sequence value: 10 | TYPE_FLAG (0x00400000)
-            const TYPE_FLAG: u32 = 0x00400000;
-            let tx = create_tx_with_sequence(10 | TYPE_FLAG);
-
-            let current_height = 100;
-            let current_mtp = 1000000;
-
-            let result =
-                calculate_lock_points_at_tip(&tx, &mut coins_cache, current_height, current_mtp);
-
-            assert!(result.is_ok());
-            let lock_points = result.unwrap();
-            assert_eq!(lock_points.height, -1);
-            // Lock time = coin_mtp (500000) + (10 * 512) = 505120
-            assert_eq!(lock_points.time, 505120);
-        }
-
-        #[test]
-        fn test_disabled_sequence_lock() {
-            let client = Arc::new(MockBIP68Client::new());
-            let mut coins_cache = CoinsViewCache::new(client.clone(), 1000);
-
-            let prev_txid = Txid::all_zeros();
-            let outpoint = OutPoint {
-                txid: prev_txid,
-                vout: 0,
-            };
-            client.add_utxo(outpoint, create_coin(50, 500000, false));
-
-            // Sequence with DISABLE_FLAG set (0x80000000)
-            const DISABLE_FLAG: u32 = 0x80000000;
-            let tx = create_tx_with_sequence(10 | DISABLE_FLAG);
-
-            let current_height = 100;
-            let current_mtp = 1000000;
-
-            let result =
-                calculate_lock_points_at_tip(&tx, &mut coins_cache, current_height, current_mtp);
-
-            assert!(result.is_ok());
-            let lock_points = result.unwrap();
-            // Disabled locks should not contribute to lock points
-            assert_eq!(lock_points.height, -1);
-            assert_eq!(lock_points.time, 0);
-        }
-
-        #[test]
-        fn test_coinbase_must_have_disable_flag() {
-            let client = Arc::new(MockBIP68Client::new());
-            let mut coins_cache = CoinsViewCache::new(client.clone(), 1000);
-
-            let prev_txid = Txid::all_zeros();
-            let outpoint = OutPoint {
-                txid: prev_txid,
-                vout: 0,
-            };
-            // Coinbase coin
-            client.add_utxo(outpoint, create_coin(50, 500000, true));
-
-            // Sequence WITHOUT disable flag - this should fail for coinbase
-            let tx = create_tx_with_sequence(10);
-
-            let current_height = 100;
-            let current_mtp = 1000000;
-
-            let result =
-                calculate_lock_points_at_tip(&tx, &mut coins_cache, current_height, current_mtp);
-
-            assert!(result.is_err());
-            assert!(matches!(result, Err(MempoolError::NonBIP68Final)));
-        }
-
-        #[test]
-        fn test_coinbase_with_disable_flag_ok() {
-            let client = Arc::new(MockBIP68Client::new());
-            let mut coins_cache = CoinsViewCache::new(client.clone(), 1000);
-
-            let prev_txid = Txid::all_zeros();
-            let outpoint = OutPoint {
-                txid: prev_txid,
-                vout: 0,
-            };
-            // Coinbase coin
-            client.add_utxo(outpoint, create_coin(50, 500000, true));
-
-            // Sequence with DISABLE_FLAG - this should succeed
-            const DISABLE_FLAG: u32 = 0x80000000;
-            let tx = create_tx_with_sequence(DISABLE_FLAG);
-
-            let current_height = 100;
-            let current_mtp = 1000000;
-
-            let result =
-                calculate_lock_points_at_tip(&tx, &mut coins_cache, current_height, current_mtp);
-
-            assert!(result.is_ok());
-        }
-
-        #[test]
-        fn test_not_final_at_current_height() {
-            let client = Arc::new(MockBIP68Client::new());
-            let mut coins_cache = CoinsViewCache::new(client.clone(), 1000);
-
-            let prev_txid = Txid::all_zeros();
-            let outpoint = OutPoint {
-                txid: prev_txid,
-                vout: 0,
-            };
-            client.add_utxo(outpoint, create_coin(50, 500000, false));
-
-            // Require lock at height 100 (50 + 49 + 1)
-            let tx = create_tx_with_sequence(49);
-
-            // Current height is only 80 - should fail
-            let current_height = 80;
-            let current_mtp = 1000000;
-
-            let result =
-                calculate_lock_points_at_tip(&tx, &mut coins_cache, current_height, current_mtp);
-
-            assert!(result.is_err());
-            assert!(matches!(result, Err(MempoolError::NonBIP68Final)));
-        }
-
-        #[test]
-        fn test_not_final_at_current_time() {
-            let client = Arc::new(MockBIP68Client::new());
-            let mut coins_cache = CoinsViewCache::new(client.clone(), 1000);
-
-            let prev_txid = Txid::all_zeros();
-            let outpoint = OutPoint {
-                txid: prev_txid,
-                vout: 0,
-            };
-            client.add_utxo(outpoint, create_coin(50, 500000, false));
-
-            // Time-based lock: 1000 * 512 = 512000 seconds
-            // Lock time would be: 500000 + 512000 = 1012000
-            const TYPE_FLAG: u32 = 0x00400000;
-            let tx = create_tx_with_sequence(1000 | TYPE_FLAG);
-
-            let current_height = 100;
-            // Current MTP is only 600000 - should fail
-            let current_mtp = 600000;
-
-            let result =
-                calculate_lock_points_at_tip(&tx, &mut coins_cache, current_height, current_mtp);
-
-            assert!(result.is_err());
-            assert!(matches!(result, Err(MempoolError::NonBIP68Final)));
-        }
-
-        #[test]
-        fn test_mixed_height_and_time_locks() {
-            let client = Arc::new(MockBIP68Client::new());
-            let mut coins_cache = CoinsViewCache::new(client.clone(), 1000);
-
-            // Input 1: height-based lock
-            let txid1 = Txid::from_byte_array([1u8; 32]);
-            let outpoint1 = OutPoint {
-                txid: txid1,
-                vout: 0,
-            };
-            client.add_utxo(outpoint1, create_coin(50, 500000, false));
-
-            // Input 2: time-based lock
-            let txid2 = Txid::from_byte_array([2u8; 32]);
-            let outpoint2 = OutPoint {
-                txid: txid2,
-                vout: 0,
-            };
-            client.add_utxo(outpoint2, create_coin(60, 600000, false));
-
-            const TYPE_FLAG: u32 = 0x00400000;
-
-            // Transaction with two inputs: one height-based, one time-based
-            let tx = Transaction {
-                version: transaction::Version::TWO,
-                lock_time: LockTime::ZERO,
-                input: vec![
-                    TxIn {
-                        previous_output: outpoint1,
-                        script_sig: ScriptBuf::new(),
-                        sequence: Sequence(10), // Height-based: 10 blocks
-                        witness: bitcoin::Witness::new(),
-                    },
-                    TxIn {
-                        previous_output: outpoint2,
-                        script_sig: ScriptBuf::new(),
-                        sequence: Sequence(20 | TYPE_FLAG), // Time-based: 20 * 512 seconds
-                        witness: bitcoin::Witness::new(),
-                    },
-                ],
-                output: vec![TxOut {
-                    value: Amount::from_sat(50_000),
-                    script_pubkey: ScriptBuf::new(),
-                }],
-            };
-
-            let current_height = 100;
-            let current_mtp = 1000000;
-
-            let result =
-                calculate_lock_points_at_tip(&tx, &mut coins_cache, current_height, current_mtp);
-
-            assert!(result.is_ok());
-            let lock_points = result.unwrap();
-            // Height lock: 50 + 10 + 1 = 61
-            assert_eq!(lock_points.height, 61);
-            // Time lock: 600000 + (20 * 512) = 610240
-            assert_eq!(lock_points.time, 610240);
-        }
-
-        #[test]
-        fn test_max_sequence_value() {
-            let client = Arc::new(MockBIP68Client::new());
-            let mut coins_cache = CoinsViewCache::new(client.clone(), 1000);
-
-            let prev_txid = Txid::all_zeros();
-            let outpoint = OutPoint {
-                txid: prev_txid,
-                vout: 0,
-            };
-            client.add_utxo(outpoint, create_coin(50, 500000, false));
-
-            // Maximum sequence value (0x0000ffff = 65535)
-            const MAX_SEQ: u32 = 0x0000ffff;
-            let tx = create_tx_with_sequence(MAX_SEQ);
-
-            let current_height = 100000; // Very high to accommodate the lock
-            let current_mtp = 10000000;
-
-            let result =
-                calculate_lock_points_at_tip(&tx, &mut coins_cache, current_height, current_mtp);
-
-            assert!(result.is_ok());
-            let lock_points = result.unwrap();
-            // Lock height = 50 + 65535 + 1 = 65586
-            assert_eq!(lock_points.height, 65586);
-        }
-    }
-    */
 }

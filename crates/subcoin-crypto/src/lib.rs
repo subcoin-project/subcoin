@@ -2,6 +2,8 @@
 
 pub mod muhash;
 
+pub use muhash::MuHash3072;
+
 use chacha20::ChaCha20;
 use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 

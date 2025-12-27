@@ -20,7 +20,7 @@
 
 use crate::ScriptEngine;
 use crate::metrics::Metrics;
-use crate::verification::{BlockVerification, BlockVerifier};
+use crate::verification::{BlockVerification, BlockVerifier, ScriptVerification};
 use bitcoin::blockdata::block::Header as BitcoinHeader;
 use bitcoin::hashes::Hash;
 use bitcoin::{Block as BitcoinBlock, BlockHash, Network, Work};
@@ -40,10 +40,9 @@ use sp_runtime::{SaturatedConversion, Saturating};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Instant;
+use subcoin_bitcoin_state::BitcoinState;
 use subcoin_primitives::runtime::SubcoinApi;
-use subcoin_primitives::{
-    BackendExt, BitcoinTransactionAdapter, CoinStorageKey, substrate_header_digest,
-};
+use subcoin_primitives::{BackendExt, BitcoinTransactionAdapter, substrate_header_digest};
 use substrate_prometheus_endpoint::Registry;
 
 /// Block import configuration.
@@ -57,6 +56,11 @@ pub struct ImportConfig {
     pub execute_block: bool,
     /// Bitcoin script interpreter.
     pub script_engine: ScriptEngine,
+    /// Script verification parallelism mode.
+    ///
+    /// When set to `Parallel`, script verification tasks are collected during
+    /// sequential UTXO validation and then executed in parallel using rayon.
+    pub script_verification: ScriptVerification,
 }
 
 #[derive(Debug, Default)]
@@ -67,6 +71,8 @@ struct Stats {
     total_blocks: usize,
     // Total block execution times in milliseconds.
     total_execution_time: usize,
+    /// Pending script verification time for the current block (set before prepare_substrate_block_import).
+    pending_verify_scripts_ms: u128,
 }
 
 impl Stats {
@@ -96,6 +102,36 @@ impl Stats {
             {tx_per_ms:.2} tx/ms, {block_per_second:.2} block/s, execution time: {execution_time} ms",
         );
     }
+
+    fn record_block_execution_detailed<Block: BlockT>(
+        &mut self,
+        block_number: NumberFor<Block>,
+        tx_count: usize,
+        execute_block_ms: u128,
+        drain_changes_ms: u128,
+    ) {
+        let total_ms = execute_block_ms + drain_changes_ms;
+        self.total_txs += tx_count;
+        self.total_blocks += 1;
+        self.total_execution_time += total_ms as usize;
+
+        let verify_scripts_ms = self.pending_verify_scripts_ms;
+        self.pending_verify_scripts_ms = 0; // Reset after use
+
+        // Log every block for measurement
+        // Note: execute_block_ms INCLUDES state root computation via sp_io::storage::root()
+        // in frame_system::finalize(). The drain_changes_ms just retrieves cached value.
+        // So execute_block_ms = runtime_execution + state_root_computation
+        tracing::info!(
+            "block={} txs={} verify_scripts_ms={} execute_block_ms={} drain_changes_ms={} total_ms={}",
+            block_number,
+            tx_count,
+            verify_scripts_ms,
+            execute_block_ms,
+            drain_changes_ms,
+            total_ms,
+        );
+    }
 }
 
 /// Bitcoin specific block import implementation.
@@ -105,6 +141,8 @@ pub struct BitcoinBlockImporter<Block, Client, BE, BI, TransactionAdapter> {
     stats: Stats,
     config: ImportConfig,
     verifier: BlockVerifier<Block, Client, BE>,
+    /// Bitcoin state storage for O(1) UTXO operations.
+    bitcoin_state: Arc<BitcoinState>,
     metrics: Option<Metrics>,
     last_block_execution_report: Instant,
     _phantom: PhantomData<TransactionAdapter>,
@@ -132,15 +170,16 @@ where
         client: Arc<Client>,
         block_import: BI,
         config: ImportConfig,
-        coin_storage_key: Arc<dyn CoinStorageKey>,
+        bitcoin_state: Arc<BitcoinState>,
         registry: Option<&Registry>,
     ) -> Self {
         let verifier = BlockVerifier::new(
             client.clone(),
             config.network,
             config.block_verification,
-            coin_storage_key,
+            bitcoin_state.clone(),
             config.script_engine,
+            config.script_verification,
         );
         let metrics = match registry {
             Some(registry) => Metrics::register(registry)
@@ -156,6 +195,7 @@ where
             stats: Stats::default(),
             config,
             verifier,
+            bitcoin_state,
             metrics,
             last_block_execution_report: Instant::now(),
             _phantom: Default::default(),
@@ -199,35 +239,45 @@ where
         Block::Hash,
         sp_state_machine::StorageChanges<HashingFor<Block>>,
     )> {
-        let timer = std::time::Instant::now();
-
         let transactions_count = block.extrinsics().len();
         let block_size = block.encoded_size();
 
         let mut runtime_api = self.client.runtime_api();
         runtime_api.set_call_context(CallContext::Onchain);
 
+        // Phase 1: Execute block (includes UTXO updates AND state root computation)
+        // Note: sp_io::storage::root() is called inside finalize(), so this
+        // measures runtime execution + trie/state root computation combined.
+        let execute_start = std::time::Instant::now();
         runtime_api.execute_block_without_state_root_check(parent_hash, block)?;
+        let execute_block_ms = execute_start.elapsed().as_millis();
 
+        // Phase 2: Drain storage changes (uses cached state root from phase 1)
+        let drain_start = std::time::Instant::now();
         let state = self.client.state_at(parent_hash)?;
-
         let storage_changes = runtime_api
             .into_storage_changes(&state, parent_hash)
             .map_err(sp_blockchain::Error::StorageChanges)?;
+        let drain_changes_ms = drain_start.elapsed().as_millis();
 
         let state_root = storage_changes.transaction_storage_root;
+
+        // Detailed logging for performance measurement
+        self.stats.record_block_execution_detailed::<Block>(
+            block_number,
+            transactions_count,
+            execute_block_ms,
+            drain_changes_ms,
+        );
 
         if let Some(metrics) = &self.metrics {
             const BLOCK_EXECUTION_REPORT_INTERVAL: u128 = 50;
 
-            // Executing blocks before 200000 is pretty fast, it becomes
-            // increasingly slower beyond this point, we only cares about
-            // the slow block executions.
             if self.last_block_execution_report.elapsed().as_millis()
                 > BLOCK_EXECUTION_REPORT_INTERVAL
             {
                 let block_number: u32 = block_number.saturated_into();
-                let execution_time = timer.elapsed().as_millis();
+                let execution_time = execute_block_ms + drain_changes_ms;
                 metrics.report_block_execution(
                     block_number.saturated_into(),
                     transactions_count,
@@ -497,28 +547,46 @@ where
         let block_hash = block.block_hash();
 
         // Consensus-level Bitcoin block verification.
-        self.verifier
+        let verify_scripts_duration = self
+            .verifier
             .verify_block(block_number, &block)
             .map_err(|err| import_err(format!("{err:?}")))?;
+
+        // Store script verification timing for logging in prepare_substrate_block_import
+        self.stats.pending_verify_scripts_ms = verify_scripts_duration.as_millis();
+
+        // Clone block for native storage update
+        let bitcoin_block_for_native = block.clone();
 
         let block_import_params = self
             .prepare_substrate_block_import(block, substrate_parent_block, origin)
             .map_err(|err| import_err(err.to_string()))?;
 
-        self.inner
+        let import_result = self
+            .inner
             .import_block(block_import_params)
             .await
-            .map(|import_result| match import_result {
-                ImportResult::Imported(aux) => ImportStatus::Imported {
-                    block_number,
-                    block_hash,
-                    aux,
-                },
-                ImportResult::AlreadyInChain => ImportStatus::AlreadyInChain(block_number),
-                ImportResult::KnownBad => ImportStatus::KnownBad,
-                ImportResult::UnknownParent => ImportStatus::UnknownParent,
-                ImportResult::MissingState => ImportStatus::MissingState,
-            })
-            .map_err(|err| import_err(err.to_string()))
+            .map_err(|err| import_err(err.to_string()))?;
+
+        // Apply block to Bitcoin state after successful import
+        if let ImportResult::Imported(_) = &import_result {
+            self.bitcoin_state
+                .apply_block(&bitcoin_block_for_native, block_number)
+                .map_err(|err| {
+                    import_err(format!("Failed to apply block to Bitcoin state: {err:?}"))
+                })?;
+        }
+
+        Ok(match import_result {
+            ImportResult::Imported(aux) => ImportStatus::Imported {
+                block_number,
+                block_hash,
+                aux,
+            },
+            ImportResult::AlreadyInChain => ImportStatus::AlreadyInChain(block_number),
+            ImportResult::KnownBad => ImportStatus::KnownBad,
+            ImportResult::UnknownParent => ImportStatus::UnknownParent,
+            ImportResult::MissingState => ImportStatus::MissingState,
+        })
     }
 }

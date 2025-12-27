@@ -8,6 +8,7 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
+bincode = { workspace = true, optional = true }
 bitcoin = { workspace = true, default-features = false }
 codec = { workspace = true, default-features = false }
 scale-info = { workspace = true, default-features = false }
@@ -20,6 +21,7 @@ serde = { workspace = true, optional = true }
 [features]
 default = ["std"]
 std = [
+	"bincode",
 	"bitcoin/std",
 	"codec/std",
 	"scale-info/std",

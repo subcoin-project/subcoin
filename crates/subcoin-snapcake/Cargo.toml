@@ -37,6 +37,7 @@ sp-blockchain = { workspace = true }
 sp-consensus = { workspace = true }
 sp-core = { workspace = true }
 sp-runtime = { workspace = true }
+subcoin-bitcoin-state = { workspace = true }
 subcoin-crypto = { workspace = true }
 subcoin-primitives = { workspace = true }
 subcoin-runtime = { workspace = true }
@@ -45,4 +46,4 @@ subcoin-service = { workspace = true }
 subcoin-utxo-snapshot = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
-rocksdb = "0.21.0"
+rocksdb = { workspace = true }

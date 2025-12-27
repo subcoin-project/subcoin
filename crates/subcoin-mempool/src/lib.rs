@@ -16,7 +16,6 @@ mod error;
 mod inner;
 mod options;
 mod policy;
-// TODO: Re-enable when MockClient implements necessary traits (AuxStore, SubcoinApi)
 // TODO: Re-enable when MockClient implements necessary traits
 // #[cfg(test)]
 // mod tests;
@@ -36,12 +35,12 @@ pub use self::types::{
 use bitcoin::Transaction;
 use bitcoin::hashes::Hash;
 use sc_client_api::{AuxStore, HeaderBackend};
-use sp_api::ProvideRuntimeApi;
 use sp_runtime::traits::Block as BlockT;
 use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
+use subcoin_bitcoin_state::BitcoinState;
 use subcoin_primitives::tx_pool::*;
 use subcoin_primitives::{BackendExt, ClientExt};
 
@@ -50,7 +49,6 @@ use subcoin_primitives::{BackendExt, ClientExt};
 /// Uses RwLock for interior mutability with the following lock hierarchy:
 /// 1. MemPool::inner (RwLock)
 /// 2. MemPool::coins_cache (RwLock)
-/// 3. Runtime state backend (internal to client)
 ///
 /// **CRITICAL:** Always acquire locks in this order to avoid deadlocks.
 pub struct MemPool<Block: BlockT, Client> {
@@ -61,13 +59,13 @@ pub struct MemPool<Block: BlockT, Client> {
     inner: RwLock<MemPoolInner>,
 
     /// UTXO cache (separate lock to reduce contention).
-    coins_cache: RwLock<CoinsViewCache<Block, Client>>,
+    coins_cache: RwLock<CoinsViewCache>,
 
     /// Atomic counters (lockless).
     transactions_updated: AtomicU32,
     sequence_number: AtomicU64,
 
-    /// Substrate client for runtime API access.
+    /// Substrate client for chain state access.
     client: Arc<Client>,
 
     _phantom: PhantomData<Block>,
@@ -76,17 +74,20 @@ pub struct MemPool<Block: BlockT, Client> {
 impl<Block, Client> MemPool<Block, Client>
 where
     Block: BlockT,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore + Send + Sync,
-    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
+    Client: HeaderBackend<Block> + AuxStore + Send + Sync,
 {
     /// Create a new mempool with default options.
-    pub fn new(client: Arc<Client>) -> Self {
-        Self::with_options(client, MemPoolOptions::default())
+    pub fn new(client: Arc<Client>, bitcoin_state: Arc<BitcoinState>) -> Self {
+        Self::with_options(client, bitcoin_state, MemPoolOptions::default())
     }
 
     /// Create a new mempool with custom options.
-    pub fn with_options(client: Arc<Client>, options: MemPoolOptions) -> Self {
-        let coins_cache = CoinsViewCache::new(client.clone(), 10_000);
+    pub fn with_options(
+        client: Arc<Client>,
+        bitcoin_state: Arc<BitcoinState>,
+        options: MemPoolOptions,
+    ) -> Self {
+        let coins_cache = CoinsViewCache::new(bitcoin_state, 10_000);
 
         Self {
             options,
@@ -108,10 +109,9 @@ where
         let mut coins = self.coins_cache.write().expect("CoinsCache lock poisoned");
 
         // Get current chain state
-        let best_block = coins.best_block();
-        let current_height: u32 = self
-            .client
-            .info()
+        let info = self.client.info();
+        let best_block = info.best_hash;
+        let current_height: u32 = info
             .best_number
             .try_into()
             .unwrap_or_else(|_| panic!("Block number must fit into u32"));
@@ -141,7 +141,6 @@ where
             &self.options,
             current_height,
             current_mtp,
-            best_block,
         )?;
 
         // Stage 2: Check package limits (ancestors/descendants)
@@ -222,11 +221,7 @@ where
     /// that were included in the block, as well as any conflicts.
     ///
     /// **Lock hierarchy**: Acquires inner write lock, then coins_cache write lock.
-    pub fn remove_for_block(
-        &self,
-        confirmed_txs: &[Transaction],
-        new_best_block: Block::Hash,
-    ) -> Result<(), MempoolError> {
+    pub fn remove_for_block(&self, confirmed_txs: &[Transaction]) -> Result<(), MempoolError> {
         let mut inner = self.inner.write().expect("MemPool lock poisoned");
         let mut coins = self.coins_cache.write().expect("CoinsCache lock poisoned");
 
@@ -269,7 +264,7 @@ where
         }
 
         // Phase 6: Update coins cache for new block (clears base cache)
-        coins.on_block_connected(new_best_block);
+        coins.on_block_connected();
 
         // Increment transactions_updated counter
         self.transactions_updated
@@ -349,11 +344,7 @@ where
     /// - Max input block no longer on active chain
     ///
     /// **Lock hierarchy**: Acquires inner write lock, then coins_cache write lock.
-    pub fn remove_for_reorg(
-        &self,
-        new_tip_height: u32,
-        new_best_block: Block::Hash,
-    ) -> Result<(), MempoolError> {
+    pub fn remove_for_reorg(&self, new_tip_height: u32) -> Result<(), MempoolError> {
         let mut inner = self.inner.write().expect("MemPool lock poisoned");
         let mut coins = self.coins_cache.write().expect("CoinsCache lock poisoned");
 
@@ -363,8 +354,9 @@ where
             .expect("Time went backwards")
             .as_secs() as i64;
 
+        let best_block = self.client.info().best_hash;
         let new_tip_mtp =
-            if let Some(bitcoin_block_hash) = self.client.bitcoin_block_hash_for(new_best_block) {
+            if let Some(bitcoin_block_hash) = self.client.bitcoin_block_hash_for(best_block) {
                 self.client
                     .get_block_metadata(bitcoin_block_hash)
                     .map(|metadata| metadata.median_time_past)
@@ -417,8 +409,8 @@ where
         }
 
         if to_remove.is_empty() {
-            // Update coins cache best block even if no removals
-            coins.on_block_connected(new_best_block);
+            // Update coins cache even if no removals
+            coins.on_block_connected();
             return Ok(());
         }
 
@@ -445,7 +437,7 @@ where
         }
 
         // Update coins cache for new tip
-        coins.on_block_connected(new_best_block);
+        coins.on_block_connected();
 
         // Increment transactions_updated counter
         self.transactions_updated
@@ -470,10 +462,9 @@ where
         let mut coins = self.coins_cache.write().expect("CoinsCache lock poisoned");
 
         // Get current state
-        let best_block = coins.best_block();
-        let current_height: u32 = self
-            .client
-            .info()
+        let info = self.client.info();
+        let best_block = info.best_hash;
+        let current_height: u32 = info
             .best_number
             .try_into()
             .unwrap_or_else(|_| panic!("Block number must fit into u32"));
@@ -482,7 +473,7 @@ where
             .expect("Time went backwards")
             .as_secs() as i64;
 
-        // Get current MTP from runtime API for BIP68 validation
+        // Get current MTP for BIP68 validation
         let current_mtp =
             if let Some(bitcoin_block_hash) = self.client.bitcoin_block_hash_for(best_block) {
                 self.client
@@ -508,7 +499,6 @@ where
             &mut coins,
             &self.options,
             current_height,
-            best_block,
             current_mtp,
             sequence_start,
         )?;
@@ -742,8 +732,7 @@ where
 impl<Block, Client> subcoin_primitives::tx_pool::TxPool for MemPool<Block, Client>
 where
     Block: BlockT + 'static,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore + Send + Sync + 'static,
-    Client::Api: subcoin_runtime_primitives::SubcoinApi<Block>,
+    Client: HeaderBackend<Block> + AuxStore + Send + Sync + 'static,
 {
     fn validate_transaction(
         &self,
