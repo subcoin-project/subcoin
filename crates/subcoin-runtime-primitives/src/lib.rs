@@ -143,7 +143,7 @@ sp_api::decl_runtime_apis! {
     pub trait SubcoinApi {
         /// Same as the original `execute_block()` with the removal
         /// of `state_root` check in the `final_checks()`.
-        fn execute_block_without_state_root_check(block: Block);
+        fn execute_block_without_state_root_check(block: Block::LazyBlock);
 
         /// Finalize block without checking the extrinsics_root and state_root.
         fn finalize_block_without_checks(header: Block::Header);

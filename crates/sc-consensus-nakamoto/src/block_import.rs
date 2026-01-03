@@ -207,7 +207,7 @@ where
         let mut runtime_api = self.client.runtime_api();
         runtime_api.set_call_context(CallContext::Onchain);
 
-        runtime_api.execute_block_without_state_root_check(parent_hash, block)?;
+        runtime_api.execute_block_without_state_root_check(parent_hash, block.into())?;
 
         let state = self.client.state_at(parent_hash)?;
 
