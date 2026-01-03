@@ -43,15 +43,21 @@ enum SnapshotStore {
 }
 
 impl SnapshotStore {
-    /// Append a UTXO to the store.
-    fn push(&mut self, utxo: Utxo) -> std::io::Result<()> {
+    /// Append a batch of UTXOs to the store.
+    fn push_batch(&mut self, utxos: &[Utxo]) -> std::io::Result<usize> {
         match self {
             Self::InMem(list) => {
-                list.push(utxo);
-                Ok(())
+                let count = utxos.len();
+                list.extend(utxos.iter().cloned());
+                Ok(count)
             }
-            Self::Csv(path) => Self::append_to_csv(path, utxo),
-            Self::Rocksdb(db) => Self::insert_to_rocksdb(db, utxo)
+            Self::Csv(path) => {
+                for utxo in utxos {
+                    Self::append_to_csv(path, utxo.clone())?;
+                }
+                Ok(utxos.len())
+            }
+            Self::Rocksdb(db) => Self::insert_batch_to_rocksdb(db, utxos)
                 .map_err(|err| std::io::Error::other(format!("rocksdb: {err:?}"))),
         }
     }
@@ -76,24 +82,34 @@ impl SnapshotStore {
         Ok(())
     }
 
-    fn insert_to_rocksdb(db: &DB, utxo: Utxo) -> Result<(), rocksdb::Error> {
+    fn insert_batch_to_rocksdb(db: &DB, utxos: &[Utxo]) -> Result<usize, rocksdb::Error> {
+        if utxos.is_empty() {
+            return Ok(0);
+        }
+
         let mut coin_count =
             Self::read_rocksdb_count(db).expect("Failed to read count from Rocksdb") as u64;
 
-        let Utxo { txid, vout, coin } = utxo;
+        let mut batch = rocksdb::WriteBatch::default();
+        let batch_size = utxos.len();
 
-        let mut key = Vec::with_capacity(32 + 4);
-        key.extend(txid.to_byte_array()); // Raw bytes of Txid
-        key.extend(vout.to_be_bytes()); // Ensure vout is big-endian for consistent ordering
+        for utxo in utxos {
+            let Utxo { txid, vout, coin } = utxo;
 
-        let value = bincode::serialize(&coin).expect("Failed to serialize Coin"); // Serialize coin data
+            let mut key = Vec::with_capacity(32 + 4);
+            key.extend(txid.to_byte_array());
+            key.extend(vout.to_be_bytes());
 
-        coin_count += 1;
+            let value = bincode::serialize(coin).expect("Failed to serialize Coin");
+            batch.put(&key, value);
+        }
 
-        db.put(&key, value)?;
-        db.put(COUNT_KEY, coin_count.to_le_bytes())?;
+        coin_count += batch_size as u64;
+        batch.put(COUNT_KEY, coin_count.to_le_bytes());
 
-        Ok(())
+        db.write(batch)?;
+
+        Ok(batch_size)
     }
 
     /// Count total UTXO entries in the store.
@@ -333,11 +349,13 @@ impl SnapshotManager {
         }
     }
 
-    /// Adds a UTXO to the store.
-    pub fn store_utxo(&mut self, utxo: Utxo) {
+    /// Adds a batch of UTXOs to the store.
+    ///
+    /// Returns the number of UTXOs stored.
+    pub fn store_utxos_batch(&mut self, utxos: &[Utxo]) -> usize {
         self.store
-            .push(utxo)
-            .expect("Failed to add UTXO to the store");
+            .push_batch(utxos)
+            .expect("Failed to add UTXOs batch to the store")
     }
 
     /// Generates a snapshot and ensures the total UTXO count matches the expected count.

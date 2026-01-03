@@ -68,6 +68,13 @@ where
     fn process_state_response(&mut self, response: &StateResponse) {
         let mut complete = false;
 
+        // Count total entries for pre-allocation
+        let total_entries: usize = response
+            .entries
+            .iter()
+            .map(|entry| entry.entries.len())
+            .sum();
+
         let key_values = response.entries.iter().flat_map(|key_vlaue_state_entry| {
             if key_vlaue_state_entry.complete {
                 complete = true;
@@ -78,6 +85,9 @@ where
                 .iter()
                 .map(|state_entry| (&state_entry.key, &state_entry.value))
         });
+
+        // Pre-allocate with capacity (upper bound, not all entries are UTXOs)
+        let mut utxos_batch = Vec::with_capacity(total_entries);
 
         for (key, value) in key_values {
             if key.len() > 32 {
@@ -96,11 +106,15 @@ where
 
                     self.muhash.insert(&data);
 
-                    self.snapshot_manager.store_utxo(Utxo { txid, vout, coin });
-
-                    self.received_coins += 1;
+                    utxos_batch.push(Utxo { txid, vout, coin });
                 }
             }
+        }
+
+        // Batch write all UTXOs from this response
+        if !utxos_batch.is_empty() {
+            let batch_size = self.snapshot_manager.store_utxos_batch(&utxos_batch);
+            self.received_coins += batch_size;
         }
 
         if self
