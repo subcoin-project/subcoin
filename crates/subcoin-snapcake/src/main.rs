@@ -63,6 +63,15 @@ use tokio::sync::oneshot;
 
 type FullClient = sc_service::TFullClient<Block, RuntimeApi, WasmExecutor>;
 
+/// Parameters specific to snapcake's state sync operation.
+struct SnapcakeSyncParams {
+    bitcoin_network: bitcoin::Network,
+    skip_proof: bool,
+    snapshot_dir: PathBuf,
+    sync_target: TargetBlock<Block>,
+    shutdown_tx: oneshot::Sender<()>,
+}
+
 fn main() -> sc_cli::Result<()> {
     let app = App::parse();
 
@@ -129,29 +138,26 @@ fn start_snapcake_node(
     // Create channel for signaling shutdown after state sync completion.
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
+    let sync_params = SnapcakeSyncParams {
+        bitcoin_network,
+        skip_proof,
+        snapshot_dir,
+        sync_target,
+        shutdown_tx,
+    };
+
     match config.network.network_backend {
-        NetworkBackendType::Libp2p => {
-            start_substrate_network::<sc_network::NetworkWorker<Block, <Block as BlockT>::Hash>>(
-                &mut config,
-                client,
-                &mut task_manager,
-                bitcoin_network,
-                skip_proof,
-                snapshot_dir,
-                sync_target,
-                shutdown_tx,
-            )?
-        }
+        NetworkBackendType::Libp2p => start_substrate_network::<
+            sc_network::NetworkWorker<Block, <Block as BlockT>::Hash>,
+        >(
+            &mut config, client, &mut task_manager, sync_params
+        )?,
         NetworkBackendType::Litep2p => {
             start_substrate_network::<sc_network::Litep2pNetworkBackend>(
                 &mut config,
                 client,
                 &mut task_manager,
-                bitcoin_network,
-                skip_proof,
-                snapshot_dir,
-                sync_target,
-                shutdown_tx,
+                sync_params,
             )?;
         }
     }
@@ -175,15 +181,18 @@ fn start_substrate_network<N>(
     config: &mut Configuration,
     client: Arc<FullClient>,
     task_manager: &mut sc_service::TaskManager,
-    bitcoin_network: bitcoin::Network,
-    skip_proof: bool,
-    snapshot_dir: PathBuf,
-    sync_target: TargetBlock<Block>,
-    shutdown_tx: oneshot::Sender<()>,
+    sync_params: SnapcakeSyncParams,
 ) -> Result<(), sc_service::error::Error>
 where
     N: sc_network::NetworkBackend<Block, <Block as BlockT>::Hash>,
 {
+    let SnapcakeSyncParams {
+        bitcoin_network,
+        skip_proof,
+        snapshot_dir,
+        sync_target,
+        shutdown_tx,
+    } = sync_params;
     let mut net_config = sc_network::config::FullNetworkConfiguration::<
         Block,
         <Block as BlockT>::Hash,
