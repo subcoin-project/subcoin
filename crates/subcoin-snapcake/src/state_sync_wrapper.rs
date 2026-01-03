@@ -75,12 +75,12 @@ where
             .map(|entry| entry.entries.len())
             .sum();
 
-        let key_values = response.entries.iter().flat_map(|key_vlaue_state_entry| {
-            if key_vlaue_state_entry.complete {
+        let key_values = response.entries.iter().flat_map(|key_value_state_entry| {
+            if key_value_state_entry.complete {
                 complete = true;
             }
 
-            key_vlaue_state_entry
+            key_value_state_entry
                 .entries
                 .iter()
                 .map(|state_entry| (&state_entry.key, &state_entry.value))
