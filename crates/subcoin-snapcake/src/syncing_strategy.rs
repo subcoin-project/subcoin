@@ -31,6 +31,7 @@ use subcoin_primitives::runtime::SubcoinApi;
 use subcoin_service::network_request_handler::{
     VersionedNetworkRequest, VersionedNetworkResponse, v1,
 };
+use tokio::sync::oneshot;
 
 const LOG_TARGET: &str = "sync::snapcake";
 
@@ -38,6 +39,11 @@ const SUBCOIN_STRATEGY_KEY: StrategyKey = StrategyKey::new("Subcoin");
 
 /// Maximum blocks per response.
 const MAX_BLOCKS_IN_RESPONSE: usize = 128;
+
+/// Number of confirmations required for a block to be considered finalized.
+///
+/// In Bitcoin, 6 confirmations is the widely accepted threshold for transaction finality.
+const CONFIRMATION_DEPTH: usize = 6;
 
 /// Corresponding `ChainSync` mode.
 fn chain_sync_mode(sync_mode: SyncMode) -> ChainSyncMode {
@@ -72,6 +78,7 @@ pub fn build_snapcake_syncing_strategy<Block, Client, Net>(
     skip_proof: bool,
     snapshot_dir: PathBuf,
     sync_target: TargetBlock<Block>,
+    shutdown_tx: oneshot::Sender<()>,
 ) -> Result<Box<dyn SyncingStrategy<Block>>, sc_service::Error>
 where
     Block: BlockT,
@@ -136,6 +143,7 @@ where
         snapshot_dir,
         sync_target,
         subcoin_network_request_protocol_name,
+        shutdown_tx,
     )?))
 }
 
@@ -176,6 +184,8 @@ pub struct SnapcakeSyncingStrategy<B: BlockT, Client> {
     sync_target: TargetBlock<B>,
     /// Subcoin network request protocol name.
     subcoin_network_request_protocol_name: ProtocolName,
+    /// Channel to signal shutdown after state sync completion.
+    shutdown_tx: Option<oneshot::Sender<()>>,
 }
 
 impl<B, Client> SnapcakeSyncingStrategy<B, Client>
@@ -197,6 +207,7 @@ where
         snapshot_dir: PathBuf,
         sync_target: TargetBlock<B>,
         subcoin_network_request_protocol_name: ProtocolName,
+        shutdown_tx: oneshot::Sender<()>,
     ) -> Result<Self, sp_blockchain::Error> {
         if config.max_blocks_per_request > MAX_BLOCKS_IN_RESPONSE as u32 {
             tracing::info!(
@@ -234,6 +245,7 @@ where
             snapshot_dir,
             sync_target,
             subcoin_network_request_protocol_name,
+            shutdown_tx: Some(shutdown_tx),
         })
     }
 
@@ -304,11 +316,11 @@ where
                         TargetBlock::LastFinalized
                     ) {
                         // TODO: validate_blocks
-                        if blocks.len() < 6 {
+                        if blocks.len() < CONFIRMATION_DEPTH {
                             tracing::error!(target: LOG_TARGET, "No finalized block in the block response: {blocks:?}");
                             return;
                         }
-                        5
+                        CONFIRMATION_DEPTH - 1
                     } else {
                         0
                     };
@@ -423,8 +435,8 @@ where
                     from: FromBlock::Hash(best_hash),
                     direction: Direction::Descending,
                     // Attempt to download the most recent finalized block, i.e.,
-                    // `peer_best_block - confirmation_depth(6)`.
-                    max: Some(6),
+                    // `peer_best_block - CONFIRMATION_DEPTH`.
+                    max: Some(CONFIRMATION_DEPTH as u32),
                 };
                 self.pending_header_requests.push((peer_id, request));
             }
@@ -777,8 +789,10 @@ where
             tracing::info!("✅ State sync is complete");
             self.state.take();
             self.state_sync_complete = true;
-            // Exit the entire program directly once the state sync is complete.
-            std::process::exit(0);
+            // Signal shutdown to trigger graceful exit.
+            if let Some(tx) = self.shutdown_tx.take() {
+                let _ = tx.send(());
+            }
         }
 
         if actions.iter().any(SyncingAction::is_finished) {
