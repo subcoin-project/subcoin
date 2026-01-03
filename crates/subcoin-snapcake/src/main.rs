@@ -157,18 +157,16 @@ fn start_snapcake_node(
     }
 
     // Spawn a task that waits for shutdown signal and triggers graceful exit.
-    task_manager.spawn_handle().spawn(
-        "shutdown-handler",
-        None,
-        async move {
+    task_manager
+        .spawn_handle()
+        .spawn("shutdown-handler", None, async move {
             if shutdown_rx.await.is_ok() {
                 tracing::info!("🎉 Snapshot generation complete, shutting down...");
                 // Exit cleanly after state sync completion.
                 // This is intentional as snapcake's sole purpose is to generate the snapshot.
                 std::process::exit(0);
             }
-        },
-    );
+        });
 
     Ok(task_manager)
 }
