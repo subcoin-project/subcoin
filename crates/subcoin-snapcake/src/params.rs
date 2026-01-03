@@ -75,6 +75,13 @@ pub struct SnapcakeNetworkParams {
     /// This flag is primarily for the testing purpose.
     #[arg(long)]
     pub block_hash: Option<sp_core::H256>,
+
+    /// Enable local network discovery via mDNS.
+    ///
+    /// By default, local peer discovery is disabled. Use this flag when running
+    /// multiple nodes on a local network for development or testing.
+    #[arg(long)]
+    pub discover_local: bool,
 }
 
 impl SnapcakeNetworkParams {
@@ -83,6 +90,7 @@ impl SnapcakeNetworkParams {
             bootnodes,
             port,
             network_backend,
+            discover_local,
             ..
         } = self;
 
@@ -98,7 +106,8 @@ impl SnapcakeNetworkParams {
             out_peers: 8,
             in_peers: 32,
             in_peers_light: 100,
-            no_mdns: true,
+            // Enable mDNS when local discovery is requested
+            no_mdns: !discover_local,
             max_parallel_downloads: 8,
             node_key_params: NodeKeyParams {
                 node_key: None,
@@ -106,7 +115,7 @@ impl SnapcakeNetworkParams {
                 node_key_file: None,
                 unsafe_force_node_key_generation: false,
             },
-            discover_local: false,
+            discover_local,
             kademlia_disjoint_query_paths: false,
             kademlia_replication_factor: NonZero::new(20).expect("20 is not zero"),
             ipfs_server: false,
