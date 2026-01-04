@@ -32,6 +32,7 @@ sc-service = { workspace = true }
 sc-transaction-pool = { workspace = true }
 serde = { workspace = true }
 sha2 = { workspace = true }
+smallvec = "1.13"
 sp-api = { workspace = true }
 sp-blockchain = { workspace = true }
 sp-consensus = { workspace = true }

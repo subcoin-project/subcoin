@@ -1,10 +1,11 @@
-use crate::snapshot_manager::SnapshotManager;
+use crate::snapshot_manager::{SnapshotManager, StateSyncCursor};
 use codec::Decode;
 use sc_client_api::ProofProvider;
 use sc_network_sync::strategy::state_sync::{
     ImportResult, StateSync, StateSyncProgress, StateSyncProvider,
 };
 use sc_network_sync::{StateRequest, StateResponse};
+use smallvec::SmallVec;
 use sp_runtime::SaturatedConversion;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::path::PathBuf;
@@ -61,6 +62,79 @@ where
             received_coins: 0,
             total_coins,
             last_progress_print_time: None,
+        }
+    }
+
+    /// Creates a new instance resuming from a previous sync position.
+    ///
+    /// This constructor is used when a cursor file exists, allowing the sync
+    /// to continue from where it left off.
+    pub(crate) fn new_resuming(
+        client: Arc<Client>,
+        target_header: B::Header,
+        skip_proof: bool,
+        snapshot_base_dir: PathBuf,
+        total_coins: usize,
+        cursor: StateSyncCursor,
+    ) -> Self {
+        let target_block_number = *target_header.number();
+        let target_bitcoin_block_hash =
+            subcoin_primitives::extract_bitcoin_block_hash::<B>(&target_header)
+                .expect("Failed to extract bitcoin block hash");
+
+        let snapshot_manager = SnapshotManager::new(
+            target_block_number.saturated_into(),
+            target_bitcoin_block_hash,
+            snapshot_base_dir,
+            true,
+        );
+
+        // Convert Vec<Vec<u8>> to SmallVec<[Vec<u8>; 2]>
+        let last_key: SmallVec<[Vec<u8>; 2]> = cursor.last_key.into();
+
+        tracing::info!(
+            target: "snapcake",
+            "Resuming state sync from position, received_coins: {}/{}",
+            cursor.received_coins,
+            total_coins,
+        );
+
+        Self {
+            inner: StateSync::new_with_last_key(
+                client,
+                target_header,
+                None,
+                None,
+                skip_proof,
+                last_key,
+            ),
+            target_block_number: target_block_number.saturated_into(),
+            target_bitcoin_block_hash,
+            muhash: MuHash3072::new(),
+            snapshot_manager,
+            received_coins: cursor.received_coins as usize,
+            total_coins,
+            last_progress_print_time: None,
+        }
+    }
+
+    /// Saves the current sync progress to disk.
+    fn save_cursor(&self) {
+        let last_key = self.inner.next_request().start;
+
+        let cursor = StateSyncCursor {
+            target_block_number: self.target_block_number,
+            target_bitcoin_block_hash: self.target_bitcoin_block_hash,
+            last_key,
+            total_coins: self.total_coins as u64,
+            received_coins: self.received_coins as u64,
+        };
+
+        if let Err(e) = self.snapshot_manager.save_cursor(&cursor) {
+            tracing::warn!(
+                target: "snapcake",
+                "Failed to save state sync cursor: {e}"
+            );
         }
     }
 
@@ -137,6 +211,14 @@ where
                 self.total_coins,
             );
 
+            // Clear the cursor since state sync is complete
+            if let Err(e) = self.snapshot_manager.clear_cursor() {
+                tracing::warn!(
+                    target: "snapcake",
+                    "Failed to clear state sync cursor: {e}"
+                );
+            }
+
             self.snapshot_manager
                 .create_snapshot(self.total_coins)
                 .expect("Failed to create snapshot");
@@ -158,7 +240,14 @@ where
 {
     fn import(&mut self, response: StateResponse) -> ImportResult<B> {
         self.process_state_response(&response);
-        self.inner.import(response)
+        let result = self.inner.import(response);
+
+        // Save cursor after each successful chunk (but not on completion)
+        if matches!(result, ImportResult::Continue) {
+            self.save_cursor();
+        }
+
+        result
     }
     fn next_request(&self) -> StateRequest {
         self.inner.next_request()

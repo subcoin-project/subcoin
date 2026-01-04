@@ -1,10 +1,11 @@
 use bitcoin::hashes::Hash;
 use bitcoin::{BlockHash, Txid};
 use rocksdb::DB;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
@@ -14,6 +15,26 @@ use subcoin_utxo_snapshot::{OutputEntry, Utxo, UtxoSnapshotGenerator};
 const COUNT_KEY: &[u8; 12] = b"__coin_count";
 
 const INTERVAL: Duration = Duration::from_secs(5);
+
+const CURSOR_FILE: &str = "state_sync_cursor.bin";
+
+/// Cursor for resumable state sync.
+///
+/// This struct stores the progress of a state sync operation, allowing it to be
+/// resumed from where it left off after an interruption.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StateSyncCursor {
+    /// Target block number for the sync.
+    pub target_block_number: u32,
+    /// Target Bitcoin block hash for the sync.
+    pub target_bitcoin_block_hash: BlockHash,
+    /// The last key(s) processed, used to resume sync from this position.
+    pub last_key: Vec<Vec<u8>>,
+    /// Total number of coins expected.
+    pub total_coins: u64,
+    /// Number of coins received so far.
+    pub received_coins: u64,
+}
 
 static MAINNET_SNAPSHOT_SHA256SUMS: LazyLock<HashMap<BlockHash, &str>> = LazyLock::new(|| {
     HashMap::from([(
@@ -310,9 +331,59 @@ pub struct SnapshotManager {
     store: SnapshotStore,
     snapshot_generator: UtxoSnapshotGenerator,
     target_bitcoin_block_hash: BlockHash,
+    snapshot_dir: PathBuf,
 }
 
 impl SnapshotManager {
+    /// Tries to load an existing cursor without creating a new SnapshotManager.
+    ///
+    /// This is useful to check if resumable sync is possible before initializing.
+    pub fn try_load_cursor(
+        target_block_number: u32,
+        target_bitcoin_block_hash: BlockHash,
+        snapshot_base_dir: &Path,
+    ) -> Option<StateSyncCursor> {
+        let sync_target = format!("{target_block_number}_{target_bitcoin_block_hash}");
+        let snapshot_dir = snapshot_base_dir.join(sync_target);
+        let cursor_path = snapshot_dir.join(CURSOR_FILE);
+
+        if !cursor_path.exists() {
+            return None;
+        }
+
+        let file = match File::open(&cursor_path) {
+            Ok(f) => f,
+            Err(e) => {
+                tracing::warn!(
+                    target: "snapcake",
+                    "Failed to open cursor file: {e}"
+                );
+                return None;
+            }
+        };
+
+        let mut reader = BufReader::new(file);
+        let mut buffer = Vec::new();
+        if let Err(e) = reader.read_to_end(&mut buffer) {
+            tracing::warn!(
+                target: "snapcake",
+                "Failed to read cursor file: {e}"
+            );
+            return None;
+        }
+
+        match bincode::deserialize(&buffer) {
+            Ok(cursor) => Some(cursor),
+            Err(e) => {
+                tracing::warn!(
+                    target: "snapcake",
+                    "Failed to deserialize cursor file: {e}"
+                );
+                None
+            }
+        }
+    }
+
     pub fn new(
         target_block_number: u32,
         target_bitcoin_block_hash: BlockHash,
@@ -346,7 +417,78 @@ impl SnapshotManager {
             store,
             snapshot_generator,
             target_bitcoin_block_hash,
+            snapshot_dir,
         }
+    }
+
+    /// Returns the path to the cursor file.
+    fn cursor_path(&self) -> PathBuf {
+        self.snapshot_dir.join(CURSOR_FILE)
+    }
+
+    /// Saves the sync cursor to disk.
+    ///
+    /// This allows resuming state sync from the current position after a restart.
+    pub fn save_cursor(&self, cursor: &StateSyncCursor) -> std::io::Result<()> {
+        let cursor_path = self.cursor_path();
+        let file = File::create(&cursor_path)?;
+        let mut writer = BufWriter::new(file);
+
+        let encoded =
+            bincode::serialize(cursor).map_err(|e| std::io::Error::other(format!("{e}")))?;
+        writer.write_all(&encoded)?;
+        writer.flush()?;
+
+        Ok(())
+    }
+
+    /// Loads the sync cursor from disk if it exists.
+    ///
+    /// Returns `None` if no cursor file exists or if it's corrupted.
+    pub fn load_cursor(&self) -> std::io::Result<Option<StateSyncCursor>> {
+        let cursor_path = self.cursor_path();
+
+        if !cursor_path.exists() {
+            return Ok(None);
+        }
+
+        let file = File::open(&cursor_path)?;
+        let mut reader = BufReader::new(file);
+        let mut buffer = Vec::new();
+        reader.read_to_end(&mut buffer)?;
+
+        match bincode::deserialize(&buffer) {
+            Ok(cursor) => Ok(Some(cursor)),
+            Err(e) => {
+                tracing::warn!(
+                    target: "snapcake",
+                    "Failed to deserialize cursor file, starting fresh: {e}"
+                );
+                Ok(None)
+            }
+        }
+    }
+
+    /// Clears the sync cursor from disk.
+    ///
+    /// Called when state sync completes successfully.
+    pub fn clear_cursor(&self) -> std::io::Result<()> {
+        let cursor_path = self.cursor_path();
+
+        if cursor_path.exists() {
+            std::fs::remove_file(&cursor_path)?;
+            tracing::info!(
+                target: "snapcake",
+                "Cleared state sync cursor"
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Returns the current count of stored coins.
+    pub fn stored_coin_count(&self) -> std::io::Result<usize> {
+        self.store.count()
     }
 
     /// Adds a batch of UTXOs to the store.

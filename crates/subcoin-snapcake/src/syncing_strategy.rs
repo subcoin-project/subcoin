@@ -1,3 +1,4 @@
+use crate::snapshot_manager::SnapshotManager;
 use crate::state_sync_wrapper::StateSyncWrapper;
 use codec::{Decode, Encode};
 use futures::FutureExt;
@@ -703,19 +704,72 @@ where
                 // Only start the state sync when the coins count is available.
                 if let Some(total_coins) = self.coins_count.get(&block_hash) {
                     let target_header = target_header.clone();
-                    tracing::info!(
-                        "⏳ Starting state sync from {peer_id:?}, \
-                        target block #{},{block_hash}, total coins: {total_coins}",
-                        target_header.number(),
+                    let target_block_number: u32 =
+                        (*target_header.number()).try_into().unwrap_or(0);
+                    let target_bitcoin_block_hash =
+                        subcoin_primitives::extract_bitcoin_block_hash::<B>(&target_header)
+                            .expect("Failed to extract bitcoin block hash");
+
+                    // Check for existing cursor to enable resumable sync
+                    let cursor = SnapshotManager::try_load_cursor(
+                        target_block_number,
+                        target_bitcoin_block_hash,
+                        &self.snapshot_dir,
                     );
-                    let state_sync = StateStrategy::new_with_provider(
-                        Box::new(StateSyncWrapper::new(
+
+                    let state_sync_wrapper = if let Some(cursor) = cursor {
+                        // Validate cursor matches the target
+                        if cursor.target_block_number == target_block_number
+                            && cursor.target_bitcoin_block_hash == target_bitcoin_block_hash
+                        {
+                            tracing::info!(
+                                "⏳ Resuming state sync from {peer_id:?}, \
+                                target block #{target_block_number},{block_hash}, \
+                                total coins: {total_coins}, \
+                                progress: {}/{}",
+                                cursor.received_coins,
+                                total_coins,
+                            );
+                            StateSyncWrapper::new_resuming(
+                                self.client.clone(),
+                                target_header,
+                                self.skip_proof,
+                                self.snapshot_dir.clone(),
+                                *total_coins as usize,
+                                cursor,
+                            )
+                        } else {
+                            tracing::info!(
+                                "⏳ Starting fresh state sync from {peer_id:?} \
+                                (cursor target mismatch), \
+                                target block #{target_block_number},{block_hash}, \
+                                total coins: {total_coins}",
+                            );
+                            StateSyncWrapper::new(
+                                self.client.clone(),
+                                target_header,
+                                self.skip_proof,
+                                self.snapshot_dir.clone(),
+                                *total_coins as usize,
+                            )
+                        }
+                    } else {
+                        tracing::info!(
+                            "⏳ Starting state sync from {peer_id:?}, \
+                            target block #{target_block_number},{block_hash}, \
+                            total coins: {total_coins}",
+                        );
+                        StateSyncWrapper::new(
                             self.client.clone(),
                             target_header,
                             self.skip_proof,
                             self.snapshot_dir.clone(),
                             *total_coins as usize,
-                        )),
+                        )
+                    };
+
+                    let state_sync = StateStrategy::new_with_provider(
+                        Box::new(state_sync_wrapper),
                         self.peer_best_blocks
                             .iter()
                             .map(|(peer_id, (_, best_number))| (*peer_id, *best_number)),
