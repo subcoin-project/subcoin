@@ -11,7 +11,7 @@ on:
       - '**'
 
 jobs:
-  container-linux:
+  container-linux-amd64:
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -20,18 +20,11 @@ jobs:
       matrix:
         build:
           - arch: linux/amd64
-            image: subcoin # Subcoin Node
-            suffix: ubuntu-x86_64-${{ github.ref_name }}
+            image: subcoin
             image-suffix: ''
           - arch: linux/amd64
             image: snapcake
-            suffix: ubuntu-x86_64-${{ github.ref_name }}
             image-suffix: ''
-          # TODO: https://github.com/subcoin-project/subcoin/issues/13
-          # - arch: linux/arm64
-            # suffix: ubuntu-aarch64-${{ github.ref_name }}
-            # image-suffix: '-aarch64'
-            # dockerfile-suffix: '.aarch64'
 
     steps:
       - name: Set up QEMU
@@ -82,6 +75,71 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           # Added to prevent tons of untagged images in GHCR.
           # See: https://github.com/docker/build-push-action/issues/894
+          provenance: false
+          build-args: |
+            SUBSTRATE_CLI_GIT_COMMIT_HASH=${{ github.sha }}
+
+      - name: Image digest
+        run: echo ${{ steps.build.outputs.digest }}
+
+  container-linux-arm64:
+    runs-on: ubuntu-22.04-arm
+    permissions:
+      contents: write
+      packages: write
+    strategy:
+      matrix:
+        build:
+          - arch: linux/arm64
+            image: subcoin
+            image-suffix: '-arm64'
+          - arch: linux/arm64
+            image: snapcake
+            image-suffix: '-arm64'
+
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-arm64-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-arm64-buildx-
+
+      - name: Log into registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v3
+        with:
+          images: |
+            ghcr.io/subcoin-project/${{ matrix.build.image }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+          flavor: |
+            latest=false
+            suffix=${{ matrix.build.image-suffix }}
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          file: docker/${{ matrix.build.image }}.Dockerfile
+          platforms: ${{ matrix.build.arch }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           provenance: false
           build-args: |
             SUBSTRATE_CLI_GIT_COMMIT_HASH=${{ github.sha }}
