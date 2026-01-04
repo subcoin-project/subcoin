@@ -100,6 +100,7 @@ pub fn full_test_configuration(
             rate_limit: None,
             rate_limit_whitelisted_ips: Default::default(),
             rate_limit_trust_proxy_headers: Default::default(),
+            request_logger_limit: 1024,
         },
         prometheus_config: None,
         telemetry_endpoints: None,
