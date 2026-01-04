@@ -42,7 +42,7 @@
 <a href=#42 id=42 data-nosnippet>42</a>    <span class="kw">let </span>system = sc_rpc::system::System::new(system_info, system_rpc_tx).into_rpc();
 <a href=#43 id=43 data-nosnippet>43</a>    <span class="kw">let </span>chain = sc_rpc::chain::new_full(client.clone(), task_executor.clone()).into_rpc();
 <a href=#44 id=44 data-nosnippet>44</a>    <span class="kw">let </span>(state, child_state) = {
-<a href=#45 id=45 data-nosnippet>45</a>        <span class="kw">let </span>(state, child_state) = sc_rpc::state::new_full(client.clone(), task_executor);
+<a href=#45 id=45 data-nosnippet>45</a>        <span class="kw">let </span>(state, child_state) = sc_rpc::state::new_full(client.clone(), task_executor, <span class="prelude-val">None</span>);
 <a href=#46 id=46 data-nosnippet>46</a>        (state.into_rpc(), child_state.into_rpc())
 <a href=#47 id=47 data-nosnippet>47</a>    };
 <a href=#48 id=48 data-nosnippet>48</a>    <span class="kw">let </span>_frame_system = FrameSystem::new(client.clone(), dummy_pool).into_rpc();

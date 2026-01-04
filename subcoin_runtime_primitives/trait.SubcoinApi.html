@@ -3,7 +3,7 @@
     fn <a href="#method.execute_block_without_state_root_check" class="fn">execute_block_without_state_root_check</a>(
         &amp;self,
         __runtime_api_at_param__: &lt;Block as BlockT&gt;::Hash,
-        block: Block,
+        block: Block::LazyBlock,
     ) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.unit.html">()</a>, ApiError&gt; { ... }
 <span class="item-spacer"></span>    fn <a href="#method.finalize_block_without_checks" class="fn">finalize_block_without_checks</a>(
         &amp;self,
@@ -23,7 +23,7 @@
 </div></details><h2 id="provided-methods" class="section-header">Provided Methods<a href="#provided-methods" class="anchor">§</a></h2><div class="methods"><details class="toggle method-toggle" open><summary><section id="method.execute_block_without_state_root_check" class="method"><a class="src rightside" href="../src/subcoin_runtime_primitives/lib.rs.html#141-160">Source</a><h4 class="code-header">fn <a href="#method.execute_block_without_state_root_check" class="fn">execute_block_without_state_root_check</a>(
     &amp;self,
     __runtime_api_at_param__: &lt;Block as BlockT&gt;::Hash,
-    block: Block,
+    block: Block::LazyBlock,
 ) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.unit.html">()</a>, ApiError&gt;</h4></section></summary><div class="docblock"><p>Same as the original <code>execute_block()</code> with the removal
 of <code>state_root</code> check in the <code>final_checks()</code>.</p>
 </div></details><details class="toggle method-toggle" open><summary><section id="method.finalize_block_without_checks" class="method"><a class="src rightside" href="../src/subcoin_runtime_primitives/lib.rs.html#141-160">Source</a><h4 class="code-header">fn <a href="#method.finalize_block_without_checks" class="fn">finalize_block_without_checks</a>(

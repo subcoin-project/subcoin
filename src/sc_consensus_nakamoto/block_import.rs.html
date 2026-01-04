@@ -207,7 +207,7 @@
 <a href=#207 id=207 data-nosnippet>207</a>        <span class="kw">let </span><span class="kw-2">mut </span>runtime_api = <span class="self">self</span>.client.runtime_api();
 <a href=#208 id=208 data-nosnippet>208</a>        runtime_api.set_call_context(CallContext::Onchain);
 <a href=#209 id=209 data-nosnippet>209</a>
-<a href=#210 id=210 data-nosnippet>210</a>        runtime_api.execute_block_without_state_root_check(parent_hash, block)<span class="question-mark">?</span>;
+<a href=#210 id=210 data-nosnippet>210</a>        runtime_api.execute_block_without_state_root_check(parent_hash, block.into())<span class="question-mark">?</span>;
 <a href=#211 id=211 data-nosnippet>211</a>
 <a href=#212 id=212 data-nosnippet>212</a>        <span class="kw">let </span>state = <span class="self">self</span>.client.state_at(parent_hash)<span class="question-mark">?</span>;
 <a href=#213 id=213 data-nosnippet>213</a>
