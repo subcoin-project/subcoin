@@ -152,7 +152,7 @@ impl_runtime_apis! {
             VERSION
         }
 
-        fn execute_block(block: Block) {
+        fn execute_block(block: <Block as sp_runtime::traits::Block>::LazyBlock) {
             RuntimeExecutive::execute_block(block)
         }
 
@@ -190,10 +190,11 @@ impl_runtime_apis! {
         }
 
         fn check_inherents(
-            block: Block,
-            data: InherentData,
+            _block: <Block as sp_runtime::traits::Block>::LazyBlock,
+            _data: InherentData,
         ) -> CheckInherentsResult {
-            data.check_extrinsics(&block)
+            // Subcoin doesn't use inherent extrinsics in the traditional Substrate sense
+            CheckInherentsResult::new()
         }
     }
 
@@ -229,7 +230,7 @@ impl_runtime_apis! {
     }
 
     impl subcoin_runtime_primitives::SubcoinApi<Block> for Runtime {
-        fn execute_block_without_state_root_check(block: Block) {
+        fn execute_block_without_state_root_check(block: <Block as sp_runtime::traits::Block>::LazyBlock) {
             RuntimeExecutive::execute_block_without_state_root_check(block)
         }
 

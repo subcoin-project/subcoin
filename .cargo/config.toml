@@ -1,0 +1,4 @@
+# Allow multiple definitions to resolve snappy symbol conflicts
+# between leveldb-sys (from bitcoin-explorer) and librocksdb-sys
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-args=-Wl,--allow-multiple-definition"]

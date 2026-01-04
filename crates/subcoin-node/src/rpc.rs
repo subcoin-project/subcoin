@@ -42,7 +42,7 @@ pub fn gen_rpc_module(
     let system = sc_rpc::system::System::new(system_info, system_rpc_tx).into_rpc();
     let chain = sc_rpc::chain::new_full(client.clone(), task_executor.clone()).into_rpc();
     let (state, child_state) = {
-        let (state, child_state) = sc_rpc::state::new_full(client.clone(), task_executor);
+        let (state, child_state) = sc_rpc::state::new_full(client.clone(), task_executor, None);
         (state.into_rpc(), child_state.into_rpc())
     };
     let _frame_system = FrameSystem::new(client.clone(), dummy_pool).into_rpc();
