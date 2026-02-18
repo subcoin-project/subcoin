@@ -41,6 +41,9 @@ mod snapshot_manager;
 mod state_sync_wrapper;
 mod syncing_strategy;
 
+#[cfg(test)]
+mod tests;
+
 use self::cli::{App, Command};
 use clap::Parser;
 use sc_cli::SubstrateCli;

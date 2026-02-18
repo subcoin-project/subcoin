@@ -8,12 +8,24 @@ license.workspace = true
 
 [dependencies]
 bitcoin = { workspace = true }
-serde_json = { workspace = true }
+futures = { workspace = true }
+sc-client-api = { workspace = true }
+sc-consensus = { workspace = true }
 sc-consensus-nakamoto = { workspace = true }
+sc-informant = { workspace = true }
+sc-network = { workspace = true }
+sc-network-common = { workspace = true }
+sc-network-sync = { workspace = true }
 sc-service = { workspace = true }
+serde_json = { workspace = true }
+sp-blockchain = { workspace = true }
 sp-consensus = { workspace = true }
+sp-core = { workspace = true }
 sp-keyring = { workspace = true }
+sp-runtime = { workspace = true }
+subcoin-primitives = { workspace = true }
 subcoin-runtime = { workspace = true }
 subcoin-service = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }

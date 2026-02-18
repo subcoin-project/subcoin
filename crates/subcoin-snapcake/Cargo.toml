@@ -47,3 +47,10 @@ subcoin-utxo-snapshot = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
 rocksdb = "0.24.0"
+
+[dev-dependencies]
+sc-tracing = { workspace = true }
+sp-keyring = { workspace = true }
+subcoin-test-service = { workspace = true }
+tempfile = { workspace = true }
+tokio-test = "0.4"

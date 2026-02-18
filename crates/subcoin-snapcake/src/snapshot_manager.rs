@@ -422,7 +422,7 @@ impl SnapshotManager {
     }
 
     /// Returns the path to the cursor file.
-    fn cursor_path(&self) -> PathBuf {
+    pub fn cursor_path(&self) -> PathBuf {
         self.snapshot_dir.join(CURSOR_FILE)
     }
 
@@ -558,4 +558,300 @@ fn calculate_sha256sum(file_path: impl AsRef<Path>) -> std::io::Result<String> {
     let hash_result = hasher.finalize();
 
     Ok(format!("{hash_result:x}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_block_hash() -> BlockHash {
+        "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"
+            .parse()
+            .expect("Valid genesis block hash")
+    }
+
+    fn test_block_hash_2() -> BlockHash {
+        "00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048"
+            .parse()
+            .expect("Valid block 1 hash")
+    }
+
+    fn create_test_cursor(
+        target_block_number: u32,
+        target_bitcoin_block_hash: BlockHash,
+        received_coins: u64,
+    ) -> StateSyncCursor {
+        StateSyncCursor {
+            target_block_number,
+            target_bitcoin_block_hash,
+            last_key: vec![vec![1, 2, 3, 4], vec![5, 6, 7, 8]],
+            total_coins: 1000,
+            received_coins,
+        }
+    }
+
+    #[test]
+    fn cursor_save_and_load_roundtrip() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let block_hash = test_block_hash();
+        let block_number = 100u32;
+
+        let manager = SnapshotManager::new(block_number, block_hash, temp_dir.path().into(), false);
+
+        // Create and save cursor
+        let original_cursor = create_test_cursor(block_number, block_hash, 500);
+        manager
+            .save_cursor(&original_cursor)
+            .expect("Failed to save cursor");
+
+        // Load cursor and verify
+        let loaded_cursor = manager
+            .load_cursor()
+            .expect("Failed to load cursor")
+            .expect("Cursor should exist");
+
+        assert_eq!(
+            loaded_cursor.target_block_number,
+            original_cursor.target_block_number
+        );
+        assert_eq!(
+            loaded_cursor.target_bitcoin_block_hash,
+            original_cursor.target_bitcoin_block_hash
+        );
+        assert_eq!(loaded_cursor.last_key, original_cursor.last_key);
+        assert_eq!(loaded_cursor.total_coins, original_cursor.total_coins);
+        assert_eq!(loaded_cursor.received_coins, original_cursor.received_coins);
+    }
+
+    #[test]
+    fn cursor_clear_removes_file() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let block_hash = test_block_hash();
+        let block_number = 100u32;
+
+        let manager = SnapshotManager::new(block_number, block_hash, temp_dir.path().into(), false);
+
+        // Save cursor
+        let cursor = create_test_cursor(block_number, block_hash, 500);
+        manager.save_cursor(&cursor).expect("Failed to save cursor");
+
+        // Verify cursor exists
+        assert!(manager.cursor_path().exists());
+
+        // Clear cursor
+        manager.clear_cursor().expect("Failed to clear cursor");
+
+        // Verify cursor is gone
+        assert!(!manager.cursor_path().exists());
+
+        // Load should return None
+        let loaded = manager.load_cursor().expect("Failed to load cursor");
+        assert!(loaded.is_none());
+    }
+
+    #[test]
+    fn load_cursor_returns_none_when_no_file() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let block_hash = test_block_hash();
+        let block_number = 100u32;
+
+        let manager = SnapshotManager::new(block_number, block_hash, temp_dir.path().into(), false);
+
+        // Should return None without error
+        let loaded = manager.load_cursor().expect("Failed to load cursor");
+        assert!(loaded.is_none());
+    }
+
+    #[test]
+    fn try_load_cursor_without_manager() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let block_hash = test_block_hash();
+        let block_number = 100u32;
+
+        // Create manager and save cursor
+        let manager = SnapshotManager::new(block_number, block_hash, temp_dir.path().into(), false);
+        let cursor = create_test_cursor(block_number, block_hash, 500);
+        manager.save_cursor(&cursor).expect("Failed to save cursor");
+
+        // Now use static method to load without creating a new manager
+        let loaded = SnapshotManager::try_load_cursor(block_number, block_hash, temp_dir.path());
+
+        assert!(loaded.is_some());
+        let loaded = loaded.unwrap();
+        assert_eq!(loaded.target_block_number, block_number);
+        assert_eq!(loaded.target_bitcoin_block_hash, block_hash);
+        assert_eq!(loaded.received_coins, 500);
+    }
+
+    #[test]
+    fn try_load_cursor_returns_none_for_different_target() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let block_hash = test_block_hash();
+        let block_number = 100u32;
+
+        // Create manager and save cursor for block 100
+        let manager = SnapshotManager::new(block_number, block_hash, temp_dir.path().into(), false);
+        let cursor = create_test_cursor(block_number, block_hash, 500);
+        manager.save_cursor(&cursor).expect("Failed to save cursor");
+
+        // Try to load cursor for block 200 - should return None
+        let loaded = SnapshotManager::try_load_cursor(200, block_hash, temp_dir.path());
+        assert!(loaded.is_none());
+
+        // Try to load cursor for different block hash - should return None
+        let different_hash = test_block_hash_2();
+        let loaded =
+            SnapshotManager::try_load_cursor(block_number, different_hash, temp_dir.path());
+        assert!(loaded.is_none());
+    }
+
+    #[test]
+    fn cursor_update_overwrites_previous() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let block_hash = test_block_hash();
+        let block_number = 100u32;
+
+        let manager = SnapshotManager::new(block_number, block_hash, temp_dir.path().into(), false);
+
+        // Save initial cursor
+        let cursor1 = create_test_cursor(block_number, block_hash, 100);
+        manager
+            .save_cursor(&cursor1)
+            .expect("Failed to save cursor");
+
+        // Save updated cursor with more progress
+        let cursor2 = StateSyncCursor {
+            target_block_number: block_number,
+            target_bitcoin_block_hash: block_hash,
+            last_key: vec![vec![10, 20, 30]],
+            total_coins: 1000,
+            received_coins: 500,
+        };
+        manager
+            .save_cursor(&cursor2)
+            .expect("Failed to save cursor");
+
+        // Load should return the updated cursor
+        let loaded = manager
+            .load_cursor()
+            .expect("Failed to load cursor")
+            .expect("Cursor should exist");
+
+        assert_eq!(loaded.received_coins, 500);
+        assert_eq!(loaded.last_key, vec![vec![10, 20, 30]]);
+    }
+
+    #[test]
+    fn cursor_serialization_handles_empty_last_key() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let block_hash = test_block_hash();
+        let block_number = 100u32;
+
+        let manager = SnapshotManager::new(block_number, block_hash, temp_dir.path().into(), false);
+
+        // Create cursor with empty last_key (initial state)
+        let cursor = StateSyncCursor {
+            target_block_number: block_number,
+            target_bitcoin_block_hash: block_hash,
+            last_key: vec![],
+            total_coins: 1000,
+            received_coins: 0,
+        };
+        manager.save_cursor(&cursor).expect("Failed to save cursor");
+
+        let loaded = manager
+            .load_cursor()
+            .expect("Failed to load cursor")
+            .expect("Cursor should exist");
+
+        assert!(loaded.last_key.is_empty());
+        assert_eq!(loaded.received_coins, 0);
+    }
+
+    #[test]
+    fn clear_cursor_is_idempotent() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let block_hash = test_block_hash();
+        let block_number = 100u32;
+
+        let manager = SnapshotManager::new(block_number, block_hash, temp_dir.path().into(), false);
+
+        // Clear cursor when it doesn't exist - should not error
+        manager.clear_cursor().expect("First clear should succeed");
+        manager.clear_cursor().expect("Second clear should succeed");
+        manager.clear_cursor().expect("Third clear should succeed");
+    }
+
+    #[test]
+    fn stored_coin_count_tracks_utxos() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let block_hash = test_block_hash();
+        let block_number = 100u32;
+
+        let mut manager =
+            SnapshotManager::new(block_number, block_hash, temp_dir.path().into(), true);
+
+        // Initial count should be 0
+        let count = manager
+            .stored_coin_count()
+            .expect("Failed to get coin count");
+        assert_eq!(count, 0);
+
+        // Add some UTXOs
+        let utxos = vec![
+            Utxo {
+                txid: "0000000000000000000000000000000000000000000000000000000000000001"
+                    .parse()
+                    .unwrap(),
+                vout: 0,
+                coin: Coin {
+                    is_coinbase: true,
+                    amount: 5000000000,
+                    height: 1,
+                    script_pubkey: vec![0x76, 0xa9],
+                },
+            },
+            Utxo {
+                txid: "0000000000000000000000000000000000000000000000000000000000000002"
+                    .parse()
+                    .unwrap(),
+                vout: 0,
+                coin: Coin {
+                    is_coinbase: true,
+                    amount: 5000000000,
+                    height: 2,
+                    script_pubkey: vec![0x76, 0xa9],
+                },
+            },
+        ];
+
+        let stored = manager.store_utxos_batch(&utxos);
+        assert_eq!(stored, 2);
+
+        let count = manager
+            .stored_coin_count()
+            .expect("Failed to get coin count");
+        assert_eq!(count, 2);
+
+        // Add more UTXOs
+        let more_utxos = vec![Utxo {
+            txid: "0000000000000000000000000000000000000000000000000000000000000003"
+                .parse()
+                .unwrap(),
+            vout: 0,
+            coin: Coin {
+                is_coinbase: true,
+                amount: 5000000000,
+                height: 3,
+                script_pubkey: vec![0x76, 0xa9],
+            },
+        }];
+
+        manager.store_utxos_batch(&more_utxos);
+
+        let count = manager
+            .stored_coin_count()
+            .expect("Failed to get coin count");
+        assert_eq!(count, 3);
+    }
 }

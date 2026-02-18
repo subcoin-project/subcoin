@@ -9774,6 +9774,7 @@ dependencies = [
  "sc-network-common",
  "sc-network-sync",
  "sc-service",
+ "sc-tracing",
  "sc-transaction-pool",
  "serde",
  "sha2 0.9.9",
@@ -9782,14 +9783,18 @@ dependencies = [
  "sp-blockchain",
  "sp-consensus",
  "sp-core",
+ "sp-keyring",
  "sp-runtime",
  "subcoin-crypto",
  "subcoin-primitives",
  "subcoin-runtime",
  "subcoin-runtime-primitives",
  "subcoin-service",
+ "subcoin-test-service",
  "subcoin-utxo-snapshot",
+ "tempfile",
  "tokio",
+ "tokio-test",
  "tracing",
 ]
 
@@ -9798,15 +9803,27 @@ name = "subcoin-test-service"
 version = "0.1.0"
 dependencies = [
  "bitcoin 0.32.2",
+ "futures",
+ "sc-client-api",
+ "sc-consensus",
  "sc-consensus-nakamoto",
+ "sc-informant",
+ "sc-network",
+ "sc-network-common",
+ "sc-network-sync",
  "sc-service",
  "serde_json",
+ "sp-blockchain",
  "sp-consensus",
+ "sp-core",
  "sp-keyring",
+ "sp-runtime",
+ "subcoin-primitives",
  "subcoin-runtime",
  "subcoin-service",
  "tempfile",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -10236,6 +10253,17 @@ dependencies = [
  "pin-project-lite",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "tokio-test"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6d24790a10a7af737693a3e8f1d03faef7e6ca0cc99aae5066f533766de545"
+dependencies = [
+ "futures-core",
+ "tokio",
+ "tokio-stream",
 ]
 
 [[package]]
